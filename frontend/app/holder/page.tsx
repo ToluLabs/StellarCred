@@ -256,7 +256,7 @@ export default function HolderPage() {
             </p>
           )}
 
-          {importing ? (
+          {<SubmissionHistory />`nimporting ? (
             <ImportPanel
               onImport={(c) => { setCreds(saveCredential(c)); setImporting(false); }}
               onCancel={() => setImporting(false)}
