@@ -15,7 +15,7 @@ import {
   IconCpu,
   IconCloudUpload,
 } from "@tabler/icons-react";
-import { WalletButton } from "@/components/WalletButton";
+import SubmissionHistory from "@/components/SubmissionHistory";`nimport { saveSubmission } from "@/lib/history";`nimport { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
 import { Check } from "@/components/Check";
@@ -192,7 +192,7 @@ export default function HolderPage() {
           cred={proving}
           holder={address}
           onBack={() => setProving(null)}
-          onProved={(txHash) => setCreds(markProved(proving.commitment, txHash))}
+          onProved={(txHash) => { setCreds(markProved(proving.commitment, txHash)); saveSubmission({ credentialType: proving.type, timestamp: Date.now(), txHash, status: "confirmed" }); }}
         />
       ) : (
         <div className="stack reveal" style={{ gap: "1.5rem" }}>
