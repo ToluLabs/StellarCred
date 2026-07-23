@@ -15,7 +15,9 @@ import {
   IconCpu,
   IconCloudUpload,
 } from "@tabler/icons-react";
-import SubmissionHistory from "@/components/SubmissionHistory";`nimport { saveSubmission } from "@/lib/history";`nimport { WalletButton } from "@/components/WalletButton";
+import SubmissionHistory from "@/components/SubmissionHistory";
+import { saveSubmission } from "@/lib/history";
+import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
 import { Check } from "@/components/Check";
