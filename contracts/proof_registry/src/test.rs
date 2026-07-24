@@ -205,6 +205,68 @@ fn revoke_clears_proof() {
     assert!(!h.registry.is_verified(&holder, &symbol_short!("kyc")).0);
 }
 
+// ── issuer revocation tests ──────────────────────────────────────────────────
+
+#[test]
+fn issuer_revoke_invalidates_before_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 1000);
+    assert!(h.registry.is_verified(&holder, &symbol_short!("kyc")).0);
+
+    h.registry.revoke(&holder, &symbol_short!("kyc"), &h.issuer);
+    assert!(!h.registry.is_verified(&holder, &symbol_short!("kyc")).0);
+}
+
+#[test]
+fn issuer_revoke_by_unregistered_issuer_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    submit(&env, &h, &holder, 1000);
+
+    let res = h.registry.try_revoke(&holder, &symbol_short!("kyc"), &stranger);
+    assert!(res.is_err());
+    assert!(h.registry.is_verified(&holder, &symbol_short!("kyc")).0);
+}
+
+#[test]
+fn check_claim_false_after_issuer_revoke() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 1000);
+    assert!(h.registry.check_claim(&holder, &symbol_short!("kyc"), &None));
+
+    h.registry.revoke(&holder, &symbol_short!("kyc"), &h.issuer);
+    assert!(!h.registry.check_claim(&holder, &symbol_short!("kyc"), &None));
+}
+
+#[test]
+fn resubmit_after_issuer_revoke_clears_flag() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 1000);
+    h.registry.revoke(&holder, &symbol_short!("kyc"), &h.issuer);
+    assert!(!h.registry.is_verified(&holder, &symbol_short!("kyc")).0);
+
+    submit(&env, &h, &holder, 2000);
+    let (valid, _, expiry) = h.registry.is_verified(&holder, &symbol_short!("kyc"));
+    assert!(valid);
+    assert_eq!(expiry, 2000);
+}
+
 // ── check_claim / threshold tests ────────────────────────────────────────────
 
 #[test]

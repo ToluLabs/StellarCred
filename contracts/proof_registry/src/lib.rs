@@ -59,6 +59,8 @@ pub enum DataKey {
     IssuerRegistry,
     /// Cached verification, keyed by (holder, credential_type).
     Proof(Address, Symbol),
+    /// Issuer revocation flag, keyed by (holder, credential_type).
+    Revoked(Address, Symbol),
 }
 
 #[contracterror]
@@ -122,7 +124,7 @@ impl ProofRegistry {
             panic_with_error!(&env, Error::VerificationFailed);
         }
 
-        let key = DataKey::Proof(holder, credential_type.clone());
+        let key = DataKey::Proof(holder.clone(), credential_type.clone());
         let record = ProofRecord {
             verified_at: env.ledger().timestamp(),
             expiry,
@@ -132,17 +134,20 @@ impl ProofRegistry {
         env.storage()
             .persistent()
             .extend_ttl(&key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Revoked(holder, credential_type));
     }
 
     /// Returns `(is_currently_valid, verified_at, expiry)`. `is_currently_valid`
     /// accounts for expiry against the current ledger time.
     pub fn is_verified(env: Env, holder: Address, credential_type: Symbol) -> (bool, u64, u64) {
-        match env
-            .storage()
-            .persistent()
-            .get::<_, ProofRecord>(&DataKey::Proof(holder, credential_type))
-        {
+        let key = DataKey::Proof(holder.clone(), credential_type.clone());
+        match env.storage().persistent().get::<_, ProofRecord>(&key) {
             Some(r) => {
+                if Self::is_revoked(&env, &holder, &credential_type) {
+                    return (false, r.verified_at, r.expiry);
+                }
                 let valid = r.expiry > env.ledger().timestamp();
                 (valid, r.verified_at, r.expiry)
             }
@@ -160,12 +165,12 @@ impl ProofRegistry {
         credential_type: Symbol,
         min_threshold: Option<u64>,
     ) -> bool {
-        match env
-            .storage()
-            .persistent()
-            .get::<_, ProofRecord>(&DataKey::Proof(holder, credential_type))
-        {
+        let key = DataKey::Proof(holder.clone(), credential_type.clone());
+        match env.storage().persistent().get::<_, ProofRecord>(&key) {
             Some(r) => {
+                if Self::is_revoked(&env, &holder, &credential_type) {
+                    return false;
+                }
                 if r.expiry <= env.ledger().timestamp() {
                     return false;
                 }
@@ -178,12 +183,41 @@ impl ProofRegistry {
         }
     }
 
+    /// Invalidate a cached proof before its expiry. Only the registered issuer
+    /// for `credential_type` may call this; holders cannot self-revoke via
+    /// this entrypoint.
+    pub fn revoke(env: Env, holder: Address, credential_type: Symbol, issuer: Address) {
+        issuer.require_auth();
+
+        let registry = IssuerClient::new(&env, &Self::issuer_registry(&env));
+        if !registry.is_valid_issuer(&issuer, &credential_type) {
+            panic_with_error!(&env, Error::IssuerNotTrusted);
+        }
+
+        let proof_key = DataKey::Proof(holder.clone(), credential_type.clone());
+        let ttl = env
+            .storage()
+            .persistent()
+            .get::<_, ProofRecord>(&proof_key)
+            .map(|r| Self::ttl_for_expiry(&env, r.expiry))
+            .unwrap_or(PROOF_TTL);
+
+        let rev_key = DataKey::Revoked(holder, credential_type);
+        env.storage().persistent().set(&rev_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&rev_key, PROOF_BUMP_THRESHOLD, ttl);
+    }
+
     /// Revoke a cached proof. The holder authorizes their own revocation.
     pub fn revoke_proof(env: Env, holder: Address, credential_type: Symbol) {
         holder.require_auth();
         env.storage()
             .persistent()
-            .remove(&DataKey::Proof(holder, credential_type));
+            .remove(&DataKey::Proof(holder.clone(), credential_type.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Revoked(holder, credential_type));
     }
 
     pub fn verifier_address(env: Env) -> Address {
@@ -251,6 +285,24 @@ impl ProofRegistry {
             .instance()
             .get(&DataKey::IssuerRegistry)
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+    }
+
+    fn is_revoked(env: &Env, holder: &Address, credential_type: &Symbol) -> bool {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Revoked(holder.clone(), credential_type.clone()))
+            .unwrap_or(false)
+    }
+
+    /// Persistent-entry TTL (in ledgers) that covers at least until `expiry`.
+    fn ttl_for_expiry(env: &Env, expiry: u64) -> u32 {
+        const LEDGER_TIME_SECS: u64 = 5;
+        let now = env.ledger().timestamp();
+        if expiry <= now {
+            return PROOF_BUMP_THRESHOLD;
+        }
+        let ledgers = ((expiry - now) / LEDGER_TIME_SECS) as u32;
+        ledgers.max(PROOF_BUMP_THRESHOLD).min(PROOF_TTL)
     }
 }
 
