@@ -1,7 +1,7 @@
-/* ===========================================================================
+/* =====
    StellarCred - Premium design system
    Dark surfaces with green ZK accent, Space Grotesk headings, dot-grid bg.
-   =========================================================================== */
+   ===== */
 
 :root {
   /* Backgrounds */
@@ -770,28 +770,20 @@ textarea:focus {
     stroke-dashoffset: 0;
   }
 }
+.tour-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.55);cursor:pointer;animation:tour-fade-in 0.3s ease}
+.tour-highlight{position:relative;z-index:9999!important;box-shadow:0 0 0 4px var(--accent,#3ecf8e),0 0 24px rgba(62,207,142,0.3)!important;border-radius:var(--radius,8px)!important}
+.tour-tooltip{position:fixed;z-index:10000;background:var(--bg-raised,#1a1a2e);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:var(--radius-lg,12px);padding:1.5rem;box-shadow:0 16px 48px rgba(0,0,0,0.4);animation:tour-slide-up 0.3s ease;min-width:280px}
+.tour-close{position:absolute;top:0.75rem;right:0.75rem;background:none;border:none;color:var(--muted,#888);cursor:pointer;padding:4px;border-radius:4px;display:grid;place-items:center}
+.tour-close:hover{color:var(--text,#fff);background:rgba(255,255,255,0.06)}
+.tour-step-indicator{font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted,#888);margin-bottom:0.75rem}
+.tour-title{font-size:1.1rem;font-weight:600;margin-bottom:0.5rem;color:var(--text,#fff)}
+.tour-body{font-size:0.875rem;line-height:1.6;color:var(--muted,#999);margin-bottom:1.25rem}
+.tour-actions{display:flex;gap:0.5rem;align-items:center}
+.tour-skip{display:block;margin-top:0.75rem;background:none;border:none;color:var(--muted,#777);font-size:0.75rem;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.tour-skip:hover{color:var(--text,#fff)}
+@keyframes tour-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes tour-slide-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
-.copy-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.copy-button:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
-}
-
-.copy-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+.copy-button{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:1px solid var(--border);border-radius:0.5rem;background:rgba(255,255,255,0.03);color:var(--muted);cursor:pointer;transition:all 0.2s ease}
+.copy-button:hover{background:rgba(255,255,255,0.08);color:var(--text)}
+.copy-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

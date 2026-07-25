@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
-import { SiteNav } from "@/components/SiteNav";
+import { OnboardingTour } from "@/components/OnboardingTour";`nimport { SiteNav } from "@/components/SiteNav";
 import { WalletProvider } from "@/lib/wallet-context";
 import "./globals.css";
 
@@ -33,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${body.variable} ${display.variable} ${mono.variable}`}>
       <body>
         <WalletProvider>
+          <OnboardingTour />
           <SiteNav />
           <main className="container">{children}</main>
           <footer className="site-footer">
