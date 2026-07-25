@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CONTRACTS } from "@/lib/stellar";
+import CopyButton from "@/components/CopyButton";
 
 export const metadata: Metadata = {
   title: "Developers · StellarCred",
@@ -60,6 +61,7 @@ const CLAIMS: [string, string, string][] = [
   ["income", "Income ≥ threshold", "Financial data provider"],
   ["jurisdiction", "Country not restricted", "KYC provider"],
   ["funds", "Balance ≥ threshold", "Plaid / bank attestation"],
+  ["accreditation", "Net worth ≥ threshold", "Financial institution"],
 ];
 
 const ADDRESSES: [string, string][] = [
@@ -230,7 +232,10 @@ const verified = await StellarCred.hasClaim(wallet, "kyc");`}</Code>
                   {name}
                 </td>
                 <td style={{ padding: "0.6rem 0.75rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", wordBreak: "break-all" }}>
-                  {value || "— not configured —"}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span>{value || "— not configured —"}</span>
+                    {value && <CopyButton value={value} />}
+                  </div>
                 </td>
               </tr>
             ))}

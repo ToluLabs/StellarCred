@@ -30,6 +30,7 @@ type_of() {
     income_proof) echo income ;;
     jurisdiction_proof) echo jurisdiction ;;
     funds_proof) echo funds ;;
+    accreditation_proof) echo accreditation ;;
     *) echo "$1" ;;
   esac
 }
@@ -92,5 +93,5 @@ build() {
 if [ "$#" -gt 0 ]; then
   for n in "$@"; do build "$n"; done
 else
-  for n in commit kyc_proof age_proof income_proof jurisdiction_proof funds_proof; do build "$n"; done
+  for n in commit kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof; do build "$n"; done
 fi

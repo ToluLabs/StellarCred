@@ -73,3 +73,8 @@ export function useWallet(): WalletState {
   if (!ctx) throw new Error("useWallet must be used within WalletProvider");
   return ctx;
 }
+
+export function usePreviewMode(): boolean {
+  const { address } = useWallet();
+  return !address;
+}

@@ -12,7 +12,7 @@ macro_rules! fixture {
     };
 }
 
-fn setup(env: &Env) -> CredentialVerifierClient {
+fn setup(env: &Env) -> CredentialVerifierClient<'_> {
     let admin = Address::generate(env);
     let id = env.register(CredentialVerifier, (admin,));
     CredentialVerifierClient::new(env, &id)

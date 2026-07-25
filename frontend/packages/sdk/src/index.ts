@@ -64,7 +64,7 @@ export function configure(opts: {
 // ---------------------------------------------------------------------------
 
 /** The credential types StellarCred supports. Matches the contract Symbols. */
-export const CLAIM_TYPES = ["kyc", "age", "income", "jurisdiction", "funds"] as const;
+export const CLAIM_TYPES = ["kyc", "age", "income", "jurisdiction", "funds", "accreditation"] as const;
 export type ClaimType = (typeof CLAIM_TYPES)[number];
 
 export interface Claim {

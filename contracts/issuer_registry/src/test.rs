@@ -3,7 +3,7 @@
 use super::*;
 use soroban_sdk::{symbol_short, testutils::Address as _, vec, Address, BytesN, Env};
 
-fn setup(env: &Env) -> (Address, IssuerRegistryClient) {
+fn setup(env: &Env) -> (Address, IssuerRegistryClient<'_>) {
     let admin = Address::generate(env);
     let contract_id = env.register(IssuerRegistry, (admin.clone(),));
     (admin, IssuerRegistryClient::new(env, &contract_id))

@@ -559,6 +559,13 @@ export default function DocsPage() {
               attribute="Account balance from Plaid (verified by bank, never stored)"
               private="Exact balance figure"
             />
+            <CredRow
+              type="accreditation"
+              title="Accredited Investor (Net Worth)"
+              claim="net worth ≥ $1,000,000"
+              attribute="Net worth in USD"
+              private="Exact net worth figure"
+            />
           </section>
 
           {/* ZK proof system ────────────────────────────────────── */}
