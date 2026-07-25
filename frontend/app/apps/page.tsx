@@ -1,18 +1,25 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  IconCheck,
-  IconCircle,
-} from "@tabler/icons-react";
+import { IconCheck, IconCircle, IconSearch, IconFilter } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
 import { ConfigBanner } from "@/components/ConfigBanner";
+import { usePreviewMode } from "@/lib/wallet-context";
 import { checkClaim } from "@/lib/contracts";
 import { PROTOCOLS, type Protocol } from "@/lib/protocols";
+import { CREDENTIAL_TYPES } from "@/lib/stellar";
+
+const CLAIM_LABELS: Record<string, string> = {
+  kyc: "KYC",
+  age: "Age",
+  jurisdiction: "Jurisdiction",
+  income: "Income",
+  funds: "Funds",
+};
 
 function ProtocolCard({
   protocol,
@@ -25,8 +32,14 @@ function ProtocolCard({
   const [statuses, setStatuses] = useState<boolean[]>(protocol.requirements.map(() => false));
   const [checked, setChecked] = useState(false);
   const eligible = statuses.every(Boolean);
+  const isPreview = usePreviewMode();
 
   useEffect(() => {
+    if (isPreview) {
+      setChecked(true);
+      setStatuses(protocol.requirements.map(() => true));
+      return;
+    }
     if (!activeWallet) {
       setChecked(false);
       setStatuses(protocol.requirements.map(() => false));
@@ -40,7 +53,7 @@ function ProtocolCard({
         );
         if (!cancelled) setStatuses(results);
       } catch {
-        // contracts not deployed — requirements stay unmet
+        // contracts not deployed
       } finally {
         if (!cancelled) setChecked(true);
       }
@@ -54,27 +67,41 @@ function ProtocolCard({
       onClick={() => router.push(`/apps/${protocol.id}`)}
       style={{ display: "flex", flexDirection: "column", gap: 0, cursor: "pointer" }}
     >
-      {/* Header */}
       <div className="between" style={{ marginBottom: "0.35rem" }}>
         <span className="row" style={{ gap: "0.5rem", color: "var(--accent)", fontWeight: 600, fontSize: "1.1rem" }}>
           {protocol.icon}
           {protocol.name}
         </span>
-        {checked && (
-          eligible
-            ? <Badge variant="verified">Access granted</Badge>
-            : <Badge variant="denied">Locked</Badge>
-        )}
+        <div className="row" style={{ gap: "0.3rem" }}>
+          {protocol.requirements.map((r, i) => {
+            const isClaimMet = checked && statuses[i];
+            return (
+              <span
+                key={r.type}
+                style={{
+                  padding: "0.15rem 0.5rem",
+                  borderRadius: "999px",
+                  fontSize: "0.65rem",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  background: isClaimMet ? "rgba(62,207,142,0.15)" : "rgba(255,255,255,0.05)",
+                  color: isClaimMet ? "var(--accent)" : "var(--faint)",
+                  border: `1px solid ${isClaimMet ? "rgba(62,207,142,0.35)" : "var(--border)"}`,
+                }}
+              >
+                {CLAIM_LABELS[r.type] || r.type}
+              </span>
+            );
+          })}
+        </div>
       </div>
       <p className="mono faint" style={{ fontSize: "0.72rem", marginBottom: "0.75rem" }}>
         {protocol.tagline}
       </p>
-
       <p className="muted" style={{ fontSize: "0.8125rem", lineHeight: 1.65, marginBottom: "1.25rem" }}>
         {protocol.description}
       </p>
-
-      {/* Stat */}
       <div
         style={{
           padding: "0.65rem 0.9rem",
@@ -88,8 +115,6 @@ function ProtocolCard({
         <div style={{ fontWeight: 600, fontSize: "1.5rem", letterSpacing: "-0.03em" }}>{protocol.stat.value}</div>
         <div className="mono faint" style={{ fontSize: "0.7rem" }}>{protocol.stat.sub}</div>
       </div>
-
-      {/* Requirements — show status, no verify CTA */}
       <div className="eyebrow" style={{ marginBottom: "0.4rem" }}>Requirements</div>
       <div className="stack">
         {protocol.requirements.map((r, i) => (
@@ -113,12 +138,35 @@ function ProtocolCard({
 }
 
 function AppsInner() {
-  const { address } = useWallet();
+  const { address, connect } = useWallet();
   const searchParams = useSearchParams();
-
   const scVerified = searchParams.get("sc_verified") === "true";
   const scWallet = searchParams.get("sc_wallet");
   const activeWallet = address ?? scWallet ?? null;
+
+  const [search, setSearch] = useState("");
+  const [selectedClaims, setSelectedClaims] = useState<Set<string>>(new Set());
+
+  const toggleClaim = (claim: string) => {
+    setSelectedClaims((prev) => {
+      const next = new Set(prev);
+      if (next.has(claim)) next.delete(claim);
+      else next.add(claim);
+      return next;
+    });
+  };
+
+  const filtered = useMemo(() => {
+    return PROTOCOLS.filter((p) => {
+      const matchesSearch = !search.trim() ||
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.description.toLowerCase().includes(search.toLowerCase()) ||
+        p.tagline.toLowerCase().includes(search.toLowerCase());
+      const matchesClaims = selectedClaims.size === 0 ||
+        p.requirements.some((r) => selectedClaims.has(r.type));
+      return matchesSearch && matchesClaims;
+    });
+  }, [search, selectedClaims]);
 
   return (
     <>
@@ -174,15 +222,94 @@ function AppsInner() {
 
       <ConfigBanner />
 
-      <div className="grid grid-3" style={{ alignItems: "start", gap: "1.25rem" }}>
-        {PROTOCOLS.map((p) => (
-          <ProtocolCard
-            key={p.id}
-            protocol={p}
-            activeWallet={activeWallet}
+      {/* Search and filter */}
+      <div className="stack" style={{ gap: "0.75rem", marginBottom: "1.5rem" }}>
+        <div style={{ position: "relative" }}>
+          <IconSearch
+            size={16}
+            stroke={1.8}
+            color="var(--faint)"
+            style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)" }}
           />
-        ))}
+          <input
+            type="text"
+            placeholder="Search apps by name, description, or tagline..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "0.65rem 0.75rem 0.65rem 2.25rem",
+              borderRadius: "var(--radius)",
+              border: "1px solid var(--border)",
+              background: "var(--bg-raised)",
+              color: "var(--text)",
+              fontSize: "0.875rem",
+            }}
+          />
+        </div>
+        <div className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
+          <IconFilter size={14} stroke={1.8} color="var(--faint)" />
+          {CREDENTIAL_TYPES.map((claim) => {
+            const isActive = selectedClaims.has(claim);
+            return (
+              <button
+                key={claim}
+                onClick={() => toggleClaim(claim)}
+                type="button"
+                style={{
+                  padding: "0.3rem 0.7rem",
+                  borderRadius: "999px",
+                  fontSize: "0.72rem",
+                  fontWeight: 500,
+                  border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
+                  background: isActive ? "rgba(62,207,142,0.12)" : "transparent",
+                  color: isActive ? "var(--accent)" : "var(--muted)",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {CLAIM_LABELS[claim] || claim}
+              </button>
+            );
+          })}
+          {selectedClaims.size > 0 && (
+            <button
+              onClick={() => setSelectedClaims(new Set())}
+              type="button"
+              style={{
+                padding: "0.3rem 0.7rem",
+                borderRadius: "999px",
+                fontSize: "0.72rem",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--faint)",
+                cursor: "pointer",
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
+
+      {filtered.length === 0 ? (
+        <div
+          className="card"
+          style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
+        >
+          <IconSearch size={30} stroke={1.3} color="var(--faint)" />
+          <h3 style={{ margin: "1rem 0 0.4rem" }}>No apps match</h3>
+          <p className="muted" style={{ fontSize: "0.875rem" }}>
+            Try adjusting your search or removing claim filters.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-3" style={{ alignItems: "start", gap: "1.25rem" }}>
+          {filtered.map((p) => (
+            <ProtocolCard key={p.id} protocol={p} activeWallet={activeWallet} />
+          ))}
+        </div>
+      )}
 
       <p className="faint" style={{ marginTop: "2rem", fontSize: "0.8rem", textAlign: "center", lineHeight: 1.6 }}>
         Go to <Link href="/holder" style={{ color: "var(--muted)" }}>Wallet</Link> to generate proofs from your credentials, then return here to unlock access.
@@ -198,3 +325,4 @@ export default function AppsPage() {
     </Suspense>
   );
 }
+

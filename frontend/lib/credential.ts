@@ -38,7 +38,7 @@ export const TYPE_META: Record<
   kyc: { title: "KYC Complete", claim: "identity verified", issuable: true },
   age: { title: "Age Verified", claim: "age ≥ 18", issuable: true, attribute: "Date of birth" },
   income: {
-    title: "Accredited Investor",
+    title: "Accredited (Income)",
     claim: "income > $200,000",
     issuable: true,
     attribute: "Annual income (USD)",
@@ -54,6 +54,12 @@ export const TYPE_META: Record<
     claim: "balance > $10,000",
     issuable: true,
     attribute: "Account balance (USD)",
+  },
+  accreditation: {
+    title: "Accredited Investor",
+    claim: "net worth ≥ $1,000,000",
+    issuable: true,
+    attribute: "Net worth (USD)",
   },
 };
 
@@ -95,6 +101,19 @@ export function markProved(commitment: string, txHash: string): Credential[] {
   const next = loadCredentials().map((c) =>
     c.commitment === commitment
       ? { ...c, provedAt: Math.floor(Date.now() / 1000), provedTxHash: txHash }
+      : c,
+  );
+  localStorage.setItem(KEY, JSON.stringify(next));
+  return next;
+}
+
+/** Mark multiple credentials as proved in a single localStorage write. */
+export function markAllProved(commitments: string[], txHash: string): Credential[] {
+  const set = new Set(commitments);
+  const now = Math.floor(Date.now() / 1000);
+  const next = loadCredentials().map((c) =>
+    set.has(c.commitment)
+      ? { ...c, provedAt: now, provedTxHash: txHash }
       : c,
   );
   localStorage.setItem(KEY, JSON.stringify(next));

@@ -14,6 +14,7 @@ import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
 import { ConfigBanner } from "@/components/ConfigBanner";
+import { usePreviewMode } from "@/lib/wallet-context";
 import { checkClaim } from "@/lib/contracts";
 import { getProtocol } from "@/lib/protocols";
 
@@ -25,6 +26,7 @@ function ProtocolDetailInner() {
   const scVerified = searchParams.get("sc_verified") === "true";
   const scWallet = searchParams.get("sc_wallet");
   const activeWallet = address ?? scWallet ?? null;
+  const isPreview = usePreviewMode();
 
   const protocol = getProtocol(id);
 
@@ -38,6 +40,11 @@ function ProtocolDetailInner() {
   }, [protocol]);
 
   useEffect(() => {
+    if (isPreview && protocol) {
+      setChecked(true);
+      setStatuses(protocol.requirements.map(() => true));
+      return;
+    }
     if (!activeWallet || !protocol) {
       setChecked(false);
       setStatuses(protocol?.requirements.map(() => false) ?? []);
@@ -170,7 +177,7 @@ function ProtocolDetailInner() {
             ))}
           </div>
 
-          {checked && !eligible && (
+          {checked && !eligible && !isPreview && (
             <Link
               href={protocol.verifyUrl}
               className="btn btn-secondary"
@@ -181,7 +188,7 @@ function ProtocolDetailInner() {
             </Link>
           )}
 
-          {!activeWallet && (
+          {!activeWallet && !isPreview && (
             <p className="faint" style={{ marginTop: "0.75rem", fontSize: "0.8rem" }}>
               Connect your wallet to check eligibility.
             </p>
@@ -221,9 +228,9 @@ function ProtocolDetailInner() {
               opacity: eligible ? 1 : 0.45,
               transition: "opacity 0.4s var(--ease)",
             }}
-            disabled={!eligible}
+            disabled={!eligible || isPreview}
           >
-            {eligible ? protocol.actionLabel : (
+            {isPreview ? "Connect wallet to check access" : eligible ? protocol.actionLabel : (
               <><IconLock size={14} /> Prove eligibility first</>
             )}
           </button>

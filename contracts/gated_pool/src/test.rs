@@ -38,11 +38,11 @@ fn deploy(env: &Env) -> Harness {
         &vec![env, symbol_short!("kyc")],
     );
 
-    let verifier_id = env.register(CredentialVerifier, (admin,));
+    let verifier_id = env.register(CredentialVerifier, (admin.clone(),));
     CredentialVerifierClient::new(env, &verifier_id)
         .set_vk(&symbol_short!("kyc"), &Bytes::from_slice(env, VK));
 
-    let registry_id = env.register(ProofRegistry, (verifier_id, ir_id));
+    let registry_id = env.register(ProofRegistry, (admin, verifier_id, ir_id));
     let pool_id = env.register(GatedPool, (registry_id.clone(),));
 
     Harness {
