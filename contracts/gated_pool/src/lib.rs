@@ -11,7 +11,7 @@
 
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
-    symbol_short, Address, Env, Symbol,
+    symbol_short, Address, Env, Symbol, Vec,
 };
 
 // Persistent-entry lifetime management (~5s ledgers).
@@ -24,7 +24,12 @@ const BALANCE_TTL: u32 = 120 * DAY_IN_LEDGERS;
 /// exported wasm symbols.
 #[contractclient(name = "RegistryClient")]
 pub trait RegistryInterface {
-    fn is_verified(env: Env, holder: Address, credential_type: Symbol) -> (bool, u64, u64);
+    fn is_verified(
+        env: Env,
+        holder: Address,
+        credential_type: Symbol,
+        trusted_issuers: Option<Vec<Address>>,
+    ) -> (bool, u64, u64);
 }
 
 #[contracttype]
@@ -61,7 +66,7 @@ impl GatedPool {
         }
 
         let registry = RegistryClient::new(&env, &Self::registry(&env));
-        let (verified, _at, _expiry) = registry.is_verified(&caller, &symbol_short!("kyc"));
+        let (verified, _at, _expiry) = registry.is_verified(&caller, &symbol_short!("kyc"), &None);
         if !verified {
             panic_with_error!(&env, Error::NotKycVerified);
         }

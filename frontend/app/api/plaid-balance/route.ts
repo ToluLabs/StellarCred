@@ -1,8 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { logger, stripSensitiveFields, resolveRequestId } from "../../../lib/logger";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const requestId = resolveRequestId(req.headers.get("x-request-id"));
+
+  const sendResponse = (response: NextResponse) => {
+    response.headers.set("x-request-id", requestId);
+    return response;
+  };
+
+  logger.info(stripSensitiveFields({ event: "plaid_balance_request_received", requestId }));
+
   if (!process.env.PLAID_ACCESS_TOKEN) {
-    return NextResponse.json({ balance: 50000, mock: true });
+    logger.warn(
+      stripSensitiveFields({ event: "plaid_mock_mode", requestId }),
+      "PLAID_ACCESS_TOKEN not set — returning mock balance $50,000",
+    );
+    return sendResponse(NextResponse.json({ balance: 50000, mock: true }));
   }
 
   const env = process.env.PLAID_ENV ?? "sandbox";
@@ -24,11 +38,16 @@ export async function GET() {
   });
 
   const result = await response.json();
+  logger.info(stripSensitiveFields({
+    event: "plaid_response",
+    outcome: result.error_code ?? "ok",
+    requestId,
+  }));
   if (!response.ok || result.error_code) {
-    return NextResponse.json(
+    return sendResponse(NextResponse.json(
       { error: result.error_message ?? "Plaid error" },
       { status: 502 },
-    );
+    ));
   }
 
   const accounts: Array<{ type: string; name: string; balances: { available: number | null; current: number | null } }> =
@@ -40,5 +59,5 @@ export async function GET() {
     .sort((a, b) => b.available - a.available);
 
   const balance = depository[0]?.available ?? 0;
-  return NextResponse.json({ balance, accounts: depository });
+  return sendResponse(NextResponse.json({ balance, accounts: depository }));
 }

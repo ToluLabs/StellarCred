@@ -47,5 +47,9 @@
     "@stellar/stellar-sdk": "^13.3.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "issuer-registry": "link:../issuer-registry",
+    "proof-registry": "link:../proof-registry"
   }
 }

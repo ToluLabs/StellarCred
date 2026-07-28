@@ -3,7 +3,7 @@
 use super::*;
 use soroban_sdk::{symbol_short, testutils::Address as _, vec, Address, BytesN, Env};
 
-fn setup(env: &Env) -> (Address, IssuerRegistryClient) {
+fn setup(env: &Env) -> (Address, IssuerRegistryClient<'_>) {
     let admin = Address::generate(env);
     let contract_id = env.register(IssuerRegistry, (admin.clone(),));
     (admin, IssuerRegistryClient::new(env, &contract_id))
@@ -25,6 +25,27 @@ fn register_and_query() {
     assert!(client.is_valid_issuer(&issuer, &symbol_short!("kyc")));
     assert!(client.is_valid_issuer(&issuer, &symbol_short!("age")));
     assert!(!client.is_valid_issuer(&issuer, &symbol_short!("income")));
+}
+
+#[test]
+fn get_issuers_lists_registered() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer_a = Address::generate(&env);
+    let issuer_b = Address::generate(&env);
+    let pubkey = BytesN::from_array(&env, &[7u8; 64]);
+    let types = vec![&env, symbol_short!("kyc")];
+
+    client.register_issuer(&issuer_a, &pubkey, &types);
+    client.register_issuer(&issuer_b, &pubkey, &types);
+
+    let listed = client.get_issuers();
+    assert_eq!(listed.len(), 2);
+    assert!(listed.contains(&issuer_a));
+    assert!(listed.contains(&issuer_b));
+    assert_eq!(client.get_issuer(&issuer_a).pubkey, pubkey);
 }
 
 #[test]

@@ -1,0 +1,36 @@
+services:
+  contracts:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    image: stellarcred-dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: ["sh", "-c", "cargo test && cargo build"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    image: stellarcred-dev
+    working_dir: /workspace/frontend
+    volumes:
+      - ./frontend:/workspace/frontend
+      - frontend-node-modules:/workspace/frontend/node_modules
+    ports:
+      - "3000:3000"
+    command: ["sh", "-c", "pnpm install && pnpm dev -- -H 0.0.0.0"]
+
+  circuits:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    image: stellarcred-dev
+    working_dir: /workspace/circuits
+    volumes:
+      - ./circuits:/workspace/circuits
+    command: ["nargo", "compile", "--workspace"]
+
+volumes:
+  frontend-node-modules:

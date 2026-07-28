@@ -36,6 +36,8 @@ pub struct Issuer {
 pub enum DataKey {
     Admin,
     Issuer(Address),
+    /// Append-only list of registered issuer addresses for enumeration.
+    IssuerList,
 }
 
 #[contracterror]
@@ -69,11 +71,21 @@ impl IssuerRegistry {
             credential_types,
             revoked: false,
         };
-        let key = DataKey::Issuer(issuer_id);
+        let key = DataKey::Issuer(issuer_id.clone());
         env.storage().persistent().set(&key, &issuer);
         env.storage()
             .persistent()
             .extend_ttl(&key, BUMP_THRESHOLD, ENTRY_TTL);
+
+        let mut list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::IssuerList)
+            .unwrap_or_else(|| Vec::new(&env));
+        if !list.contains(&issuer_id) {
+            list.push_back(issuer_id);
+            env.storage().instance().set(&DataKey::IssuerList, &list);
+        }
     }
 
     /// Mark an issuer as revoked. Admin-only. Existing proofs are not affected
@@ -91,6 +103,19 @@ impl IssuerRegistry {
         env.storage()
             .persistent()
             .extend_ttl(&key, BUMP_THRESHOLD, ENTRY_TTL);
+    }
+
+    /// All registered issuer addresses (including revoked).
+    pub fn get_issuers(env: Env) -> Vec<Address> {
+        env.storage()
+            .instance()
+            .get(&DataKey::IssuerList)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Full on-chain record for a registered issuer.
+    pub fn get_issuer(env: Env, issuer_id: Address) -> Issuer {
+        Self::load_issuer(&env, &issuer_id)
     }
 
     /// Look up an issuer's credential-signing public key (secp256k1 x || y).

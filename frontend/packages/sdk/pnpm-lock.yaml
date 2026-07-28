@@ -7,6 +7,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      issuer-registry:
+        specifier: link:../issuer-registry
+        version: link:../issuer-registry
+      proof-registry:
+        specifier: link:../proof-registry
+        version: link:../proof-registry
     devDependencies:
       '@stellar/stellar-sdk':
         specifier: ^13.3.0

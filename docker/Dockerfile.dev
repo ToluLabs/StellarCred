@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1
+
+# Rust stable + wasm32v1-none (Soroban contracts)
+FROM rust:1-bookworm AS rust-toolchain
+RUN rustup target add wasm32v1-none
+
+# Stellar CLI v27
+FROM rust:1-bookworm AS stellar-cli-build
+RUN cargo install stellar-cli --locked --version 27.0.0
+
+# Node 20 + pnpm 9 base
+FROM node:20-bookworm AS node-toolchain
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+# Final dev image — all pinned toolchains in one place
+FROM node:20-bookworm AS dev
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl git pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+COPY --from=stellar-cli-build /usr/local/cargo/bin/stellar /usr/local/cargo/bin/stellar
+COPY --from=node-toolchain /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-toolchain /usr/local/bin/corepack /usr/local/bin/corepack
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH="/usr/local/cargo/bin:/root/.nargo/bin:/root/.bb/bin:${PATH}"
+
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+# Noir nargo 1.0.0-beta.9
+RUN curl -fsSL https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash \
+    && /root/.nargo/bin/noirup -v 1.0.0-beta.9
+
+# Barretenberg bb 0.87.0
+RUN curl -fsSL https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash \
+    && /root/.bb/bin/bbup -v 0.87.0
+
+# Verify pinned toolchains at build time
+RUN stellar --version \
+    && nargo --version \
+    && bb --version \
+    && node --version \
+    && pnpm --version \
+    && rustc --version \
+    && rustup target list --installed | grep -q wasm32v1-none
+
+WORKDIR /workspace

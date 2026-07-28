@@ -12,17 +12,37 @@ scripts/      deploy.sh — wires all contracts on testnet
 fixtures/     real vk / proof / public_inputs used by contract tests
 ```
 
+## Docker quickstart
+
+Skip local toolchain installs — use the pinned dev image:
+
+```bash
+# Build the dev image (first time, or after Dockerfile changes)
+docker compose build
+
+# Frontend dev server on http://localhost:3000
+docker compose up frontend
+
+# Contract tests (21 tests)
+docker compose run --rm contracts cargo test
+
+# Compile all Noir circuits
+docker compose run --rm circuits nargo compile --workspace
+```
+
+The image pins Rust stable, Stellar CLI v27, nargo 1.0.0-beta.9, bb 0.87.0, Node 20, and pnpm 9 — matching the versions in the table below.
+
 ## Prerequisites
 
 | Tool | Version | Install |
 |------|---------|---------|
 | Rust | stable | `rustup` |
 | wasm32v1-none target | — | `rustup target add wasm32v1-none` |
-| Stellar CLI | v26+ | `brew install stellar-cli` |
+| Stellar CLI | v27 | `brew install stellar-cli` |
 | nargo | 1.0.0-beta.9 | `noirup -v 1.0.0-beta.9` |
 | bb | 0.87.0 | `bbup -v 0.87.0` |
-| Node | 20+ | `nvm` / `volta` |
-| pnpm | 8+ | `npm i -g pnpm` |
+| Node | 20 | `nvm` / `volta` |
+| pnpm | 9 | `corepack enable && corepack prepare pnpm@9 --activate` |
 
 > The nargo and bb versions must match exactly — the verification key is deterministic from the circuit compiler version, and a mismatch will cause proof verification to fail on-chain.
 

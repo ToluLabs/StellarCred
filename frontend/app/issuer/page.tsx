@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   IconKey,
   IconArrowRight,
   IconLoader2,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
@@ -12,6 +13,8 @@ import { Badge } from "@/components/Badge";
 import { saveCredential, TYPE_META, type Credential } from "@/lib/credential";
 import type { CredentialType } from "@/lib/stellar";
 import CopyButton from "@/components/CopyButton";
+import { truncateAddress, truncatePubkey } from "@/lib/format";
+import type { RegisteredIssuer } from "@/lib/issuer-registry";
 
 const TYPES = Object.entries(TYPE_META) as [
   CredentialType,
@@ -25,6 +28,7 @@ const DEFAULT_ATTR: Record<CredentialType, string> = {
   income: "250000",
   jurisdiction: "566",
   funds: "50000",
+  accreditation: "1500000",
 };
 
 const COUNTRIES = [
@@ -35,9 +39,22 @@ const COUNTRIES = [
   { code: "364", name: "Iran (restricted)" },
 ];
 
+async function readApiError(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text) as { error?: string };
+    return json.error ?? text;
+  } catch {
+    return text;
+  }
+}
+
 export default function IssuerPage() {
   const { address } = useWallet();
-  const issuerId = process.env.NEXT_PUBLIC_ISSUER_ADDRESS ?? address;
+  const [issuers, setIssuers] = useState<RegisteredIssuer[]>([]);
+  const [issuersLoading, setIssuersLoading] = useState(true);
+  const [issuersError, setIssuersError] = useState("");
+  const [selectedIssuerId, setSelectedIssuerId] = useState("");
   const [holder, setHolder] = useState("");
   const [type, setType] = useState<CredentialType>("kyc");
   const [attribute, setAttribute] = useState(DEFAULT_ATTR.kyc);
@@ -46,23 +63,73 @@ export default function IssuerPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const selectedIssuer = useMemo(
+    () => issuers.find((issuer) => issuer.id === selectedIssuerId) ?? null,
+    [issuers, selectedIssuerId],
+  );
+
+  const availableTypes = useMemo(() => {
+    if (!selectedIssuer) return TYPES;
+    const allowed = new Set(selectedIssuer.credentialTypes);
+    return TYPES.filter(([key]) => allowed.has(key));
+  }, [selectedIssuer]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadIssuers() {
+      setIssuersLoading(true);
+      setIssuersError("");
+      try {
+        const res = await fetch("/api/issuers");
+        if (!res.ok) throw new Error(await readApiError(res));
+        const { issuers: loaded } = (await res.json()) as { issuers: RegisteredIssuer[] };
+        if (cancelled) return;
+        setIssuers(loaded);
+        if (loaded.length > 0) {
+          const preferred =
+            loaded.find((issuer) => issuer.id === address)?.id ??
+            loaded.find((issuer) => issuer.id === process.env.NEXT_PUBLIC_ISSUER_ADDRESS)?.id ??
+            loaded[0].id;
+          setSelectedIssuerId(preferred);
+        }
+      } catch (e) {
+        if (!cancelled) setIssuersError((e as Error).message);
+      } finally {
+        if (!cancelled) setIssuersLoading(false);
+      }
+    }
+    loadIssuers();
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  useEffect(() => {
+    if (availableTypes.length === 0) return;
+    if (!availableTypes.some(([key]) => key === type)) {
+      onType(availableTypes[0][0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableTypes, type]);
+
   const meta = TYPE_META[type];
   const needsAttr = !!meta.attribute;
 
-  function onType(t: CredentialType) {
-    setType(t);
-    setAttribute(DEFAULT_ATTR[t]);
+  function onType(nextType: CredentialType) {
+    setType(nextType);
+    setAttribute(DEFAULT_ATTR[nextType]);
   }
 
   async function onIssue() {
+    if (!selectedIssuer) return;
     setBusy(true);
     setError("");
     try {
-      // Map this page's single attribute onto the shared attributes shape, then
-      // request one credential type wrapped in an array (multi-claim API).
       const attributes: Record<string, string> = {};
       if (type === "age") attributes.date_of_birth = attribute;
       else if (type === "income") attributes.income = attribute;
+      else if (type === "funds") attributes.balance = attribute;
+      else if (type === "accreditation") attributes.net_worth = attribute;
       else if (type === "jurisdiction") attributes.country_code = attribute;
 
       const res = await fetch("/api/issue", {
@@ -71,13 +138,13 @@ export default function IssuerPage() {
         body: JSON.stringify({
           credential_types: [type],
           holder,
-          issuerId,
-          issuerName: "StellarCred Authority",
+          issuerId: selectedIssuer.id,
+          issuerName: selectedIssuer.name,
           expiry,
           attributes,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readApiError(res));
       const { credentials } = (await res.json()) as { credentials: Credential[] };
       const cred = credentials[0];
       saveCredential(cred);
@@ -119,14 +186,62 @@ export default function IssuerPage() {
 
       <div className="grid grid-2" style={{ alignItems: "start", gap: "1.5rem" }}>
         <div className="card">
-          <label className="field-label">Holder address</label>
+          <label className="field-label">Registered issuer</label>
+          {issuersLoading ? (
+            <p className="faint" style={{ fontSize: "0.8125rem", marginTop: "0.35rem" }}>
+              Loading issuers from IssuerRegistry…
+            </p>
+          ) : issuers.length === 0 ? (
+            <p className="faint" style={{ fontSize: "0.8125rem", marginTop: "0.35rem" }}>
+              {issuersError ||
+                "No registered issuers found. Deploy contracts and register issuers on IssuerRegistry."}
+            </p>
+          ) : (
+            <>
+              <select
+                value={selectedIssuerId}
+                onChange={(e) => setSelectedIssuerId(e.target.value)}
+              >
+                {issuers.map((issuer) => (
+                  <option key={issuer.id} value={issuer.id}>
+                    {issuer.name} ({truncateAddress(issuer.id)})
+                  </option>
+                ))}
+              </select>
+              {selectedIssuer && (
+                <div
+                  className="row faint"
+                  style={{
+                    marginTop: "0.75rem",
+                    gap: "0.45rem",
+                    fontSize: "0.8125rem",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <IconShieldCheck size={14} />
+                  <span>
+                    Registered key{" "}
+                    <code className="mono">{truncatePubkey(selectedIssuer.pubkeyHex)}</code>
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+
+          <label className="field-label" style={{ marginTop: "1.25rem" }}>
+            Holder address
+          </label>
           <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="G…" />
 
           <div className="grid grid-2" style={{ marginTop: "1.25rem", gap: "1rem" }}>
             <div>
               <label className="field-label">Credential type</label>
-              <select value={type} onChange={(e) => onType(e.target.value as CredentialType)}>
-                {TYPES.map(([key, m]) => (
+              <select
+                value={type}
+                onChange={(e) => onType(e.target.value as CredentialType)}
+                disabled={availableTypes.length === 0}
+              >
+                {availableTypes.map(([key, m]) => (
                   <option key={key} value={key}>
                     {m.title}
                   </option>
@@ -178,8 +293,14 @@ export default function IssuerPage() {
           <button
             className="btn btn-primary"
             style={{ marginTop: "1.5rem", width: "100%" }}
-            disabled={!holder || !issuerId || (needsAttr && !attribute) || busy}
-            title={!issuerId ? "Connect the issuer wallet first" : undefined}
+            disabled={
+              !holder ||
+              !selectedIssuer ||
+              availableTypes.length === 0 ||
+              (needsAttr && !attribute) ||
+              busy ||
+              issuersLoading
+            }
             onClick={onIssue}
           >
             {busy ? (
@@ -194,11 +315,6 @@ export default function IssuerPage() {
               </>
             )}
           </button>
-          {!issuerId && (
-            <p className="faint" style={{ marginTop: "0.6rem", fontSize: "0.8125rem" }}>
-              Connect the registered issuer wallet to issue.
-            </p>
-          )}
           {error && (
             <p style={{ marginTop: "0.6rem", fontSize: "0.8125rem", color: "var(--danger)" }}>
               {error}

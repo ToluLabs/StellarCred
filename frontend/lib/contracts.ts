@@ -3,6 +3,8 @@
 // Real Soroban contract calls against the deployed StellarCred contracts.
 //  - submitProof: builds, signs (via wallet), and submits a ProofRegistry
 //    submit_proof transaction carrying a real UltraHonk proof.
+//  - submitProofsBatch: submits multiple proofs in a single atomic transaction
+//    via ProofRegistry.submit_proofs_batch.
 //  - isVerified: read-only simulation of ProofRegistry.is_verified.
 //
 // @stellar/stellar-sdk is imported dynamically so it never runs during SSR.
@@ -162,20 +164,163 @@ export async function submitProof(params: {
   return sent.hash;
 }
 
+export interface ProofSubmissionParams {
+  issuerId: string;
+  credentialType: string;
+  proof: Uint8Array;
+  publicInputs: Uint8Array;
+  /** Validity window in seconds from now. */
+  ttlSecs: number;
+}
+
+/**
+ * Submit multiple proofs in a single atomic transaction via
+ * ProofRegistry.submit_proofs_batch.
+ *
+ * All proofs are verified on-chain before anything is stored. If any one proof
+ * fails, the entire call reverts. Max batch size is 5 (enforced by the
+ * contract).
+ *
+ * Returns the confirmed transaction hash.
+ */
+export async function submitProofsBatch(params: {
+  holder: string;
+  submissions: ProofSubmissionParams[];
+}): Promise<string> {
+  const { holder, submissions } = params;
+  if (!CONTRACTS.proofRegistry) {
+    throw new Error(
+      "ProofRegistry contract id not set. Deploy the contracts and fill NEXT_PUBLIC_PROOF_REGISTRY_ID.",
+    );
+  }
+
+  const { Contract, TransactionBuilder, Address, nativeToScVal, xdr, BASE_FEE } =
+    await sdk();
+  const srv = await getServer();
+
+  const account = await srv.getAccount(holder);
+  const contract = new Contract(CONTRACTS.proofRegistry);
+  const now = Math.floor(Date.now() / 1000);
+
+  // Build each ProofSubmission as an XDR map (struct).
+  const submissionVals = submissions.map((s) => {
+    const expiry = now + s.ttlSecs;
+
+    // Convert s.publicInputs (Uint8Array) to an array of u32 (big-endian).
+    if (s.publicInputs.length % 4 !== 0) {
+      throw new Error(
+        `publicInputs for credential "${s.credentialType}" has length ${s.publicInputs.length}, which is not a multiple of 4 bytes.`,
+      );
+    }
+    const u32s: number[] = [];
+    for (let i = 0; i < s.publicInputs.length; i += 4) {
+      const val =
+        (s.publicInputs[i] << 24) |
+        (s.publicInputs[i + 1] << 16) |
+        (s.publicInputs[i + 2] << 8) |
+        s.publicInputs[i + 3];
+      u32s.push(val >>> 0); // Convert to unsigned u32
+    }
+
+    return xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("credential_type"),
+        val: nativeToScVal(s.credentialType, { type: "symbol" }),
+      }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("expiry"),
+        val: nativeToScVal(BigInt(expiry), { type: "u64" }),
+      }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("issuer_id"),
+        val: Address.fromString(s.issuerId).toScVal(),
+      }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("proof"),
+        val: xdr.ScVal.scvBytes(Buffer.from(s.proof)),
+      }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("public_inputs"),
+        val: xdr.ScVal.scvVec(u32s.map((val) => xdr.ScVal.scvU32(val))),
+      }),
+    ]);
+  });
+
+  const op = contract.call(
+    "submit_proofs_batch",
+    Address.fromString(holder).toScVal(),
+    xdr.ScVal.scvVec(submissionVals),
+  );
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(op)
+    .setTimeout(90)
+    .build();
+
+  const prepared = await srv.prepareTransaction(tx);
+  const signedXdr = await signTx(prepared.toXDR(), holder);
+  const sent = await srv.sendTransaction(
+    TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE),
+  );
+
+  if (sent.status === "ERROR") {
+    const errHex =
+      sent.errorResult &&
+      typeof (sent.errorResult as { toXDR?: (f: string) => string }).toXDR === "function"
+        ? (sent.errorResult as { toXDR: (f: string) => string }).toXDR("hex")
+        : String(sent.errorResult);
+    throw new Error(`Batch submission rejected: ${errHex}`);
+  }
+
+  function isBadUnionSwitch(e: unknown): boolean {
+    return e instanceof Error && e.message.startsWith("Bad union switch");
+  }
+
+  const start = Date.now();
+  let result;
+  try {
+    result = await srv.getTransaction(sent.hash);
+  } catch (e) {
+    if (isBadUnionSwitch(e)) return sent.hash;
+    throw e;
+  }
+  while (result.status === "NOT_FOUND" && Date.now() - start < 30_000) {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      result = await srv.getTransaction(sent.hash);
+    } catch (e) {
+      if (isBadUnionSwitch(e)) return sent.hash;
+      throw e;
+    }
+  }
+  if (result.status !== "SUCCESS") {
+    throw new Error(`Batch transaction ${sent.hash} did not succeed (${result.status}).`);
+  }
+  return sent.hash;
+}
+
 /**
  * Like isVerified but also enforces a minimum threshold for parameterised
  * credential types (age, income, funds). Calls ProofRegistry.check_claim which
  * stores the proved threshold and checks stored >= minThreshold server-side.
  * For kyc / jurisdiction pass minThreshold = undefined.
+ *
+ * `trustedIssuers`, if provided, restricts which issuer's proof is accepted —
+ * the stored proof's issuer must be one of these addresses. Omit to accept
+ * any registered issuer (unchanged default behaviour).
  */
 export async function checkClaim(
   holder: string,
   credentialType: string,
   minThreshold?: number,
+  trustedIssuers?: string[],
 ): Promise<boolean> {
   if (!CONTRACTS.proofRegistry) return false;
 
-  const { rpc, Contract, TransactionBuilder, Address, nativeToScVal, scValToNative, BASE_FEE } =
+  const { rpc, Contract, TransactionBuilder, Address, nativeToScVal, scValToNative, xdr, BASE_FEE } =
     await sdk();
   const srv = await getServer();
 
@@ -187,6 +332,9 @@ export async function checkClaim(
     nativeToScVal(credentialType, { type: "symbol" }),
     minThreshold !== undefined
       ? nativeToScVal(BigInt(minThreshold), { type: "u64" })
+      : nativeToScVal(null, { type: "void" }),
+    trustedIssuers !== undefined
+      ? xdr.ScVal.scvVec(trustedIssuers.map((a) => Address.fromString(a).toScVal()))
       : nativeToScVal(null, { type: "void" }),
   );
   const tx = new TransactionBuilder(account, {
@@ -202,15 +350,21 @@ export async function checkClaim(
   return scValToNative(sim.result.retval) as boolean;
 }
 
-/** Read-only check of whether `holder` has a currently-valid proof of `type`. */
+/**
+ * Read-only check of whether `holder` has a currently-valid proof of `type`.
+ *
+ * `trustedIssuers`, if provided, restricts which issuer's proof is accepted —
+ * see {@link checkClaim}. Omit to accept any registered issuer.
+ */
 export async function isVerified(
   holder: string,
   credentialType: string,
+  trustedIssuers?: string[],
 ): Promise<VerificationStatus> {
   const empty: VerificationStatus = { valid: false, verifiedAt: 0, expiry: 0 };
   if (!CONTRACTS.proofRegistry) return empty;
 
-  const { rpc, Contract, TransactionBuilder, Address, nativeToScVal, scValToNative, BASE_FEE } =
+  const { rpc, Contract, TransactionBuilder, Address, nativeToScVal, scValToNative, xdr, BASE_FEE } =
     await sdk();
   const srv = await getServer();
 
@@ -220,6 +374,9 @@ export async function isVerified(
     "is_verified",
     Address.fromString(holder).toScVal(),
     nativeToScVal(credentialType, { type: "symbol" }),
+    trustedIssuers !== undefined
+      ? xdr.ScVal.scvVec(trustedIssuers.map((a) => Address.fromString(a).toScVal()))
+      : nativeToScVal(null, { type: "void" }),
   );
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,

@@ -12,3 +12,8 @@ export function truncateHash(hash: string): string {
   const h = hash.startsWith("0x") ? hash.slice(2) : hash;
   return `0x${h.slice(0, 6)}…${h.slice(-4)}`;
 }
+
+export function truncatePubkey(hex: string): string {
+  if (!hex || hex.length <= 16) return hex;
+  return `${hex.slice(0, 8)}…${hex.slice(-8)}`;
+}

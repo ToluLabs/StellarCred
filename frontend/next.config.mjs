@@ -59,6 +59,54 @@ const nextConfig = {
   // is false, so bb.js runs single-threaded: it only loads barretenberg.js (a
   // trivial one-line module exporting the wasm as a data URI) and never touches
   // the worker. Slower proving, but it actually runs. See lib/proof.ts.
+  //
+  // The security headers below are separate from COOP/COEP and safe to add.
+  // 'wasm-unsafe-eval' in script-src is required for WASM instantiation and
+  // is unrelated to cross-origin isolation, so it does not re-enable the
+  // multithreaded path above.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data:",
+              // contracts.ts ("use client") calls getAccount / prepareTransaction /
+              // sendTransaction against the Soroban RPC from the browser — must be
+              // allowed here or proof submission and on-chain verification break.
+              `connect-src 'self' https://soroban-testnet.stellar.org https://soroban-mainnet.stellar.org${
+                process.env.NEXT_PUBLIC_RPC_URL ? " " + process.env.NEXT_PUBLIC_RPC_URL : ""
+              }`,
+            ].join("; ") + ";",
+          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains",
+          },
+          { key: "X-Frame-Options", value: "DENY" },
+        ],
+      },
+      {
+        source: "/api/:path*",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: process.env.APP_ORIGIN || "http://localhost:3000",
+          },
+          { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization" },
+          { key: "Vary", value: "Origin" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

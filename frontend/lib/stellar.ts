@@ -24,6 +24,7 @@ export const CREDENTIAL_TYPES = [
   "jurisdiction",
   "income",
   "funds",
+  "accreditation",
 ] as const;
 
 export type CredentialType = (typeof CREDENTIAL_TYPES)[number];

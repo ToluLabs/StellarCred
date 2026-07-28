@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   IconArrowRight,
@@ -12,6 +12,7 @@ import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { saveCredential, TYPE_META, type Credential } from "@/lib/credential";
 import type { CredentialType } from "@/lib/stellar";
+import { useToast } from "@/components/Toast";
 
 const TYPES = Object.entries(TYPE_META) as [
   CredentialType,
@@ -30,10 +31,27 @@ const DEMO_ISSUER_ID = process.env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "";
 
 const VALID_CLAIMS = TYPES.map(([k]) => k);
 
+// One id per verify session, sent as `x-request-id` on every /api/issue and
+// /api/plaid-balance call so server logs for a single issuance — including
+// across the Persona redirect round-trip — can be correlated together.
+function getOrCreateRequestId(): string {
+  if (typeof window === "undefined") return "";
+  const KEY = "sc_request_id";
+  let id = sessionStorage.getItem(KEY);
+  if (!id) {
+    id = window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+    sessionStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 function VerifyInner() {
   const router = useRouter();
   const { address } = useWallet();
   const searchParams = useSearchParams();
+  const toast = useToast();
 
   // When a protocol redirects here it can specify where to send the user back
   // (return_url) and exactly which claim it requires (claim). A required claim
@@ -47,9 +65,10 @@ function VerifyInner() {
 
   // Protocol-supplied proof parameters. These flow into the issued credential
   // so the witness route can use them at prove time instead of hardcoded values.
+  const minThresholdParam = searchParams.get("min_threshold") ?? undefined;
   const claimParamsFromUrl = {
-    threshold_years: searchParams.get("threshold_years") ?? undefined,
-    threshold: searchParams.get("threshold") ?? undefined,
+    threshold_years: searchParams.get("threshold_years") ?? (claimParam === "age" ? minThresholdParam : undefined),
+    threshold: searchParams.get("threshold") ?? (claimParam === "funds" || claimParam === "income" ? minThresholdParam : undefined),
     restricted: searchParams.get("restricted")?.split(",").filter(Boolean) ?? undefined,
   };
 
@@ -59,13 +78,51 @@ function VerifyInner() {
   const [attributes, setAttributes] = useState<Record<string, string>>({
     date_of_birth: "1995-06-15",
     income: "250000",
+    net_worth: "1500000",
     country_code: "566",
   });
   const [expiry, setExpiry] = useState("90 days");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [urlError, setUrlError] = useState("");
+  const [requestingDomain, setRequestingDomain] = useState("");
   const [done, setDone] = useState(false);
+  const justIssuedClaims = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (returnUrl) {
+      try {
+        let isRelative = false;
+        try {
+          new URL(returnUrl);
+        } catch {
+          if (returnUrl.startsWith("/")) {
+            isRelative = true;
+          }
+        }
+
+        if (isRelative) {
+          setUrlError("");
+          setRequestingDomain(window.location.hostname);
+        } else {
+          const parsed = new URL(returnUrl);
+          if (parsed.protocol !== "https:") {
+            setUrlError("Invalid return URL: Must use HTTPS protocol.");
+            setRequestingDomain("");
+          } else {
+            setUrlError("");
+            setRequestingDomain(parsed.hostname);
+          }
+        }
+      } catch {
+        setUrlError("Invalid return URL: Must be a well-formed URL.");
+        setRequestingDomain("");
+      }
+    } else {
+      setUrlError("");
+      setRequestingDomain("");
+    }
+  }, [returnUrl]);
   const [plaidBalance, setPlaidBalance] = useState<number | null>(null);
   const [plaidAccounts, setPlaidAccounts] = useState<{ name: string; available: number }[]>([]);
   const [plaidMock, setPlaidMock] = useState(false);
@@ -74,7 +131,7 @@ function VerifyInner() {
   useEffect(() => {
     if (!fundsSelected) return;
     setPlaidBalance(null);
-    fetch("/api/plaid-balance")
+    fetch("/api/plaid-balance", { headers: { "x-request-id": getOrCreateRequestId() } })
       .then((r) => r.json())
       .then((d: { balance?: number; accounts?: { name: string; available: number }[]; mock?: boolean; error?: string }) => {
         if (d.balance !== undefined) {
@@ -97,9 +154,10 @@ function VerifyInner() {
     try { pending = JSON.parse(raw); } catch { return; }
     setBusy(true);
     setError("");
+    const requestId = getOrCreateRequestId();
     fetch("/api/issue", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-request-id": requestId },
       body: JSON.stringify({ ...pending, persona_inquiry_id: personaInquiryId }),
     })
       .then(async (res) => {
@@ -111,11 +169,19 @@ function VerifyInner() {
       })
       .then(({ credentials }) => {
         credentials.forEach((c) => saveCredential(c));
+        justIssuedClaims.current = credentials.map((c) => c.type).filter((t) => VALID_CLAIMS.includes(t as CredentialType));
 
         setDone(true);
+        toast.success(
+          credentials.length > 1 ? "Credentials issued successfully" : "Credential issued successfully",
+        );
         setTimeout(redirectAfterIssue, 1500);
       })
-      .catch((e) => setError((e as Error).message))
+      .catch((e) => {
+        const message = (e as Error).message;
+        setError(`${message} (ref: ${requestId})`);
+        toast.error(`Credential issuance failed: ${message}`);
+      })
       .finally(() => setBusy(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaInquiryId, address]);
@@ -126,57 +192,40 @@ function VerifyInner() {
 
   // Where the user is sent after a successful issue.
   function redirectAfterIssue() {
-    if (returnUrl && address) {
-      // Resolve against the current origin so relative ("/verifier") and
-      // absolute ("https://app.xyz/deposit") return URLs both work.
+    if (returnUrl && !urlError && address) {
       let dest;
       try {
-        dest = new URL(returnUrl, window.location.origin);
-        // Require https for external URLs (same-origin may use relative paths)
+        if (returnUrl.startsWith("/")) {
+          dest = new URL(returnUrl, window.location.origin);
+        } else {
+          dest = new URL(returnUrl);
+        }
+
+        // Validate protocol for safety
         if (dest.protocol !== "https:" && dest.origin !== window.location.origin) {
-          setUrlError("Invalid return_url: only https URLs are allowed");
+          setUrlError("Invalid return URL: Must use HTTPS protocol.");
+          router.push("/holder");
           return;
         }
-      } catch {
-        setUrlError("Invalid return_url: could not parse URL");
-        return;
-      }
-      dest.searchParams.set("sc_verified", "true");
-      dest.searchParams.set("sc_wallet", address);
-      if (dest.origin === window.location.origin) {
-        router.push(dest.pathname + dest.search);
-      } else {
-        // Never router.push an external URL — do a real browser navigation.
-        window.location.href = dest.toString();
+
+        dest.searchParams.set("sc_verified", "true");
+        dest.searchParams.set("sc_wallet", address);
+        if (justIssuedClaims.current.length > 0) {
+          dest.searchParams.set("sc_claims", justIssuedClaims.current.join(","));
+        }
+
+        if (dest.origin === window.location.origin) {
+          router.push(dest.pathname + dest.search);
+        } else {
+          // Never router.push an external URL — do a real browser navigation.
+          window.location.href = dest.toString();
+        }
+      } catch (e) {
+        setUrlError("Invalid return URL: Must be a well-formed URL.");
+        router.push("/holder");
       }
     } else {
       router.push("/holder");
-    }
-  }
-
-  // Display label for the "Returning to …" message: path for same-origin
-  // (relative) return URLs, hostname for absolute external ones.
-  let returnLabel = "";
-  let returnUrlIsValid = false;
-  if (returnUrl) {
-    try {
-      const u = new URL(returnUrl, window.location.origin);
-      if (u.protocol === "https:" || u.origin === window.location.origin) {
-        returnUrlIsValid = true;
-      }
-    } catch {
-      // invalid — will be shown as urlError
-    }
-  }
-  if (returnUrl && returnUrlIsValid) {
-    if (returnUrl.startsWith("/")) {
-      returnLabel = returnUrl;
-    } else {
-      try {
-        returnLabel = new URL(returnUrl).hostname;
-      } catch {
-        returnLabel = returnUrl;
-      }
     }
   }
 
@@ -184,6 +233,7 @@ function VerifyInner() {
     if (!address || !selected) return;
     setBusy(true);
     setError("");
+    const requestId = getOrCreateRequestId();
     try {
       if (!DEMO_ISSUER_ID) {
         throw new Error("NEXT_PUBLIC_ISSUER_ADDRESS is not set — cannot issue credentials");
@@ -199,8 +249,11 @@ function VerifyInner() {
       };
       const res = await fetch("/api/issue", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json", "x-request-id": requestId },
+        body: JSON.stringify({
+          ...payload,
+          returnUrl: returnUrl ?? undefined,
+        }),
       });
       // 202 means Persona identity verification is required — redirect user.
       if (res.status === 202) {
@@ -215,10 +268,16 @@ function VerifyInner() {
       }
       const { credentials } = (await res.json()) as { credentials: Credential[] };
       credentials.forEach((c) => saveCredential(c));
+      justIssuedClaims.current = credentials.map((c) => c.type).filter((t) => VALID_CLAIMS.includes(t as CredentialType));
       setDone(true);
+      toast.success(
+        credentials.length > 1 ? "Credentials issued successfully" : "Credential issued successfully",
+      );
       setTimeout(redirectAfterIssue, 1500);
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      setError(`${message} (ref: ${requestId})`);
+      toast.error(`Credential issuance failed: ${message}`);
     } finally {
       setBusy(false);
     }
@@ -260,23 +319,46 @@ function VerifyInner() {
                 <IconCheck size={24} color="var(--accent)" stroke={2.5} />
               </span>
               <div style={{ fontWeight: 500 }}>
-                {returnUrlIsValid ? "Verified" : "Credential saved"}
+                {requestingDomain && !urlError ? "Verified" : "Credential saved"}
               </div>
               <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.3rem" }}>
-                {returnUrlIsValid
-                  ? `Returning to ${returnLabel}…`
+                {requestingDomain && !urlError
+                  ? `Returning to ${requestingDomain}…`
                   : "Credential saved — redirecting to your wallet…"}
               </div>
             </div>
           ) : (
             <>
+              {urlError && (
+                <div style={{
+                  padding: "0.75rem 1rem",
+                  borderRadius: "var(--radius)",
+                  background: "rgba(240, 96, 77, 0.1)",
+                  border: "1px solid rgba(240, 96, 77, 0.2)",
+                  color: "var(--danger)",
+                  fontSize: "0.8125rem",
+                  marginBottom: "1rem"
+                }}>
+                  {urlError}
+                </div>
+              )}
+              {requestingDomain && !urlError && (
+                <div style={{
+                  padding: "0.6rem 0.8rem",
+                  borderRadius: "var(--radius-xs)",
+                  background: "rgba(62, 207, 142, 0.05)",
+                  border: "1px solid rgba(62, 207, 142, 0.15)",
+                  fontSize: "0.8125rem",
+                  marginBottom: "1.25rem",
+                  color: "var(--muted)"
+                }}>
+                  Requested by <strong style={{ color: "var(--accent)" }}>{requestingDomain}</strong>
+                </div>
+              )}
               <label className="field-label">Credential type</label>
               {locked && (
                 <p className="faint" style={{ fontSize: "0.8125rem", margin: "0.4rem 0 0" }}>
-                  {returnUrlIsValid
-                    ? <>Requested by <strong style={{ color: "var(--accent)" }}>{returnLabel}</strong> &mdash; the <strong style={{ color: "var(--accent)" }}>{requiredClaim}</strong> credential</>
-                    : <>A protocol requested the <strong style={{ color: "var(--accent)" }}>{requiredClaim}</strong> credential.</>
-                  }
+                  A protocol requested the <strong style={{ color: "var(--accent)" }}>{requiredClaim}</strong> credential.
                 </p>
               )}
               <div className="stack" style={{ gap: "0.5rem", marginTop: "0.5rem", marginBottom: "1.25rem" }}>
@@ -320,7 +402,9 @@ function VerifyInner() {
                               ? `age ≥ ${claimParamsFromUrl.threshold_years}`
                               : key === "income" && claimParamsFromUrl.threshold
                                 ? `income > $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
-                                : m.claim}
+                                : key === "accreditation" && claimParamsFromUrl.threshold
+                                  ? `net worth ≥ $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
+                                  : m.claim}
                         </span>
                       </div>
 
@@ -346,6 +430,16 @@ function VerifyInner() {
                             type="number"
                             value={attributes.income}
                             onChange={(e) => setAttr("income", e.target.value)}
+                          />
+                        </div>
+                      )}
+                      {on && key === "accreditation" && (
+                        <div style={{ marginTop: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
+                          <label className="field-label">{m.attribute}</label>
+                          <input
+                            type="number"
+                            value={attributes.net_worth}
+                            onChange={(e) => setAttr("net_worth", e.target.value)}
                           />
                         </div>
                       )}
@@ -436,7 +530,7 @@ function VerifyInner() {
               <button
                 className="btn btn-primary"
                 style={{ width: "100%" }}
-                disabled={busy || !selected}
+                disabled={busy || !selected || !!urlError}
                 onClick={onRequest}
               >
                 {busy ? (

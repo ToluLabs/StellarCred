@@ -2,9 +2,10 @@
 
 // Thin wrapper around Stellar Wallets Kit (Freighter, xBull, etc.).
 // The kit's `network` option configures which network the kit signs for; it does
-// NOT switch the wallet extension's own selected network. So after connecting we
-// check the wallet's active network and surface a clear error if it isn't the
-// one this app targets (testnet).
+// NOT switch the wallet extension's own selected network. Network mismatches are
+// therefore not treated as connect-time failures here — wallet-context.tsx polls
+// getNetworkOk() live after connecting so the UI can show a persistent warning
+// that clears itself the moment the user switches networks, without reconnecting.
 
 import {
   StellarWalletsKit,
@@ -16,6 +17,9 @@ import { NETWORK, NETWORK_PASSPHRASE } from "./stellar";
 
 const APP_NETWORK =
   NETWORK === "public" ? WalletNetwork.PUBLIC : WalletNetwork.TESTNET;
+
+const CONNECT_TIMEOUT_MS = 30_000;
+const FREIGHTER_URL = "https://freighter.app";
 
 let kit: StellarWalletsKit | null = null;
 
@@ -30,22 +34,67 @@ export function getKit(): StellarWalletsKit {
   return kit;
 }
 
-// Throw a clear, actionable error if the connected wallet is on the wrong
-// network (e.g. Freighter still set to Mainnet).
-async function assertCorrectNetwork(k: StellarWalletsKit): Promise<void> {
-  try {
-    const { networkPassphrase } = await k.getNetwork();
-    if (networkPassphrase && networkPassphrase !== NETWORK_PASSPHRASE) {
-      const want = NETWORK === "public" ? "Mainnet" : "Testnet";
-      throw new Error(
-        `Wallet is on the wrong network. Switch it to ${want} in your wallet extension, then reconnect.`,
+export type WalletErrorKind = "not-installed" | "dismissed" | "rejected" | "timeout" | "unknown";
+
+export class WalletConnectError extends Error {
+  kind: WalletErrorKind;
+  constructor(kind: WalletErrorKind, message: string) {
+    super(message);
+    this.name = "WalletConnectError";
+    this.kind = kind;
+  }
+}
+
+export const FREIGHTER_INSTALL_URL = FREIGHTER_URL;
+
+// Map whatever the kit/wallet extension throws into one of our known error
+// kinds. There's no stable, documented string for "user declined in the
+// extension popup" (it's internal to each wallet extension, not the npm
+// package), so any post-selection failure that isn't the well-known
+// "not installed" message is treated as a cancellation.
+function toWalletError(e: unknown): WalletConnectError {
+  if (e instanceof WalletConnectError) return e;
+  const message =
+    e instanceof Error
+      ? e.message
+      : typeof e === "object" && e && "message" in e
+        ? String((e as { message: unknown }).message)
+        : String(e);
+  if (/not connected|not available/i.test(message)) {
+    return new WalletConnectError(
+      "not-installed",
+      "No Stellar wallet extension found. Install Freighter to continue.",
+    );
+  }
+  return new WalletConnectError("rejected", "Connection cancelled");
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new WalletConnectError(
+          "timeout",
+          "Connection timed out. Check your wallet extension and try again.",
+        ),
       );
-    }
-  } catch (e) {
-    // Re-throw our own mismatch error; ignore wallets that don't support getNetwork.
-    if (e instanceof Error && e.message.startsWith("Wallet is on the wrong")) {
-      throw e;
-    }
+    }, ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+// Live network check — reads from the connected wallet, not hardcoded. Returns
+// true if the wallet doesn't support getNetwork() at all, to avoid a
+// false-positive mismatch warning.
+export async function getNetworkOk(): Promise<boolean> {
+  try {
+    const { networkPassphrase } = await getKit().getNetwork();
+    return !networkPassphrase || networkPassphrase === NETWORK_PASSPHRASE;
+  } catch {
+    return true;
   }
 }
 
@@ -56,21 +105,21 @@ export interface Connection {
 
 export async function connect(): Promise<Connection> {
   const k = getKit();
-  return new Promise((resolve, reject) => {
+  const attempt = new Promise<Connection>((resolve, reject) => {
     k.openModal({
       onWalletSelected: async (option) => {
         try {
           k.setWallet(option.id);
-          await assertCorrectNetwork(k);
           const { address } = await k.getAddress();
           resolve({ address, walletId: option.id });
         } catch (e) {
-          reject(e);
+          reject(toWalletError(e));
         }
       },
-      onClosed: () => reject(new Error("dismissed")),
+      onClosed: () => reject(new WalletConnectError("dismissed", "Connection cancelled")),
     });
   });
+  return withTimeout(attempt, CONNECT_TIMEOUT_MS);
 }
 
 // Restore a previously-selected wallet (no modal) after a full page reload.

@@ -38,11 +38,11 @@ fn deploy(env: &Env) -> Harness {
         &vec![env, symbol_short!("kyc")],
     );
 
-    let verifier_id = env.register(CredentialVerifier, (admin,));
+    let verifier_id = env.register(CredentialVerifier, (admin.clone(),));
     CredentialVerifierClient::new(env, &verifier_id)
         .set_vk(&symbol_short!("kyc"), &Bytes::from_slice(env, VK));
 
-    let registry_id = env.register(ProofRegistry, (verifier_id, ir_id));
+    let registry_id = env.register(ProofRegistry, (admin, verifier_id, ir_id));
     let pool_id = env.register(GatedPool, (registry_id.clone(),));
 
     Harness {
@@ -98,4 +98,53 @@ fn withdraw_is_open() {
     h.pool.deposit(&user, &100);
     h.pool.withdraw(&user, &40);
     assert_eq!(h.pool.get_balance(&user), 60);
+}
+
+#[test]
+fn withdraw_rejects_amount_exceeding_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let user = Address::generate(&env);
+
+    prove_kyc(&env, &h, &user);
+    h.pool.deposit(&user, &100);
+
+    let res = h.pool.try_withdraw(&user, &101);
+    assert!(res.is_err());
+    // Balance is unaffected by the rejected withdrawal.
+    assert_eq!(h.pool.get_balance(&user), 100);
+}
+
+#[test]
+fn registry_address_matches_constructor_provided_registry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    assert_eq!(h.pool.registry_address(), h.registry.address);
+}
+
+#[test]
+fn deposit_uses_constructor_provided_registry_not_an_unrelated_one() {
+    // Deploys a SECOND, independent ProofRegistry (with its own issuer/verifier)
+    // and proves KYC there for `user` — while the pool remains wired to the
+    // FIRST registry from `deploy()`, where `user` has no proof. This proves the
+    // gate actually consults the constructor-provided `registry` address, not
+    // some other reachable/default registry.
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let other = deploy(&env);
+    let user = Address::generate(&env);
+
+    prove_kyc(&env, &other, &user);
+
+    let res = h.pool.try_deposit(&user, &100);
+    assert!(res.is_err());
+    assert_eq!(h.pool.get_balance(&user), 0);
+
+    // Sanity: the same proof against the pool's OWN registry succeeds.
+    prove_kyc(&env, &h, &user);
+    h.pool.deposit(&user, &100);
+    assert_eq!(h.pool.get_balance(&user), 100);
 }

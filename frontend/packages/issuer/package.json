@@ -1,0 +1,53 @@
+{
+  "name": "@stellarcred/issuer",
+  "version": "0.1.0",
+  "description": "Server-only issuance client for StellarCred — attribute to value, salt, Poseidon2 commitment, secp256k1 signature. Never import this in a browser bundle.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Psalmuel01/StellarCred",
+    "directory": "frontend/packages/issuer"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "zk",
+    "credentials",
+    "identity",
+    "issuer"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": {
+        "import": "./dist/index.mjs",
+        "require": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "node scripts/sync-circuit.mjs",
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "@noir-lang/noir_js": "1.0.0-beta.9"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "tsup": "^8.5.1",
+    "vitest": "^2.1.9"
+  }
+}

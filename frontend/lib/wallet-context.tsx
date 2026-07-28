@@ -11,14 +11,21 @@ import {
   useEffect,
   useState,
 } from "react";
-import { connect as kitConnect, restore as kitRestore } from "./wallet";
+import {
+  connect as kitConnect,
+  restore as kitRestore,
+  getNetworkOk,
+  WalletConnectError,
+} from "./wallet";
 
 const STORAGE_KEY = "stellarcred:wallet-id";
+const NETWORK_POLL_MS = 4_000;
 
 interface WalletState {
   address: string;
   connecting: boolean;
-  error: string;
+  error: WalletConnectError | null;
+  networkMismatch: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
 }
@@ -28,7 +35,8 @@ const WalletContext = createContext<WalletState | null>(null);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<WalletConnectError | null>(null);
+  const [networkMismatch, setNetworkMismatch] = useState(false);
 
   // Restore a prior connection on mount (full reload).
   useEffect(() => {
@@ -39,16 +47,39 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       .catch(() => localStorage.removeItem(STORAGE_KEY));
   }, []);
 
+  // Poll the wallet's live network while connected, so a network switch made
+  // after connecting is caught without requiring a reconnect.
+  useEffect(() => {
+    if (!address) {
+      setNetworkMismatch(false);
+      return;
+    }
+    let cancelled = false;
+    const check = () => {
+      getNetworkOk().then((ok) => {
+        if (!cancelled) setNetworkMismatch(!ok);
+      });
+    };
+    check();
+    const id = setInterval(check, NETWORK_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [address]);
+
   const connect = useCallback(async () => {
     setConnecting(true);
-    setError("");
+    setError(null);
     try {
       const { address, walletId } = await kitConnect();
       setAddress(address);
       localStorage.setItem(STORAGE_KEY, walletId);
     } catch (e) {
-      const msg = (e as Error).message;
-      if (msg !== "dismissed") setError(msg);
+      const err = e instanceof WalletConnectError
+        ? e
+        : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
+      if (err.kind !== "dismissed") setError(err);
     } finally {
       setConnecting(false);
     }
@@ -56,12 +87,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(() => {
     setAddress("");
+    setError(null);
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   return (
     <WalletContext.Provider
-      value={{ address, connecting, error, connect, disconnect }}
+      value={{ address, connecting, error, networkMismatch, connect, disconnect }}
     >
       {children}
     </WalletContext.Provider>

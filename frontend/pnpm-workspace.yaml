@@ -1,0 +1,20 @@
+packages:
+  - '.'
+  # packages/issuer is a real dependency of the app itself (app/api/issue/route.ts
+  # imports it), unlike the other packages/* siblings which are standalone/
+  # publish-only. It must share this workspace's dependency graph — a separately
+  # installed copy of @noir-lang/noir_js resolves to a different physical path
+  # than next.config.js's serverComponentsExternalPackages is configured for,
+  # breaking WASM loading for the Poseidon2 commitment circuit.
+  - 'packages/issuer'
+
+allowBuilds:
+  blake-hash: true
+  bufferutil: true
+  esbuild: true
+  msgpackr-extract: true
+  protobufjs: true
+  secp256k1: true
+  tiny-secp256k1: true
+  usb: true
+  utf-8-validate: true

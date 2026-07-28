@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { StellarCred } from "./index";
-
-export type ClaimType = "kyc" | "age" | "jurisdiction" | "income" | "funds";
+import { StellarCred, type ClaimType } from "./index";
 
 interface UseStellarCredOptions {
   claims?: ClaimType[];
@@ -35,7 +33,7 @@ export function useStellarCred(
     setError(null);
 
     try {
-      const typesToCheck = options?.claims || ["kyc", "age", "jurisdiction", "income", "funds"];
+      const typesToCheck = options?.claims || ["kyc", "age", "jurisdiction", "income", "funds", "accreditation"];
       const results: Partial<Record<ClaimType, boolean>> = {};
 
       await Promise.all(

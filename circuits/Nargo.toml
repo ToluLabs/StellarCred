@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "commit",
+    "kyc_proof",
+    "age_proof",
+    "income_proof",
+    "jurisdiction_proof",
+    "funds_proof",
+]
