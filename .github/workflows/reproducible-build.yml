@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Build the reproducible Docker image ──────────────────────────────
       # The image installs the compiler and pre-fetches all Cargo deps but
