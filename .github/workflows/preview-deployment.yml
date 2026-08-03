@@ -27,7 +27,7 @@ jobs:
           node-version: 20
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6.0.9
         with:
           version: 9
 
@@ -106,7 +106,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6.0.9
         with:
           version: 9
 
