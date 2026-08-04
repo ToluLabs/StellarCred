@@ -19,6 +19,8 @@ import {
   IconInfoCircle,
   IconQrcode,
 } from "@tabler/icons-react";
+import SubmissionHistory from "@/components/SubmissionHistory";
+import { saveSubmission } from "@/lib/history";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
@@ -372,15 +374,16 @@ function HolderInner() {
         <ProofFlow
           cred={view.cred}
           holder={address}
+
           onBack={() => setView({ kind: "list" })}
-          onProved={(txHash) => setCreds(markProved(view.cred.commitment, txHash))}
-        />
+          onProved={(txHash) => { setCreds(markProved(view.cred.commitment, txHash)); saveSubmission({ credentialType: view.cred.type, timestamp: Date.now(), txHash, status: "confirmed" }); }}        />
       ) : view.kind === "batch" ? (
         <BatchProofFlow
           creds={view.creds}
           holder={address}
           onBack={() => setView({ kind: "list" })}
           onProved={(txHash, commitments) => setCreds(markAllProved(commitments, txHash))}
+
         />
       ) : (
         <div className="stack reveal" style={{ gap: "1.5rem" }}>
@@ -509,6 +512,9 @@ function HolderInner() {
               Connect a wallet to generate and submit proofs.
             </p>
           )}
+
+          <SubmissionHistory />
+
 
           {importing ? (
             <ImportPanel
