@@ -44,8 +44,8 @@ fn deploy_with_gate(env: &Env, required_type: Symbol, min_threshold: Option<u64>
 
     let verifier_id = env.register(CredentialVerifier, (admin.clone(),));
     let verifier = CredentialVerifierClient::new(env, &verifier_id);
-    verifier.set_vk(&symbol_short!("kyc"), &Bytes::from_slice(env, VK));
-    verifier.set_vk(&symbol_short!("funds"), &Bytes::from_slice(env, FUNDS_VK));
+    verifier.set_vk(&symbol_short!("kyc"), &1u32, &Bytes::from_slice(env, VK));
+    verifier.set_vk(&symbol_short!("funds"), &1u32, &Bytes::from_slice(env, FUNDS_VK));
 
     let registry_id = env.register(ProofRegistry, (admin, verifier_id, ir_id));
     let pool_id = env.register(GatedPool, (registry_id.clone(), required_type, min_threshold));
@@ -68,6 +68,7 @@ fn prove_kyc(env: &Env, h: &Harness, holder: &Address) {
         &symbol_short!("kyc"),
         &Bytes::from_slice(env, PROOF),
         &Bytes::from_slice(env, PUBLIC_INPUTS),
+        &None,
         &1_000_000,
     );
 }
@@ -79,6 +80,7 @@ fn prove_funds(env: &Env, h: &Harness, holder: &Address) {
         &symbol_short!("funds"),
         &Bytes::from_slice(env, FUNDS_PROOF),
         &Bytes::from_slice(env, FUNDS_PUBLIC_INPUTS),
+        &None,
         &9999,
     );
 }

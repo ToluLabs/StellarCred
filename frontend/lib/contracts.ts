@@ -162,6 +162,8 @@ export interface ProofSubmissionParams {
   publicInputs: Uint8Array;
   /** Validity window in seconds from now. */
   ttlSecs: number;
+  /** VK version. Omit or pass undefined to use latest. */
+  vkVersion?: number;
 }
 
 /**
@@ -261,6 +263,13 @@ export async function submitProofs(params: {
         key: xdr.ScVal.scvSymbol("public_inputs"),
         val: xdr.ScVal.scvVec(u32s.map((val) => xdr.ScVal.scvU32(val))),
       }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("vk_version"),
+        val:
+          s.vkVersion != null
+            ? nativeToScVal(s.vkVersion, { type: "u32" })
+            : nativeToScVal(null, { type: "void" }),
+      }),
     ]);
   });
 
@@ -330,8 +339,10 @@ export async function submitProof(params: {
   proof: Uint8Array;
   publicInputs: Uint8Array;
   ttlSecs: number;
+  /** VK version. Omit or pass undefined to use latest. */
+  vkVersion?: number;
 }): Promise<string> {
-  const { holder, issuerId, credentialType, proof, publicInputs, ttlSecs } = params;
+  const { holder, issuerId, credentialType, proof, publicInputs, ttlSecs, vkVersion } = params;
   const expiry = Math.floor(Date.now() / 1000) + ttlSecs;
 
   return sendAndConfirm(holder, (contract) => {
@@ -343,6 +354,9 @@ export async function submitProof(params: {
       nativeToScVal(credentialType, { type: "symbol" }),
       xdr.ScVal.scvBytes(Buffer.from(proof)),
       xdr.ScVal.scvBytes(Buffer.from(publicInputs)),
+      vkVersion != null
+        ? nativeToScVal(vkVersion, { type: "u32" })
+        : nativeToScVal(null, { type: "void" }),
       nativeToScVal(BigInt(expiry), { type: "u64" }),
     );
   }, "Submission");

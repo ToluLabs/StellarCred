@@ -85,7 +85,7 @@ const AGG_FIELD_NUM_CREDENTIALS: u32 = 132;
 /// never the verifier's exported wasm symbols.
 #[contractclient(name = "VerifierClient")]
 pub trait VerifierInterface {
-    fn verify_proof(env: Env, credential_type: Symbol, proof: Bytes, public_inputs: Bytes) -> bool;
+    fn verify_proof(env: Env, credential_type: Symbol, proof: Bytes, public_inputs: Bytes, vk_version: Option<u32>) -> bool;
 }
 
 /// Typed client for the deployed IssuerRegistry contract.
@@ -129,11 +129,18 @@ pub struct ProofRecord {
     /// `legacy_record_missing_issuer_key_fails_to_read` in test.rs). A real
     /// migration is required before redeploying over existing stored proofs.
     pub issuer: Option<Address>,
+    /// VK version the proof was verified against at submission time.
+    /// `0` is the sentinel for "latest at submission time" (the caller passed
+    /// `vk_version = None` and the verifier resolved the newest version).
+    /// Stored so a proof submitted against an older circuit version remains
+    /// auditable — and valid — after the circuit is upgraded.
+    pub vk_version: u32,
 }
 
 /// A legacy 4-field record shape from before `ProofRecord` gained the `issuer`
-/// field. Used by `migrate_record` to read records stored under the old schema
-/// and rewrite them into the current 5-field `ProofRecord` layout.
+/// field (and later the `vk_version` field). Used by `migrate_record` to read
+/// records stored under the old schema and rewrite them into the current
+/// 6-field `ProofRecord` layout.
 #[contracttype]
 #[derive(Clone)]
 pub struct LegacyProofRecord {
@@ -153,6 +160,9 @@ pub struct ProofSubmission {
     pub public_inputs: Vec<u32>,
     pub issuer_id: Address,
     pub expiry: u64,
+    /// VK version to use for verification. `None` defaults to the latest
+    /// registered version (recommended for new submissions).
+    pub vk_version: Option<u32>,
 }
 
 #[contracttype]
@@ -248,6 +258,7 @@ impl ProofRegistry {
         credential_type: Symbol,
         proof: Bytes,
         public_inputs: Bytes,
+        vk_version: Option<u32>,
         expiry: u64,
     ) {
         holder.require_auth();
@@ -267,7 +278,7 @@ impl ProofRegistry {
 
         // 3. The proof must verify against the registered VK for this type.
         let verifier = VerifierClient::new(&env, &Self::verifier(&env));
-        if !verifier.verify_proof(&credential_type, &proof, &public_inputs) {
+        if !verifier.verify_proof(&credential_type, &proof, &public_inputs, &vk_version) {
             panic_with_error!(&env, Error::VerificationFailed);
         }
 
@@ -278,6 +289,8 @@ impl ProofRegistry {
             threshold: Self::extract_threshold(&env, &credential_type, &public_inputs),
             revoked: false,
             issuer: Some(issuer_id),
+            // 0 = "latest at submission time" (see ProofRecord::vk_version).
+            vk_version: vk_version.unwrap_or(0),
         };
         env.storage().persistent().set(&key, &record);
         env.storage()
@@ -351,17 +364,25 @@ impl ProofRegistry {
                 panic_with_error!(&env, Error::IssuerKeyMismatch);
             }
 
-            if !verifier.verify_proof(&sub.credential_type, &sub.proof, &public_inputs_bytes) {
+            if !verifier.verify_proof(
+                &sub.credential_type,
+                &sub.proof,
+                &public_inputs_bytes,
+                &sub.vk_version,
+            ) {
                 panic_with_error!(&env, Error::VerificationFailed);
             }
 
             let key = DataKey::Proof(holder.clone(), sub.credential_type.clone());
+            // 0 is the sentinel for "latest at submission time" (see submit_proof).
+            let effective_version = sub.vk_version.unwrap_or(0);
             let record = ProofRecord {
                 verified_at: now,
                 expiry: sub.expiry,
                 threshold: Self::extract_threshold(&env, &sub.credential_type, &public_inputs_bytes),
                 revoked: false,
                 issuer: Some(sub.issuer_id.clone()),
+                vk_version: effective_version,
             };
             env.storage().persistent().set(&key, &record);
             env.storage()
@@ -417,9 +438,11 @@ impl ProofRegistry {
     ) {
         holder.require_auth();
 
-        // 1. Verify the outer aggregate proof against the aggregate VK.
+        // 1. Verify the outer aggregate proof against the aggregate VK. The
+        //    aggregate circuit has no version parameter; always resolve the
+        //    latest registered VK (`None`).
         let verifier = VerifierClient::new(&env, &Self::verifier(&env));
-        if !verifier.verify_proof(&symbol_short!("aggregate"), &proof, &public_inputs) {
+        if !verifier.verify_proof(&symbol_short!("aggregate"), &proof, &public_inputs, &None) {
             panic_with_error!(&env, Error::VerificationFailed);
         }
 
@@ -656,15 +679,16 @@ impl ProofRegistry {
     }
 
     /// Admin-only migration from the legacy 4-field `ProofRecord` layout (no
-    /// `issuer` field) to the current 5-field layout. Reads the stored map
-    /// as a generic `Map<Symbol, Val>` to determine the field count without
-    /// triggering the struct-deserialisation panic that would occur on a
-    /// shape mismatch.
+    /// `issuer`, no `vk_version`) to the current 6-field layout. Reads the
+    /// stored map as a generic `Map<Symbol, Val>` to determine the field count
+    /// without triggering the struct-deserialisation panic that would occur on
+    /// a shape mismatch.
     ///
-    /// - Idempotent: records already in the current 5-field shape are a no-op.
+    /// - Idempotent: records already in the current 6-field shape are a no-op.
     /// - Migrated records are written with `issuer: None` so they fail closed
     ///   under an active `trusted_issuers` filter (there is no issuer to check
-    ///   against).
+    ///   against) and `vk_version: 0` (the "latest at submission time"
+    ///   sentinel, which is what legacy records were verified against).
     /// - Only the contract admin may call this function.
     pub fn migrate_record(env: Env, holder: Address, credential_type: Symbol) {
         let admin: Address = env
@@ -698,13 +722,16 @@ impl ProofRegistry {
                 threshold: legacy.threshold,
                 revoked: legacy.revoked,
                 issuer: None,
+                // Legacy records predate versioning; 0 means "latest at
+                // submission time", which is what they were verified against.
+                vk_version: 0,
             };
             env.storage().persistent().set(&key, &record);
             env.storage()
                 .persistent()
                 .extend_ttl(&key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
         }
-        // If raw_map.len() == 5, the record is already current — idempotent no-op.
+        // If raw_map.len() == 6, the record is already current — idempotent no-op.
     }
 
     pub fn verifier_address(env: Env) -> Address {
@@ -781,6 +808,10 @@ impl ProofRegistry {
             threshold,
             revoked: false,
             issuer: Some(issuer),
+            // Aggregate proofs always verify against the latest VK (see
+            // submit_aggregate_proof), so the stored version is the "latest at
+            // submission time" sentinel 0 (see ProofRecord::vk_version).
+            vk_version: 0,
         };
         env.storage().persistent().set(&key, &record);
         env.storage()

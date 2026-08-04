@@ -70,6 +70,7 @@ for type in kyc age income jurisdiction funds accreditation employment; do
     --send yes \
     -- set_vk \
     --credential_type "$type" \
+    --version 1 \
     --vk-file-path "$vk"
 done
 

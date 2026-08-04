@@ -97,6 +97,11 @@ revoked: boolean;
  */
 threshold: Option<u64>;
   verified_at: u64;
+  /**
+ * VK version that was used to verify this proof. Preserved so that old
+ * proofs remain valid even after the circuit is upgraded to a new version.
+ */
+vk_version: u32;
 }
 
 
@@ -110,6 +115,11 @@ export interface ProofSubmission {
   issuer_id: string;
   proof: Buffer;
   public_inputs: Array<u32>;
+  /**
+ * VK version to use for verification. `None` defaults to the latest
+ * registered version (recommended for new submissions).
+ */
+vk_version: Option<u32>;
 }
 
 export interface Client {
@@ -174,7 +184,7 @@ export interface Client {
    * (ledger timestamp, seconds). The holder authorizes their own submission.
    * `issuer_id` must be registered and trusted for `credential_type`.
    */
-  submit_proof: ({holder, issuer_id, credential_type, proof, public_inputs, expiry}: {holder: string, issuer_id: string, credential_type: string, proof: Buffer, public_inputs: Buffer, expiry: u64}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+  submit_proof: ({holder, issuer_id, credential_type, proof, public_inputs, vk_version, expiry}: {holder: string, issuer_id: string, credential_type: string, proof: Buffer, public_inputs: Buffer, vk_version: Option<u32>, expiry: u64}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
   /**
    * Construct and simulate a verifier_address transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.

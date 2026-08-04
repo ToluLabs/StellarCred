@@ -183,6 +183,7 @@ if [ -z "$ISSUER_REGISTRY_ID" ]; then
       --send yes \
       -- set_vk \
       --credential_type "$FIXTURE_TYPE" \
+      --version 1 \
       --vk-file-path "$vk" \
       > /dev/null 2>&1 || warn "set_vk pre-setup failed (non-fatal)"
   fi
@@ -245,6 +246,7 @@ if [ -f "$proof_file" ] && [ -f "$inputs_file" ]; then
     --holder "$ADMIN" \
     --issuer_id "$ADMIN" \
     --credential_type "$FIXTURE_TYPE" \
+    --vk_version null \
     --proof "$(cat "$proof_file")" \
     --public_inputs "$(cat "$inputs_file")" \
     --expiry "9999999999"
@@ -293,6 +295,7 @@ vk="fixtures/$FIXTURE_TYPE/vk"
 if [ -f "$vk" ]; then
   bench "credential_verifier::set_vk (${FIXTURE_TYPE})" "$CREDENTIAL_VERIFIER_ID" set_vk \
     --credential_type "$FIXTURE_TYPE" \
+    --version 1 \
     --vk-file-path "$vk"
 else
   echo ""
@@ -303,6 +306,7 @@ fi
 if [ -f "$proof_file" ] && [ -f "$inputs_file" ]; then
   bench "credential_verifier::verify_proof (${FIXTURE_TYPE})" "$CREDENTIAL_VERIFIER_ID" verify_proof \
     --credential_type "$FIXTURE_TYPE" \
+    --vk_version null \
     --proof "$(cat "$proof_file")" \
     --public_inputs "$(cat "$inputs_file")"
 else

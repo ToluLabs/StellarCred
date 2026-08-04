@@ -63,7 +63,7 @@ for type in kyc age income jurisdiction funds; do
   vk="fixtures/$type/vk"
   [ -f "$vk" ] || { echo "skip $type (no VK — run circuits/scripts/build.sh)"; continue; }
   echo "Registering $type verification key..."
-  stellar contract invoke     --id "$CREDENTIAL_VERIFIER_ID"     --source "$SOURCE"     --rpc-url "$RPC_URL"     --network-passphrase "$NETWORK_PASSPHRASE"     --send yes     -- set_vk     --credential_type "$type"     --vk-file-path "$vk"
+  stellar contract invoke     --id "$CREDENTIAL_VERIFIER_ID"     --source "$SOURCE"     --rpc-url "$RPC_URL"     --network-passphrase "$NETWORK_PASSPHRASE"     --send yes     -- set_vk     --credential_type "$type"     --version 1     --vk-file-path "$vk"
 done
 
 cat <<EOF
