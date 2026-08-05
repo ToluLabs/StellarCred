@@ -230,6 +230,25 @@ cd frontend && pnpm install && pnpm dev
 
 ---
 
+## Indexer Service
+
+StellarCred includes a lightweight indexer service (located in `services/indexer/`) that polls the Stellar Horizon API for `ProofRegistry` events (verifications and revocations) and provides a fast, queryable REST API.
+
+The indexer reads strictly public on-chain data (no identity fields), and operates idempotently. It powers the frontend's aggregate statistics and claim discovery features. 
+
+**API Endpoints:**
+- `GET /claims?wallet=G...` — Claims for a specific wallet
+- `GET /stats` — Aggregate counts per credential type
+- `GET /recent` — Recent verifications (paginated)
+
+To run the indexer alongside the application, simply start the stack via Docker:
+```bash
+docker compose up indexer
+```
+For standalone setup instructions, refer to the [Indexer README](services/indexer/README.md).
+
+---
+
 ## Deployments
 
 A public record of deployed contract IDs on testnet and mainnet, along with instructions to verify the bytecode integrity from source, is maintained in [DEPLOYMENTS.md](DEPLOYMENTS.md).
