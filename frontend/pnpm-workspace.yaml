@@ -11,7 +11,7 @@ packages:
 allowBuilds:
   blake-hash: true
   bufferutil: true
-  esbuild: true
+  esbuild: set this to true or false
   msgpackr-extract: true
   protobufjs: true
   secp256k1: true
