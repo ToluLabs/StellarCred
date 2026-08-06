@@ -41,7 +41,7 @@
     "@next/bundle-analyzer": "^14.2.35",
     "@playwright/test": "^1.62.0",
     "@size-limit/file": "^13.0.1",
-    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.0.1",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",
