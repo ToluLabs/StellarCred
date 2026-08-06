@@ -24,7 +24,7 @@
     "@noir-lang/noir_js": "1.0.0-beta.9",
     "@stellar/stellar-sdk": "^13.1.0",
     "@stellarcred/issuer": "workspace:*",
-    "@tabler/icons-react": "^3.21.0",
+    "@tabler/icons-react": "^3.46.0",
     "blakejs": "^1.2.1",
     "buffer": "^6.0.3",
     "jsqr": "^1.4.0",
@@ -39,7 +39,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
     "@next/bundle-analyzer": "^14.2.35",
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.62.1",
     "@size-limit/file": "^13.0.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
