@@ -97,23 +97,106 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
         continue-on-error: true
 
-  scripts:
-    name: Script syntax check
+  circuits:
+    name: Circuit compile
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: circuits
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check deploy.sh syntax
-        run: bash -n scripts/deploy.sh
+      - name: Install Noir toolchain
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
+          export PATH="$HOME/.nargo/bin:$PATH"
+          noirup -v 1.0.0-beta.9
 
-      - name: Check deploy-mainnet.sh syntax
-        run: bash -n scripts/deploy-mainnet.sh
+      - name: Compile circuits
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof; do
+            echo "=== $dir ==="
+            (cd "$dir" && nargo compile)
+          done
 
-      - name: Check benchmark.sh syntax
-        run: bash -n scripts/benchmark.sh
+      - name: Check staged artifacts are current
+        run: |
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$PATH"
+
+          # Install bb at pinned version
+          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          bbup -v 0.87.0
+
+          type_of() {
+            case "$1" in
+              kyc_proof) echo kyc ;;
+              age_proof) echo age ;;
+              income_proof) echo income ;;
+              jurisdiction_proof) echo jurisdiction ;;
+              funds_proof) echo funds ;;
+              employment_proof) echo employment ;;
+              accreditation_proof) echo accreditation ;;
+              aggregate_proof) echo aggregate ;;
+              *) echo "$1" ;;
+            esac
+          }
+
+          FAILED=0
+          VK_TMP="/tmp/vk_check"
+          rm -rf "$VK_TMP"
+
+          for dir in kyc_proof age_proof income_proof jurisdiction_proof funds_proof employment_proof aggregate_proof; do
+            type=$(type_of "$dir")
+            json="target/${dir}.json"
+            out="$VK_TMP/$type"
+            echo "=== Re-deriving VK for $type ==="
+
+            mkdir -p "$out"
+            bb write_vk --scheme ultra_honk --oracle_hash keccak \
+              --bytecode_path "$json" \
+              --output_path "$out" --output_format bytes_and_fields
+
+            # bb may nest the vk under a subdirectory
+            if [ -f "$out/vk/vk" ]; then
+              actual="$out/vk/vk"
+            elif [ -f "$out/vk" ]; then
+              actual="$out/vk"
+            else
+              actual=$([ -f "$out/vk_fields" ] && echo "$out/vk_fields" || echo "$out/vk")
+            fi
+
+            if [ ! -f "$actual" ]; then
+              echo "::error::bb did not produce a VK for $type (expected one file under $out)"
+              FAILED=1
+              continue
+            fi
+
+            fixture="../fixtures/$type/vk"
+            if diff -q "$actual" "$fixture" >/dev/null 2>&1; then
+              echo "  OK — matches fixtures/$type/vk"
+            else
+              echo "::error::VK mismatch for $type (fixtures/$type/vk differs from freshly compiled circuit)"
+              echo "Run circuits/scripts/build.sh locally to regenerate staged artifacts"
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Check verify-wasm.sh syntax
-        run: bash -n scripts/verify-wasm.sh
+        run: bash -n ../scripts/verify-wasm.sh
+
+      - name: Check deploy.sh syntax
+        run: bash -n ../scripts/deploy.sh
+
+      - name: Check deploy-mainnet.sh syntax
+        run: bash -n ../scripts/deploy-mainnet.sh
+
+      - name: Check benchmark.sh syntax
+        run: bash -n ../scripts/benchmark.sh
 
   frontend:
     name: Frontend typecheck & build

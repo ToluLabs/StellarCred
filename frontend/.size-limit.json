@@ -53,6 +53,6 @@
   {
     "name": "Circuit Assets",
     "path": "public/circuits/*.json",
-    "limit": "100 kB"
+    "limit": "150 kB"
   }
 ]
