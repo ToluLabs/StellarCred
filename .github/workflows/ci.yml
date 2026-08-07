@@ -18,6 +18,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - run: npm install --save-dev @commitlint/cli @commitlint/config-conventional
+      - name: Lint commits in PR
+        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:

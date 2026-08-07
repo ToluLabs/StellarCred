@@ -3,6 +3,8 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { IconCheck, IconCircle, IconSearch, IconFilter } from "@tabler/icons-react";
 import {
   IconCheck,
   IconCircle,
@@ -38,6 +40,10 @@ function ProtocolCard({
   networkKey: string | boolean;
 }) {
   const router = useRouter();
+  const t = useTranslations("apps");
+  const [statuses, setStatuses] = useState<boolean[]>(protocol.requirements.map(() => false));
+  const [checked, setChecked] = useState(false);
+  const eligible = statuses.every(Boolean);
   const isPreview = usePreviewMode();
   const { state, statuses, retry, checking } = useProtocolAccessCheck(
     protocol.requirements,
@@ -78,6 +84,7 @@ function ProtocolCard({
           {protocol.requirements.map((r, i) => {
             const isClaimMet = state === "granted" || (state === "denied" && statuses[i]);
             return (
+              <span key={r.type} style={{ padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", background: isClaimMet ? "rgba(62,207,142,0.15)" : "rgba(255,255,255,0.05)", color: isClaimMet ? "var(--accent)" : "var(--faint)", border: `1px solid ${isClaimMet ? "rgba(62,207,142,0.35)" : "var(--border)"}` }}>
               <span
                 key={r.type}
                 style={{
@@ -103,6 +110,15 @@ function ProtocolCard({
           })}
         </div>
       </div>
+      <p className="mono faint" style={{ fontSize: "0.72rem", marginBottom: "0.75rem" }}>{protocol.tagline}</p>
+      <p className="muted" style={{ fontSize: "0.8125rem", lineHeight: 1.65, marginBottom: "1.25rem" }}>{protocol.description}</p>
+      <div style={{ padding: "0.65rem 0.9rem", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", marginBottom: "1.25rem" }}>
+        <div className="faint" style={{ fontSize: "0.72rem", marginBottom: "0.2rem" }}>{protocol.stat.label}</div>
+        <div style={{ fontWeight: 600, fontSize: "1.5rem", letterSpacing: "-0.03em" }}>{protocol.stat.value}</div>
+        <div className="mono faint" style={{ fontSize: "0.7rem" }}>{protocol.stat.sub}</div>
+      </div>
+      <div className="eyebrow" style={{ marginBottom: "0.4rem" }}>{t("requirements")}</div>
+      <div className="stack">
       <p className="mono faint" style={{ fontSize: "0.72rem", marginBottom: "0.75rem" }}>
         {protocol.tagline}
       </p>
@@ -156,6 +172,9 @@ function ProtocolCard({
                 {r.label}
               </span>
             </span>
+            {statuses[i]
+              ? <Badge variant="verified">{t("proved")}</Badge>
+              : <Badge variant="pending">{t("needed")}</Badge>}
             {checking ? (
               <Badge variant="pending">Checking</Badge>
             ) : state === "error" ? (
@@ -235,6 +254,7 @@ function ProtocolCard({
 function AppsInner() {
   const { address, networkMismatch } = useWallet();
   const searchParams = useSearchParams();
+  const t = useTranslations("apps");
   const scVerified = searchParams.get("sc_verified") === "true";
   const scWallet = searchParams.get("sc_wallet");
   // `address` is "" when disconnected — use || so we fall through to scWallet/null.
@@ -272,12 +292,14 @@ function AppsInner() {
     <>
       <div className="between" style={{ marginBottom: "2rem" }}>
         <div>
-          <span className="eyebrow">Demo protocols</span>
-          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Apps</h1>
+          <span className="eyebrow">{t("eyebrow")}</span>
+          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>{t("title")}</h1>
         </div>
         <WalletButton />
       </div>
 
+      <div style={{ marginBottom: "1.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius)", background: "rgba(62,207,142,0.05)", border: "1px solid rgba(62,207,142,0.15)", fontSize: "0.8125rem", color: "var(--muted)", lineHeight: 1.6 }}>
+        <strong style={{ color: "var(--text)" }}>{t("subtitle")}</strong>{" "}
       <div
         style={{
           marginBottom: "1.75rem",
@@ -299,25 +321,11 @@ function AppsInner() {
       </div>
 
       {scVerified && (
-        <div
-          className="reveal"
-          style={{
-            marginBottom: "1.5rem",
-            padding: "0.85rem 1rem",
-            borderRadius: "var(--radius)",
-            background: "rgba(62,207,142,0.08)",
-            border: "1px solid rgba(62,207,142,0.35)",
-            fontSize: "0.875rem",
-            color: "var(--text)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.6rem",
-          }}
-        >
+        <div className="reveal" style={{ marginBottom: "1.5rem", padding: "0.85rem 1rem", borderRadius: "var(--radius)", background: "rgba(62,207,142,0.08)", border: "1px solid rgba(62,207,142,0.35)", fontSize: "0.875rem", color: "var(--text)", display: "flex", alignItems: "center", gap: "0.6rem" }}>
           <IconCheck size={18} color="var(--accent)" stroke={2.5} />
           <span>
-            <strong>Verification complete.</strong>{" "}
-            <span className="muted">You were returned here from StellarCred automatically.</span>
+            <strong>{t("verificationComplete")}</strong>{" "}
+            <span className="muted">{t("returnedFrom")}</span>
           </span>
         </div>
       )}
@@ -326,6 +334,7 @@ function AppsInner() {
 
       <div className="stack" style={{ gap: "0.75rem", marginBottom: "1.5rem" }}>
         <div style={{ position: "relative" }}>
+          <IconSearch size={16} stroke={1.8} color="var(--faint)" style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)" }} />
           <IconSearch
             size={16}
             stroke={1.8}
@@ -339,19 +348,12 @@ function AppsInner() {
           />
           <input
             type="text"
+            placeholder={t("searchPlaceholder")}
             aria-label="Search apps by name, description, or tagline"
             placeholder="Search apps by name, description, or tagline..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.65rem 0.75rem 0.65rem 2.25rem",
-              borderRadius: "var(--radius)",
-              border: "1px solid var(--border)",
-              background: "var(--bg-raised)",
-              color: "var(--text)",
-              fontSize: "0.875rem",
-            }}
+            style={{ width: "100%", padding: "0.65rem 0.75rem 0.65rem 2.25rem", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg-raised)", color: "var(--text)", fontSize: "0.875rem" }}
           />
         </div>
         <div className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
@@ -359,40 +361,13 @@ function AppsInner() {
           {CREDENTIAL_TYPES.map((claim) => {
             const isActive = selectedClaims.has(claim);
             return (
-              <button
-                key={claim}
-                onClick={() => toggleClaim(claim)}
-                type="button"
-                style={{
-                  padding: "0.3rem 0.7rem",
-                  borderRadius: "999px",
-                  fontSize: "0.72rem",
-                  fontWeight: 500,
-                  border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
-                  background: isActive ? "rgba(62,207,142,0.12)" : "transparent",
-                  color: isActive ? "var(--accent)" : "var(--muted)",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
+              <button key={claim} onClick={() => toggleClaim(claim)} type="button" style={{ padding: "0.3rem 0.7rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 500, border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`, background: isActive ? "rgba(62,207,142,0.12)" : "transparent", color: isActive ? "var(--accent)" : "var(--muted)", cursor: "pointer", transition: "all 0.15s ease" }}>
                 {CLAIM_LABELS[claim] || claim}
               </button>
             );
           })}
           {selectedClaims.size > 0 && (
-            <button
-              onClick={() => setSelectedClaims(new Set())}
-              type="button"
-              style={{
-                padding: "0.3rem 0.7rem",
-                borderRadius: "999px",
-                fontSize: "0.72rem",
-                border: "1px solid var(--border)",
-                background: "transparent",
-                color: "var(--faint)",
-                cursor: "pointer",
-              }}
-            >
+            <button onClick={() => setSelectedClaims(new Set())} type="button" style={{ padding: "0.3rem 0.7rem", borderRadius: "999px", fontSize: "0.72rem", border: "1px solid var(--border)", background: "transparent", color: "var(--faint)", cursor: "pointer" }}>
               Clear filters
             </button>
           )}
@@ -400,15 +375,10 @@ function AppsInner() {
       </div>
 
       {filtered.length === 0 ? (
-        <div
-          className="card"
-          style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
-        >
+        <div className="card" style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}>
           <IconSearch size={30} stroke={1.3} color="var(--faint)" />
-          <h3 style={{ margin: "1rem 0 0.4rem" }}>No apps match</h3>
-          <p className="muted" style={{ fontSize: "0.875rem" }}>
-            Try adjusting your search or removing claim filters.
-          </p>
+          <h3 style={{ margin: "1rem 0 0.4rem" }}>{t("noResults")}</h3>
+          <p className="muted" style={{ fontSize: "0.875rem" }}>{t("noResultsHint")}</p>
         </div>
       ) : (
         <div className="grid grid-3" style={{ alignItems: "start", gap: "1.25rem" }}>

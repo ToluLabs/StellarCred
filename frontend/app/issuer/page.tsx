@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import {
   IconKey,
@@ -63,6 +65,7 @@ export default function IssuerPage() {
   const [issued, setIssued] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const t = useTranslations("issuer");
 
   const selectedIssuer = useMemo(
     () => issuers.find((issuer) => issuer.id === selectedIssuerId) ?? null,
@@ -163,6 +166,8 @@ export default function IssuerPage() {
     <>
       <div className="between" style={{ marginBottom: "2rem" }}>
         <div>
+          <span className="eyebrow">{t("eyebrow")}</span>
+          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>{t("title")}</h1>
           <span className="eyebrow">Issuer admin · demo</span>
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>
             Issue a credential
@@ -171,6 +176,9 @@ export default function IssuerPage() {
         <WalletButton />
       </div>
 
+      <div style={{ marginBottom: "1.75rem", padding: "0.75rem 1rem", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)", fontSize: "0.8125rem", color: "var(--muted)", lineHeight: 1.6 }}>
+        <strong style={{ color: "var(--text)" }}>{t("simulationStrong")}</strong>{" "}
+        {t("simulationNote")}
       <div
         style={{
           marginBottom: "1.75rem",
@@ -196,6 +204,15 @@ export default function IssuerPage() {
         style={{ alignItems: "start", gap: "1.5rem" }}
       >
         <div className="card">
+          <label className="field-label">{t("holderAddress")}</label>
+          <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder={t("holderPlaceholder")} />
+
+          <div className="grid grid-2" style={{ marginTop: "1.25rem", gap: "1rem" }}>
+            <div>
+              <label className="field-label">{t("credentialType")}</label>
+              <select value={type} onChange={(e) => onType(e.target.value as CredentialType)}>
+                {TYPES.map(([key, m]) => (
+          <label className="field-label">Registered issuer</label>
           <label className="field-label" htmlFor="registered-issuer">Registered issuer</label>
           {issuersLoading ? (
             <p className="faint" style={{ fontSize: "0.8125rem", marginTop: "0.35rem" }}>
@@ -264,6 +281,10 @@ export default function IssuerPage() {
               </select>
             </div>
             <div>
+              <label className="field-label">{t("expiry")}</label>
+              <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+                {([["30 days", t("expiry30")], ["90 days", t("expiry90")], ["1 year", t("expiry1year")]] as [string, string][]).map(([val, label]) => (
+                  <option key={val} value={val}>{label}</option>
               <label className="field-label" htmlFor="issuer-expiry">Expiry</label>
               <select
                 id="issuer-expiry"
@@ -316,15 +337,15 @@ export default function IssuerPage() {
           >
             <IconKey size={14} />
             <span>
-              {needsAttr
-                ? "The attribute is committed with Poseidon2 and stays private — the holder proves a claim about it."
-                : "A fresh secret is generated and committed with Poseidon2 — the holder proves it without revealing it."}
+              {needsAttr ? t("poseidonAttr") : t("poseidonSecret")}
             </span>
           </div>
 
           <button
             className="btn btn-primary"
             style={{ marginTop: "1.5rem", width: "100%" }}
+            disabled={!holder || !issuerId || (needsAttr && !attribute) || busy}
+            title={!issuerId ? t("connectIssuerFirst") : undefined}
             disabled={
               !holder ||
               !selectedIssuer ||
@@ -338,15 +359,20 @@ export default function IssuerPage() {
             {busy ? (
               <>
                 <IconLoader2 size={15} className="spin" />
-                Computing commitment…
+                {t("computing")}
               </>
             ) : (
               <>
-                Sign &amp; issue
+                {t("signAndIssue")}
                 <IconArrowRight size={15} />
               </>
             )}
           </button>
+          {!issuerId && (
+            <p className="faint" style={{ marginTop: "0.6rem", fontSize: "0.8125rem" }}>
+              {t("connectIssuerNote")}
+            </p>
+          )}
           {error && (
             <p
               style={{
@@ -362,10 +388,10 @@ export default function IssuerPage() {
 
         <div className="card" style={{ minHeight: 280 }}>
           <div className="between" style={{ marginBottom: "1rem" }}>
-            <span className="eyebrow">Signed credential</span>
+            <span className="eyebrow">{t("signedCredential")}</span>
             {issued && (
               <div className="row" style={{ gap: "0.5rem" }}>
-                <Badge variant="verified">Saved to wallet</Badge>
+                <Badge variant="verified">{t("savedToWallet")}</Badge>
                 <CopyButton value={issued} />
               </div>
             )}
@@ -386,6 +412,9 @@ export default function IssuerPage() {
               {issued}
             </pre>
           ) : (
+            <div style={{ height: 200, display: "grid", placeItems: "center", textAlign: "center" }}>
+              <p className="faint" style={{ maxWidth: 280, fontSize: "0.875rem" }}>
+                {t("emptyIssuer")}
             <div
               style={{
                 height: 200,

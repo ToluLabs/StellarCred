@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   IconArrowRight,
   IconLoader2,
@@ -31,7 +32,6 @@ const COUNTRIES = [
 ];
 
 const DEMO_ISSUER_ID = process.env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "";
-
 const VALID_CLAIMS = TYPES.map(([k]) => k);
 
 // One id per verify session, sent as `x-request-id` on every /api/issue and
@@ -54,12 +54,9 @@ function VerifyInner() {
   const router = useRouter();
   const { address } = useWallet();
   const searchParams = useSearchParams();
+  const t = useTranslations("verify");
   const toast = useToast();
 
-  // When a protocol redirects here it can specify where to send the user back
-  // (return_url) and exactly which claim it requires (claim). A required claim
-  // locks the selector — the user can't pick something the protocol didn't ask
-  // for.
   const returnUrl = searchParams.get("return_url");
   const personaInquiryId = searchParams.get("inquiry-id");
   const claimParam = searchParams.get("claim") as CredentialType | null;
@@ -246,8 +243,6 @@ function VerifyInner() {
       .catch(() => {});
   }, [fundsSelected]);
 
-  // When Persona redirects back to /verify?inquiry-id=XXX, resume the pending
-  // issue request that was stored in sessionStorage before the redirect.
   useEffect(() => {
     if (!personaInquiryId || !address) return;
     const raw = sessionStorage.getItem("sc_persona_pending");
@@ -305,8 +300,11 @@ function VerifyInner() {
     setAttributes((a: Record<string, string>) => ({ ...a, [key]: val }));
   }
 
-  // Where the user is sent after a successful issue.
   function redirectAfterIssue() {
+    if (returnUrl && address) {
+      let dest;
+      try {
+        dest = new URL(returnUrl, window.location.origin);
     if (returnUrl && !urlError && address) {
       let dest;
       try {
@@ -325,6 +323,38 @@ function VerifyInner() {
           router.push("/holder");
           return;
         }
+      } catch {
+        setUrlError("Invalid return_url: could not parse URL");
+        return;
+      }
+      dest.searchParams.set("sc_verified", "true");
+      dest.searchParams.set("sc_wallet", address);
+      if (dest.origin === window.location.origin) {
+        router.push(dest.pathname + dest.search);
+      } else {
+        window.location.href = dest.toString();
+      }
+    } else {
+      router.push("/holder");
+    }
+  }
+
+  let returnLabel = "";
+  let returnUrlIsValid = false;
+  if (returnUrl) {
+    try {
+      const u = new URL(returnUrl, window.location.origin);
+      if (u.protocol === "https:" || u.origin === window.location.origin) {
+        returnUrlIsValid = true;
+      }
+    } catch { /* invalid */ }
+  }
+  if (returnUrl && returnUrlIsValid) {
+    if (returnUrl.startsWith("/")) {
+      returnLabel = returnUrl;
+    } else {
+      try { returnLabel = new URL(returnUrl).hostname; }
+      catch { returnLabel = returnUrl; }
 
         dest.searchParams.set("sc_verified", "true");
         dest.searchParams.set("sc_wallet", address);
@@ -353,6 +383,7 @@ function VerifyInner() {
     setError("");
     const requestId = getOrCreateRequestId();
     try {
+      if (!DEMO_ISSUER_ID) throw new Error("NEXT_PUBLIC_ISSUER_ADDRESS is not set — cannot issue credentials");
       if (!DEMO_ISSUER_ID) {
         throw new Error(
           "NEXT_PUBLIC_ISSUER_ADDRESS is not set — cannot issue credentials",
@@ -378,12 +409,11 @@ function VerifyInner() {
           returnUrl: returnUrl ?? undefined,
         }),
       });
-      // 202 means Persona identity verification is required — redirect user.
       if (res.status === 202) {
         const { personaUrl } = (await res.json()) as { personaUrl: string };
         sessionStorage.setItem("sc_persona_pending", JSON.stringify(payload));
         window.location.href = personaUrl;
-        return; // don't clear busy — page is navigating away
+        return;
       }
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
@@ -416,6 +446,8 @@ function VerifyInner() {
     <>
       <div className="between" style={{ marginBottom: "2rem" }}>
         <div>
+          <span className="eyebrow">{t("eyebrow")}</span>
+          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>{t("title")}</h1>
           <span className="eyebrow">Verify</span>
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>
             Get verified
@@ -446,6 +478,8 @@ function VerifyInner() {
         <div className="card">
           {!address ? (
             <div style={{ textAlign: "center", padding: "2rem 0" }}>
+              <p className="muted" style={{ marginBottom: "1.25rem", fontSize: "0.9rem" }}>
+                {t("connectWallet")}
               <p
                 className="muted"
                 style={{ marginBottom: "1.25rem", fontSize: "0.9rem" }}
@@ -455,6 +489,16 @@ function VerifyInner() {
               <WalletButton />
             </div>
           ) : done ? (
+            <div className="reveal" style={{ textAlign: "center", padding: "2rem 0" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: "50%", background: "var(--accent-soft)", marginBottom: "1rem" }}>
+                <IconCheck size={24} color="var(--accent)" stroke={2.5} />
+              </span>
+              <div style={{ fontWeight: 500 }}>
+                {returnUrlIsValid ? t("verified") : t("credentialSaved")}
+              </div>
+              <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.3rem" }}>
+                {returnUrlIsValid ? t("returningTo", { label: returnLabel }) : t("redirectingToWallet")}
+                {requestingDomain && !urlError ? "Verified" : "Credential saved"}
             <div
               className="reveal"
               style={{ textAlign: "center", padding: "2rem 0" }}
@@ -489,6 +533,25 @@ function VerifyInner() {
             </div>
           ) : (
             <>
+              <label className="field-label">{t("credentialType")}</label>
+              {locked && (
+                <p className="faint" style={{ fontSize: "0.8125rem", margin: "0.4rem 0 0" }}>
+                  {returnUrlIsValid
+                    ? t("requestedBy", { app: returnLabel, claim: requiredClaim })
+                    : t("protocolRequested", { claim: requiredClaim })}
+              {urlError && (
+                <div
+                  style={{
+                    padding: "0.75rem 1rem",
+                    borderRadius: "var(--radius)",
+                    background: "rgba(240, 96, 77, 0.1)",
+                    border: "1px solid rgba(240, 96, 77, 0.2)",
+                    color: "var(--danger)",
+                    fontSize: "0.8125rem",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  {urlError}
               {(urlError || paramErrors.length > 0) && (
                 <div style={{
                   padding: "0.75rem 1rem",
@@ -599,6 +662,8 @@ function VerifyInner() {
                     >
                       <div className="between" style={{ alignItems: "center" }}>
                         <span className="row" style={{ gap: "0.6rem" }}>
+                          <span style={{ width: 16, height: 16, borderRadius: "50%", display: "grid", placeItems: "center", border: `2px solid ${on ? "var(--accent)" : "var(--border)"}`, flexShrink: 0 }}>
+                            {on && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }} />}
                           <span
                             style={{
                               width: 16,
@@ -630,11 +695,15 @@ function VerifyInner() {
                           style={{ fontSize: "0.72rem" }}
                         >
                           {key === "funds" && claimParamsFromUrl.threshold
+                            ? `balance > ${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
+                            : key === "age" && claimParamsFromUrl.threshold_years
                             ? `balance > $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
                             : key === "age" &&
                                 claimParamsFromUrl.threshold_years
                               ? `age ≥ ${claimParamsFromUrl.threshold_years}`
                               : key === "income" && claimParamsFromUrl.threshold
+                                ? `income > ${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
+                                : m.claim}
                                 ? `income > $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
                                 : key === "accreditation" &&
                                     claimParamsFromUrl.threshold
@@ -645,8 +714,19 @@ function VerifyInner() {
                                     : m.claim}
                         </span>
                       </div>
-
                       {on && key === "kyc" && (
+                        <p className="faint" style={{ fontSize: "0.75rem", margin: "0.5rem 0 0" }}>{t("kycNote")}</p>
+                      )}
+                      {on && key === "age" && (
+                        <div style={{ marginTop: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
+                          <label className="field-label">{m.attribute}</label>
+                          <input type="date" value={attributes.date_of_birth} onChange={(e) => setAttr("date_of_birth", e.target.value)} />
+                        </div>
+                      )}
+                      {on && key === "income" && (
+                        <div style={{ marginTop: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
+                          <label className="field-label">{m.attribute}</label>
+                          <input type="number" value={attributes.income} onChange={(e) => setAttr("income", e.target.value)} />
                         <p
                           className="faint"
                           style={{ fontSize: "0.75rem", margin: "0.5rem 0 0" }}
@@ -719,7 +799,7 @@ function VerifyInner() {
                               }}
                             >
                               <IconLoader2 size={12} className="spin" />
-                              Reading balance from Plaid…
+                              {t("readingPlaid")}
                             </p>
                           ) : (
                             <div
@@ -747,6 +827,7 @@ function VerifyInner() {
                                   }}
                                 >
                                   <IconBuildingBank size={12} stroke={1.6} />
+                                  {plaidMock ? t("mockBalance") : t("verifiedBalance")}
                                   {plaidMock
                                     ? "Mock balance"
                                     : "Verified balance (Plaid)"}
@@ -760,6 +841,7 @@ function VerifyInner() {
                                 >
                                   ${plaidBalance.toLocaleString("en-US")}
                                 </span>
+                                <span style={{ fontWeight: 600, fontSize: "1rem", color: "var(--text)" }}>${plaidBalance.toLocaleString("en-US")}</span>
                               </div>
                               {plaidAccounts.length > 1 && (
                                 <div
@@ -783,6 +865,14 @@ function VerifyInner() {
                                   ))}
                                 </div>
                               )}
+                              <hr style={{ margin: "0.5rem 0", borderColor: "rgba(62,207,142,0.15)" }} />
+                              <div className="between" style={{ alignItems: "center" }}>
+                                <span className="faint" style={{ fontSize: "0.72rem" }}>{t("proofWillCertify")}</span>
+                                <span style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--accent)" }}>
+                                  balance ≥ ${Number(claimParamsFromUrl.threshold ?? "10000").toLocaleString("en-US")}
+                                </span>
+                              </div>
+                              <p className="faint" style={{ fontSize: "0.72rem", margin: "0.35rem 0 0" }}>{t("balancePrivacy")}</p>
                               <hr
                                 style={{
                                   margin: "0.5rem 0",
@@ -893,6 +983,10 @@ function VerifyInner() {
               </div>
 
               <div style={{ marginBottom: "1.5rem" }}>
+                <label className="field-label">{t("validityPeriod")}</label>
+                <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+                  {([["30 days", t("expiry30")], ["90 days", t("expiry90")], ["1 year", t("expiry1year")]] as [string, string][]).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
                 <label className="field-label" htmlFor="validity-period">Validity period</label>
                 <select
                   id="validity-period"
@@ -905,6 +999,9 @@ function VerifyInner() {
                 </select>
               </div>
 
+              <div className="line" style={{ marginBottom: "1.5rem", padding: "0.75rem 1rem", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)" }}>
+                <span className="faint" style={{ fontSize: "0.8125rem" }}>{t("issuedTo")}</span>
+                <span className="mono" style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
               <div
                 className="line"
                 style={{
@@ -926,6 +1023,7 @@ function VerifyInner() {
                 </span>
               </div>
 
+              <button className="btn btn-primary" style={{ width: "100%" }} disabled={busy || !selected} onClick={onRequest}>
               <button
                 className="btn btn-primary"
                 style={{ width: "100%" }}
@@ -935,13 +1033,14 @@ function VerifyInner() {
                 {busy ? (
                   <>
                     <IconLoader2 size={15} className="spin" />
+                    {selected === "kyc" ? t("redirecting") : t("creating")}
                     {selected === "kyc"
                       ? "Redirecting to verification…"
                       : "Creating credential…"}
                   </>
                 ) : (
                   <>
-                    {selected === "kyc" ? "Verify identity" : "Get credential"}
+                    {selected === "kyc" ? t("verifyIdentity") : t("getCredential")}
                     <IconArrowRight size={15} />
                   </>
                 )}
@@ -959,6 +1058,8 @@ function VerifyInner() {
                 </p>
               )}
 
+              <p className="faint" style={{ marginTop: "1.25rem", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+                {t("poseidonNote")}
               <p
                 className="faint"
                 style={{
@@ -978,7 +1079,6 @@ function VerifyInner() {
   );
 }
 
-// useSearchParams() must be inside a Suspense boundary in the App Router.
 export default function VerifyPage() {
   return (
     <Suspense fallback={null}>

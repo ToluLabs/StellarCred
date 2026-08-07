@@ -67,6 +67,11 @@ jobs:
         working-directory: .
         run: |
           NOTES=$(npx --yes conventional-changelog-cli -p angular -r 1 --outfile /dev/stdout 2>/dev/null)
+          # Store as multiline env var
+          {
+            echo "RELEASE_NOTES<<EOF"
+            echo "$NOTES"
+            echo "EOF"
           # Store as multiline env var using a random delimiter to avoid EOF injection
           DELIM=$(openssl rand -hex 8)
           {
@@ -83,6 +88,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
           # Only commit if there are staged changes
+          git diff --cached --quiet || git commit -m "chore: update CHANGELOG.md for ${{ github.ref_name }} [skip ci]"
+          git push origin HEAD:main
           if ! git diff --cached --quiet; then
             git commit -m "chore: update CHANGELOG.md for ${{ github.ref_name }} [skip ci]"
             # Fetch the latest main and retry rebase/push in case of concurrent merges

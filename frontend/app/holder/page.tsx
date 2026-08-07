@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -128,6 +130,7 @@ function CredCard({
   };
 }) {
   const status = proofStatus(c);
+  const t = useTranslations("holder");
   const { events } = useProofTimeline(c);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -141,6 +144,97 @@ function CredCard({
             <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
           </div>
           <div style={{ fontSize: "0.75rem", color: "var(--faint)", marginTop: "0.15rem" }}>
+            {c.issuer} · <span>{truncateHash(c.commitment)}</span>
+          <div style={{ fontSize: "0.75rem", color: "var(--faint)", marginTop: "0.15rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            {c.issuer} · <span>{truncateHash(c.commitment)}</span>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={onInspect}
+              title="View details"
+              style={{ padding: "0.1rem 0.2rem", color: "var(--faint)", lineHeight: 0 }}
+            >
+              <IconInfoCircle size={12} />
+            </button>
+            {status === "proved" && (
+              <>
+                {" · "}
+                <span style={{ color: "var(--accent)", opacity: 0.75 }}>
+                  {t("expiresIn", { days: daysRemaining(c) })}
+                  expires in {daysRemaining(c)}d
+                </span>
+                {c.provedTxHash && (
+                  <>
+                    {" · "}
+                    <a
+                      href={EXPLORER_TX(c.provedTxHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: "inherit", display: "inline-flex", alignItems: "center", gap: "0.15rem" }}
+                    >
+                      {c.provedTxHash.slice(0, 6)}…<IconExternalLink size={10} />
+                    </a>
+                  </>
+                )}
+              </>
+            )}
+            {status === "expired" && (
+              <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>{t("expired")}</span></>
+            )}
+        {/* left: selection + credential info */}
+        <div className="row" style={{ gap: "0.75rem", alignItems: "center", minWidth: 0 }}>
+          {selection && (
+            <input
+              type="checkbox"
+              aria-label={`Include ${c.title} in batch`}
+              checked={selection.checked}
+              // A blocked card stays clickable so the click can explain why it
+              // was refused — a silently disabled checkbox teaches nothing.
+              onChange={selection.onToggle}
+              title={selection.blockedReason ?? undefined}
+              style={{
+                width: 15,
+                height: 15,
+                flexShrink: 0,
+                cursor: "pointer",
+                accentColor: "var(--accent)",
+                opacity: !selection.checked && selection.blockedReason ? 0.4 : 1,
+              }}
+            />
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{c.title}</span>
+              <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
+            </div>
+            <div style={{ fontSize: "0.75rem", color: "var(--faint)", marginTop: "0.15rem" }}>
+              {c.issuer} · <span>{truncateHash(c.commitment)}</span>
+              {status === "proved" && (
+                <>
+                  {" · "}
+                  <span style={{ color: "var(--accent)", opacity: 0.75 }}>
+                    expires in {daysRemaining(c)}d
+                  </span>
+                  {c.provedTxHash && (
+                    <>
+                      {" · "}
+                      <a
+                        href={EXPLORER_TX(c.provedTxHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "inherit", display: "inline-flex", alignItems: "center", gap: "0.15rem" }}
+                      >
+                        {c.provedTxHash.slice(0, 6)}…<IconExternalLink size={10} />
+                      </a>
+                    </>
+                  )}
+                </>
+              )}
+              {status === "expired" && (
+                <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>expired</span></>
+              )}
+            </div>
+              <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>expired</span></>
+            )}
             <div>
               {c.issuer} · <span>{truncateHash(c.commitment)}</span>
               {status === "proved" && (
@@ -181,19 +275,33 @@ function CredCard({
         </div>
 
         {/* right: badges + button + trash */}
+        <div className="row" style={{ gap: "0.4rem", flexShrink: 0 }}>
+          <Badge variant="verified" dot={false}>{t("held")}</Badge>
+          {status === "proved" && <Badge variant="verified" dot={false}>{t("onChain")}</Badge>}
         <div className="card-actions">
           {isPreview && <Badge variant="pending">Preview</Badge>}
           <Badge variant="verified" dot={false}>Held</Badge>
           {status === "proved" && <Badge variant="verified" dot={false}>On-chain</Badge>}
           <button
             className={`btn btn-sm ${status === "proved" ? "btn-secondary" : "btn-primary"}`}
+            disabled={!address}
+            title={!address ? t("connectWalletToProve") : undefined}
             disabled={!address || credIsExpired(c)}
             title={!address ? "Connect a wallet first" : credIsExpired(c) ? "This credential has expired" : undefined}
             onClick={onProve}
           >
-            {status === "proved"  ? "Re-prove" :
-             status === "expired" ? "Re-prove" :
-                                    "Generate proof"}
+            {status === "proved"  ? t("reprove") :
+             status === "expired" ? t("reprove") :
+                                    t("generateProof")}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            title={t("remove")}
+            title="Transfer to another device"
+            onClick={onTransfer}
+            style={{ padding: "0.3rem 0.4rem", color: "var(--faint)" }}
+          >
+            <IconQrcode size={13} />
           </button>
           <button
             className="btn btn-ghost btn-sm"
@@ -266,6 +374,10 @@ function HolderInner() {
   const [creds, setCreds] = useState<Credential[]>([]);
   const [view, setView] = useState<PageView>({ kind: "list" });
   const [importing, setImporting] = useState(false);
+  const t = useTranslations("holder");
+  const [transferCred, setTransferCred] = useState<Credential | null>(null);
+  const [importScanning, setImportScanning] = useState(false);
+  const [importPayload, setImportPayload] = useState<string | null>(null);
   const [detailCred, setDetailCred] = useState<Credential | null>(null);
 
   useEffect(() => setCreds(loadCredentials()), []);
@@ -366,8 +478,8 @@ function HolderInner() {
     <>
       <div className="between" style={{ marginBottom: "2.5rem" }}>
         <div>
-          <span className="eyebrow">Holder</span>
-          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
+          <span className="eyebrow">{t("eyebrow")}</span>
+          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>{t("title")}</h1>
         </div>
         <WalletButton />
       </div>
@@ -422,13 +534,12 @@ function HolderInner() {
               style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
             >
               <IconCertificate size={30} stroke={1.3} color="var(--faint)" />
-              <h3 style={{ margin: "1rem 0 0.4rem" }}>No credentials yet</h3>
+              <h3 style={{ margin: "1rem 0 0.4rem" }}>{t("emptyTitle")}</h3>
               <p className="muted" style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}>
-                Get a credential from a trusted issuer, then generate a
-                zero-knowledge proof to verify it on-chain.
+                {t("emptyBody")}
               </p>
               <a href="/verify" className="btn btn-primary btn-sm" style={{ display: "inline-flex" }}>
-                Get a credential
+                {t("emptyCta")}
                 <IconArrowRight size={14} />
               </a>
             </div>
@@ -437,7 +548,7 @@ function HolderInner() {
           {/* ── Credentials to prove ── */}
           {unproved.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>Ready to prove</SectionLabel>
+              <SectionLabel>{t("sectionReady")}</SectionLabel>
               {unproved.map((c) => (
                 <CredCard
                   key={c.commitment}
@@ -517,7 +628,7 @@ function HolderInner() {
           {/* ── Already proved ── */}
           {proved.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>On-chain · active proofs</SectionLabel>
+              <SectionLabel>{t("sectionOnChain")}</SectionLabel>
               {proved.map((c) => (
                 <CredCard
                   key={c.commitment}
@@ -534,7 +645,7 @@ function HolderInner() {
 
           {!address && creds.length > 0 && (
             <p className="faint" style={{ fontSize: "0.8125rem" }}>
-              Connect a wallet to generate and submit proofs.
+              {t("connectWalletToProve")}
             </p>
           )}
 
@@ -544,6 +655,14 @@ function HolderInner() {
               onCancel={() => setImporting(false)}
             />
           ) : (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ alignSelf: "flex-start" }}
+              onClick={() => setImporting(true)}
+            >
+              <IconPlus size={14} />
+              {t("importJson")}
+            </button>
             <div className="row" style={{ gap: "0.5rem" }}>
               <button
                 className="btn btn-ghost btn-sm"
@@ -581,6 +700,7 @@ export default function HolderPage() {
 function ImportPanel({ onImport, onCancel }: { onImport: (c: Credential) => void; onCancel: () => void }) {
   const [json, setJson] = useState("");
   const [error, setError] = useState("");
+  const t = useTranslations("holder");
 
   function onAdd() {
     try { onImport(parseCredential(json)); }
@@ -589,18 +709,18 @@ function ImportPanel({ onImport, onCancel }: { onImport: (c: Credential) => void
 
   return (
     <div className="card reveal">
-      <span className="eyebrow">Import credential</span>
+      <span className="eyebrow">{t("importTitle")}</span>
       <textarea
         rows={5}
-        placeholder='{"type":"kyc","commitment":"0x…", …}'
+        placeholder={t("importPlaceholder")}
         value={json}
         onChange={(e) => setJson(e.target.value)}
         style={{ marginTop: "0.75rem" }}
       />
       {error && <p style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.5rem" }}>{error}</p>}
       <div className="row" style={{ marginTop: "1rem", gap: "0.6rem" }}>
-        <button className="btn btn-primary btn-sm" onClick={onAdd} disabled={!json.trim()}>Add credential</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary btn-sm" onClick={onAdd} disabled={!json.trim()}>{t("addCredential")}</button>
+        <button className="btn btn-ghost btn-sm" onClick={onCancel}>{t("cancel")}</button>
       </div>
     </div>
   );
@@ -728,6 +848,7 @@ function ProofFlow({
   const [showRaw, setShowRaw] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const t = useTranslations("holder");
   const toast = useToast();
   const { networkMismatch } = useWallet();
   const { addEvent } = useProofTimeline(cred);
@@ -836,14 +957,14 @@ function ProofFlow({
     <div className="reveal" style={{ maxWidth: 520, margin: "0 auto" }}>
       <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginBottom: "1.5rem" }}>
         <IconArrowLeft size={14} />
-        All credentials
+        {t("allCredentials")}
       </button>
 
       <div className="card" style={{ padding: "1.75rem" }}>
         {/* credential header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <span className="eyebrow" style={{ marginBottom: "0.5rem", display: "block" }}>
-            Proving
+            {t("proving")}
           </span>
           <h2 style={{ marginBottom: "0.25rem" }}>{cred.title}</h2>
           <span className="mono faint" style={{ fontSize: "0.8rem" }}>{cred.claim}</span>
@@ -851,6 +972,23 @@ function ProofFlow({
 
         {/* step list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+          <ProofStep
+            icon={<IconServer size={14} stroke={1.8} />}
+            title={t("proofFlowWitnessTitle")}
+            subtitle={t("proofFlowWitnessSubtitle")}
+            state={
+              stage === "witness"  ? "active" :
+              stage === "error"    ? "idle"   : "done"
+            }
+            detail={
+              stage === "witness" ? <AnimatedDots text={t("proofRunningCircuit")} /> : null
+            }
+          />
+
+          <ProofStep
+            icon={<IconCpu size={14} stroke={1.8} />}
+            title={t("proofFlowProvingTitle")}
+            subtitle={t("proofFlowProvingSubtitle")}
           <style>{`
             .mobile-only-note { display: none; }
             @media (max-width: 600px) { .mobile-only-note { display: block; } }
@@ -869,6 +1007,7 @@ function ProofFlow({
                   <ProvingBar progress={Math.min((elapsed / ESTIMATES.default.expected) * 80, 80)} />
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                      {t("proofGenerating")}
                       {elapsed > ESTIMATES.default.max * 1.5 ? "Taking a bit longer than usual…" :
                        stage === "witness" ? "Generating witness…" :
                        elapsed < 2 ? "Loading circuit…" : "Proving…"}
@@ -890,7 +1029,7 @@ function ProofFlow({
                     ]} />
                   </div>
                   <span style={{ fontSize: "0.72rem", color: "var(--faint)" }}>
-                    First run loads the WASM prover (~5–15 s)
+                    {t("proofFirstRun")}
                   </span>
                 </div>
               ) : proofDone && proof ? (
@@ -908,6 +1047,8 @@ function ProofFlow({
 
           <ProofStep
             icon={<IconCloudUpload size={14} stroke={1.8} />}
+            title={t("proofFlowSubmitTitle")}
+            subtitle={t("proofFlowSubmitSubtitle")}
             title="Submit to Stellar"
             subtitle="ProofRegistry.submit_proof · wallet signature"
             state={
@@ -917,7 +1058,7 @@ function ProofFlow({
             last
             detail={
               stage === "submitting" ? (
-                <AnimatedDots text="Writing to ProofRegistry" style={{ marginTop: "0.35rem" }} />
+                <AnimatedDots text={t("proofWriting")} style={{ marginTop: "0.35rem" }} />
               ) : submitDone ? (
                 <div
                   className="row"
@@ -942,6 +1083,14 @@ function ProofFlow({
 
         {/* CTA */}
         {stage === "generated" && (
+          <button
+            className="btn btn-primary"
+            style={{ marginTop: "1.5rem", width: "100%" }}
+            onClick={onSubmit}
+          >
+            {t("submitToStellar")}
+            <IconArrowRight size={15} />
+          </button>
           <>
             {networkMismatch && (
               <div style={{ marginTop: "1.5rem" }}>
@@ -978,6 +1127,7 @@ function ProofFlow({
           >
             <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
               <IconAlertTriangle size={15} />
+              {error.code !== null ? t("contractError", { code: error.code }) : t("couldNotComplete")}
               {errorPhase === "proving"
                 ? "Proof generation failed"
                 : errorPhase === "submitting"
@@ -991,7 +1141,7 @@ function ProofFlow({
                   onClick={() => setShowRaw((v) => !v)}
                   style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", color: "var(--faint)" }}
                 >
-                  {showRaw ? "Hide" : "Show"} raw error
+                  {showRaw ? t("hideRawError") : t("showRawError")}
                 </button>
                 {showRaw && (
                   <pre
@@ -1045,9 +1195,9 @@ function ProofFlow({
           >
             <Check size={44} run />
             <div>
-              <div style={{ fontWeight: 600, fontSize: "0.9375rem" }}>Proof verified on-chain</div>
+              <div style={{ fontWeight: 600, fontSize: "0.9375rem" }}>{t("confirmedTitle")}</div>
               <div className="muted" style={{ fontSize: "0.8375rem", marginTop: "0.25rem", lineHeight: 1.5 }}>
-                Your claim is live on Stellar for {Math.round(credTtlSecs(cred) / 86_400)} days — without revealing the data behind it.
+                {t("confirmedBody", { days: Math.round(credTtlSecs(cred) / 86_400) })}
               </div>
             </div>
           </div>

@@ -33,6 +33,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "test": "tsx --test src/index.test.ts",
     "test": "vitest run",
     "test:integration": "vitest run test/integration.test.ts",
     "typecheck": "tsc --noEmit",
@@ -51,6 +52,7 @@
     "@stellar/stellar-sdk": "^13.3.0",
     "@types/node": "^20",
     "tsup": "^8.5.1",
+    "tsx": "^4.19.2",
     "typedoc": "^0.28.20",
     "typescript": "^5.9.3",
     "vitest": "^3.1.1"
