@@ -584,6 +584,9 @@ function VerifyInner() {
                       role="radio"
                       aria-checked={on}
                       aria-label={m.title}
+                      aria-disabled={locked}
+                      aria-controls={on ? `panel-${key}` : undefined}
+                      aria-expanded={on}
                       tabIndex={on ? 0 : -1}
                       style={{
                         padding: "0.75rem 0.9rem",

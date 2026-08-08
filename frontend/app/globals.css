@@ -125,7 +125,10 @@ a {
   color: inherit;
   text-decoration: none;
 }
-
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 /* ---- Typography ------------------------------------------------------------- */
 
 h1,
