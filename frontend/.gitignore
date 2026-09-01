@@ -14,3 +14,6 @@ next-env.d.ts
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Hash-chained issuance audit log (written at runtime by /api/issue)
+/.data/

@@ -718,6 +718,60 @@ export async function hasClaims(
   return results;
 }
 
+/** One claim type + optional minimum threshold within a selective-disclosure preset (#386). */
+export interface PresetClaim {
+  type: ClaimType;
+  /** Same semantics as {@link ClaimOptions.minThreshold} — omit for a binary claim. */
+  minThreshold?: number;
+}
+
+/** Result of {@link verifyPreset}. */
+export interface PresetVerificationResult {
+  /** Per-type pass/fail, same shape {@link hasClaims} returns. */
+  results: Partial<Record<ClaimType, boolean>>;
+  /** True only if every claim in the preset passed. */
+  allValid: boolean;
+}
+
+/**
+ * Verifies every claim in a selective-disclosure preset — a holder-defined,
+ * shareable bundle like "Investor onboarding" (kyc + accreditation +
+ * jurisdiction) — against one wallet in a single batched call.
+ *
+ * This is a thin wrapper over {@link hasClaims}: presets themselves are not
+ * an on-chain concept (there is no preset registry), they're just a named,
+ * shareable list of `(type, minThreshold)` pairs a holder defines and a
+ * protocol requests out-of-band (e.g. via the deep link/QR the holder page
+ * generates) — verification is still exactly the same trustless on-chain
+ * `ProofRegistry` read every other claim check in this SDK uses.
+ *
+ * @example
+ * const { allValid, results } = await verifyPreset("G1ABC…", [
+ *   { type: "kyc" },
+ *   { type: "accreditation", minThreshold: 1_000_000 },
+ * ]);
+ * if (allValid) grantAccess();
+ */
+export async function verifyPreset(
+  wallet: string,
+  claims: readonly PresetClaim[],
+  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs">,
+): Promise<PresetVerificationResult> {
+  const types = claims.map((c) => c.type);
+  const minThresholds: Partial<Record<ClaimType, number>> = {};
+  for (const c of claims) {
+    if (c.minThreshold !== undefined) minThresholds[c.type] = c.minThreshold;
+  }
+
+  const results = await hasClaims(wallet, types, {
+    minThresholds,
+    trustedIssuers: opts?.trustedIssuers,
+    requestTimeoutMs: opts?.requestTimeoutMs,
+  });
+  const allValid = types.length > 0 && types.every((t) => results[t] === true);
+  return { results, allValid };
+}
+
 /**
  * Returns every active claim a wallet has proven, across all known credential
  * types. Useful for profile pages and protocol dashboards.
@@ -1091,6 +1145,7 @@ export const StellarCred = {
   getClaim,
   hasClaims,
   getClaims,
+  verifyPreset,
   buildVerifyUrl,
   buildBadgeUrl,
   buildBadgeEmbedCode,

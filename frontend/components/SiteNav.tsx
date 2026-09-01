@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconBook2, IconCode, IconMenu2, IconX } from "@tabler/icons-react";
+import { IconBook2, IconCode, IconMenu2, IconX, IconHelp } from "@tabler/icons-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { resetOnboarding } from "@/lib/onboarding";
 
 const LINKS = [
   { href: "/holder", label: "Wallet" },
@@ -97,6 +98,18 @@ export function SiteNav() {
         </nav>
 
         <div id="mobile-nav-right" className="nav-right">
+          <button
+            type="button"
+            className="seg-link"
+            onClick={() => {
+              resetOnboarding();
+            }}
+            title="Replay onboarding tour"
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+          >
+            <IconHelp size={14} stroke={1.8} />
+            Tour
+          </button>
           <Link
             href="/docs"
             className={`seg-link${pathname.startsWith("/docs") ? " active" : ""}`}

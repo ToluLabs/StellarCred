@@ -97,6 +97,81 @@ export function parseContractError(raw: string): ContractError {
   return { code: null, friendly: raw, raw };
 }
 
+// -- Preflight simulation (Issue #409) ----------------------------------------
+//
+// Before asking the wallet for a signature we run an explicit Soroban
+// simulation of the submit. This catches predictable failures (invalid proof,
+// untrusted issuer, duplicate type, revoked/expired record, paused
+// submissions, …) and estimates the transaction fee **before** the user signs
+// an expensive proof — no wasted signature for a transaction that was doomed.
+// These helpers are pure so the mapping logic is unit-testable without an RPC
+// server.
+
+/** Stellar uses 10^7 stroops per 1 lumen (XLM). */
+export const STROOPS_PER_XLM = 1e7;
+
+/**
+ * Format a fee in stroops as a compact human string, e.g. `12345` →
+ * `"0.0012345 XLM"`. `0`/negative values render as `"0 XLM"`.
+ */
+export function formatFeeXlm(stroops: number): string {
+  if (!Number.isFinite(stroops) || stroops <= 0) return "0 XLM";
+  const xlm = stroops / STROOPS_PER_XLM;
+  const cleaned = xlm
+    .toFixed(7)
+    .replace(/\.?0+$/, ""); // strip trailing zeros (and the dot) for display
+  return `${cleaned || "0"} XLM`;
+}
+
+export interface FeeEstimate {
+  /** Estimated fee in stroops, from the simulation's minimum resource fee. */
+  stroops: number;
+  /** Human display string, e.g. "0.0012345 XLM". */
+  display: string;
+}
+
+export type PreflightResult =
+  | { ok: true; fee: FeeEstimate }
+  | { ok: false; error: ContractError };
+
+/**
+ * Normalize the raw Soroban error string so {@link parseContractError} can map
+ * it to the ProofRegistry error table. Contract errors sometimes arrive as
+ * `Result(ContractError(N))` / `ContractError(Some(N))` rather than the
+ * `Error(Contract, #N)` form the map keys on; fold those into the canonical
+ * form while leaving already-canonical strings untouched.
+ */
+export function normalizeSimulationError(raw: string): string {
+  if (!raw) return raw;
+  if (raw.includes("Error(Contract,")) return raw;
+  const m = raw.match(/ContractError\((?:Some\()?(\d+)/);
+  if (m) return `Error(Contract, #${m[1]})`;
+  return raw;
+}
+
+/**
+ * Pure mapping from a Soroban simulation outcome to a {@link PreflightResult}.
+ * Keeping this split from the network call lets the fee/extraction and error
+ * mapping be exercised in unit tests with plain-object fixtures.
+ */
+export function evaluateSimulation(outcome: {
+  success: boolean;
+  minResourceFee?: number;
+  error?: string;
+}): PreflightResult {
+  if (!outcome.success) {
+    return {
+      ok: false,
+      error: parseContractError(normalizeSimulationError(outcome.error ?? "")),
+    };
+  }
+  const stroops =
+    Number.isFinite(outcome.minResourceFee) && (outcome.minResourceFee as number) > 0
+      ? Math.floor(outcome.minResourceFee as number)
+      : 0;
+  return { ok: true, fee: { stroops, display: formatFeeXlm(stroops) } };
+}
+
 export interface VerificationStatus {
   valid: boolean;
   verifiedAt: number;
@@ -192,54 +267,101 @@ export interface ProofSubmissionParams {
 export const MAX_BATCH_SIZE = 5;
 
 /**
- * Submit multiple proofs in a single atomic transaction via
- * ProofRegistry.submit_proofs.
- *
- * All proofs are verified on-chain before anything is stored. If any one proof
- * fails, the entire call reverts. Max batch size is {@link MAX_BATCH_SIZE}
- * (enforced by the contract, and re-checked here).
- *
- * Returns the confirmed transaction hash.
+ * Build the single-credential `submit_proof` operation. Shared by the real
+ * {@link submitProof} (send + confirm) and the {@link preflightSubmitProof}
+ * simulation so the simulated and submitted bytes never drift apart.
  */
-export async function submitProofs(params: {
-  holder: string;
-  submissions: ProofSubmissionParams[];
-}): Promise<string> {
-  const { holder, submissions } = params;
+function buildSubmitProofOp(
+  contract: InstanceType<SDK["Contract"]>,
+  o: {
+    holder: string;
+    issuerId: string;
+    credentialType: string;
+    proof: Uint8Array;
+    publicInputs: Uint8Array;
+    expiry: number;
+    vkVersion?: number;
+  },
+): InstanceType<SDK["xdr"]["Operation"]> {
+  const { Address, nativeToScVal, xdr } = sdkSync();
+  return contract.call(
+    "submit_proof",
+    Address.fromString(o.holder).toScVal(),
+    Address.fromString(o.issuerId).toScVal(),
+    nativeToScVal(o.credentialType, { type: "symbol" }),
+    xdr.ScVal.scvBytes(Buffer.from(o.proof)),
+    xdr.ScVal.scvBytes(Buffer.from(o.publicInputs)),
+    o.vkVersion != null
+      ? nativeToScVal(o.vkVersion, { type: "u32" })
+      : nativeToScVal(null, { type: "void" }),
+    nativeToScVal(BigInt(o.expiry), { type: "u64" }),
+  );
+}
 
-  // Both are contract-enforced; failing here costs the caller nothing, whereas
-  // failing on-chain costs a signature and a fee for a transaction that reverts.
-  if (submissions.length === 0) {
-    throw new Error("Batch submission requires at least one proof.");
-  }
-  if (submissions.length > MAX_BATCH_SIZE) {
-    throw new Error(
-      `Batch submission accepts at most ${MAX_BATCH_SIZE} proofs, received ${submissions.length}.`,
-    );
-  }
-  const types = new Set<string>();
-  for (const s of submissions) {
-    if (types.has(s.credentialType)) {
-      // The registry stores one slot per (holder, credential_type), so a
-      // duplicate type in one batch is rejected rather than overwritten.
-      throw new Error(`Batch submission contains two ${s.credentialType} proofs.`);
-    }
-    types.add(s.credentialType);
-  }
-
+/**
+ * Run a read-only Soroban simulation of a submit and map the outcome to a
+ * {@link PreflightResult}: `ok: true` with an estimated fee when the tx would
+ * succeed, or `ok: false` with a human-mapped {@link ContractError} when it
+ * would revert — all before any wallet signature is requested.
+ */
+async function runPreflight(
+  holder: string,
+  buildOp: (contract: InstanceType<SDK["Contract"]>) => InstanceType<SDK["xdr"]["Operation"]>,
+  timeoutSeconds = 60,
+): Promise<PreflightResult> {
   if (!CONTRACTS.proofRegistry) {
-    throw new Error(
-      "ProofRegistry contract id not set. Deploy the contracts and fill NEXT_PUBLIC_PROOF_REGISTRY_ID.",
-    );
+    return {
+      ok: false,
+      error: {
+        code: null,
+        friendly:
+          "ProofRegistry contract id not set. Deploy the contracts and fill NEXT_PUBLIC_PROOF_REGISTRY_ID.",
+        raw: "NEXT_PUBLIC_PROOF_REGISTRY_ID missing",
+      },
+    };
   }
 
-  const { Contract, TransactionBuilder, Address, nativeToScVal, xdr, BASE_FEE } =
-    await sdk();
+  const { Contract, TransactionBuilder, rpc, BASE_FEE } = await sdk();
   const srv = await getServer();
-
   const account = await srv.getAccount(holder);
   const contract = new Contract(CONTRACTS.proofRegistry);
-  const now = Math.floor(Date.now() / 1000);
+  const op = buildOp(contract);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(op)
+    .setTimeout(timeoutSeconds)
+    .build();
+
+  const sim = await srv.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    const err =
+      typeof sim.error === "string"
+        ? sim.error
+        : JSON.stringify(sim.error ?? "Transaction would fail");
+    return evaluateSimulation({ success: false, error: err });
+  }
+
+  // Soroban success responses carry the minimum resource fee (in stroops);
+  // older endpoints may omit it, in which case we report 0 rather than fail.
+  const fee = Number((sim as { minResourceFee?: string | number }).minResourceFee ?? 0);
+  return evaluateSimulation({ success: true, minResourceFee: Number.isFinite(fee) ? fee : 0 });
+}
+
+/**
+ * Build the batch `submit_proofs` operation from a list of submissions.
+ * Shared by the real {@link submitProofs} and the {@link preflightSubmitProofs}
+ * simulation so the simulated and submitted bytes never drift apart.
+ */
+function buildSubmitProofsOp(
+  contract: InstanceType<SDK["Contract"]>,
+  holder: string,
+  submissions: ProofSubmissionParams[],
+  now: number,
+): InstanceType<SDK["xdr"]["Operation"]> {
+  const { Address, nativeToScVal, xdr } = sdkSync();
 
   // Build each ProofSubmission as an XDR map (struct).
   const submissionVals = submissions.map((s) => {
@@ -292,11 +414,94 @@ export async function submitProofs(params: {
     ]);
   });
 
-  const op = contract.call(
+  return contract.call(
     "submit_proofs",
     Address.fromString(holder).toScVal(),
     xdr.ScVal.scvVec(submissionVals),
   );
+}
+
+/**
+ * Run a preflight simulation of a single `submit_proof`, mapping any
+ * predictable failure to the ProofRegistry error table and estimating the fee,
+ * **without** requesting a wallet signature. Call this before {@link submitProof}
+ * to let the user see both the estimated fee and a human failure reason.
+ */
+export async function preflightSubmitProof(params: {
+  holder: string;
+  issuerId: string;
+  credentialType: string;
+  proof: Uint8Array;
+  publicInputs: Uint8Array;
+  ttlSecs: number;
+  /** VK version. Omit or pass undefined to use latest. */
+  vkVersion?: number;
+}): Promise<PreflightResult> {
+  const { holder, issuerId, credentialType, proof, publicInputs, ttlSecs, vkVersion } = params;
+  const expiry = Math.floor(Date.now() / 1000) + ttlSecs;
+  return runPreflight(holder, (contract) =>
+    buildSubmitProofOp(contract, {
+      holder,
+      issuerId,
+      credentialType,
+      proof,
+      publicInputs,
+      expiry,
+      vkVersion,
+    }),
+  );
+}
+
+/**
+ * Submit multiple proofs in a single atomic transaction via
+ * ProofRegistry.submit_proofs.
+ *
+ * All proofs are verified on-chain before anything is stored. If any one proof
+ * fails, the entire call reverts. Max batch size is {@link MAX_BATCH_SIZE}
+ * (enforced by the contract, and re-checked here).
+ *
+ * Returns the confirmed transaction hash.
+ */
+export async function submitProofs(params: {
+  holder: string;
+  submissions: ProofSubmissionParams[];
+}): Promise<string> {
+  const { holder, submissions } = params;
+
+  // Both are contract-enforced; failing here costs the caller nothing, whereas
+  // failing on-chain costs a signature and a fee for a transaction that reverts.
+  if (submissions.length === 0) {
+    throw new Error("Batch submission requires at least one proof.");
+  }
+  if (submissions.length > MAX_BATCH_SIZE) {
+    throw new Error(
+      `Batch submission accepts at most ${MAX_BATCH_SIZE} proofs, received ${submissions.length}.`,
+    );
+  }
+  const types = new Set<string>();
+  for (const s of submissions) {
+    if (types.has(s.credentialType)) {
+      // The registry stores one slot per (holder, credential_type), so a
+      // duplicate type in one batch is rejected rather than overwritten.
+      throw new Error(`Batch submission contains two ${s.credentialType} proofs.`);
+    }
+    types.add(s.credentialType);
+  }
+
+  if (!CONTRACTS.proofRegistry) {
+    throw new Error(
+      "ProofRegistry contract id not set. Deploy the contracts and fill NEXT_PUBLIC_PROOF_REGISTRY_ID.",
+    );
+  }
+
+  const { Contract, TransactionBuilder, BASE_FEE } = await sdk();
+  const srv = await getServer();
+
+  const account = await srv.getAccount(holder);
+  const contract = new Contract(CONTRACTS.proofRegistry);
+  const now = Math.floor(Date.now() / 1000);
+
+  const op = buildSubmitProofsOp(contract, holder, submissions, now);
 
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -349,6 +554,62 @@ export async function submitProofs(params: {
 }
 
 /**
+ * Run a preflight simulation of a batched `submit_proofs`, mapping any
+ * predictable failure to the ProofRegistry error table and estimating the fee,
+ * **without** requesting a wallet signature. Local invariants that the contract
+ * enforces (empty batch, batch too large, duplicate type) are short-circuited
+ * here as the corresponding contract error so the user sees a human reason
+ * before anything is signed.
+ */
+export async function preflightSubmitProofs(params: {
+  holder: string;
+  submissions: ProofSubmissionParams[];
+}): Promise<PreflightResult> {
+  const { holder, submissions } = params;
+
+  // Mirrors the contract-enforced invariants in submitProofs (the codes match
+  // the ProofRegistry error enum: BatchTooLarge=7, BatchEmpty=8,
+  // DuplicateCredentialType=9). Failing here costs nothing, whereas failing
+  // on-chain costs a signature and a fee for a reverting transaction.
+  if (submissions.length === 0) {
+    return {
+      ok: false,
+      error: { code: 8, friendly: PROOF_REGISTRY_ERRORS[8], raw: "Batch is empty." },
+    };
+  }
+  if (submissions.length > MAX_BATCH_SIZE) {
+    return {
+      ok: false,
+      error: {
+        code: 7,
+        friendly: PROOF_REGISTRY_ERRORS[7],
+        raw: `Batch has ${submissions.length} submissions (max ${MAX_BATCH_SIZE}).`,
+      },
+    };
+  }
+  const types = new Set<string>();
+  for (const s of submissions) {
+    if (types.has(s.credentialType)) {
+      return {
+        ok: false,
+        error: {
+          code: 9,
+          friendly: PROOF_REGISTRY_ERRORS[9],
+          raw: `Duplicate credential type: ${s.credentialType}.`,
+        },
+      };
+    }
+    types.add(s.credentialType);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  return runPreflight(holder, (contract) =>
+    buildSubmitProofsOp(contract, holder, submissions, now),
+    90,
+  );
+}
+
+/**
  * Submit a proof to the ProofRegistry. Returns the confirmed transaction hash.
  */
 export async function submitProof(params: {
@@ -364,21 +625,18 @@ export async function submitProof(params: {
   const { holder, issuerId, credentialType, proof, publicInputs, ttlSecs, vkVersion } = params;
   const expiry = Math.floor(Date.now() / 1000) + ttlSecs;
 
-  return sendAndConfirm(holder, (contract) => {
-    const { Address, nativeToScVal, xdr } = sdkSync();
-    return contract.call(
-      "submit_proof",
-      Address.fromString(holder).toScVal(),
-      Address.fromString(issuerId).toScVal(),
-      nativeToScVal(credentialType, { type: "symbol" }),
-      xdr.ScVal.scvBytes(Buffer.from(proof)),
-      xdr.ScVal.scvBytes(Buffer.from(publicInputs)),
-      vkVersion != null
-        ? nativeToScVal(vkVersion, { type: "u32" })
-        : nativeToScVal(null, { type: "void" }),
-      nativeToScVal(BigInt(expiry), { type: "u64" }),
-    );
-  }, "Submission");
+  return sendAndConfirm(holder, (contract) =>
+    buildSubmitProofOp(contract, {
+      holder,
+      issuerId,
+      credentialType,
+      proof,
+      publicInputs,
+      expiry,
+      vkVersion,
+    }),
+    "Submission",
+  );
 }
 
 /**

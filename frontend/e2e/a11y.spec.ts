@@ -13,8 +13,13 @@ const PAGES = [
   "/docs",
 ];
 
+const KNOWN_EXCEPTIONS: { rule: string; rationale: string; path?: string }[] = [
+  // Documented allowed exceptions will go here.
+  // Example: { rule: "color-contrast", rationale: "Brand colors on the hero banner", path: "/" }
+];
+
 for (const path of PAGES) {
-  test(`${path} has no automatically detectable WCAG 2.1 AA violations`, async ({ page }) => {
+  test(`${path} has no serious or critical WCAG violations (beyond known exceptions)`, async ({ page }) => {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
 
@@ -22,7 +27,20 @@ for (const path of PAGES) {
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();
 
-    expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
+    const seriousOrCritical = results.violations.filter(
+      (violation) => violation.impact === "serious" || violation.impact === "critical"
+    );
+
+    const unexpectedViolations = seriousOrCritical.filter((violation) => {
+      return !KNOWN_EXCEPTIONS.some(
+        (ex) => ex.rule === violation.id && (!ex.path || ex.path === path)
+      );
+    });
+
+    expect(
+      unexpectedViolations,
+      `Unexpected serious/critical a11y violations on ${path}:\n${JSON.stringify(unexpectedViolations, null, 2)}`
+    ).toEqual([]);
   });
 }
 

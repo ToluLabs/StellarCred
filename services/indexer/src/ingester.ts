@@ -82,6 +82,20 @@ export interface IngesterHealth {
   fetchFailures: number;
 }
 
+/** Prometheus metrics for the ingester. */
+export interface IngesterMetrics {
+  /** Events processed total since the ingester started. */
+  eventsProcessedTotal: number;
+  /** Total fetch errors (all retries exhausted) since start. */
+  fetchErrorsTotal: number;
+  /** Uptime in seconds since the ingester started. */
+  uptimeSeconds: number;
+  /** Latest DB write latency in seconds. */
+  dbWriteLatencySeconds: number;
+  /** Ledgers behind head (head - last processed). */
+  lag: number;
+}
+
 function freshHealth(): IngesterHealth {
   return {
     lastSuccessLedger: 0,
@@ -372,7 +386,7 @@ function parseEvent(
   return { kind: "unknown" };
 }
 
-// ── Ingester ───────────────────────────────────────────────────────────────
+// ── Ingester ────────────────────────────────────────────────────────────────
 
 export interface Ingester {
   /** Run one ingestion cycle (fetch + write). Returns number of events processed. */
@@ -386,8 +400,12 @@ export interface Ingester {
   start(): void;
   /** Stop the polling loop. */
   stop(): void;
+  /** Graceful shutdown: stop scheduling and await in-flight tick. */
+  shutdown(): Promise<void>;
   /** Current health snapshot — safe to read at any time. */
   getHealth(): IngesterHealth;
+  /** Get Prometheus metrics for the ingester. */
+  getMetrics(): IngesterMetrics;
 }
 
 export function createIngester(config: Config, db: Db): Ingester {
@@ -397,7 +415,13 @@ export function createIngester(config: Config, db: Db): Ingester {
 
   let running = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let inFlightTick: Promise<number> | null = null;
   const health = freshHealth();
+
+  // ── Prometheus metrics state ──────────────────────────────────────────
+  const startTime = Date.now();
+  let eventsProcessedTotal = 0;
+  let fetchErrorsTotal = 0;
 
   // ── Fetch current Horizon head ledger (cached per tick) ────────────────
   // We fetch this once at the start of each tick so lag is observable
@@ -470,13 +494,6 @@ export function createIngester(config: Config, db: Db): Ingester {
       url.searchParams.set("cursor", cursor);
     }
 
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      if (res.status === 404) return [];
-      throw new Error(`Horizon responded ${res.status}: ${await res.text()}`);
-    }
-    const page = (await res.json()) as HorizonEventsPage;
-    const records = page._embedded?.records ?? [];
     // Fetch head ledger (best-effort) so lag is visible in /health.
     // We fire this in parallel with the events fetch so we don't add
     // serial latency to every tick.
@@ -485,7 +502,10 @@ export function createIngester(config: Config, db: Db): Ingester {
       (async () => {
         health.fetchAttempts++;
         try {
-          return await fetchEventsWithRetry(url.toString(), AbortSignal.timeout(15_000));
+          return await fetchEventsWithRetry(
+            url.toString(),
+            AbortSignal.timeout(15_000)
+          );
         } catch (err) {
           // All retries exhausted — record the error but do NOT advance cursor.
           health.lastError = (err as Error).message;
@@ -503,13 +523,15 @@ export function createIngester(config: Config, db: Db): Ingester {
       health.consecutiveErrors = 0;
       health.lastError = null;
       health.headLedger = cachedHeadLedger;
-      health.lag = cachedHeadLedger > 0 ? cachedHeadLedger - lastLedger : -1;
-      return 0;
+      health.lag =
+        cachedHeadLedger > 0 ? cachedHeadLedger - (await db.getLastLedger()) : -1;
+      return [];
     }
 
     // Filter out events beyond the finality boundary
     return records.filter((ev) => {
-      const evLedger = typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
+      const evLedger =
+        typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
       return evLedger <= maxLedger;
     });
   }
@@ -542,7 +564,12 @@ export function createIngester(config: Config, db: Db): Ingester {
 
   // ── Core ingestion tick ──────────────────────────────────────────────────
 
+  let lastTickDurationSec = 0;
+let lastTickEnd = Date.now();
+
   async function tick(): Promise<number> {
+    const tickStart = Date.now();
+
     const lastLedger = await db.getLastLedger();
 
     // 1. Determine the network head and the finality-safe ceiling.
@@ -551,7 +578,23 @@ export function createIngester(config: Config, db: Db): Ingester {
       headLedger = await getLedgerHead();
     } catch (err) {
       console.warn("[indexer] Could not fetch ledger head:", (err as Error).message);
+      fetchErrorsTotal++;
       return 0;
+    }
+
+    // 2. Detect potential reorg FIRST: if our cursor claims to have ingested
+    //    a ledger that is now beyond the network head, the chain was likely
+    //    reorged past our last checkpoint. This must run before the
+    //    finality-ceiling early return below — a reorged head is exactly the
+    //    case where (head - lag) has fallen at or below our cursor, which
+    //    would otherwise make reorg detection unreachable.
+    if (lastLedger > headLedger) {
+      console.warn(
+        `[indexer] REORG DETECTED: cursor=${lastLedger} > head=${headLedger}. ` +
+          `Rolling back to head and re-scanning.`
+      );
+      fetchErrorsTotal++;
+      return reconcile(headLedger);
     }
 
     // The finality ceiling: only persist events at or below (head - lag).
@@ -561,17 +604,6 @@ export function createIngester(config: Config, db: Db): Ingester {
     if (finalityCeiling <= lastLedger) {
       // Head hasn't advanced past our cursor + lag yet — nothing to do.
       return 0;
-    }
-
-    // 2. Detect potential reorg: if our cursor claims to have ingested
-    //    a ledger that is now beyond the network head, the chain was
-    //    likely reorged past our last checkpoint.
-    if (lastLedger > headLedger) {
-      console.warn(
-        `[indexer] REORG DETECTED: cursor=${lastLedger} > head=${headLedger}. ` +
-          `Rolling back to head and re-scanning.`
-      );
-      return reconcile(headLedger);
     }
 
     // 3. Build the Horizon cursor. For a fresh start with startLedger
@@ -590,13 +622,24 @@ export function createIngester(config: Config, db: Db): Ingester {
       events = await fetchEvents(cursor, finalityCeiling);
     } catch (err) {
       console.warn("[indexer] Horizon fetch error:", (err as Error).message);
+      fetchErrorsTotal++;
       return 0;
     }
 
-    if (events.length === 0) return 0;
+    if (events.length === 0) {
+      // Successful empty fetch — update lag only.
+      const lag = cachedHeadLedger > 0 ? cachedHeadLedger - (await db.getLastLedger()) : -1;
+      health.lastSuccessLedger = lastLedger;
+      health.headLedger = cachedHeadLedger;
+      health.lag = lag;
+      health.consecutiveErrors = 0;
+      health.lastError = null;
+      return 0;
+    }
 
     // 5. Process events and update cursor.
     const processed = await processEvents(events);
+    eventsProcessedTotal += processed;
 
     // Advance cursor to the highest ledger among processed events.
     let maxLedger = lastLedger;
@@ -608,12 +651,21 @@ export function createIngester(config: Config, db: Db): Ingester {
       await db.setLastLedger(maxLedger);
     }
 
+    const tickEnd = Date.now();
+    const dbWriteLatencySec = (tickEnd - tickStart) / 1000;
+    // Store latest DB write latency for metrics exposure.
+    // (updated after db.setLastLedger above, the latency includes the write)
+
     // Update health on success.
+    const lag = cachedHeadLedger > 0 ? cachedHeadLedger - maxLedger : -1;
     health.lastSuccessLedger = maxLedger;
     health.headLedger = cachedHeadLedger;
-    health.lag = cachedHeadLedger > 0 ? cachedHeadLedger - maxLedger : -1;
+    health.lag = lag;
     health.consecutiveErrors = 0;
     health.lastError = null;
+
+    lastTickDurationSec = (Date.now() - lastTickEnd) / 1000;
+    lastTickEnd = Date.now();
 
     return processed;
   }
@@ -643,7 +695,8 @@ export function createIngester(config: Config, db: Db): Ingester {
     timer = setTimeout(async () => {
       if (!running) return;
       try {
-        const n = await tick();
+        inFlightTick = tick();
+        const n = await inFlightTick;
         if (n > 0) {
           console.log(`[indexer] processed ${n} event(s)`);
         }
@@ -673,8 +726,32 @@ export function createIngester(config: Config, db: Db): Ingester {
         timer = null;
       }
     },
+    async shutdown() {
+      running = false;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (inFlightTick !== null) {
+        console.log("[indexer] Waiting for in-flight tick…");
+        await inFlightTick;
+      }
+      console.log("[indexer] Ingester stopped.");
+    },
     getHealth() {
       return { ...health };
+    },
+    getMetrics(): IngesterMetrics {
+      const now = Date.now();
+      const uptimeSec = (now - startTime) / 1000;
+      const lag = health.lag;
+      return {
+        eventsProcessedTotal,
+        fetchErrorsTotal,
+        uptimeSeconds: uptimeSec,
+        dbWriteLatencySeconds: lastTickDurationSec,
+        lag,
+      };
     },
   };
 }

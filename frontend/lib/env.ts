@@ -75,6 +75,15 @@ const envSchema = z
     // for local dev Persona redirects), and the SDK applies its own default.
     NEXT_PUBLIC_STELLARCRED_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
 
+    // --- Indexer service -------------------------------------------------------
+    // Base URL of services/indexer's HTTP API. Server-only: only
+    // app/api/issuer-stats/route.ts reads it, so it never needs a
+    // NEXT_PUBLIC_ prefix. Defaults to the indexer's own default PORT (3001).
+    INDEXER_URL: z.preprocess(
+      emptyToUndefined,
+      z.string().url().optional(),
+    ),
+
     // Server-only issuer signing key. Optional: absence runs the public demo
     // issuer key (logged loudly on every boot) instead of a real one.
     ISSUER_PRIVATE_KEY: z.preprocess(

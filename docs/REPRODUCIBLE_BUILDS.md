@@ -25,9 +25,25 @@ All build inputs are pinned so the output is deterministic:
 | Cargo dependencies | exact lockfile | `Cargo.lock` (`--locked` flag) |
 | Build profile | `opt-level = "z"`, `lto = true`, `codegen-units = 1`, `strip = "symbols"` | `Cargo.toml` `[profile.release]` |
 | Docker base image | `rust:1.93.1-slim-bookworm@sha256:81ca81aa…` | `docker/Dockerfile.reproducible` |
+| Noir compiler | `1.0.0-beta.9` | `circuits/scripts/build.sh`, `circuits/scripts/testvectors.js` |
+| Barretenberg | `0.87.0` | `circuits/scripts/build.sh`, `circuits/scripts/testvectors.js` |
 
-Do **not** run `cargo update` before verifying — the lockfile must be identical
-to the one at the deployed commit.
+Do **not** run `cargo update` or `nargo update` before verifying — the lockfiles and pinned toolchain must be identical to the ones at the deployed commit.
+
+---
+
+## Circuit VK reproducibility
+
+The circuit verification keys are also deterministic and are published as SHA-256 hashes in `circuits/testvectors/*.json` under the `vk_hash` field. Those files are generated with the exact pinned Noir + Barretenberg toolchain and are checked by the repository's deterministic-proof harness.
+
+### Verify the committed hashes
+
+```bash
+export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+./scripts/verify-vks.sh check
+```
+
+This recompiles each committed circuit and compares the freshly derived `vk_hash`, public inputs, and witness data against the checked-in vectors. A mismatch fails the job, which catches circuit drift or a toolchain bump before any deployment.
 
 ---
 

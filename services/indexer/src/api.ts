@@ -24,8 +24,17 @@
  *   GET /stats
  *     → { stats: StatsRow[] }
  *
- *   GET /recent?limit=20&page=1
- *     → { claims: ClaimRow[], limit: number, page: number }
+ *   GET /recent?limit=20&cursor=<opaque>
+ *     → { claims: ClaimRow[], limit: number, nextCursor: string | null }
+ *
+ *   GET /issuers/:issuer/stats
+ *     → { issuer, total, active, revoked, credential_types: string[], first_seen: number | null }
+ *
+ * /recent uses keyset (cursor) pagination ordered by (ledger_sequence, id) —
+ * the `nextCursor` returned with each page is an opaque token that must be
+ * passed back as `?cursor=` to fetch the next page. Unlike OFFSET pagination
+ * this stays stable (no duplicate/skipped rows) while new claims are ingested
+ * between requests, and the indexed range scan never pays OFFSET's skip cost.
  *
  * All responses are JSON. No write endpoints exist.
  * No identity fields are stored, so all data here is public chain data.
@@ -43,9 +52,37 @@ import type { Config } from "./config";
 import { parseCorsOrigins } from "./config";
 import { createCorsMiddleware } from "./cors";
 import { RateLimiter } from "./rate-limit";
+import type { RecentCursor } from "./db";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
+
+// ── Opaque cursor encoding ───────────────────────────────────────────────────
+// The nextCursor token is the base64url form of "<ledgerSequence>:<id>" — the
+// keyset boundary of the last row on the page. It is opaque to clients: they
+// must echo it back verbatim, never construct or interpret it.
+
+function encodeCursor(cursor: RecentCursor): string {
+  return Buffer.from(`${cursor.ledgerSequence}:${cursor.id}`, "utf8").toString(
+    "base64url"
+  );
+}
+
+function decodeCursor(raw: string): RecentCursor {
+  const decoded = Buffer.from(raw, "base64url").toString("utf8");
+  const [ledgerRaw, idRaw] = decoded.split(":");
+  const ledgerSequence = Number(ledgerRaw);
+  const id = Number(idRaw);
+  if (
+    !Number.isInteger(ledgerSequence) ||
+    !Number.isInteger(id) ||
+    ledgerSequence < 0 ||
+    id < 1
+  ) {
+    throw new Error("invalid cursor");
+  }
+  return { ledgerSequence, id };
+}
 
 // Helper: wrap an async handler and forward errors to next()
 function asyncHandler(
@@ -132,6 +169,73 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
     })
   );
 
+  // ── GET /metrics ──────────────────────────────────────────────────────────
+  // Exposes Prometheus metrics for the indexer.
+  //   - indexer_events_processed_total: total events processed since start
+  //   - indexer_fetch_errors_total: total fetch errors since start
+  //   - indexer_uptime_seconds: uptime in seconds since start
+  //   - indexer_db_write_latency_seconds: latest tick DB write latency in seconds
+  //   - indexer_ledgers_behind_head: ledgers between head and last processed
+  //
+  // This endpoint is left public (no auth required) so monitoring stacks can
+  // scrape it, but it is separate from the claim API routes so it is not
+  // colliding with public dApp/wallet endpoints. If operators want to gate it,
+  // they can add a reverse-proxy or firewall rule in front of /metrics.
+  app.get(
+    "/metrics",
+    asyncHandler(async (_req, res) => {
+      const metrics = ingester.getMetrics();
+      const lines: string[] = [];
+
+      // Events processed total
+      lines.push(
+        `# HELP indexer_events_processed_total Total number of events processed since the ingester started.`,
+      );
+      lines.push(
+        `# TYPE indexer_events_processed_total counter`,
+      );
+      lines.push(`indexer_events_processed_total ${metrics.eventsProcessedTotal}`);
+
+      // Fetch errors total
+      lines.push(
+        `# HELP indexer_fetch_errors_total Total number of fetch errors (all retries exhausted) since start.`,
+      );
+      lines.push(
+        `# TYPE indexer_fetch_errors_total counter`,
+      );
+      lines.push(`indexer_fetch_errors_total ${metrics.fetchErrorsTotal}`);
+
+      // Uptime in seconds
+      lines.push(
+        `# HELP indexer_uptime_seconds Uptime in seconds since the ingester started.`,
+      );
+      lines.push(
+        `# TYPE indexer_uptime_seconds gauge`,
+      );
+      lines.push(`indexer_uptime_seconds ${metrics.uptimeSeconds}`);
+
+      // DB write latency in seconds
+      lines.push(
+        `# HELP indexer_db_write_latency_seconds Latest tick DB write latency in seconds.`,
+      );
+      lines.push(
+        `# TYPE indexer_db_write_latency_seconds gauge`,
+      );
+      lines.push(`indexer_db_write_latency_seconds ${metrics.dbWriteLatencySeconds}`);
+
+      // Ledgers behind head
+      lines.push(
+        `# HELP indexer_ledgers_behind_head Number of ledgers between network head and last processed ledger.`,
+      );
+      lines.push(
+        `# TYPE indexer_ledgers_behind_head gauge`,
+      );
+      lines.push(`indexer_ledgers_behind_head ${metrics.lag}`);
+
+      res.type("text/plain").send(lines.join("\n") + "\n");
+    })
+  );
+
   // ── GET /claims?wallet=G… ────────────────────────────────────────────────
   app.get(
     "/claims",
@@ -158,21 +262,53 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
     })
   );
 
-  // ── GET /recent?limit=20&page=1 ──────────────────────────────────────────
+  // ── GET /recent?limit=20&cursor=<opaque> ──────────────────────────────────
   app.get(
     "/recent",
     asyncHandler(async (req, res) => {
       const rawLimit = parseInt(String(req.query["limit"] ?? DEFAULT_LIMIT), 10);
-      const rawPage = parseInt(String(req.query["page"] ?? 1), 10);
-
       const limit = isNaN(rawLimit) || rawLimit < 1
         ? DEFAULT_LIMIT
         : Math.min(rawLimit, MAX_LIMIT);
-      const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
-      const offset = (page - 1) * limit;
 
-      const claims = await db.recent(limit, offset);
-      res.json({ claims, limit, page });
+      // Cursor is optional — omit it (or pass cursor=) to start at the newest
+      // claims. A malformed cursor is a client error, not silently page 1.
+      const rawCursor = req.query["cursor"];
+      let cursor: RecentCursor | null = null;
+      if (rawCursor != null && String(rawCursor).trim() !== "") {
+        try {
+          cursor = decodeCursor(String(rawCursor));
+        } catch {
+          res.status(400).json({ error: "invalid cursor" });
+          return;
+        }
+      }
+
+      const { claims, nextCursor } = await db.recent(limit, cursor);
+      res.json({
+        claims,
+        limit,
+        nextCursor: nextCursor ? encodeCursor(nextCursor) : null,
+      });
+    })
+  );
+
+  // ── GET /issuers/:issuer/stats ───────────────────────────────────────────
+  // Reputation stats derived entirely from indexed events (#398) — how many
+  // credentials an issuer has issued, active vs revoked, which credential
+  // types they cover, and how long they've been indexed. Public: this is the
+  // same class of aggregate chain data /stats already exposes, just sliced
+  // by issuer instead of by credential_type.
+  app.get(
+    "/issuers/:issuer/stats",
+    asyncHandler(async (req, res) => {
+      const issuer = req.params["issuer"];
+      if (typeof issuer !== "string" || issuer.trim() === "") {
+        res.status(400).json({ error: "issuer path parameter is required" });
+        return;
+      }
+      const stats = await db.issuerStats(issuer.trim());
+      res.json(stats);
     })
   );
 

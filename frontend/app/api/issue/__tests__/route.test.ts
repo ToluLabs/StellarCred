@@ -16,6 +16,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
+import path from "path";
+import os from "os";
 
 const HOLDER = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const ISSUER_ID = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2";
@@ -239,6 +241,90 @@ describe("no identity leakage", () => {
         expect(logged).not.toMatch(/first_name|last_name|id_number|first-name|last-name|id-number/);
       }
     }
+  });
+});
+
+describe("issuance audit log (hash-chained, PII-free)", () => {
+  // Each test points AUDIT_LOG_PATH at a throwaway file so the chain asserted
+  // here is exactly what this test produced (the default path could carry
+  // entries from earlier runs / other tests).
+  afterEach(() => {
+    delete process.env.AUDIT_LOG_PATH;
+  });
+
+  it("appends one PII-free, chained entry per issued commitment", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    process.env.AUDIT_LOG_PATH = path.join(
+      os.tmpdir(),
+      `stellarcred-audit-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`,
+    );
+
+    const { POST } = await loadRoute();
+    // Imported after loadRoute()'s vi.resetModules() so this resolves to the
+    // same fresh audit-log module instance route.ts just imported.
+    const { auditLogEntries, auditLogVerify, auditLogSize } = await import("@/lib/audit-log");
+
+    const res = await POST(
+      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
+    );
+    expect(res.status).toBe(200);
+    const { credentials } = await res.json();
+    expect(credentials).toHaveLength(1);
+
+    expect(auditLogSize()).toBe(1);
+    const [entry] = auditLogEntries();
+    expect(entry.index).toBe(0);
+    expect(entry.commitment).toBe(credentials[0].commitment);
+    expect(entry.issuer).toBe(ISSUER_ID);
+    expect(entry.timestamp).toBe(credentials[0].issuedAt);
+    expect(entry.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(auditLogVerify().valid).toBe(true);
+
+    // The audit entry itself carries no identity data.
+    expect(JSON.stringify(entry)).not.toMatch(
+      /holder|wallet|first_name|last_name|id_number|date_of_birth|value|salt/,
+    );
+  });
+
+  it("chains successive issuances and persists a file a fresh verifier accepts", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    const auditFile = path.join(
+      os.tmpdir(),
+      `stellarcred-audit-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`,
+    );
+    process.env.AUDIT_LOG_PATH = auditFile;
+
+    const { POST } = await loadRoute();
+    const { auditLogEntries, auditLogVerify, readAuditLogFile, verifyAuditChain } =
+      await import("@/lib/audit-log");
+
+    const res1 = await POST(
+      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
+    );
+    expect(res1.status).toBe(200);
+    const res2 = await POST(
+      postRequest({
+        credential_types: ["age"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+        attributes: { date_of_birth: "1995-06-15" },
+      }),
+    );
+    expect(res2.status).toBe(200);
+
+    const entries = auditLogEntries();
+    expect(entries).toHaveLength(2);
+    expect(entries[1].index).toBe(1);
+    expect(entries[1].prevHash).toBe(entries[0].hash);
+    expect(entries[1].hash).not.toBe(entries[0].hash);
+    expect(auditLogVerify().valid).toBe(true);
+
+    // The persisted file must be accepted by an independent verifier reading
+    // from disk — i.e. `pnpm verify:audit-log` semantics.
+    const reloaded = await readAuditLogFile(auditFile);
+    expect(reloaded).toHaveLength(2);
+    expect(reloaded).toEqual(entries);
+    expect(verifyAuditChain(reloaded).valid).toBe(true);
   });
 });
 
