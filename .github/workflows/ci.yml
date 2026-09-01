@@ -121,6 +121,14 @@ jobs:
           export PATH="$HOME/.nargo/bin:$PATH"
           noirup -v 1.0.0-beta.9
 
+      - name: Install Barretenberg
+        shell: bash
+        run: |
+          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          export PATH="$HOME/.bb:$PATH"
+          source "$HOME/.bashrc" 2>/dev/null || true
+          bbup -v 0.87.0
+
       - name: Compile circuits
         run: |
           export PATH="$HOME/.nargo/bin:$PATH"
@@ -128,6 +136,11 @@ jobs:
             echo "=== $dir ==="
             (cd "$dir" && nargo compile)
           done
+
+      - name: Verify deterministic VK hashes
+        run: |
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$PATH"
+          bash ../scripts/verify-vks.sh check
 
       - name: Check staged artifacts are current
         run: |

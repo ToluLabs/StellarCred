@@ -79,6 +79,93 @@ export class WalletConnectError extends Error {
   }
 }
 
+/**
+ * How the UI should present one wallet-connect error. Each `WalletErrorKind`
+ * maps to a distinct, actionable message instead of one generic "wallet error"
+ * toast, and `benign` flags user-cancellation (dismissed/rejected) so those are
+ * shown as a gentle note rather than a scary hard error.
+ *
+ * `action` tells the renderer which primary affordance to attach:
+ *   - "install"    → link the user to the wallet's install url
+ *   - "retry"      → a single "Try again" button
+ *   - "retry-report" → "Try again" plus a way to report persistent failures
+ */
+export type WalletErrorAction = "install" | "retry" | "retry-report";
+
+export interface WalletErrorInfo {
+  /** Short headline, e.g. "Wallet not installed". */
+  title: string;
+  /** Full, actionable guidance for this specific error. */
+  message: string;
+  /** Primary action to attach. */
+  action: WalletErrorAction;
+  /** True for user-cancellation (dismissed/rejected) — not a hard error. */
+  benign: boolean;
+}
+
+/**
+ * Map a thrown connect error to the human-facing title/message/action the UI
+ * renders for its kind. This is the single source of truth for the per-kind
+ * copy, kept pure & exported so it can be unit-tested for every kind.
+ */
+export function getWalletErrorInfo(err: WalletConnectError): WalletErrorInfo {
+  switch (err.kind) {
+    case "not-installed":
+      return {
+        title: "Wallet not installed",
+        message: err.walletName
+          ? `${err.walletName} isn't installed. Install it, or pick another wallet from the list to continue.`
+          : "No Stellar wallet extension was found. Install one, or pick another wallet from the list to continue.",
+        action: "install",
+        benign: false,
+      };
+    case "dismissed":
+      return {
+        title: "Connection cancelled",
+        message: "You closed the wallet window, so nothing was connected. Just try again when you're ready.",
+        action: "retry",
+        benign: true,
+      };
+    case "rejected":
+      return {
+        title: "Connection declined",
+        message: "The wallet declined the connection. If that was a mistake, try again.",
+        action: "retry",
+        benign: true,
+      };
+    case "timeout":
+      return {
+        title: "Wallet didn't respond",
+        message: "The wallet didn't respond in time. Check that its popup or extension is open, then try again.",
+        action: "retry",
+        benign: false,
+      };
+    case "unknown":
+    default:
+      return {
+        title: "Something went wrong",
+        message: "We couldn't connect to your wallet. Please try again — and report it if it keeps happening.",
+        action: "retry-report",
+        benign: false,
+      };
+  }
+}
+
+/**
+ * Pre-filled GitHub issue link used as the "report it" affordance for
+ * `unknown` connection failures, so users have a concrete way to surface bugs.
+ */
+export function getWalletReportUrl(): string {
+  const url = new URL("https://github.com/ToluLabs/StellarCred/issues/new");
+  url.searchParams.set("labels", "bug");
+  url.searchParams.set("title", "Wallet connection failed (unknown error)");
+  url.searchParams.set(
+    "body",
+    "**What were you doing?**\nTrying to connect a Stellar wallet and got a generic failure.\n\n**What did you expect?**\nThe wallet to connect.\n\n**What happened instead?**\nAn unknown error",
+  );
+  return url.toString();
+}
+
 // Map whatever the kit/wallet extension throws into one of our known error
 // kinds. There's no stable, documented string for "user declined in the
 // extension popup" (it's internal to each wallet extension, not the npm

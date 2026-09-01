@@ -91,7 +91,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const err = e instanceof WalletConnectError
         ? e
         : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
-      if (err.kind !== "dismissed") setError(err);
+      // Surface every kind — including "dismissed". Cancellations are rendered
+      // as a benign note (not a hard error) via WalletErrorInfo.benign, per
+      // the per-kind error mapping requirement.
+      setError(err);
     } finally {
       setConnecting(false);
     }

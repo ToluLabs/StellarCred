@@ -20,12 +20,12 @@ import { buildApp } from "./api";
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // ── Database ─────────────────────────────────────────────────────────────
+  // ── Database ────────────────────────────────────────────────────────────
   const db = createDb(config);
   await db.migrate();
   console.log(`[indexer] Database ready (driver: ${config.dbDriver})`);
 
-  // ── Ingester ──────────────────────────────────────────────────────────────
+  // ── Ingester ────────────────────────────────────────────────────────────
   const ingester = createIngester(config, db);
   ingester.start();
 
@@ -39,10 +39,11 @@ async function main(): Promise<void> {
   });
   console.log(`[indexer] HTTP API listening on :${config.port}`);
 
-  // ── Graceful shutdown ─────────────────────────────────────────────────────
+  // ── Graceful shutdown ───────────────────────────────────────────────────
   const shutdown = async (): Promise<void> => {
     console.log("[indexer] Shutting down…");
     ingester.stop();
+    await ingester.shutdown();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await db.close();
     console.log("[indexer] Goodbye.");

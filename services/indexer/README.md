@@ -87,13 +87,21 @@ Returns aggregated claim counts grouped by credential type.
 }
 ```
 
-### 4. `GET /recent?limit=20&page=1`
-Returns recent active (non-revoked) verified claims. Supports pagination via `limit` (max 100) and `page`.
+### 4. `GET /recent?limit=20&cursor=<opaque>`
+Returns recent active (non-revoked) verified claims, newest first.
+
+Pagination is **keyset (cursor) based** — ordered by `(ledger_sequence, id)` and
+driven by the opaque `nextCursor` returned with each page, so the feed stays
+stable (no duplicates or skipped rows) while new claims are ingested between
+requests, and there is no OFFSET skip cost on large tables. Omit `cursor` for
+the first page; a `null` `nextCursor` means there are no more claims. `limit`
+(default `20`, clamped to a max of `100`) controls the page size.
+
 ```json
 {
   "claims": [...],
   "limit": 20,
-  "page": 1
+  "nextCursor": "MTA6MTI="
 }
 ```
 

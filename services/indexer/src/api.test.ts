@@ -11,7 +11,7 @@ import { buildApp } from "./api";
 import { createSqliteDb } from "./db";
 import type { Db } from "./db";
 import type { Config } from "./config";
-import type { Ingester, IngesterHealth } from "./ingester";
+import type { Ingester, IngesterHealth, IngesterMetrics } from "./ingester";
 
 import os from "os";
 import path from "path";
@@ -34,11 +34,21 @@ function makeIngester(overrides?: Partial<IngesterHealth>): Ingester {
     fetchFailures: 0,
     ...overrides,
   };
+  const metrics: IngesterMetrics = {
+    eventsProcessedTotal: 0,
+    fetchErrorsTotal: 0,
+    uptimeSeconds: 0,
+    dbWriteLatencySeconds: 0,
+    lag: -1,
+    ...overrides,
+  };
   return {
     tick: async () => 0,
+    reconcile: async () => 0,
     start: () => {},
     stop: () => {},
     getHealth: () => ({ ...health }),
+    getMetrics: () => ({ ...metrics }),
   };
 }
 
@@ -187,29 +197,41 @@ describe("GET /stats", () => {
 });
 
 // ── /recent ───────────────────────────────────────────────────────────────────
+// /recent uses keyset (cursor) pagination ordered by (ledger_sequence DESC,
+// id DESC): the response carries an opaque nextCursor that must be echoed back
+// as ?cursor= for the next page. These tests pin the stability guarantees that
+// OFFSET pagination could not provide — no duplicates, no skipped rows, even
+// when claims are ingested between page requests.
 
 describe("GET /recent", () => {
-  it("returns empty array when db is empty", async () => {
+  const base = {
+    issuer: "GISSUER",
+    credential_type: "kyc",
+    expiry: 9999999,
+    threshold: null,
+    revoked: 0,
+  };
+
+  function seed(
+    rows: Array<{ wallet: string; verified_at: number; ledger_sequence: number }>
+  ) {
+    const dbc = db as ReturnType<typeof createSqliteDb>;
+    for (const r of rows) {
+      dbc.upsertClaim({ ...base, ...r });
+    }
+  }
+
+  it("returns an empty page with nextCursor null when db is empty", async () => {
     const res = await request(app).get("/recent");
     expect(res.status).toBe(200);
-    expect(res.body.claims).toEqual([]);
+    expect(res.body).toEqual({ claims: [], limit: 20, nextCursor: null });
   });
 
   it("excludes revoked claims", async () => {
-    const base = {
-      issuer: "GISSUER",
-      verified_at: 1000,
-      expiry: 9999999,
-      ledger_sequence: 1,
-      threshold: null,
-    };
-    (db as ReturnType<typeof createSqliteDb>).upsertClaim({
-      ...base, wallet: "GA1", credential_type: "kyc", revoked: 0,
-    });
-    (db as ReturnType<typeof createSqliteDb>).upsertClaim({
-      ...base, wallet: "GA2", credential_type: "kyc", revoked: 0,
-    });
-    // Revoke one
+    seed([
+      { wallet: "GA1", verified_at: 1000, ledger_sequence: 1 },
+      { wallet: "GA2", verified_at: 1000, ledger_sequence: 1 },
+    ]);
     (db as ReturnType<typeof createSqliteDb>).revokeClaim("GA1", "kyc");
 
     const res = await request(app).get("/recent");
@@ -218,29 +240,196 @@ describe("GET /recent", () => {
     expect(res.body.claims[0].wallet).toBe("GA2");
   });
 
-  it("respects limit and page params", async () => {
-    const base = {
-      issuer: "G",
+  it("clamps limit to MAX_LIMIT and falls back to the default for invalid values", async () => {
+    const clamped = await request(app).get("/recent?limit=9999");
+    expect(clamped.status).toBe(200);
+    expect(clamped.body.limit).toBe(100);
+
+    const invalid = await request(app).get("/recent?limit=abc");
+    expect(invalid.status).toBe(200);
+    expect(invalid.body.limit).toBe(20);
+  });
+
+  it("paginates by cursor: every claim exactly once, newest first", async () => {
+    seed([
+      { wallet: "GA1", verified_at: 1000, ledger_sequence: 10 },
+      { wallet: "GA2", verified_at: 2000, ledger_sequence: 20 },
+      { wallet: "GA3", verified_at: 3000, ledger_sequence: 30 },
+      { wallet: "GA4", verified_at: 4000, ledger_sequence: 40 },
+      { wallet: "GA5", verified_at: 5000, ledger_sequence: 50 },
+    ]);
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    while (pages < 10) {
+      const res = await request(app).get(
+        cursor ? `/recent?limit=2&cursor=${encodeURIComponent(cursor)}` : "/recent?limit=2"
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.claims.length).toBeLessThanOrEqual(2);
+      seen.push(...res.body.claims.map((c: { wallet: string }) => c.wallet));
+      cursor = res.body.nextCursor as string | null;
+      pages++;
+      if (cursor === null) break;
+    }
+
+    expect(seen).toEqual(["GA5", "GA4", "GA3", "GA2", "GA1"]);
+  });
+
+  it("stays stable when claims are inserted between page requests", async () => {
+    seed([
+      { wallet: "GA1", verified_at: 1000, ledger_sequence: 10 },
+      { wallet: "GA2", verified_at: 2000, ledger_sequence: 20 },
+      { wallet: "GA3", verified_at: 3000, ledger_sequence: 30 },
+    ]);
+
+    const page1 = await request(app).get("/recent?limit=2");
+    expect(page1.body.claims.map((c: { wallet: string }) => c.wallet)).toEqual([
+      "GA3",
+      "GA2",
+    ]);
+
+    // A newer claim arrives mid-pagination (belongs on a fresh page 1)…
+    seed([{ wallet: "GANEW", verified_at: 6000, ledger_sequence: 60 }]);
+    // …and an older one arrives too (belongs after everything already seen).
+    seed([{ wallet: "GA0", verified_at: 500, ledger_sequence: 5 }]);
+
+    const page2 = await request(app).get(
+      `/recent?limit=2&cursor=${encodeURIComponent(page1.body.nextCursor)}`
+    );
+    // The already-fetched window is untouched: no duplicates, no skipped rows.
+    expect(page2.body.claims.map((c: { wallet: string }) => c.wallet)).toEqual([
+      "GA1",
+      "GA0",
+    ]);
+    expect(page2.body.nextCursor).toBeNull();
+  });
+
+  it("uses the id tiebreaker to page through claims that share a ledger", async () => {
+    seed([
+      { wallet: "GA1", verified_at: 1000, ledger_sequence: 10 },
+      { wallet: "GA2", verified_at: 1000, ledger_sequence: 10 },
+      { wallet: "GA3", verified_at: 1000, ledger_sequence: 10 },
+      { wallet: "GA4", verified_at: 1000, ledger_sequence: 10 },
+    ]);
+
+    const page1 = await request(app).get("/recent?limit=2");
+    expect(page1.body.claims).toHaveLength(2);
+    expect(page1.body.nextCursor).not.toBeNull();
+
+    const page2 = await request(app).get(
+      `/recent?limit=2&cursor=${encodeURIComponent(page1.body.nextCursor)}`
+    );
+    expect(page2.body.claims).toHaveLength(2);
+    expect(page2.body.nextCursor).toBeNull();
+
+    const wallets = [...page1.body.claims, ...page2.body.claims].map(
+      (c: { wallet: string }) => c.wallet
+    );
+    expect(new Set(wallets).size).toBe(4);
+    expect(wallets.sort()).toEqual(["GA1", "GA2", "GA3", "GA4"]);
+  });
+
+  it("rejects a malformed cursor with 400", async () => {
+    const res = await request(app).get("/recent?cursor=not-a-real-cursor");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid cursor");
+  });
+});
+
+// ── /issuers/:issuer/stats ───────────────────────────────────────────────────
+// Reputation stats for one issuer, derived entirely from indexed events (#398).
+
+describe("GET /issuers/:issuer/stats", () => {
+  it("returns a zeroed row for an issuer with no indexed claims", async () => {
+    const res = await request(app).get("/issuers/GUNKNOWN/stats");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      issuer: "GUNKNOWN",
+      total: 0,
+      active: 0,
+      revoked: 0,
+      credential_types: [],
+      first_seen: null,
+    });
+  });
+
+  it("aggregates total/active/revoked, credential types, and first_seen across an issuer's claims", async () => {
+    const dbc = db as ReturnType<typeof createSqliteDb>;
+    dbc.upsertClaim({
+      wallet: "GA1",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 2000,
+      expiry: 9999999,
+      ledger_sequence: 1,
+      threshold: null,
+      revoked: 0,
+    });
+    dbc.upsertClaim({
+      wallet: "GA2",
+      credential_type: "age",
+      issuer: "GISSUER",
+      verified_at: 1000, // earlier than GA1's claim — should win as first_seen
+      expiry: 9999999,
+      ledger_sequence: 2,
+      threshold: 21,
+      revoked: 0,
+    });
+    dbc.upsertClaim({
+      wallet: "GA3",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 3000,
+      expiry: 9999999,
+      ledger_sequence: 3,
+      threshold: null,
+      revoked: 0,
+    });
+    dbc.revokeClaim("GA3", "kyc");
+
+    const res = await request(app).get("/issuers/GISSUER/stats");
+    expect(res.status).toBe(200);
+    expect(res.body.issuer).toBe("GISSUER");
+    expect(res.body.total).toBe(3);
+    expect(res.body.active).toBe(2);
+    expect(res.body.revoked).toBe(1);
+    expect(res.body.credential_types.sort()).toEqual(["age", "kyc"]);
+    expect(res.body.first_seen).toBe(1000);
+  });
+
+  it("does not mix up claims from a different issuer", async () => {
+    const dbc = db as ReturnType<typeof createSqliteDb>;
+    dbc.upsertClaim({
+      wallet: "GA1",
+      credential_type: "kyc",
+      issuer: "GISSUER_A",
       verified_at: 1000,
       expiry: 9999999,
       ledger_sequence: 1,
       threshold: null,
       revoked: 0,
-    };
-    for (let i = 1; i <= 5; i++) {
-      (db as ReturnType<typeof createSqliteDb>).upsertClaim({
-        ...base,
-        wallet: `GA${i}`,
-        credential_type: "kyc",
-        verified_at: i * 1000,
-      });
-    }
+    });
+    dbc.upsertClaim({
+      wallet: "GA2",
+      credential_type: "kyc",
+      issuer: "GISSUER_B",
+      verified_at: 1000,
+      expiry: 9999999,
+      ledger_sequence: 2,
+      threshold: null,
+      revoked: 0,
+    });
 
-    const res = await request(app).get("/recent?limit=2&page=2");
+    const res = await request(app).get("/issuers/GISSUER_A/stats");
     expect(res.status).toBe(200);
-    expect(res.body.limit).toBe(2);
-    expect(res.body.page).toBe(2);
-    expect(res.body.claims).toHaveLength(2);
+    expect(res.body.total).toBe(1);
+  });
+
+  it("returns 400 for an empty issuer path parameter", async () => {
+    const res = await request(app).get("/issuers/%20/stats");
+    expect(res.status).toBe(400);
   });
 });
 

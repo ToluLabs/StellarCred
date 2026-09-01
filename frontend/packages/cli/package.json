@@ -1,7 +1,7 @@
 {
   "name": "stellarcred",
   "version": "0.1.0",
-  "description": "Command-line access to StellarCred — check claims, list issuers, build verify links, and manage issuer registration, scriptable for CI, ops, and issuer tooling.",
+  "description": "Command-line access to StellarCred \u2014 check claims, list issuers, build verify links, and manage issuer registration, scriptable for CI, ops, and issuer tooling.",
   "license": "MIT",
   "author": "Samuel Dahunsi",
   "repository": {
@@ -24,10 +24,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup && chmod +x dist/cli.js",
+    "build": "node init && tsup && chmod +x dist/cli.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx src/cli.ts"
+    "dev": "node init && tsx src/cli.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.3.0",

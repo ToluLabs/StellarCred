@@ -43,6 +43,8 @@ const SAFE_FIELDS = [
   "personaDemo",
   "environment",
   "timestamp",
+  "auditIndex",
+  "auditHash",
 ];
 
 export function stripSensitiveFields<T extends Record<string, unknown>>(obj: T): Partial<T> {

@@ -32,9 +32,12 @@ import { useWarmProver } from "@/lib/use-warm-prover";
 import {
   submitProof,
   submitProofs,
+  preflightSubmitProof,
+  preflightSubmitProofs,
   MAX_BATCH_SIZE,
   parseContractError,
   type ContractError,
+  type FeeEstimate,
   type ProofSubmissionParams,
 } from "@/lib/contracts";
 import {
@@ -461,7 +464,16 @@ function HolderInner() {
           <span className="eyebrow">Holder</span>
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
-        <WalletButton />
+        <div className="row" style={{ gap: "0.75rem" }}>
+          {/* Selective disclosure presets (#386): a named, shareable bundle
+              of several claim types — defined and shared from its own page
+              rather than crowding this one, but linked from here since the
+              issue asks for the entry point to live on the holder page. */}
+          <a href="/presets" className="btn btn-secondary">
+            Presets
+          </a>
+          <WalletButton />
+        </div>
       </div>
 
       <ConfigBanner />
@@ -929,7 +941,17 @@ const ESTIMATES: Record<string, { range: string; expected: number; max: number }
   default: { range: "~10–20 seconds", expected: 15, max: 20 },
 };
 
-type Stage = "witness" | "circuit" | "proof" | "proving" | "generated" | "submitting" | "confirmed" | "error";
+type Stage =
+  | "witness"
+  | "circuit"
+  | "proof"
+  | "proving"
+  | "generated"
+  | "preflight"
+  | "readyToSign"
+  | "submitting"
+  | "confirmed"
+  | "error";
 
 function ProofFlow({
   cred,
@@ -947,7 +969,11 @@ function ProofFlow({
   const [proof, setProof] = useState<{ proof: Uint8Array; publicInputs: Uint8Array } | null>(null);
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState<ContractError | null>(null);
-  const [errorPhase, setErrorPhase] = useState<"proving" | "submitting" | "timeout" | null>(null);
+  const [errorPhase, setErrorPhase] = useState<
+    "proving" | "preflight" | "submitting" | "timeout" | null
+  >(null);
+  /** Estimated on-chain fee reported by the preflight simulation. */
+  const [fee, setFee] = useState<FeeEstimate | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1053,7 +1079,55 @@ function ProofFlow({
         break;
     }
   }, [stage]);
+  /**
+   * First click on "Submit to Stellar": run a Soroban preflight simulation so
+   * a doomed submission is caught (and its human reason shown) and the fee is
+   * surfaced BEFORE the wallet signature is requested.
+   */
   async function onSubmit() {
+    if (!proof || networkMismatch) return;
+    setError(null);
+    setErrorPhase(null);
+    setFee(null);
+    setStage("preflight");
+    addEvent("preflight");
+    try {
+      const preflight = await preflightSubmitProof({
+        holder,
+        issuerId: cred.issuerId,
+        credentialType: cred.type,
+        proof: proof.proof,
+        publicInputs: proof.publicInputs,
+        ttlSecs: credTtlSecs(cred),
+      });
+      if (!preflight.ok) {
+        // Simulation says the transaction would revert — surface the mapped
+        // reason and do NOT request a signature (an override is offered).
+        setError(preflight.error);
+        setErrorPhase("preflight");
+        setStage("error");
+        toast.error(`Submission blocked — ${preflight.error.friendly}`);
+        return;
+      }
+      setFee(preflight.fee);
+      setStage("readyToSign");
+    } catch (e) {
+      // RPC/tooling failure during the simulation. Treat it like a preflight
+      // blocker (an override lets the user proceed), so we never sign blind.
+      const parsed = parseContractError((e as Error).message);
+      setError(parsed);
+      setErrorPhase("preflight");
+      setStage("error");
+      toast.error(`Preflight simulation failed: ${parsed.friendly}`);
+    }
+  }
+
+  /**
+   * Sign and send the proof-bearing transaction. Only reached after the
+   * preflight simulation succeeded (or the user chose to override a failed one)
+   * — this is the point where the wallet signature is actually requested.
+   */
+  async function doSignAndSubmit() {
     if (!proof || networkMismatch) return;
     setStage("submitting");
     addEvent("submitted");
@@ -1081,15 +1155,23 @@ function ProofFlow({
     }
   }
 
-  // Re-submit an already-generated proof without re-proving.
+  // Re-submit an already-generated proof without re-proving. The proof has
+  // already passed a simulation, so skip straight to signing; a retry after a
+  // submit-phase failure doesn't need another preflight round-trip.
   async function onRetrySubmit() {
     if (!proof) return;
     setError(null);
     setErrorPhase(null);
-    await onSubmit();
+    if (fee) setStage("readyToSign");
+    await doSignAndSubmit();
   }
 
-  const proofDone = stage === "generated" || stage === "submitting" || stage === "confirmed";
+  const proofDone =
+    stage === "generated" ||
+    stage === "preflight" ||
+    stage === "readyToSign" ||
+    stage === "submitting" ||
+    stage === "confirmed";
   const submitDone = stage === "confirmed";
 
   return (
@@ -1171,12 +1253,29 @@ function ProofFlow({
             title="Submit to Stellar"
             subtitle="ProofRegistry.submit_proof · wallet signature"
             state={
-              stage === "submitting" ? "active" :
-              submitDone             ? "done"   : "idle"
+              stage === "preflight" || stage === "readyToSign" || stage === "submitting"
+                ? "active"
+                : submitDone
+                  ? "done"
+                  : "idle"
             }
             last
             detail={
-              stage === "submitting" ? (
+              stage === "preflight" ? (
+                <AnimatedDots text="Running preflight simulation" style={{ marginTop: "0.35rem" }} />
+              ) : stage === "readyToSign" ? (
+                <div
+                  className="row"
+                  style={{ gap: "0.5rem", marginTop: "0.35rem", alignItems: "center", flexWrap: "wrap" }}
+                >
+                  <span style={{ fontSize: "0.75rem", color: "var(--accent)", fontWeight: 500 }}>
+                    Estimated fee: {fee?.display ?? "—"}
+                  </span>
+                  <span className="faint" style={{ fontSize: "0.72rem" }}>
+                    Simulation passed — ready to sign
+                  </span>
+                </div>
+              ) : stage === "submitting" ? (
                 <AnimatedDots text="Writing to ProofRegistry" style={{ marginTop: "0.35rem" }} />
               ) : submitDone ? (
                 <div
@@ -1201,35 +1300,72 @@ function ProofFlow({
         </div>
 
         {/* CTA */}
-        {stage === "generated" && (
+        {(stage === "generated" || stage === "preflight" || stage === "readyToSign") && (
           <>
             {networkMismatch && (
               <div style={{ marginTop: "1.5rem" }}>
                 <NetworkMismatchBanner />
               </div>
             )}
-            <button
-              className="btn btn-primary"
-              ref={submitButtonRef}
-              style={{
-                marginTop: networkMismatch ? 0 : "1.5rem",
-                width: "100%",
-                opacity: networkMismatch ? 0.5 : 1,
-                cursor: networkMismatch ? "not-allowed" : "pointer",
-              }}
-              onClick={onSubmit}
-              disabled={networkMismatch || !proofSubmissionConfigured()}
-              title={
-                networkMismatch
-                  ? "Switch your wallet to the correct network to submit"
-                  : !proofSubmissionConfigured()
-                    ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
-                    : undefined
-              }
-            >
-              Submit to Stellar
-              <IconArrowRight size={15} />
-            </button>
+            {stage === "preflight" ? (
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: networkMismatch ? 0 : "1.5rem", width: "100%", opacity: 0.7, cursor: "progress" }}
+                disabled
+              >
+                <IconLoader2 size={15} className="spin" /> Running preflight simulation…
+              </button>
+            ) : stage === "readyToSign" ? (
+              <button
+                className="btn btn-primary"
+                ref={submitButtonRef}
+                style={
+                  {
+                    marginTop: networkMismatch ? 0 : "1.5rem",
+                    width: "100%",
+                    opacity: networkMismatch ? 0.5 : 1,
+                    cursor: networkMismatch ? "not-allowed" : "pointer",
+                  }
+                }
+                onClick={doSignAndSubmit}
+                disabled={networkMismatch || !proofSubmissionConfigured()}
+                title={
+                  networkMismatch
+                    ? "Switch your wallet to the correct network to submit"
+                    : !proofSubmissionConfigured()
+                      ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
+                      : undefined
+                }
+              >
+                Sign & submit{fee ? ` (${fee.display})` : ""}
+                <IconArrowRight size={15} />
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                ref={submitButtonRef}
+                style={
+                  {
+                    marginTop: networkMismatch ? 0 : "1.5rem",
+                    width: "100%",
+                    opacity: networkMismatch ? 0.5 : 1,
+                    cursor: networkMismatch ? "not-allowed" : "pointer",
+                  }
+                }
+                onClick={onSubmit}
+                disabled={networkMismatch || !proofSubmissionConfigured()}
+                title={
+                  networkMismatch
+                    ? "Switch your wallet to the correct network to submit"
+                    : !proofSubmissionConfigured()
+                      ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
+                      : undefined
+                }
+              >
+                Submit to Stellar
+                <IconArrowRight size={15} />
+              </button>
+            )}
           </>
         )}
 
@@ -1252,9 +1388,11 @@ function ProofFlow({
                 ? "Proof timed out"
                 : errorPhase === "proving"
                   ? "Proof generation failed"
-                  : errorPhase === "submitting"
-                    ? "Submission failed — proof is ready to retry"
-                    : error.code !== null ? `Contract error #${error.code}` : "Could not complete"}
+                  : errorPhase === "preflight"
+                    ? "Submission blocked before signing"
+                    : errorPhase === "submitting"
+                      ? "Submission failed — proof is ready to retry"
+                      : error.code !== null ? `Contract error #${error.code}` : "Could not complete"}
             </div>
             {error.raw !== error.friendly && (
               <div style={{ marginTop: "0.6rem" }}>
@@ -1286,6 +1424,20 @@ function ProofFlow({
                   </pre>
                 )}
               </div>
+            )}
+            {/* A preflight simulation predicted the submit would fail. The
+                proof is generated and intact, so offer an explicit override to
+                sign & submit anyway (the user may know something the sim
+                doesn't, e.g. the chain state changing). */}
+            {errorPhase === "preflight" && proof && (
+              <button
+                className="btn btn-ghost"
+                style={{ marginTop: "1rem", width: "100%" }}
+                onClick={doSignAndSubmit}
+              >
+                Sign & submit anyway
+                <IconArrowRight size={15} />
+              </button>
             )}
             {/* Retry submission without re-proving when the proof exists */}
             {errorPhase === "submitting" && proof && (
@@ -1363,6 +1515,8 @@ function BatchProofFlow({
   const [txHash, setTxHash] = useState("");
   const [batchError, setBatchError] = useState<ContractError | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  /** Estimated fee reported by the batch preflight simulation. */
+  const [batchFee, setBatchFee] = useState<FeeEstimate | null>(null);
   const toast = useToast();
   const { networkMismatch } = useWallet();
   const generatedProofs = useRef<Array<{ proof: Uint8Array; publicInputs: Uint8Array } | null>>(
@@ -1500,24 +1654,42 @@ function BatchProofFlow({
 
     currentCreds.forEach(cred => addTimelineEvent(cred.commitment, "submitted"));
 
-    toast.info(`Submitting ${currentCreds.length} proofs to Stellar…`);
-    submitProofs({ holder: currentHolder, submissions })
-      .then((hash: string) => {
-        setTxHash(hash);
-        const commitments = currentCreds.map((c) => c.commitment);
-        onProved(hash, commitments);
-        setBatchStage("confirmed");
+    setBatchFee(null);
+    toast.info(`Simulating batch of ${currentCreds.length} proofs…`);
+    (async () => {
+      // Stage 1 — preflight simulation: catch a doomed batch (invalid proof,
+      // duplicate type, untrusted issuer, paused submissions, …) and surface
+      // its mapped reason BEFORE a single Frieght/wallet signature is spent.
+      const preflight = await preflightSubmitProofs({ holder: currentHolder, submissions });
+      if (!preflight.ok) {
+        setBatchError(preflight.error);
+        setBatchStage("error");
+        toast.error(`Batch submission blocked — ${preflight.error.friendly}`);
+        return;
+      }
+      setBatchFee(preflight.fee);
 
-        currentCreds.forEach(cred => addTimelineEvent(cred.commitment, "verified", { txHash: hash }));
-
-        toast.success(`Confirmed ${creds.length} proofs on-chain`, { txHash: hash });
-      })
-      .catch((e: any) => {
+      // Stage 2 — the simulation succeeded, so it's safe to request the
+      // signature and submit.
+      let hash: string;
+      try {
+        hash = await submitProofs({ holder: currentHolder, submissions });
+      } catch (e) {
         const parsed = parseContractError((e as Error).message);
         setBatchError(parsed);
         setBatchStage("error");
         toast.error(`Batch submission failed: ${parsed.friendly}`);
-      });
+        return;
+      }
+      setTxHash(hash);
+      const commitments = currentCreds.map((c) => c.commitment);
+      onProved(hash, commitments);
+      setBatchStage("confirmed");
+
+      currentCreds.forEach(cred => addTimelineEvent(cred.commitment, "verified", { txHash: hash }));
+
+      toast.success(`Confirmed ${creds.length} proofs on-chain`, { txHash: hash });
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allReady, networkMismatch, onProved]);
 
@@ -1588,7 +1760,16 @@ function BatchProofFlow({
           last
           detail={
             isSubmitting ? (
-              <AnimatedDots text="Writing all proofs to ProofRegistry" style={{ marginTop: "0.35rem" }} />
+              <div style={{ marginTop: "0.35rem" }}>
+                <AnimatedDots
+                  text={batchFee ? "Writing all proofs to ProofRegistry" : "Running preflight simulation"}
+                />
+                {batchFee && (
+                  <span style={{ fontSize: "0.72rem", color: "var(--accent)", marginLeft: "0.5rem", fontWeight: 500 }}>
+                    Estimate · {batchFee.display}
+                  </span>
+                )}
+              </div>
             ) : isConfirmed ? (
               <div
                 className="row"

@@ -17,6 +17,8 @@ import { ConfigBanner } from "@/components/ConfigBanner";
 import { issuanceConfigured } from "@/lib/config";
 import { truncateAddress, truncatePubkey } from "@/lib/format";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
+import type { IssuerStats } from "@/app/api/issuer-stats/route";
+import { UsageDashboard } from "@/components/UsageDashboard";
 
 const TYPES = Object.entries(TYPE_META) as [
   CredentialType,
@@ -58,6 +60,8 @@ export default function IssuerPage() {
   const [issuersLoading, setIssuersLoading] = useState(true);
   const [issuersError, setIssuersError] = useState("");
   const [selectedIssuerId, setSelectedIssuerId] = useState("");
+  const [issuerStats, setIssuerStats] = useState<IssuerStats | null>(null);
+  const [issuerStatsError, setIssuerStatsError] = useState("");
   const [holder, setHolder] = useState("");
   const [type, setType] = useState<CredentialType>("kyc");
   const [attribute, setAttribute] = useState(DEFAULT_ATTR.kyc);
@@ -106,6 +110,38 @@ export default function IssuerPage() {
       cancelled = true;
     };
   }, [address]);
+
+  // Reputation stats for whichever issuer is currently selected (#398) —
+  // derived from indexed on-chain events, not the IssuerRegistry itself, so
+  // it's fetched separately per selection rather than bundled into `issuers`.
+  useEffect(() => {
+    if (!selectedIssuer) {
+      setIssuerStats(null);
+      setIssuerStatsError("");
+      return;
+    }
+    let cancelled = false;
+    async function loadIssuerStats() {
+      setIssuerStatsError("");
+      try {
+        const res = await fetch(
+          `/api/issuer-stats?issuer=${encodeURIComponent(selectedIssuer!.id)}`,
+        );
+        if (!res.ok) throw new Error(await readApiError(res));
+        const stats = (await res.json()) as IssuerStats;
+        if (!cancelled) setIssuerStats(stats);
+      } catch (e) {
+        if (!cancelled) {
+          setIssuerStats(null);
+          setIssuerStatsError((e as Error).message);
+        }
+      }
+    }
+    loadIssuerStats();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIssuer]);
 
   useEffect(() => {
     if (availableTypes.length === 0) return;
@@ -241,6 +277,48 @@ export default function IssuerPage() {
                     <code className="mono">{truncatePubkey(selectedIssuer.pubkeyHex)}</code>
                   </span>
                 </div>
+              )}
+              {selectedIssuer && issuerStats && (
+                <div
+                  className="row faint"
+                  style={{
+                    marginTop: "0.5rem",
+                    gap: "0.9rem",
+                    fontSize: "0.8125rem",
+                    flexWrap: "wrap",
+                  }}
+                  title="Issuer reputation, derived from indexed on-chain events"
+                >
+                  <span>
+                    <strong style={{ color: "var(--text)" }}>{issuerStats.total}</strong> issued
+                  </span>
+                  <span>
+                    <strong style={{ color: "var(--text)" }}>{issuerStats.active}</strong> active
+                  </span>
+                  {issuerStats.revoked > 0 && (
+                    <span>
+                      <strong style={{ color: "var(--text)" }}>{issuerStats.revoked}</strong>{" "}
+                      revoked
+                    </span>
+                  )}
+                  {issuerStats.credential_types.length > 0 && (
+                    <span>{issuerStats.credential_types.join(", ")}</span>
+                  )}
+                  {issuerStats.first_seen && (
+                    <span>
+                      since{" "}
+                      {new Date(issuerStats.first_seen * 1000).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              )}
+              {selectedIssuer && issuerStatsError && (
+                <p
+                  className="faint"
+                  style={{ marginTop: "0.5rem", fontSize: "0.75rem" }}
+                >
+                  Issuer stats unavailable: {issuerStatsError}
+                </p>
               )}
             </>
           )}
@@ -419,6 +497,14 @@ export default function IssuerPage() {
           )}
         </div>
       </div>
+
+      {/* Self-serve usage & rate-limit dashboard — see GitHub #424. Shows the
+          issuer their recent issuance volume, current rate-limit status, and
+          remaining quota for the window, with a clear reset timestamp when
+          throttled. `holder` is passed so the per-wallet dimension reflects
+          the address being issued to; the IP dimension always reflects this
+          connection. */}
+      <UsageDashboard wallet={holder} />
     </>
   );
 }

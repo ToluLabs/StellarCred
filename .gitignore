@@ -13,7 +13,6 @@ frontend/packages/sdk/docs/api
 # Local settings
 .soroban
 .stellar
-.env.local
 
 # Benchmark output (local results; see BENCHMARKS.md for documented figures)
 benchmark_results.txt
@@ -23,3 +22,4 @@ proptest-regressions/
 
 # macOS
 .DS_Store
+config.bat

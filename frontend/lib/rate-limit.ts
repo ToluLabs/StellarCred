@@ -161,6 +161,73 @@ export function checkLimit(
 }
 
 // ---------------------------------------------------------------------------
+// Read-only status (self-serve usage view)
+// ---------------------------------------------------------------------------
+
+/**
+ * Current usage of `key` against `limit` within `windowMs` — read-only.
+ *
+ * Returns the same numbers the request path would report, WITHOUT recording a
+ * request or mutating the store. This is what powers the self-serve issuer
+ * usage dashboard (/api/usage): polling it to check where you stand must not
+ * itself consume quota, otherwise merely looking at the dashboard would edge
+ * you closer to a 429.
+ *
+ * The key should already be namespaced (e.g. `"issue:wallet:<raw>"`); it is
+ * stored verbatim and never logged.
+ */
+export interface RateLimitStatus {
+  /** Requests already counted in the current window for this key. */
+  used: number;
+  /** Maximum requests allowed per window for this key. */
+  limit: number;
+  /** Requests still permitted before a 429 in the current window. */
+  remaining: number;
+  /** True when the window is exhausted (a further request would be rejected). */
+  throttled: boolean;
+  /** Absolute ms timestamp (Date.now()) at which the current window resets. */
+  windowEnd: number;
+  /** Whole seconds until `windowEnd` — the reset timing for the UI. */
+  resetSeconds: number;
+  /** Window length in ms. */
+  windowMs: number;
+}
+
+/**
+ * Inspect current usage for `key` (see {@link RateLimitStatus}) without
+ * recording anything. A key with no live bucket — or only an expired one —
+ * reports an untouched window (`used: 0`) whose reset is one full window
+ * length away.
+ */
+export function getRateLimitStatus(
+  key: string,
+  limit: number,
+  windowMs: number,
+): RateLimitStatus {
+  const now = Date.now();
+  const bucket = store.get(key);
+  const expired = !bucket || now >= bucket.windowEnd;
+
+  const used = expired ? 0 : bucket.count;
+  const windowEnd = expired ? now + windowMs : bucket.windowEnd;
+  const remaining = expired ? limit : Math.max(0, limit - used);
+  const resetSeconds = Math.max(
+    used > 0 ? 1 : Math.ceil(windowMs / 1000),
+    Math.ceil((windowEnd - now) / 1000),
+  );
+
+  return {
+    used,
+    limit,
+    remaining,
+    throttled: used >= limit,
+    windowEnd,
+    resetSeconds,
+    windowMs,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // IP extraction
 // ---------------------------------------------------------------------------
 

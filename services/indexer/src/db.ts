@@ -20,7 +20,11 @@ import type { Config } from "./config";
 
 // ── Row types ──────────────────────────────────────────────────────────────
 
-export interface ClaimRow {
+/**
+ * A claim as written by the ingester. The auto-increment `id` insertion cursor
+ * is assigned by the database, so it is not part of the write shape.
+ */
+export interface ClaimInput {
   wallet: string;
   credential_type: string;
   issuer: string;
@@ -34,6 +38,12 @@ export interface ClaimRow {
   threshold: number | null;
   /** 1 if the issuer has revoked this proof, 0 otherwise */
   revoked: number;
+}
+
+/** A claim row as read back from the database (includes the `id` cursor). */
+export interface ClaimRow extends ClaimInput {
+  /** Auto-increment insertion cursor; the unique tiebreaker in /recent's keyset ordering. */
+  id: number;
 }
 
 // ── Adapter interface ──────────────────────────────────────────────────────
@@ -60,8 +70,8 @@ export interface Db {
    */
   getMaxClaimLedger(): number | Promise<number>;
 
-  /** Upsert a verified claim event. */
-  upsertClaim(row: ClaimRow): void | Promise<void>;
+  /** Upsert a verified claim event (the `id` cursor is assigned by the db). */
+  upsertClaim(row: ClaimInput): void | Promise<void>;
 
   /** Mark a claim as revoked. */
   revokeClaim(
@@ -75,11 +85,59 @@ export interface Db {
   /** Return aggregate counts per credential_type. */
   stats(): StatsRow[] | Promise<StatsRow[]>;
 
-  /** Return recent verified (non-revoked) claims, newest first. */
-  recent(limit: number, offset: number): ClaimRow[] | Promise<ClaimRow[]>;
+  /**
+   * Return reputation stats for one issuer, derived entirely from indexed
+   * events (#398): how many credentials they've issued, how many are
+   * currently active vs revoked, which credential types they cover, and
+   * when they first appear in the index. An issuer with no indexed claims
+   * gets a zeroed row rather than an error — same "unknown = empty" contract
+   * as claimsByWallet.
+   */
+  issuerStats(issuer: string): IssuerStatsRow | Promise<IssuerStatsRow>;
+
+  /**
+   * Return recent verified (non-revoked) claims, newest first, using keyset
+   * (cursor) pagination ordered by (ledger_sequence DESC, id DESC). Fetches up
+   * to `limit + 1` rows internally so the page can report whether more exist.
+   */
+  recent(limit: number, cursor: RecentCursor | null): RecentPage | Promise<RecentPage>;
 
   /** Close the underlying connection / pool. */
   close(): void | Promise<void>;
+}
+
+/**
+ * Keyset pagination key for /recent. `ledger_sequence` is the primary sort
+ * key; `id` (the auto-increment insertion cursor) is a unique tiebreaker that
+ * keeps the ordering total and stable even when many claims share a ledger.
+ */
+export interface RecentCursor {
+  ledgerSequence: number;
+  id: number;
+}
+
+/** One page of /recent results plus the cursor for the next page (if any). */
+export interface RecentPage {
+  claims: ClaimRow[];
+  /** Cursor to pass as `?cursor=` for the next page; null when exhausted. */
+  nextCursor: RecentCursor | null;
+}
+
+/**
+ * Slice a `limit + 1` fetch down to a page, deriving the next cursor from the
+ * last returned row so callers never see OFFSET-style drift.
+ */
+function toRecentPage(rows: ClaimRow[], limit: number): RecentPage {
+  const hasMore = rows.length > limit;
+  const claims = hasMore ? rows.slice(0, limit) : rows;
+  const last = claims[claims.length - 1];
+  return {
+    claims,
+    nextCursor:
+      hasMore && last
+        ? { ledgerSequence: last.ledger_sequence, id: last.id }
+        : null,
+  };
 }
 
 export interface StatsRow {
@@ -87,6 +145,19 @@ export interface StatsRow {
   total: number;
   active: number;
   revoked: number;
+}
+
+/** Per-issuer reputation stats derived from indexed events (#398). */
+export interface IssuerStatsRow {
+  issuer: string;
+  /** Total credentials ever issued by this issuer (active + revoked). */
+  total: number;
+  active: number;
+  revoked: number;
+  /** Distinct credential types this issuer has issued, alphabetical. */
+  credential_types: string[];
+  /** Unix seconds of this issuer's earliest indexed claim; null if none. */
+  first_seen: number | null;
 }
 
 // ── SQLite adapter ─────────────────────────────────────────────────────────
@@ -108,6 +179,7 @@ export function createSqliteDb(config: Config): Db {
     migrate() {
       raw.exec(`
         CREATE TABLE IF NOT EXISTS claims (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
           wallet           TEXT    NOT NULL,
           credential_type  TEXT    NOT NULL,
           issuer           TEXT    NOT NULL DEFAULT '',
@@ -116,13 +188,8 @@ export function createSqliteDb(config: Config): Db {
           ledger_sequence  INTEGER NOT NULL DEFAULT 0,
           threshold        INTEGER,
           revoked          INTEGER NOT NULL DEFAULT 0,
-          PRIMARY KEY (wallet, credential_type)
+          UNIQUE (wallet, credential_type)
         );
-
-        CREATE INDEX IF NOT EXISTS idx_claims_wallet  ON claims (wallet);
-        CREATE INDEX IF NOT EXISTS idx_claims_type    ON claims (credential_type);
-        CREATE INDEX IF NOT EXISTS idx_claims_verified_at
-          ON claims (verified_at DESC);
 
         CREATE TABLE IF NOT EXISTS ledger_cursor (
           id          INTEGER PRIMARY KEY CHECK (id = 1),
@@ -130,6 +197,54 @@ export function createSqliteDb(config: Config): Db {
         );
 
         INSERT OR IGNORE INTO ledger_cursor (id, last_ledger) VALUES (1, 0);
+      `);
+
+      // Migration for databases created before the insertion-cursor `id` column
+      // existed: rebuild the table so every existing row gets an auto-increment
+      // id (preserving its prior rowid order) and the keyset index can exist.
+      const cols = raw
+        .prepare("PRAGMA table_info(claims)")
+        .all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === "id")) {
+        const rebuild = raw.transaction(() => {
+          // Renaming moves the old indexes along with the table; they are
+          // dropped with claims_old and recreated below on the new table.
+          raw.exec("ALTER TABLE claims RENAME TO claims_old;");
+          raw.exec(`
+            CREATE TABLE claims (
+              id               INTEGER PRIMARY KEY AUTOINCREMENT,
+              wallet           TEXT    NOT NULL,
+              credential_type  TEXT    NOT NULL,
+              issuer           TEXT    NOT NULL DEFAULT '',
+              verified_at      INTEGER NOT NULL DEFAULT 0,
+              expiry           INTEGER NOT NULL DEFAULT 0,
+              ledger_sequence  INTEGER NOT NULL DEFAULT 0,
+              threshold        INTEGER,
+              revoked          INTEGER NOT NULL DEFAULT 0,
+              UNIQUE (wallet, credential_type)
+            );
+          `);
+          raw.exec(`
+            INSERT INTO claims
+              (wallet, credential_type, issuer, verified_at, expiry,
+               ledger_sequence, threshold, revoked)
+            SELECT wallet, credential_type, issuer, verified_at, expiry,
+                   ledger_sequence, threshold, revoked
+            FROM claims_old;
+          `);
+          raw.exec("DROP TABLE claims_old;");
+        });
+        rebuild();
+      }
+
+      raw.exec(`
+        CREATE INDEX IF NOT EXISTS idx_claims_wallet  ON claims (wallet);
+        CREATE INDEX IF NOT EXISTS idx_claims_type    ON claims (credential_type);
+        CREATE INDEX IF NOT EXISTS idx_claims_verified_at
+          ON claims (verified_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_claims_recent
+          ON claims (ledger_sequence DESC, id DESC)
+          WHERE revoked = 0;
       `);
     },
 
@@ -148,7 +263,7 @@ export function createSqliteDb(config: Config): Db {
         .run(seq);
     },
 
-    upsertClaim(row: ClaimRow) {
+    upsertClaim(row: ClaimInput) {
       raw
         .prepare(
           `INSERT INTO claims
@@ -205,15 +320,61 @@ export function createSqliteDb(config: Config): Db {
         .all() as StatsRow[];
     },
 
-    recent(limit: number, offset: number) {
-      return raw
+    issuerStats(issuer: string) {
+      const agg = raw
         .prepare(
-          `SELECT * FROM claims
-           WHERE revoked = 0
-           ORDER BY verified_at DESC
-           LIMIT ? OFFSET ?`
+          `SELECT
+             COUNT(*)                          AS total,
+             COUNT(*) FILTER (WHERE revoked=0) AS active,
+             COUNT(*) FILTER (WHERE revoked=1) AS revoked,
+             MIN(verified_at)                  AS first_seen
+           FROM claims
+           WHERE issuer = ?`
         )
-        .all(limit, offset) as ClaimRow[];
+        .get(issuer) as {
+        total: number;
+        active: number;
+        revoked: number;
+        first_seen: number | null;
+      };
+      const types = raw
+        .prepare(
+          `SELECT DISTINCT credential_type FROM claims
+           WHERE issuer = ?
+           ORDER BY credential_type`
+        )
+        .all(issuer) as { credential_type: string }[];
+      return {
+        issuer,
+        total: agg.total,
+        active: agg.active,
+        revoked: agg.revoked,
+        credential_types: types.map((t) => t.credential_type),
+        first_seen: agg.first_seen,
+      };
+    },
+
+    recent(limit: number, cursor: RecentCursor | null) {
+      // Fetch limit + 1 so the caller can tell whether another page exists.
+      const rows = cursor
+        ? (raw
+            .prepare(
+              `SELECT * FROM claims
+               WHERE revoked = 0
+                 AND (ledger_sequence < ? OR (ledger_sequence = ? AND id < ?))
+               ORDER BY ledger_sequence DESC, id DESC
+               LIMIT ?`
+            )
+            .all(cursor.ledgerSequence, cursor.ledgerSequence, cursor.id, limit + 1) as ClaimRow[])
+        : (raw
+            .prepare(
+              `SELECT * FROM claims
+               WHERE revoked = 0
+               ORDER BY ledger_sequence DESC, id DESC
+               LIMIT ?`
+            )
+            .all(limit + 1) as ClaimRow[]);
+      return toRecentPage(rows, limit);
     },
 
     deleteClaimsAfter(fromLedger: number) {
@@ -250,23 +411,17 @@ export function createPostgresDb(config: Config): Db {
     async migrate() {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS claims (
-          wallet           TEXT    NOT NULL,
-          credential_type  TEXT    NOT NULL,
-          issuer           TEXT    NOT NULL DEFAULT '',
-          verified_at      BIGINT  NOT NULL DEFAULT 0,
-          expiry           BIGINT  NOT NULL DEFAULT 0,
-          ledger_sequence  BIGINT  NOT NULL DEFAULT 0,
-          threshold        BIGINT,
-          revoked          INTEGER NOT NULL DEFAULT 0,
+          id              BIGSERIAL,
+          wallet          TEXT    NOT NULL,
+          credential_type TEXT    NOT NULL,
+          issuer          TEXT    NOT NULL DEFAULT '',
+          verified_at     BIGINT  NOT NULL DEFAULT 0,
+          expiry          BIGINT  NOT NULL DEFAULT 0,
+          ledger_sequence BIGINT  NOT NULL DEFAULT 0,
+          threshold       BIGINT,
+          revoked         INTEGER NOT NULL DEFAULT 0,
           PRIMARY KEY (wallet, credential_type)
         );
-
-        CREATE INDEX IF NOT EXISTS idx_claims_wallet
-          ON claims (wallet);
-        CREATE INDEX IF NOT EXISTS idx_claims_type
-          ON claims (credential_type);
-        CREATE INDEX IF NOT EXISTS idx_claims_verified_at
-          ON claims (verified_at DESC);
 
         CREATE TABLE IF NOT EXISTS ledger_cursor (
           id          INTEGER PRIMARY KEY CHECK (id = 1),
@@ -276,6 +431,38 @@ export function createPostgresDb(config: Config): Db {
         INSERT INTO ledger_cursor (id, last_ledger)
         VALUES (1, 0)
         ON CONFLICT (id) DO NOTHING;
+      `);
+
+      // Migration for databases created before the insertion-cursor `id` column
+      // existed: add it, backfill from the sequence, and enforce uniqueness.
+      await pool.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'claims' AND column_name = 'id'
+          ) THEN
+            ALTER TABLE claims ADD COLUMN id BIGINT;
+            CREATE SEQUENCE IF NOT EXISTS claims_id_seq OWNED BY claims.id;
+            ALTER TABLE claims ALTER COLUMN id SET DEFAULT nextval('claims_id_seq');
+            UPDATE claims SET id = nextval('claims_id_seq');
+            ALTER TABLE claims ALTER COLUMN id SET NOT NULL;
+          END IF;
+        END $$;
+      `);
+
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_claims_id
+          ON claims (id);
+        CREATE INDEX IF NOT EXISTS idx_claims_wallet
+          ON claims (wallet);
+        CREATE INDEX IF NOT EXISTS idx_claims_type
+          ON claims (credential_type);
+        CREATE INDEX IF NOT EXISTS idx_claims_verified_at
+          ON claims (verified_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_claims_recent
+          ON claims (ledger_sequence DESC, id DESC)
+          WHERE revoked = 0;
       `);
     },
 
@@ -293,7 +480,7 @@ export function createPostgresDb(config: Config): Db {
       );
     },
 
-    async upsertClaim(row: ClaimRow) {
+    async upsertClaim(row: ClaimInput) {
       await pool.query(
         `INSERT INTO claims
            (wallet, credential_type, issuer, verified_at, expiry,
@@ -349,15 +536,58 @@ export function createPostgresDb(config: Config): Db {
       return res.rows;
     },
 
-    async recent(limit: number, offset: number) {
-      const res = await pool.query<ClaimRow>(
-        `SELECT * FROM claims
-         WHERE revoked = 0
-         ORDER BY verified_at DESC
-         LIMIT $1 OFFSET $2`,
-        [limit, offset]
+    async issuerStats(issuer: string) {
+      const aggRes = await pool.query<{
+        total: number;
+        active: number;
+        revoked: number;
+        first_seen: string | null;
+      }>(
+        `SELECT
+           COUNT(*)::int                         AS total,
+           COUNT(*) FILTER (WHERE revoked=0)::int AS active,
+           COUNT(*) FILTER (WHERE revoked=1)::int AS revoked,
+           MIN(verified_at)                       AS first_seen
+         FROM claims
+         WHERE issuer = $1`,
+        [issuer]
       );
-      return res.rows;
+      const typesRes = await pool.query<{ credential_type: string }>(
+        `SELECT DISTINCT credential_type FROM claims
+         WHERE issuer = $1
+         ORDER BY credential_type`,
+        [issuer]
+      );
+      const agg = aggRes.rows[0];
+      return {
+        issuer,
+        total: agg?.total ?? 0,
+        active: agg?.active ?? 0,
+        revoked: agg?.revoked ?? 0,
+        credential_types: typesRes.rows.map((r) => r.credential_type),
+        first_seen: agg?.first_seen != null ? Number(agg.first_seen) : null,
+      };
+    },
+
+    async recent(limit: number, cursor: RecentCursor | null) {
+      // Fetch limit + 1 so the caller can tell whether another page exists.
+      const res = cursor
+        ? await pool.query<ClaimRow>(
+            `SELECT * FROM claims
+             WHERE revoked = 0
+               AND (ledger_sequence < $1 OR (ledger_sequence = $1 AND id < $2))
+             ORDER BY ledger_sequence DESC, id DESC
+             LIMIT $3`,
+            [cursor.ledgerSequence, cursor.id, limit + 1]
+          )
+        : await pool.query<ClaimRow>(
+            `SELECT * FROM claims
+             WHERE revoked = 0
+             ORDER BY ledger_sequence DESC, id DESC
+             LIMIT $1`,
+            [limit + 1]
+          );
+      return toRecentPage(res.rows, limit);
     },
 
     async deleteClaimsAfter(fromLedger: number) {

@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, notFound } from "next/navigation";
 import {
   IconLock,
   IconCheck,
@@ -38,7 +38,6 @@ function ProtocolDetailBody({
   const { state, statuses, retry, eligible, checking } = useProtocolAccessCheck(
     protocol.requirements,
     activeWallet,
-    // Preview mode is "!address"; don't auto-grant when disconnected — match /apps list cards.
     { isPreview: isPreview && Boolean(activeWallet), networkKey },
   );
   const [inputValue, setInputValue] = useState(protocol.inputDefault);
@@ -290,7 +289,6 @@ function ProtocolDetailInner() {
 
   const scVerified = searchParams.get("sc_verified") === "true";
   const scWallet = searchParams.get("sc_wallet");
-  // `address` is "" when disconnected — use || so we fall through to scWallet/null.
   const activeWallet = address || scWallet || null;
   const isPreview = usePreviewMode();
   const networkKey = networkMismatch ? "mismatch" : "ok";
@@ -298,14 +296,7 @@ function ProtocolDetailInner() {
   const protocol = getProtocol(id);
 
   if (!protocol) {
-    return (
-      <div style={{ textAlign: "center", padding: "4rem 0" }}>
-        <p className="muted">Protocol not found.</p>
-        <Link href="/apps" className="btn btn-secondary btn-sm" style={{ marginTop: "1rem" }}>
-          <IconArrowLeft size={14} /> Back to Apps
-        </Link>
-      </div>
-    );
+    notFound();
   }
 
   return (
