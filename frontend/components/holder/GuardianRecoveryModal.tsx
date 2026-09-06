@@ -91,7 +91,7 @@ export function GuardianRecoveryModal({
     setIsGenerating(true);
     setSetupError("");
     try {
-      const credentials = loadCredentials();
+      const credentials = await loadCredentials();
       const result = await createGuardianRecoverySetup(credentials, {
         totalShares,
         threshold,

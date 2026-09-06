@@ -13,7 +13,7 @@ const SDKPlayground = dynamic(() => import("@/components/SDKPlayground"), {
 });
 
 export const metadata: Metadata = {
-  title: "Developers · StellarCred",
+  title: "StellarCred — Developers",
   description: "Integrate StellarCred in minutes — one contract call, no backend.",
 };
 

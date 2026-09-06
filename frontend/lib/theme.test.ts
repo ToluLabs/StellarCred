@@ -13,8 +13,22 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 // Minimal browser stubs for SSR-safe helpers
 const store = new Map<string, string>();
 
+type WindowStub = {
+  localStorage: Storage;
+  matchMedia: (query: string) => MediaQueryList;
+};
+
+type DocumentStub = {
+  documentElement: {
+    setAttribute: (name: string, value: string) => void;
+    getAttribute: (name: string) => string | null;
+  };
+};
+
+type DomStubs = { window: WindowStub; document: DocumentStub };
+
 function installDomStubs(systemDark: boolean) {
-  (globalThis as any).window = {
+  (globalThis as unknown as DomStubs).window = {
     localStorage: {
       getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
       setItem: (k: string, v: string) => {
@@ -37,7 +51,7 @@ function installDomStubs(systemDark: boolean) {
       onchange: null,
     }),
   };
-  (globalThis as any).document = {
+  (globalThis as unknown as DomStubs).document = {
     documentElement: {
       attrs: {} as Record<string, string>,
       setAttribute(name: string, value: string) {
@@ -94,7 +108,7 @@ describe("theme helpers", async () => {
     setExplicitTheme("dark");
     assert.equal(store.get("theme"), "dark");
     assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
+      (globalThis as unknown as DomStubs).document.documentElement.getAttribute("data-theme"),
       "dark",
     );
   });
@@ -104,7 +118,7 @@ describe("theme helpers", async () => {
     applyTheme("light");
     assert.equal(store.has("theme"), false);
     assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
+      (globalThis as unknown as DomStubs).document.documentElement.getAttribute("data-theme"),
       "light",
     );
   });

@@ -95,7 +95,7 @@ export function randomField(): string {
   );
 }
 
-// ---- Local wallet (this browser) ----------------------------------------
+// ---- At-rest encryption (AES-256-GCM) ---------------------------------------
 
 /**
  * localStorage key under which all credentials are persisted. Credentials
@@ -103,15 +103,116 @@ export function randomField(): string {
  * localStorage — they are never stored on a server. See the README's
  * "Where your credentials live" section for the full model and the
  * backup/restore flow.
+ *
+ * Values stored under this key are AES-256-GCM encrypted at rest; see
+ * encryptBlob/decryptBlob below. The raw credential value and salt are
+ * never written to localStorage in plaintext.
  */
 export const CREDENTIALS_STORAGE_KEY = "stellarcred:credentials";
 
-const KEY = CREDENTIALS_STORAGE_KEY;
+const STORE_KEY = CREDENTIALS_STORAGE_KEY;
+const ENC_KEY_STORE = "stellarcred:cred-enc-key";
 
-export function loadCredentials(): Credential[] {
-  if (typeof window === "undefined") return [];
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function fromBase64(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function getEncryptionKey(): Promise<CryptoKey> {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "[]");
+    const stored = sessionStorage.getItem(ENC_KEY_STORE);
+    if (stored) {
+      const raw = fromBase64(stored);
+      return crypto.subtle.importKey(
+        "raw",
+        raw as BufferSource,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"],
+      );
+    }
+  } catch {
+    sessionStorage.removeItem(ENC_KEY_STORE);
+    localStorage.removeItem(STORE_KEY);
+  }
+
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+
+  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  sessionStorage.setItem(ENC_KEY_STORE, toBase64(raw));
+
+  return key;
+}
+
+async function encryptBlob(plaintext: string): Promise<string> {
+  const key = await getEncryptionKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded),
+  );
+
+  const combined = new Uint8Array(iv.length + ciphertext.length);
+  combined.set(iv);
+  combined.set(ciphertext, iv.length);
+
+  return toBase64(combined);
+}
+
+async function decryptBlob(ciphertextB64: string): Promise<string> {
+  const key = await getEncryptionKey();
+  const combined = fromBase64(ciphertextB64);
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    key,
+    ciphertext,
+  );
+
+  return new TextDecoder().decode(decrypted);
+}
+
+// ---- Local wallet (this browser) --------------------------------------------
+
+export async function loadCredentials(): Promise<Credential[]> {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(STORE_KEY);
+  if (!raw) return [];
+
+  // Legacy plaintext fallback: if the stored value is valid JSON array,
+  // return it directly. Migration to encrypted storage happens on the next
+  // save (saveCredential / markProved / etc.) so we don't race with tests
+  // or other tabs that are also reading.
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Not plaintext JSON, fall through to decryption.
+  }
+
+  try {
+    const decrypted = await decryptBlob(raw);
+    return JSON.parse(decrypted);
   } catch {
     return [];
   }
@@ -124,66 +225,52 @@ export function loadCredentials(): Credential[] {
  * The export contains the sensitive attribute values, so it must be handled
  * like a password.
  */
-export function exportCredentials(): string {
-  return JSON.stringify(loadCredentials(), null, 2);
+export async function exportCredentials(): Promise<string> {
+  return JSON.stringify(await loadCredentials(), null, 2);
 }
 
-export function saveCredential(cred: Credential): Credential[] {
-  const all = loadCredentials();
+export async function saveCredential(cred: Credential): Promise<Credential[]> {
+  const all = await loadCredentials();
   const next = [
     cred,
     ...all.filter(
       (c) => !(c.type === cred.type && c.commitment === cred.commitment),
     ),
   ];
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // storage unavailable (private mode / quota exceeded) — in-memory state
-    // is still returned so the UI stays consistent for this session
-  }
+  localStorage.setItem(STORE_KEY, await encryptBlob(JSON.stringify(next)));
   return next;
 }
 
-export function markProved(commitment: string, txHash: string): Credential[] {
-  const next = loadCredentials().map((c) =>
+export async function markProved(commitment: string, txHash: string): Promise<Credential[]> {
+  const all = await loadCredentials();
+  const next = all.map((c) =>
     c.commitment === commitment
       ? { ...c, provedAt: Math.floor(Date.now() / 1000), provedTxHash: txHash }
       : c,
   );
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // storage unavailable (private mode / quota exceeded) — no-op
-  }
+  localStorage.setItem(STORE_KEY, await encryptBlob(JSON.stringify(next)));
   return next;
 }
 
 /** Mark multiple credentials as proved in a single localStorage write. */
-export function markAllProved(
+export async function markAllProved(
   commitments: string[],
   txHash: string,
-): Credential[] {
+): Promise<Credential[]> {
   const set = new Set(commitments);
   const now = Math.floor(Date.now() / 1000);
-  const next = loadCredentials().map((c) =>
+  const all = await loadCredentials();
+  const next = all.map((c) =>
     set.has(c.commitment) ? { ...c, provedAt: now, provedTxHash: txHash } : c,
   );
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // storage unavailable (private mode / quota exceeded) — no-op
-  }
+  localStorage.setItem(STORE_KEY, await encryptBlob(JSON.stringify(next)));
   return next;
 }
 
-export function removeCredential(commitment: string): Credential[] {
-  const next = loadCredentials().filter((c) => c.commitment !== commitment);
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // storage unavailable (private mode / quota exceeded) — no-op
-  }
+export async function removeCredential(commitment: string): Promise<Credential[]> {
+  const all = await loadCredentials();
+  const next = all.filter((c) => c.commitment !== commitment);
+  localStorage.setItem(STORE_KEY, await encryptBlob(JSON.stringify(next)));
   return next;
 }
 
@@ -263,11 +350,10 @@ function isByteArray(v: unknown, len: number): v is number[] {
  * Debounced to avoid thrash on batch writes. Guarded by safe-storage check.
  */
 export function useCredentialSync(): Credential[] {
-  const [credentials, setCredentials] = useState<Credential[]>(() => loadCredentials());
+  const [credentials, setCredentials] = useState<Credential[]>([]);
 
-  // Reload credentials from localStorage
   const reload = useCallback(() => {
-    setCredentials(loadCredentials());
+    loadCredentials().then(setCredentials);
   }, []);
 
   // Debounced reload to avoid thrash on rapid writes
@@ -277,13 +363,18 @@ export function useCredentialSync(): Credential[] {
     timeoutRef.current = setTimeout(reload, 100); // 100ms debounce
   }, [reload]);
 
+  // Initial load on mount
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
   // Listen for storage events from other tabs
   useEffect(() => {
     if (!isStorageAvailable()) return;
 
     const handleStorage = (e: StorageEvent) => {
       // Only reload if the credentials key changed
-      if (e.key === KEY) {
+      if (e.key === STORE_KEY) {
         debouncedReload();
       }
     };

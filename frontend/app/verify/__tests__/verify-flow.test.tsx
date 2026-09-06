@@ -53,7 +53,7 @@ vi.mock("@/components/WalletButton", () => ({
   WalletButton: () => null,
 }));
 
-vi.mock("@/lib/credential", async (importOriginal: any) => {
+vi.mock("@/lib/credential", async (importOriginal) => {
   const actual = await importOriginal() as typeof import("@/lib/credential");
   return { ...actual, saveCredential: vi.fn() };
 });

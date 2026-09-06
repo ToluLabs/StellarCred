@@ -104,6 +104,24 @@ export interface Db {
    */
   recent(limit: number, cursor: RecentCursor | null): RecentPage | Promise<RecentPage>;
 
+  /** Insert a new app submission. Returns the new row id. */
+  insertAppSubmission(
+    appName: string,
+    description: string,
+    requiredClaims: string[],
+    verifyUrl: string,
+    contactEmail: string,
+  ): number | Promise<number>;
+
+  /** Return all approved app submissions, newest first. */
+  listApprovedApps(): AppSubmission[] | Promise<AppSubmission[]>;
+
+  /** Return a single app submission by id. */
+  getAppSubmission(id: number): AppSubmission | undefined | Promise<AppSubmission | undefined>;
+
+  /** Update the status of an app submission. */
+  updateSubmissionStatus(id: number, status: SubmissionStatus): void | Promise<void>;
+
   /** Close the underlying connection / pool. */
   close(): void | Promise<void>;
 }
@@ -162,6 +180,22 @@ export interface IssuerStatsRow {
   first_seen: number | null;
 }
 
+// ── App submission types ───────────────────────────────────────────────────
+
+export type SubmissionStatus = "pending" | "approved" | "rejected";
+
+export interface AppSubmission {
+  id: number;
+  app_name: string;
+  description: string;
+  required_claims: string; // JSON array string, e.g. ["kyc","age"]
+  verify_url: string;
+  contact_email: string;
+  status: SubmissionStatus;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
 // ── SQLite adapter ─────────────────────────────────────────────────────────
 
 export function createSqliteDb(config: Config): Db {
@@ -199,6 +233,21 @@ export function createSqliteDb(config: Config): Db {
         );
 
         INSERT OR IGNORE INTO ledger_cursor (id, last_ledger) VALUES (1, 0);
+
+        CREATE TABLE IF NOT EXISTS app_submissions (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_name        TEXT    NOT NULL,
+          description     TEXT    NOT NULL,
+          required_claims TEXT    NOT NULL DEFAULT '[]',
+          verify_url      TEXT    NOT NULL,
+          contact_email   TEXT    NOT NULL,
+          status          TEXT    NOT NULL DEFAULT 'pending',
+          created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+          reviewed_at     TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_app_submissions_status
+          ON app_submissions (status);
       `);
 
       // Migration for databases created before the insertion-cursor `id` column
@@ -390,6 +439,49 @@ export function createSqliteDb(config: Config): Db {
       return row?.max_ledger ?? 0;
     },
 
+    insertAppSubmission(
+      appName: string,
+      description: string,
+      requiredClaims: string[],
+      verifyUrl: string,
+      contactEmail: string,
+    ) {
+      const info = raw
+        .prepare(
+          `INSERT INTO app_submissions
+             (app_name, description, required_claims, verify_url, contact_email)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(appName, description, JSON.stringify(requiredClaims), verifyUrl, contactEmail);
+      return Number(info.lastInsertRowid);
+    },
+
+    listApprovedApps() {
+      return raw
+        .prepare(
+          `SELECT * FROM app_submissions
+           WHERE status = 'approved'
+           ORDER BY id DESC`
+        )
+        .all() as AppSubmission[];
+    },
+
+    getAppSubmission(id: number) {
+      return raw
+        .prepare("SELECT * FROM app_submissions WHERE id = ?")
+        .get(id) as AppSubmission | undefined;
+    },
+
+    updateSubmissionStatus(id: number, status: SubmissionStatus) {
+      raw
+        .prepare(
+          `UPDATE app_submissions
+           SET status = ?, reviewed_at = datetime('now')
+           WHERE id = ?`
+        )
+        .run(status, id);
+    },
+
     close() {
       raw.close();
     },
@@ -443,6 +535,21 @@ export function createPostgresDb(config: Config): Db {
         INSERT INTO ledger_cursor (id, last_ledger)
         VALUES (1, 0)
         ON CONFLICT (id) DO NOTHING;
+
+        CREATE TABLE IF NOT EXISTS app_submissions (
+          id              SERIAL PRIMARY KEY,
+          app_name        TEXT    NOT NULL,
+          description     TEXT    NOT NULL,
+          required_claims TEXT    NOT NULL DEFAULT '[]',
+          verify_url      TEXT    NOT NULL,
+          contact_email   TEXT    NOT NULL,
+          status          TEXT    NOT NULL DEFAULT 'pending',
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+          reviewed_at     TIMESTAMPTZ
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_app_submissions_status
+          ON app_submissions (status);
       `);
 
       // Migration for databases created before the insertion-cursor `id` column
@@ -614,6 +721,49 @@ export function createPostgresDb(config: Config): Db {
         "SELECT MAX(ledger_sequence) AS max_ledger FROM claims"
       );
       return Number(res.rows[0]?.max_ledger ?? 0);
+    },
+
+    async insertAppSubmission(
+      appName: string,
+      description: string,
+      requiredClaims: string[],
+      verifyUrl: string,
+      contactEmail: string,
+    ) {
+      const res = await pool.query<{ id: number }>(
+        `INSERT INTO app_submissions
+           (app_name, description, required_claims, verify_url, contact_email)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [appName, description, JSON.stringify(requiredClaims), verifyUrl, contactEmail]
+      );
+      return res.rows[0].id;
+    },
+
+    async listApprovedApps() {
+      const res = await pool.query<AppSubmission>(
+        `SELECT * FROM app_submissions
+         WHERE status = 'approved'
+         ORDER BY id DESC`
+      );
+      return res.rows;
+    },
+
+    async getAppSubmission(id: number) {
+      const res = await pool.query<AppSubmission>(
+        "SELECT * FROM app_submissions WHERE id = $1",
+        [id]
+      );
+      return res.rows[0];
+    },
+
+    async updateSubmissionStatus(id: number, status: SubmissionStatus) {
+      await pool.query(
+        `UPDATE app_submissions
+         SET status = $1, reviewed_at = now()
+         WHERE id = $2`,
+        [status, id]
+      );
     },
 
     async close() {

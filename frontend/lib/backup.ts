@@ -79,7 +79,7 @@ export async function createEncryptedBackup(
   if (!passphrase) {
     throw new Error("Passphrase must not be empty");
   }
-  const credentials = loadCredentials();
+  const credentials = await loadCredentials();
   const plaintext = new TextEncoder().encode(JSON.stringify(credentials));
 
   const saltBytes = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
@@ -168,11 +168,11 @@ export async function decryptBackup(
   return parsed as Credential[];
 }
 
-export function mergeCredentials(imported: Credential[]): Credential[] {
-  let current = loadCredentials();
+export async function mergeCredentials(imported: Credential[]): Promise<Credential[]> {
+  let current = await loadCredentials();
 
   for (const cred of imported) {
-    current = saveCredential(cred);
+    current = await saveCredential(cred);
   }
 
   return current;

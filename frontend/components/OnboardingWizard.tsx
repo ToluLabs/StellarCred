@@ -24,6 +24,7 @@ import {
 } from "@/lib/onboarding";
 import { saveCredential, loadCredentials } from "@/lib/credential";
 import type { Credential } from "@/lib/credential";
+import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useToast } from "@/components/Toast";
 
 /* ── Step icons ──────────────────────────────────────────────────────────── */
@@ -223,10 +224,11 @@ function GetCredentialStep() {
 
   // Check if user already has a credential
   useEffect(() => {
-    const creds = loadCredentials();
-    if (creds.some((c) => c.type === "age")) {
-      setDone(true);
-    }
+    loadCredentials().then((creds) => {
+      if (creds.some((c) => c.type === "age")) {
+        setDone(true);
+      }
+    });
   }, []);
 
   async function onRequest() {
@@ -351,8 +353,9 @@ function GenerateProofStep() {
   const [hasCredential, setHasCredential] = useState(false);
 
   useEffect(() => {
-    const creds = loadCredentials();
-    setHasCredential(creds.some((c) => c.type === "age"));
+    loadCredentials().then((creds) => {
+      setHasCredential(creds.some((c) => c.type === "age"));
+    });
   }, []);
 
   return (
@@ -465,6 +468,7 @@ export function OnboardingWizard() {
     dismiss,
   } = useOnboarding();
   const { address } = useWallet();
+  const { creds } = useCredentialStore();
   const [mounted2, setMounted2] = useState(false);
 
   useEffect(() => setMounted2(true), []);
@@ -489,7 +493,7 @@ export function OnboardingWizard() {
     currentStep === "unlock" ||
     (currentStep === "connect-wallet" && !!address) ||
     (currentStep === "get-credential" &&
-      loadCredentials().some((c) => c.type === "age")) ||
+      creds.some((c) => c.type === "age")) ||
     currentStep === "generate-proof";
 
   return (

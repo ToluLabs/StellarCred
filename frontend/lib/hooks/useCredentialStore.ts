@@ -25,7 +25,11 @@ import { isStorageAvailable } from "../safe-storage";
 const STORAGE_KEY = "stellarcred:credentials";
 
 export function useCredentialStore() {
-  const [creds, setCreds] = useState<Credential[]>(() => loadCredentials());
+  const [creds, setCreds] = useState<Credential[]>([]);
+
+  useEffect(() => {
+    loadCredentials().then(setCreds);
+  }, []);
 
   // ── Cross-tab sync ─────────────────────────────────────────────────────────
   // When another tab writes to the credentials localStorage key, reload.
@@ -39,7 +43,7 @@ export function useCredentialStore() {
       if (e.key === STORAGE_KEY) {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => {
-          setCreds(loadCredentials());
+          loadCredentials().then(setCreds);
         }, 100);
       }
     };
@@ -49,28 +53,32 @@ export function useCredentialStore() {
       window.removeEventListener("storage", handleStorage);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, []); // mount-only: STORAGE_KEY is a module constant
+  }, []);
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   const reload = useCallback(() => {
-    setCreds(loadCredentials());
+    loadCredentials().then(setCreds);
   }, []);
 
-  const save = useCallback((cred: Credential) => {
-    setCreds(saveCredential(cred));
+  const save = useCallback(async (cred: Credential) => {
+    const updated = await saveCredential(cred);
+    setCreds(updated);
   }, []);
 
-  const remove = useCallback((commitment: string) => {
-    setCreds(removeCredential(commitment));
+  const remove = useCallback(async (commitment: string) => {
+    const updated = await removeCredential(commitment);
+    setCreds(updated);
   }, []);
 
-  const markCredentialProved = useCallback((commitment: string, txHash: string) => {
-    setCreds(_markProved(commitment, txHash));
+  const markCredentialProved = useCallback(async (commitment: string, txHash: string) => {
+    const updated = await _markProved(commitment, txHash);
+    setCreds(updated);
   }, []);
 
-  const markCredentialsProved = useCallback((commitments: string[], txHash: string) => {
-    setCreds(_markAllProved(commitments, txHash));
+  const markCredentialsProved = useCallback(async (commitments: string[], txHash: string) => {
+    const updated = await _markAllProved(commitments, txHash);
+    setCreds(updated);
   }, []);
 
   return {

@@ -30,6 +30,16 @@
  *   GET /issuers/:issuer/stats
  *     → { issuer, total, active, revoked, credential_types: string[], first_seen: number | null }
  *
+ *   GET /apps
+ *     → { apps: AppSubmission[] }  (approved only)
+ *
+ *   GET /apps/:id
+ *     → { app: AppSubmission }
+ *
+ *   POST /apps/submit
+ *     Body: { appName, description, requiredClaims, verifyUrl, contactEmail }
+ *     → { id: number, status: "pending" }
+ *
  * /recent uses keyset (cursor) pagination ordered by (ledger_sequence, id) —
  * the `nextCursor` returned with each page is an opaque token that must be
  * passed back as `?cursor=` to fetch the next page. Unlike OFFSET pagination
@@ -72,6 +82,22 @@ import type { RecentCursor } from "./db";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
+
+/** Known StellarCred credential types — submissions must reference only these. */
+const VALID_CLAIM_TYPES = new Set([
+  "kyc",
+  "age",
+  "jurisdiction",
+  "income",
+  "funds",
+  "accreditation",
+  "employment",
+]);
+
+const MAX_APP_NAME = 120;
+const MAX_DESCRIPTION = 2000;
+const MAX_CLAIMS = 10;
+const MAX_CONTACT_EMAIL = 254;
 
 // ── Response schema (#349) ──────────────────────────────────────────────────
 //
@@ -366,6 +392,118 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
       }
       const stats = await db.issuerStats(issuer.trim());
       res.json(stats);
+    })
+  );
+
+  // ── GET /apps ────────────────────────────────────────────────────────────
+  // Returns all approved app submissions for the gallery.
+  app.get(
+    "/apps",
+    asyncHandler(async (_req, res) => {
+      const apps = await db.listApprovedApps();
+      res.json({ apps });
+    })
+  );
+
+  // ── GET /apps/:id ────────────────────────────────────────────────────────
+  app.get(
+    "/apps/:id",
+    asyncHandler(async (req, res) => {
+      const id = parseInt(req.params["id"], 10);
+      if (isNaN(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const appRow = await db.getAppSubmission(id);
+      if (!appRow) {
+        res.status(404).json({ error: "app not found" });
+        return;
+      }
+      res.json({ app: appRow });
+    })
+  );
+
+  // ── POST /apps/submit ────────────────────────────────────────────────────
+  // Third parties submit their app for review.
+  app.use("/apps", express.json({ limit: "16kb" }));
+  app.post(
+    "/apps/submit",
+    asyncHandler(async (req, res) => {
+      const { appName, description, requiredClaims, verifyUrl, contactEmail } =
+        req.body;
+
+      if (typeof appName !== "string" || appName.trim().length === 0) {
+        res.status(400).json({ error: "appName is required" });
+        return;
+      }
+      if (appName.trim().length > MAX_APP_NAME) {
+        res.status(400).json({ error: `appName must be at most ${MAX_APP_NAME} characters` });
+        return;
+      }
+
+      if (typeof description !== "string" || description.trim().length === 0) {
+        res.status(400).json({ error: "description is required" });
+        return;
+      }
+      if (description.trim().length > MAX_DESCRIPTION) {
+        res.status(400).json({ error: `description must be at most ${MAX_DESCRIPTION} characters` });
+        return;
+      }
+
+      if (!Array.isArray(requiredClaims) || requiredClaims.length === 0) {
+        res.status(400).json({ error: "requiredClaims must be a non-empty array" });
+        return;
+      }
+      if (requiredClaims.length > MAX_CLAIMS) {
+        res.status(400).json({ error: `requiredClaims must contain at most ${MAX_CLAIMS} items` });
+        return;
+      }
+      for (const claim of requiredClaims) {
+        if (typeof claim !== "string" || !VALID_CLAIM_TYPES.has(claim)) {
+          res.status(400).json({
+            error: `invalid claim type: "${claim}". Valid types: ${[...VALID_CLAIM_TYPES].join(", ")}`,
+          });
+          return;
+        }
+      }
+
+      if (typeof verifyUrl !== "string" || verifyUrl.trim().length === 0) {
+        res.status(400).json({ error: "verifyUrl is required" });
+        return;
+      }
+      try {
+        const parsed = new URL(verifyUrl.trim());
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          res.status(400).json({ error: "verifyUrl must use http or https" });
+          return;
+        }
+      } catch {
+        res.status(400).json({ error: "verifyUrl must be a valid URL" });
+        return;
+      }
+
+      if (typeof contactEmail !== "string" || contactEmail.trim().length === 0) {
+        res.status(400).json({ error: "contactEmail is required" });
+        return;
+      }
+      if (contactEmail.trim().length > MAX_CONTACT_EMAIL) {
+        res.status(400).json({ error: `contactEmail must be at most ${MAX_CONTACT_EMAIL} characters` });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
+        res.status(400).json({ error: "contactEmail must be a valid email address" });
+        return;
+      }
+
+      const id = await db.insertAppSubmission(
+        appName.trim(),
+        description.trim(),
+        requiredClaims.map((c: string) => c.trim()),
+        verifyUrl.trim(),
+        contactEmail.trim(),
+      );
+
+      res.status(201).json({ id, status: "pending" });
     })
   );
 
