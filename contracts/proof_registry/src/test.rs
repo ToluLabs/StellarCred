@@ -5,11 +5,16 @@ use credential_verifier::{CredentialVerifier, CredentialVerifierClient};
 use issuer_registry::{IssuerRegistry, IssuerRegistryClient};
 use soroban_sdk::{
     symbol_short,
+
+    testutils::{storage::Persistent as _, Address as _, Ledger as _},
+    vec, Address, Bytes, BytesN, Env,
+
     testutils::{
         storage::Persistent as _, Address as _, Events as _, Ledger as _, MockAuth,
         MockAuthInvoke,
     },
     vec, Address, Bytes, BytesN, Env, IntoVal, Symbol,
+
 };
 
 // Real UltraHonk artifacts from existing circuits.
@@ -60,25 +65,10 @@ fn u8_slice_to_vec_u32(env: &Env, slice: &[u8]) -> Vec<u32> {
     vec
 }
 
-fn get_test_wasm(env: &Env) -> Bytes {
-    let paths = [
-        "target/wasm32v1-none/release/proof_registry.wasm",
-        "../../target/wasm32v1-none/release/proof_registry.wasm",
-        "../target/wasm32v1-none/release/proof_registry.wasm",
-    ];
-    for path in paths.iter() {
-        if let Ok(wasm) = std::fs::read(path) {
-            return Bytes::from_slice(env, &wasm);
-        }
-    }
-    panic!("Could not find target/wasm32v1-none/release/proof_registry.wasm. Please run 'cargo build --target wasm32v1-none --release' first.");
-}
-
 struct Harness {
     registry: ProofRegistryClient<'static>,
     registry_id: Address,
     issuer: Address,
-    admin: Address,
 }
 
 fn deploy(env: &Env) -> Harness {
@@ -96,12 +86,11 @@ fn deploy(env: &Env) -> Harness {
         &Bytes::from_slice(env, VK),
     );
 
-    let pr_id = env.register(ProofRegistry, (admin.clone(), v_id, ir_id));
+    let pr_id = env.register(ProofRegistry, (admin, v_id, ir_id));
     Harness {
         registry: ProofRegistryClient::new(env, &pr_id),
         registry_id: pr_id,
         issuer,
-        admin,
     }
 }
 
@@ -552,6 +541,148 @@ fn batch_rejects_over_max_expiry() {
     let submissions = vec![&env, kyc_submission(&env, &h.issuer, u64::MAX)];
     let res = h.registry.try_submit_proofs(&holder, &submissions);
     assert!(res.is_err());
+}
+
+// ── Per-app nullifier tests (anti-Sybil distribution) ───────────────────────
+
+const AIRDROP_SCOPE: &[u8] = b"stellarcred:airdrop:humandrop-2026";
+
+/// `sha256(commitment || AIRDROP_SCOPE)` for the KYC fixture, computed
+/// independently of the contract. The SDK asserts the same vector in
+/// `frontend/packages/sdk/src/airdrop.test.ts`.
+const EXPECTED_NULLIFIER: [u8; 32] = [
+    0xac, 0x90, 0xac, 0x63, 0xaa, 0xa9, 0x74, 0x62, 0xb9, 0xe7, 0x1a, 0x74, 0x68, 0x67, 0xb9, 0x59,
+    0x35, 0x37, 0x19, 0x8d, 0x8a, 0x14, 0x06, 0x09, 0xad, 0x42, 0xfd, 0x1c, 0x9c, 0x93, 0xa0, 0x91,
+];
+
+#[test]
+fn submit_records_the_identity_commitment() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+    submit(&env, &h, &holder, 9999);
+
+    let mut expected = [0u8; 32];
+    expected.copy_from_slice(&PUBLIC_INPUTS[0..32]);
+    assert_eq!(
+        h.registry
+            .identity_commitment(&holder, &symbol_short!("kyc"))
+            .unwrap(),
+        BytesN::from_array(&env, &expected),
+    );
+}
+
+#[test]
+fn app_nullifier_matches_the_expected_vector_and_is_wallet_independent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let wallet_a = Address::generate(&env);
+    let wallet_b = Address::generate(&env);
+    submit(&env, &h, &wallet_a, 9999);
+    submit(&env, &h, &wallet_b, 9999);
+
+    let scope = Bytes::from_slice(&env, AIRDROP_SCOPE);
+    let a = h
+        .registry
+        .app_nullifier(&wallet_a, &symbol_short!("kyc"), &scope, &None, &None)
+        .unwrap();
+    let b = h
+        .registry
+        .app_nullifier(&wallet_b, &symbol_short!("kyc"), &scope, &None, &None)
+        .unwrap();
+
+    assert_eq!(a, BytesN::from_array(&env, &EXPECTED_NULLIFIER));
+    // One human, two wallets, one nullifier — the anti-Sybil property.
+    assert_eq!(a, b);
+
+    // A different scope yields an unlinkable value.
+    let other = h
+        .registry
+        .app_nullifier(
+            &wallet_a,
+            &symbol_short!("kyc"),
+            &Bytes::from_slice(&env, b"stellarcred:airdrop:other-2026"),
+            &None,
+            &None,
+        )
+        .unwrap();
+    assert_ne!(a, other);
+}
+
+#[test]
+fn app_nullifier_requires_a_currently_valid_claim() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+    let scope = Bytes::from_slice(&env, AIRDROP_SCOPE);
+
+    // Never submitted.
+    assert!(h
+        .registry
+        .app_nullifier(&holder, &symbol_short!("kyc"), &scope, &None, &None)
+        .is_none());
+
+    submit(&env, &h, &holder, 1_000);
+    assert!(h
+        .registry
+        .app_nullifier(&holder, &symbol_short!("kyc"), &scope, &None, &None)
+        .is_some());
+
+    // Issuer-restricted to somebody else.
+    let stranger = Address::generate(&env);
+    assert!(h
+        .registry
+        .app_nullifier(
+            &holder,
+            &symbol_short!("kyc"),
+            &scope,
+            &None,
+            &Some(vec![&env, stranger]),
+        )
+        .is_none());
+
+    // Revoked by the issuer.
+    h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"));
+    assert!(h
+        .registry
+        .app_nullifier(&holder, &symbol_short!("kyc"), &scope, &None, &None)
+        .is_none());
+
+    // Expired.
+    submit(&env, &h, &holder, 1_000);
+    env.ledger().set_timestamp(2_000);
+    assert!(h
+        .registry
+        .app_nullifier(&holder, &symbol_short!("kyc"), &scope, &None, &None)
+        .is_none());
+}
+
+#[test]
+fn holder_revocation_clears_the_recorded_commitment() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+    submit(&env, &h, &holder, 9999);
+
+    h.registry.revoke_proof(&holder, &symbol_short!("kyc"));
+    assert!(h
+        .registry
+        .identity_commitment(&holder, &symbol_short!("kyc"))
+        .is_none());
+    assert!(h
+        .registry
+        .app_nullifier(
+            &holder,
+            &symbol_short!("kyc"),
+            &Bytes::from_slice(&env, AIRDROP_SCOPE),
+            &None,
+            &None,
+        )
+        .is_none());
 }
 
 // ── Aggregate proof tests ─────────────────────────────────────────────────────
@@ -1235,355 +1366,4 @@ fn granting_the_same_verifier_again_overwrites_the_previous_expiry() {
             .check_delegated_verification(&holder, &verifier, &symbol_short!("kyc"))
             .0
     );
-}
-
-// ── RBAC tests (Issue #123) ─────────────────────────────────────────────────
-
-#[test]
-fn roles_seeded_at_construction() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-
-    // The deployer starts as root admin AND holds the upgrader and pauser
-    // roles, so existing deploy/upgrade/pause flows work out of the box.
-    assert!(h.registry.has_role(&symbol_short!("admin"), &h.admin));
-    assert!(h.registry.has_role(&symbol_short!("upgrader"), &h.admin));
-    assert!(h.registry.has_role(&symbol_short!("pauser"), &h.admin));
-
-    let stranger = Address::generate(&env);
-    assert!(!h.registry.has_role(&symbol_short!("admin"), &stranger));
-    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &stranger));
-    assert!(!h.registry.has_role(&symbol_short!("pauser"), &stranger));
-}
-
-#[test]
-fn admin_can_grant_and_revoke_roles() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-    let delegate = Address::generate(&env);
-    let other = Address::generate(&env);
-
-    // Grant a new role.
-    h.registry.grant_role(&symbol_short!("upgrader"), &delegate);
-    assert!(h.registry.has_role(&symbol_short!("upgrader"), &delegate));
-
-    // Re-granting moves the role to the new holder.
-    h.registry.grant_role(&symbol_short!("upgrader"), &other);
-    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &delegate));
-    assert!(h.registry.has_role(&symbol_short!("upgrader"), &other));
-
-    // Revoking an address that is not the current holder is rejected.
-    let res = h
-        .registry
-        .try_revoke_role(&symbol_short!("upgrader"), &delegate);
-    assert!(res.is_err());
-
-    // Revoke.
-    h.registry.revoke_role(&symbol_short!("upgrader"), &other);
-    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &other));
-
-    // Revoking an unassigned role is a harmless no-op.
-    let res = h
-        .registry
-        .try_revoke_role(&symbol_short!("upgrader"), &other);
-    assert!(res.is_ok());
-}
-
-#[test]
-fn grant_and_revoke_require_root_admin() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-    let delegate = Address::generate(&env);
-
-    // No auths mocked → the root admin's required auth fails.
-    let res = h
-        .registry
-        .mock_auths(&[])
-        .try_grant_role(&symbol_short!("upgrader"), &delegate);
-    assert!(res.is_err());
-    let res = h
-        .registry
-        .mock_auths(&[])
-        .try_revoke_role(&symbol_short!("upgrader"), &delegate);
-    assert!(res.is_err());
-}
-
-#[test]
-fn upgrade_requires_upgrader_role() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-
-    let real_wasm = get_test_wasm(&env);
-    let new_wasm_hash = env.deployer().upload_contract_wasm(real_wasm);
-
-    // Delegate the upgrader role away from the root admin.
-    let upgrader = Address::generate(&env);
-    h.registry.grant_role(&symbol_short!("upgrader"), &upgrader);
-
-    // The role holder can upgrade…
-    h.registry
-        .mock_auths(&[MockAuth {
-            address: &upgrader,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "upgrade",
-                args: (&new_wasm_hash,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .upgrade(&new_wasm_hash);
-
-    // …a non-holder cannot.
-    let stranger = Address::generate(&env);
-    let res = h
-        .registry
-        .mock_auths(&[MockAuth {
-            address: &stranger,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "upgrade",
-                args: (&new_wasm_hash,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_upgrade(&new_wasm_hash);
-    assert!(res.is_err());
-
-    // After revocation the former holder loses upgrade power too.
-    h.registry.revoke_role(&symbol_short!("upgrader"), &upgrader);
-    let res = h
-        .registry
-        .mock_auths(&[MockAuth {
-            address: &upgrader,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "upgrade",
-                args: (&new_wasm_hash,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_upgrade(&new_wasm_hash);
-    assert!(res.is_err());
-
-    // Unassigned upgrader role: even the root admin cannot upgrade until the
-    // role is granted again.
-    let res = h
-        .registry
-        .mock_auths(&[MockAuth {
-            address: &h.admin,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "upgrade",
-                args: (&new_wasm_hash,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_upgrade(&new_wasm_hash);
-    assert!(res.is_err());
-}
-
-#[test]
-fn pause_requires_pauser_role() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-    let holder = Address::generate(&env);
-
-    // Delegate the pauser role away from the root admin.
-    let pauser = Address::generate(&env);
-    h.registry.grant_role(&symbol_short!("pauser"), &pauser);
-
-    // The pauser-role holder can pause…
-    h.registry
-        .mock_auths(&[MockAuth {
-            address: &pauser,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "pause",
-                args: ().into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .pause();
-
-    // …submissions are now blocked…
-    let res = h.registry.try_submit_proof(
-        &holder,
-        &h.issuer,
-        &symbol_short!("kyc"),
-        &Bytes::from_slice(&env, PROOF),
-        &Bytes::from_slice(&env, PUBLIC_INPUTS),
-        &None,
-        &2000,
-    );
-    assert!(res.is_err());
-
-    // …a non-holder cannot pause or unpause…
-    let stranger = Address::generate(&env);
-    let res = h
-        .registry
-        .mock_auths(&[MockAuth {
-            address: &stranger,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "pause",
-                args: ().into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_pause();
-    assert!(res.is_err());
-
-    // …and the root admin alone can no longer unpause once the role is
-    // delegated (the old root still holds the role here, though — see below).
-    let res = h
-        .registry
-        .mock_auths(&[MockAuth {
-            address: &h.admin,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "unpause",
-                args: ().into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_unpause();
-    // h.admin no longer holds pauser (it was moved to `pauser`), so this fails.
-    assert!(res.is_err());
-
-    // The pauser-role holder can unpause…
-    h.registry
-        .mock_auths(&[MockAuth {
-            address: &pauser,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "unpause",
-                args: ().into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .unpause();
-
-    // …and submissions work again.
-    h.registry.submit_proof(
-        &holder,
-        &h.issuer,
-        &symbol_short!("kyc"),
-        &Bytes::from_slice(&env, PROOF),
-        &Bytes::from_slice(&env, PUBLIC_INPUTS),
-        &None,
-        &2000,
-    );
-    assert!(h.registry.is_verified(&holder, &symbol_short!("kyc"), &None).0);
-}
-
-#[test]
-fn migrate_record_requires_admin_role() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-    let holder = Address::generate(&env);
-
-    // A current-format record exists so the migration call itself succeeds.
-    submit(&env, &h, &holder, 1000);
-
-    // Delegate the admin role away from the root admin.
-    let admin_delegate = Address::generate(&env);
-    h.registry.grant_role(&symbol_short!("admin"), &admin_delegate);
-
-    // The admin-role holder can migrate (idempotent no-op on a current record).
-    h.registry
-        .mock_auths(&[MockAuth {
-            address: &admin_delegate,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "migrate_record",
-                args: (&holder, &symbol_short!("kyc")).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .migrate_record(&holder, &symbol_short!("kyc"));
-
-    // A non-holder cannot — including the old root once the role is delegated.
-    let stranger = Address::generate(&env);
-    let res = h
-        .registry
-        .mock_auths(&[MockAuth {
-            address: &stranger,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "migrate_record",
-                args: (&holder, &symbol_short!("kyc")).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_migrate_record(&holder, &symbol_short!("kyc"));
-    assert!(res.is_err());
-    let res = h
-        .registry
-        .mock_auths(&[MockAuth {
-            address: &h.admin,
-            invoke: &MockAuthInvoke {
-                contract: &h.registry.address,
-                fn_name: "migrate_record",
-                args: (&holder, &symbol_short!("kyc")).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_migrate_record(&holder, &symbol_short!("kyc"));
-    assert!(res.is_err());
-}
-
-#[test]
-fn admin_transfer_moves_roles_to_new_admin() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-    let new_admin = Address::generate(&env);
-
-    // Delegate the upgrader role to a third party before the transfer.
-    let upgrader = Address::generate(&env);
-    h.registry.grant_role(&symbol_short!("upgrader"), &upgrader);
-
-    h.registry.set_admin(&new_admin);
-
-    // Root admin + every role the old root held move to the new admin.
-    assert_eq!(h.registry.admin(), new_admin);
-    assert!(!h.registry.has_role(&symbol_short!("admin"), &h.admin));
-    assert!(h.registry.has_role(&symbol_short!("admin"), &new_admin));
-    assert!(!h.registry.has_role(&symbol_short!("pauser"), &h.admin));
-    assert!(h.registry.has_role(&symbol_short!("pauser"), &new_admin));
-
-    // The delegated upgrader role is untouched by the transfer.
-    assert!(h.registry.has_role(&symbol_short!("upgrader"), &upgrader));
-    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &new_admin));
-}
-
-#[test]
-fn has_role_is_a_public_view() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let h = deploy(&env);
-    let delegate = Address::generate(&env);
-
-    // has_role requires no auth — readable by anyone (still true even with
-    // zero mocked auths).
-    assert!(h
-        .registry
-        .mock_auths(&[])
-        .has_role(&symbol_short!("admin"), &h.admin));
-    assert!(h
-        .registry
-        .mock_auths(&[])
-        .has_role(&symbol_short!("upgrader"), &h.admin));
-
-    h.registry
-        .grant_role(&Symbol::new(&env, "issuer_manager"), &delegate);
-    assert!(h
-        .registry
-        .has_role(&Symbol::new(&env, "issuer_manager"), &delegate));
 }

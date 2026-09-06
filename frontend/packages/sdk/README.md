@@ -225,6 +225,54 @@ const url = StellarCred.buildVerifyUrl({
 });
 ```
 
+## Verified-human-once claims (anti-Sybil airdrops & quotas)
+
+`hasClaim` answers *"is this wallet allowed in?"*. Distributions need a second
+answer: *"has this **human** already claimed?"* — one person can prove the same
+credential from any number of wallets.
+
+`createHumanClaim` reads the [`human_airdrop`](https://github.com/Psalmuel01/StellarCred/tree/main/contracts/human_airdrop)
+contract, which gates claims on a **per-app nullifier**:
+
+```
+nullifier = sha256( identity_commitment || app_scope )
+```
+
+The identity commitment comes from the proof itself, not the wallet, so every
+address one human controls collapses to a single nullifier per campaign.
+
+```ts
+import { createHumanClaim } from "@stellarcred/sdk";
+
+const drop = createHumanClaim({
+  contractId: process.env.HUMAN_AIRDROP_ID!,   // human_airdrop
+  registryId: process.env.PROOF_REGISTRY_ID,   // optional: identityCommitment()
+});
+
+const check = await drop.canClaim("drop1", wallet);
+if (!check.eligible) {
+  // reason: "AlreadyClaimed" | "NotVerifiedHuman" | "BudgetExhausted" | …
+  return deny(check.message);
+}
+// safe to prompt the wallet for human_airdrop.claim(caller, "drop1")
+```
+
+| Method | Returns |
+|---|---|
+| `canClaim(campaignId, wallet)` | `{ eligible, reason, message, nullifier }` — one-call pre-flight |
+| `eligibility(campaignId, wallet)` | the raw contract enum |
+| `hasClaimed(campaignId, wallet)` | has *this human* claimed, through any wallet |
+| `isSpent(campaignId, nullifier)` | has this nullifier been consumed |
+| `nullifierFor(campaignId, wallet)` | the wallet's campaign-scoped nullifier (hex) |
+| `campaign(campaignId)` | scope, credential rule, amount, budget, counters |
+| `claimsCount(campaignId)` | unique humans paid so far |
+| `identityCommitment(wallet, type)` | the 32-byte commitment (needs `registryId`) |
+| `deriveNullifier(commitment, scope)` | pure, offline derivation — identical bytes to the contract |
+
+Every call is read-only simulation; the SDK never signs or submits. Guarantees
+**and limits** are documented in
+[docs/ANTI_SYBIL.md](https://github.com/Psalmuel01/StellarCred/blob/main/docs/ANTI_SYBIL.md).
+
 ## Claim types
 
 | Type | Proves | Threshold parameter |

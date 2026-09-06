@@ -1164,12 +1164,18 @@ export function watchClaim(
   }
 }
 
+// Verified-human-once helpers, imported so they can also hang off the
+// `StellarCred` namespace object below (the re-exports live at the bottom).
+import { createHumanClaim, deriveNullifier } from "./airdrop";
+
 // ---------------------------------------------------------------------------
 // Namespace export (StellarCred.hasClaim / StellarCred.getClaims / etc.)
 // ---------------------------------------------------------------------------
 
 export const StellarCred = {
   configure,
+  createHumanClaim,
+  deriveNullifier,
   healthCheck,
   isConfigured,
   hasClaim,
@@ -1198,3 +1204,25 @@ export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } fr
 // independent implementation from `createClaimGate` (which performs per-claim
 // `hasClaim` reads), so keep the two behaviourally in sync.
 export { useStellarCred } from "./react";
+
+// Verified-human-once claims — the anti-Sybil distribution helper for the
+// `human_airdrop` reference contract (see docs/ANTI_SYBIL.md).
+export {
+  createHumanClaim,
+  deriveNullifier,
+  decodeEligibility,
+  decodeCampaign,
+  scopeBytes,
+  toHex,
+  ELIGIBILITY,
+  ELIGIBILITY_REASONS,
+} from "./airdrop";
+export type {
+  HumanClaim,
+  HumanClaimConfig,
+  Campaign,
+  ClaimCheck,
+  Eligibility,
+  ContractArg,
+  ContractReader,
+} from "./airdrop";

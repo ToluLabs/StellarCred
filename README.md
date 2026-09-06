@@ -23,8 +23,8 @@ reusable proofs instead of re-submitting personal data to every app.
 - **Real on-chain ZK verification.** `CredentialVerifier` runs the host-native
   BN254 UltraHonk verifier ([`rs-soroban-ultrahonk`](https://github.com/yugocabrio/rs-soroban-ultrahonk)),
   not a stub. The full path — protocol → ProofRegistry → IssuerRegistry +
-  CredentialVerifier → BN254 — is covered by **125 passing contract tests** over
-  genuine proofs for all credential types.
+  CredentialVerifier → BN254 — is covered by **21 passing contract tests** over
+  genuine proofs for all four credential types.
 - **Issuer signature verified in zero-knowledge.** Each circuit verifies the
   issuer's secp256k1 ECDSA signature over the credential commitment
   (`std::ecdsa_secp256k1`) inside the proof, and the contract binds that key to
@@ -56,6 +56,8 @@ reusable proofs instead of re-submitting personal data to every app.
   │   ProofRegistry ────── caches "address X verified until T",   │
   │                       gated on the registered issuer key      │
   │   GatedPool ────────── demo DeFi pool gated on a KYC proof    │
+  │   HumanAirdrop ─────── one-claim-per-human distribution, via  │
+  │                       per-app nullifiers (anti-Sybil)         │
   └──────────────────────────────────────────────────────────────┘
                            ▲
                            │  one read-only call: is_verified(wallet, claim)
@@ -76,6 +78,28 @@ proof once and caches the result; every protocol afterwards reads
 For a detailed architectural description with diagrams, see the [Architecture Documentation](docs/ARCHITECTURE.md).
 For the authoritative specification of contract events, topic schemas, and indexer integration, see [EVENTS.md](EVENTS.md).
 
+### Anti-Sybil distribution (verified-human-once)
+
+Gating access is one thing; handing out a fixed allocation is another — one
+person can prove the same credential from fifty wallets. `ProofRegistry`
+therefore derives a **per-app nullifier** from the credential's identity
+commitment:
+
+```
+nullifier = sha256( identity_commitment || app_scope )
+```
+
+The commitment does not depend on the submitting address, so every wallet a
+single human controls collapses to one nullifier per campaign scope.
+[`contracts/human_airdrop`](contracts/human_airdrop) turns that into a
+plug-and-play claim gate — `claim()` for the reference distributor, `consume()`
+for your own — and [`@stellarcred/sdk`](frontend/packages/sdk)'s
+`createHumanClaim()` answers "can this wallet claim?" off-chain. A worked demo
+lives at `/apps/humandrop` in the apps gallery.
+
+Guarantees **and their limits** are documented in
+[docs/ANTI_SYBIL.md](docs/ANTI_SYBIL.md) — read the limits before relying on it.
+
 ---
 
 ## Repository layout
@@ -86,6 +110,8 @@ contracts/              Soroban workspace (Rust, soroban-sdk 26)
   credential_verifier/    real UltraHonk verify via host-native BN254 (VK per type)
   proof_registry/         caches verifications w/ expiry + TTL; gated on issuer key
   gated_pool/             demo DeFi pool gated on a KYC proof
+  human_airdrop/          verified-human-once claims: nullifier-gated airdrop /
+                          quota pattern any distributor can consume
 circuits/               Noir circuits (UltraHonk · Noir 1.0.0-beta.9 / bb 0.87.0)
   commit/                 issuer helper: returns Poseidon2([value, salt], 2)
   kyc_proof/              "I hold a credential the issuer committed to"
@@ -203,7 +229,7 @@ full reference.
    result. Identity fields are sent once to the provider and never stored.
 4. **Proof expiry.** `ProofRegistry` uses persistent storage with an explicit
    `expiry` (checked against ledger time) plus TTL extension.
-5. **Contract governance is role-based.** Privileged actions on `CredentialVerifier`, `IssuerRegistry`, and `ProofRegistry` are gated by a role map (`Map<Symbol, Address>`) rather than a single admin key. The deployer is seeded the `admin` role (plus `upgrader` and `pauser` on `ProofRegistry`) at construction, and the root admin can delegate or rotate holders with `grant_role` / `revoke_role` (`has_role` is a public view). Each privileged function is guarded by its specific role: `set_vk` / `deprecate_version` / `refresh_latest_version_ttl` → `admin`, issuer registration / revocation / metadata → `admin`, `ProofRegistry.upgrade` → `upgrader`, `pause` / `unpause` → `pauser`, `migrate_record` → `admin`. Upgrade and pause power can therefore live on separate keys (multisig, release engineer, security/ops key, DAO) from day-to-day administration, and each key can be rotated independently. `set_admin` transfers the root key together with every role the old root held, so the existing deploy/upgrade flow is unchanged.
+5. **Contract upgradeability.** `ProofRegistry` supports an admin-controlled upgrade path using Soroban's native `update_current_contract_wasm` capability. The administrative key is initialized at deployment time and can be subsequently transferred to a multisig wallet or DAO.
 
 ---
 
@@ -253,7 +279,7 @@ no StellarCred account and no server-side credential database. This means:
 
 ```bash
 # Contracts — real proof verification in tests
-cargo test                 # 125 tests, incl. genuine BN254 verification
+cargo test                 # 21 tests, incl. genuine BN254 verification
 stellar contract build     # wasm artifacts → target/wasm32v1-none/release
 
 # Circuits — compile, prove, and stage circuit JSON for the frontend
@@ -414,10 +440,9 @@ Deploy and wire the contracts on the Stellar Mainnet:
   (~13.5% of the 100M per-transaction budget), confirming the protocol fits
   comfortably within Soroban's limits. Read-only functions (`is_verified`,
   `check_claim`) use <400K instructions (<0.4%). See [BENCHMARKS.md](BENCHMARKS.md).
-- **125 contract tests pass**, including real proof verification for all credential
-  types, in-circuit ECDSA, untrusted-issuer and wrong-issuer-key rejections,
-  proof-expiry tests that advance ledger time, and role-based access control
-  (role holder can act, non-holder cannot, admin can grant/revoke).
+- **21 contract tests pass**, including real proof verification for all credential
+  types, in-circuit ECDSA, untrusted-issuer and wrong-issuer-key rejections, and
+  a proof-expiry test that advances ledger time.
 - **Toolchain is pinned**: Noir `1.0.0-beta.9`, Barretenberg `bb 0.87.0`, matching
   the verifier crate; the VK is deterministic from the circuit.
 - Server-side issuance, multi-claim flow, the return-URL redirect, the
