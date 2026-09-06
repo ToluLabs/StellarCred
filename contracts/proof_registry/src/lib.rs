@@ -1016,10 +1016,10 @@ impl ProofRegistry {
     fn validate_expiry(env: &Env, expiry: u64) {
         let now = env.ledger().timestamp();
         if expiry <= now {
-            panic_with_error!(env, Error::InvalidExpiry);
+            panic_with_error!(&env, Error::InvalidExpiry);
         }
         if expiry > now.saturating_add(MAX_CREDENTIAL_TTL_SECS) {
-            panic_with_error!(env, Error::InvalidExpiry);
+            panic_with_error!(&env, Error::InvalidExpiry);
         }
     }
 
@@ -1049,7 +1049,6 @@ impl ProofRegistry {
         }
         u64::from_be_bytes(b)
     }
-
     /// True iff the secp256k1 public key embedded in `public_inputs` (fields
     /// 1..65, one byte per field in the low byte) equals `expected` (x || y).
     fn public_inputs_match_pubkey(public_inputs: &Bytes, expected: &BytesN<64>) -> bool {
@@ -1143,14 +1142,14 @@ impl ProofRegistry {
         env.storage()
             .instance()
             .get(&DataKey::IssuerRegistry)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
     fn verifier(env: &Env) -> Address {
         env.storage()
             .instance()
             .get(&DataKey::Verifier)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
     fn is_paused(env: &Env) -> bool {
@@ -1162,7 +1161,7 @@ impl ProofRegistry {
 
     fn ensure_not_paused(env: &Env) {
         if Self::is_paused(env) {
-            panic_with_error!(env, Error::SubmissionsPaused);
+            panic_with_error!(&env, Error::SubmissionsPaused);
         }
     }
 
