@@ -228,6 +228,55 @@ jobs:
       - name: Check benchmark.sh syntax
         run: bash -n ../scripts/benchmark.sh
 
+      - name: Run Noir unit tests (nargo test)
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership range_proof; do
+            echo "=== nargo test $dir ==="
+            (cd "$dir" && nargo test)
+          done
+
+  circuit-fuzz:
+    name: Property-based circuit fuzzing
+    runs-on: ubuntu-latest
+    needs: circuits
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Noir toolchain
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
+          export PATH="$HOME/.nargo/bin:$PATH"
+          noirup -v 1.0.0-beta.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Install frontend dependencies (for @noble/curves signing)
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile circuits
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          cd circuits
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof range_proof; do
+            echo "=== compile $dir ==="
+            (cd "$dir" && nargo compile)
+          done
+
+      - name: Run property-based fuzz tests
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          node circuits/scripts/fuzz_circuits.js --iterations 10
+
   frontend:
     name: Frontend typecheck & build
     runs-on: ubuntu-latest

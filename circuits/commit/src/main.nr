@@ -71,3 +71,74 @@ fn test_large_inputs_accepted() {
     let c = main(big, big);
     assert(c != 0);
 }
+
+// --- Property-based boundary tests ---------------------------------------
+// Systematic coverage of the commitment function Poseidon2([value, salt], 2).
+
+// Wide sweep: many different (value, salt) pairs produce non-zero commitments.
+#[test]
+fn test_property_many_pairs_nonzero() {
+    let values: [Field; 5] = [0, 1, 42, 1000000, 0xffffffffffffffff];
+    let salts: [Field; 5] = [1, 7, 99, 0xdead, 0xbeef];
+    for i in 0..5 {
+        for j in 0..5 {
+            let c = main(values[i], salts[j]);
+            assert(c != 0);
+        }
+    }
+}
+
+// Collision resistance: no two distinct (value, salt) pairs collide in a sweep.
+#[test]
+fn test_property_no_collisions_in_sweep() {
+    let c1 = main(1, 1);
+    let c2 = main(1, 2);
+    let c3 = main(2, 1);
+    let c4 = main(2, 2);
+    let c5 = main(100, 100);
+    let c6 = main(100, 101);
+    assert(c1 != c2);
+    assert(c1 != c3);
+    assert(c1 != c4);
+    assert(c2 != c3);
+    assert(c2 != c4);
+    assert(c3 != c4);
+    assert(c5 != c6);
+    assert(c1 != c5);
+}
+
+// Boundary values: 0 and 1 for both value and salt.
+#[test]
+fn test_property_boundary_values() {
+    let c01 = main(0, 1);
+    let c10 = main(1, 1);
+    let c11 = main(1, 1);
+    // Same inputs produce same output.
+    assert(c10 == c11);
+    // Different value produces different output.
+    assert(c01 != c10);
+}
+
+// Sequential salts produce sequential distinct commitments.
+#[test]
+fn test_property_sequential_salts_distinct() {
+    let value: Field = 42;
+    let mut prev = main(value, 1);
+    for s in 2..10 {
+        let c = main(value, s as Field);
+        assert(c != prev);
+        prev = c;
+    }
+}
+
+// Sequential values produce sequential distinct commitments.
+#[test]
+fn test_property_sequential_values_distinct() {
+    let salt: Field = 7;
+    let mut prev = main(0, salt);
+    for v in 1..10 {
+        let c = main(v as Field, salt);
+        assert(c != prev);
+        prev = c;
+    }
+}

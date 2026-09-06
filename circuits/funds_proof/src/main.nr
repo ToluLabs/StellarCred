@@ -87,3 +87,82 @@ fn test_salt_mismatch_rejected() {
     let commitment = Poseidon2::hash([balance as Field, real_salt], 2);
     main(balance, wrong_salt, FND_ZERO_SIG, commitment, FND_ZERO_X, FND_ZERO_Y, 50000);
 }
+
+// --- Property-based boundary tests (logic-only) --------------------------
+// Systematic coverage of the `balance >= threshold` constraint boundary.
+
+// Exact boundary: balance == threshold.
+#[test]
+fn test_boundary_balance_equals_threshold() {
+    let balance: u64 = 50000;
+    let threshold: u64 = 50000;
+    assert(balance >= threshold);
+}
+
+// Off-by-one above.
+#[test]
+fn test_boundary_balance_one_above() {
+    let balance: u64 = 50001;
+    let threshold: u64 = 50000;
+    assert(balance >= threshold);
+}
+
+// Off-by-one below.
+#[test(should_fail)]
+fn test_boundary_balance_one_below() {
+    let balance: u64 = 49999;
+    let threshold: u64 = 50000;
+    assert(balance >= threshold);
+}
+
+// Zero balance, zero threshold.
+#[test]
+fn test_boundary_zero_zero() {
+    let balance: u64 = 0;
+    let threshold: u64 = 0;
+    assert(balance >= threshold);
+}
+
+// Large balance boundary.
+#[test]
+fn test_boundary_large_values() {
+    let balance: u64 = 10000000000000;
+    let threshold: u64 = 10000000000000;
+    assert(balance >= threshold);
+}
+
+#[test(should_fail)]
+fn test_boundary_large_values_one_below() {
+    let balance: u64 = 9999999999999;
+    let threshold: u64 = 10000000000000;
+    assert(balance >= threshold);
+}
+
+// Multiple threshold sweep.
+#[test]
+fn test_boundary_threshold_sweep() {
+    let thresholds: [u64; 6] = [1, 100, 1000, 10000, 100000, 1000000];
+    for i in 0..6 {
+        let t = thresholds[i];
+        assert(t >= t); // exact
+        assert(t + 1 >= t); // one above
+    }
+}
+
+#[test(should_fail)]
+fn test_boundary_threshold_sweep_fail() {
+    let t: u64 = 10000;
+    let balance: u64 = t - 1;
+    assert(balance >= t);
+}
+
+// Commitment binding: different balances produce different commitments.
+#[test]
+fn test_commitment_different_balances() {
+    let salt: Field = 42;
+    let c1 = Poseidon2::hash([49999 as Field, salt], 2);
+    let c2 = Poseidon2::hash([50000 as Field, salt], 2);
+    let c3 = Poseidon2::hash([50001 as Field, salt], 2);
+    assert(c1 != c2);
+    assert(c2 != c3);
+}

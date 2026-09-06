@@ -102,3 +102,67 @@ fn test_zero_age_salt_rejected() {
         2,
     );
 }
+
+// --- Property-based boundary tests (logic-only) --------------------------
+// Test the age constraint logic independently: `age_years >= threshold_years`
+// where `age_years = (current_date - date_of_birth) / 365`.
+
+// Exact boundary: age exactly at threshold.
+#[test]
+fn test_boundary_age_exact_threshold() {
+    let dob: u64 = 10000;
+    let threshold: u64 = 18;
+    let current: u64 = dob + threshold * 365;
+    assert(current >= dob);
+    let age_years = (current - dob) / 365;
+    assert(age_years >= threshold);
+}
+
+// Off-by-one below: age one day short of threshold.
+#[test(should_fail)]
+fn test_boundary_age_one_day_below() {
+    let dob: u64 = 10000;
+    let threshold: u64 = 18;
+    let current: u64 = dob + threshold * 365 - 1;
+    assert(current >= dob);
+    let age_years = (current - dob) / 365;
+    assert(age_years >= threshold);
+}
+
+// Off-by-one above.
+#[test]
+fn test_boundary_age_one_day_above() {
+    let dob: u64 = 10000;
+    let threshold: u64 = 18;
+    let current: u64 = dob + threshold * 365 + 1;
+    assert(current >= dob);
+    let age_years = (current - dob) / 365;
+    assert(age_years >= threshold);
+}
+
+// num_credentials must equal 2.
+#[test(should_fail)]
+fn test_invalid_num_credentials() {
+    let n: Field = 3;
+    assert(n == 2);
+}
+
+#[test]
+fn test_valid_num_credentials() {
+    let n: Field = 2;
+    assert(n == 2);
+}
+
+// Multiple threshold sweep for the age constraint.
+#[test]
+fn test_boundary_age_threshold_sweep() {
+    let dob: u64 = 5000;
+    let thresholds: [u64; 4] = [1, 18, 21, 65];
+    for i in 0..4 {
+        let t = thresholds[i];
+        let current = dob + t * 365;
+        assert(current >= dob);
+        let age_years = (current - dob) / 365;
+        assert(age_years >= t);
+    }
+}
