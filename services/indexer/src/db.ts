@@ -104,6 +104,12 @@ export interface Db {
    */
   recent(limit: number, cursor: RecentCursor | null): RecentPage | Promise<RecentPage>;
 
+  /**
+   * Query claims with flexible filters and offset pagination. Returns the page
+   * of rows and the total matching count (for clients to compute pages).
+   */
+  queryClaims(filter: QueryFilter, limit: number, offset: number): ClaimQueryPage | Promise<ClaimQueryPage>;
+
   /** Close the underlying connection / pool. */
   close(): void | Promise<void>;
 }
@@ -140,6 +146,27 @@ function toRecentPage(rows: ClaimRow[], limit: number): RecentPage {
         ? { ledgerSequence: last.ledger_sequence, id: last.id }
         : null,
   };
+}
+
+/**
+ * Filter object for flexible claim queries used by the GraphQL endpoint.
+ */
+export interface QueryFilter {
+  wallet?: string | null;
+  credential_type?: string | null;
+  issuer?: string | null;
+  /** true => active (revoked=0), false => revoked (revoked=1), undefined => both */
+  active?: boolean | null;
+  /** Unix seconds lower bound for verified_at (inclusive) */
+  verifiedFrom?: number | null;
+  /** Unix seconds upper bound for verified_at (inclusive) */
+  verifiedTo?: number | null;
+}
+
+/** One page of filtered claim results with a total count for pagination. */
+export interface ClaimQueryPage {
+  claims: ClaimRow[];
+  total: number;
 }
 
 export interface StatsRow {
@@ -379,6 +406,31 @@ export function createSqliteDb(config: Config): Db {
       return toRecentPage(rows, limit);
     },
 
+    queryClaims(filter: QueryFilter, limit: number, offset: number) {
+      const where: string[] = [];
+      const params: any[] = [];
+      if (filter.wallet) { where.push("wallet = ?"); params.push(filter.wallet); }
+      if (filter.credential_type) { where.push("credential_type = ?"); params.push(filter.credential_type); }
+      if (filter.issuer) { where.push("issuer = ?"); params.push(filter.issuer); }
+      if (filter.active !== undefined && filter.active !== null) { where.push("revoked = ?"); params.push(filter.active ? 0 : 1); }
+      if (filter.verifiedFrom !== undefined && filter.verifiedFrom !== null) { where.push("verified_at >= ?"); params.push(filter.verifiedFrom); }
+      if (filter.verifiedTo !== undefined && filter.verifiedTo !== null) { where.push("verified_at <= ?"); params.push(filter.verifiedTo); }
+
+      const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+      const rows = raw
+        .prepare(
+          `SELECT * FROM claims ${whereSql} ORDER BY ledger_sequence DESC, id DESC LIMIT ? OFFSET ?`
+        )
+        .all(...params, limit, offset) as ClaimRow[];
+
+      const countRow = raw
+        .prepare(`SELECT COUNT(*) AS cnt FROM claims ${whereSql}`)
+        .get(...params) as { cnt: number } | undefined;
+
+      return { claims: rows, total: Number(countRow?.cnt ?? 0) } as ClaimQueryPage;
+    },
+
     deleteClaimsAfter(fromLedger: number) {
       raw.prepare("DELETE FROM claims WHERE ledger_sequence > ?").run(fromLedger);
     },
@@ -600,6 +652,27 @@ export function createPostgresDb(config: Config): Db {
             [limit + 1]
           );
       return toRecentPage(res.rows, limit);
+    },
+
+    async queryClaims(filter: QueryFilter, limit: number, offset: number) {
+      const clauses: string[] = [];
+      const params: any[] = [];
+      let idx = 1;
+      if (filter.wallet) { clauses.push(`wallet = $${idx++}`); params.push(filter.wallet); }
+      if (filter.credential_type) { clauses.push(`credential_type = $${idx++}`); params.push(filter.credential_type); }
+      if (filter.issuer) { clauses.push(`issuer = $${idx++}`); params.push(filter.issuer); }
+      if (filter.active !== undefined && filter.active !== null) { clauses.push(`revoked = $${idx++}`); params.push(filter.active ? 0 : 1); }
+      if (filter.verifiedFrom !== undefined && filter.verifiedFrom !== null) { clauses.push(`verified_at >= $${idx++}`); params.push(filter.verifiedFrom); }
+      if (filter.verifiedTo !== undefined && filter.verifiedTo !== null) { clauses.push(`verified_at <= $${idx++}`); params.push(filter.verifiedTo); }
+
+      const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+      const dataQuery = `SELECT * FROM claims ${whereSql} ORDER BY ledger_sequence DESC, id DESC LIMIT $${idx++} OFFSET $${idx++}`;
+      const countQuery = `SELECT COUNT(*)::int AS cnt FROM claims ${whereSql}`;
+
+      const dataRes = await pool.query<ClaimRow>(dataQuery, [...params, limit, offset]);
+      const countRes = await pool.query<{ cnt: number }>(countQuery, params);
+      return { claims: dataRes.rows, total: Number(countRes.rows[0]?.cnt ?? 0) } as ClaimQueryPage;
     },
 
     async deleteClaimsAfter(fromLedger: number) {

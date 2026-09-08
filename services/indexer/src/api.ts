@@ -69,6 +69,7 @@ import { parseCorsOrigins } from "./config";
 import { createCorsMiddleware } from "./cors";
 import { RateLimiter } from "./rate-limit";
 import type { RecentCursor } from "./db";
+import { createGraphqlMiddleware } from "./graphql";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -370,6 +371,17 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
   );
 
   // ── 404 ──────────────────────────────────────────────────────────────────
+  // ── GraphQL endpoint ───────────────────────────────────────────────────
+  // Exposes a typed, flexible query interface for integrators. Uses the
+  // same DB layer (queryClaims) so no duplicate storage logic is required.
+  try {
+    app.use("/graphql", createGraphqlMiddleware(db));
+  } catch (err) {
+    // Guard: if GraphQL packages aren't installed the optional dependency
+    // won't block the REST API. Log and continue without GraphQL.
+    console.warn("GraphQL middleware not available:", (err as Error).message);
+  }
+
   app.use((_req, res) => {
     res.status(404).json({ error: "not found" });
   });
