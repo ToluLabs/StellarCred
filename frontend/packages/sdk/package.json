@@ -37,6 +37,7 @@
     "test:integration": "vitest run test/integration.test.ts",
     "typecheck": "tsc --noEmit",
     "docs:api": "typedoc",
+    "size": "size-limit",
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {

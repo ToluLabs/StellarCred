@@ -9,6 +9,9 @@ Protocols call one function. No API key, no backend, no personal data handling â
 ```bash
 npm install @stellarcred/sdk
 ```
+
+Bundle note: the read-only browser path is intentionally lazy-loaded. `hasClaim`, `getClaim`, and `hasClaims` only construct the Soroban contract client when a check runs, so protocol code can stay light when it only needs claim reads. The CI budget enforces an expected browser bundle cost of roughly 18 kB gzipped for the SDK entry point via `frontend/packages/sdk/.size-limit.json`.
+
 ## API Reference
 
 Generate the SDK API documentation locally:

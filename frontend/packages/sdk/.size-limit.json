@@ -1,0 +1,7 @@
+[
+  {
+    "name": "SDK browser bundle",
+    "path": "dist/index.mjs",
+    "limit": "18 kB"
+  }
+]

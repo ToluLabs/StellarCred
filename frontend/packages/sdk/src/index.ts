@@ -308,14 +308,44 @@ export interface Claim {
 // Low-level read: ProofRegistry.is_verified via simulation
 // ---------------------------------------------------------------------------
 
-import { Client as ProofRegistryClient } from "../../proof-registry/src/index";
 import { configure as configureSharedClaims } from "./claims";
+
+type ProofRegistryClient = {
+  is_verified: (args: {
+    holder: string;
+    credential_type: string;
+    trusted_issuers?: string[];
+  }) => Promise<{ result?: readonly [boolean, bigint, bigint] | undefined }>;
+  check_claim: (args: {
+    holder: string;
+    credential_type: string;
+    min_threshold: bigint;
+    trusted_issuers?: string[];
+  }) => Promise<{ result?: boolean | undefined }>;
+};
+
+type ProofRegistryClientCtor = new (opts: {
+  networkPassphrase: string;
+  contractId: string;
+  rpcUrl: string;
+  allowHttp: boolean;
+}) => ProofRegistryClient;
 
 type StellarSDK = typeof import("@stellar/stellar-sdk");
 let _sdk: Promise<StellarSDK> | null = null;
 function getSdk(): Promise<StellarSDK> {
   if (!_sdk) _sdk = import("@stellar/stellar-sdk");
   return _sdk;
+}
+
+let _proofRegistryClientCtor: Promise<ProofRegistryClientCtor> | null = null;
+function getProofRegistryClientCtor(): Promise<ProofRegistryClientCtor> {
+  if (!_proofRegistryClientCtor) {
+    _proofRegistryClientCtor = import("@stellar/stellar-sdk/contract").then(
+      (mod) => mod.Client as ProofRegistryClientCtor,
+    );
+  }
+  return _proofRegistryClientCtor;
 }
 
 /**
@@ -359,9 +389,9 @@ async function getClient(throwOnError = false): Promise<ProofRegistryClient | nu
   if (_client && _clientKey === key) return _client;
 
   _clientKey = key;
-  _client = getSdk().then(
-    () =>
-      new ProofRegistryClient({
+  _client = getProofRegistryClientCtor().then(
+    (Client) =>
+      new Client({
         networkPassphrase,
         contractId: registryId,
         rpcUrl,
@@ -369,11 +399,12 @@ async function getClient(throwOnError = false): Promise<ProofRegistryClient | nu
       }),
   );
   // Don't cache a failed SDK import — the next read should retry. `_sdk` holds
-  // the import promise itself, so it has to be cleared too: leaving a rejected
+  // the root import promise itself, so it has to be cleared too: leaving a rejected
   // promise there would make every later `getClient()` fail on the same
   // rejection instead of re-attempting the import.
   _client.catch(() => {
     _sdk = null;
+    _proofRegistryClientCtor = null;
     _client = null;
     _clientKey = "";
   });

@@ -417,6 +417,14 @@ jobs:
         working-directory: frontend/packages/sdk
         run: pnpm typecheck
 
+      - name: Build SDK browser bundle
+        working-directory: frontend/packages/sdk
+        run: pnpm build
+
+      - name: Check SDK bundle size budget
+        working-directory: frontend/packages/sdk
+        run: pnpm size
+
       - name: Run integration tests
         working-directory: frontend/packages/sdk
         run: pnpm test:integration

@@ -4,6 +4,8 @@
 
 StellarCred's frontend handles zero-knowledge proving in the browser via WebAssembly (`@aztec/bb.js`) and compiled Noir circuit artifacts (`public/circuits/*.json`). Because WASM proving assets and ZK circuits are naturally large, a strict **bundle-size budget** and automated **CI regression check** are configured to ensure performance and prevent unexpected bundle size growth.
 
+The read-only SDK is intentionally kept separate from the proving pipeline: `@stellarcred/sdk` only pays the cost of the Stellar contract RPC client at call time. The bundle path for `hasClaim`/`getClaim`/`hasClaims` does not statically import the generated registry wrapper, and it lazily loads the narrow `@stellar/stellar-sdk/contract` client only when a protocol actually performs a read. This keeps the browser bundle for simple claim checks near the expected 18 kB compressed budget without sacrificing on-chain verification.
+
 ---
 
 ## Budget Allocation
