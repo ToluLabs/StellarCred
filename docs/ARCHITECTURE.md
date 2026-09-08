@@ -79,6 +79,14 @@ sequenceDiagram
 
 **Privacy Note:** Raw identity attributes (like date of birth, country code) are only sent to and stored by the KYC provider. They are never stored by /api/issue or written to the blockchain.
 
+### Batch Issuance API (`/api/issue/batch`)
+
+For issuers onboarding cohorts of users at scale (e.g., educational accreditation, institutional verification), the `/api/issue/batch` endpoint accepts an array of issuance requests (up to 50 items per call).
+
+- **Partial-failure semantics**: Each item is processed and signed independently. A validation error on one item (e.g. invalid type, missing address) returns a failure result for that specific index while all valid items succeed and are signed.
+- **Security model**: Identical per-item security constraints (`prehash: false` ECDSA signature over raw Poseidon2 commitment, server-side issuer key only, zero raw PII persisted).
+- **Idempotency & rate limiting**: Supports `Idempotency-Key` headers for safe retries and enforces per-IP and per-wallet rate limits.
+
 ### Commitment layout and the salt entropy requirement
 
 Every credential type shares one commitment scheme:

@@ -24,7 +24,7 @@ Areas of particular interest:
 |------|------|
 | `contracts/proof_registry` | Forged proofs accepted on-chain |
 | `contracts/issuer_registry` | Unauthorized issuer registration |
-| `app/api/issue/route.ts` | Server-side signing key exposure, credential forgery |
+| `app/api/issue/route.ts` & `app/api/issue/batch/route.ts` | Server-side signing key exposure, credential forgery |
 | In-circuit ECDSA (`std::ecdsa_secp256k1`) | Signature bypass |
 | Persona KYC relay | Identity data leakage, bypass |
 

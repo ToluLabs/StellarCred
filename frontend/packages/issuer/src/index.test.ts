@@ -182,3 +182,78 @@ describe("CREDENTIAL_TYPES", () => {
     ]);
   });
 });
+
+describe("IssuerClient.issueBatch — batch issuance with partial failure", () => {
+  it("issues multiple valid credentials in one call", async () => {
+    const issuer = new IssuerClient({ privateKey: TEST_PRIVATE_KEY_64 });
+    const batch = await issuer.issueBatch([
+      {
+        type: "kyc",
+        holder: "GHOLDER1",
+        issuerId: "test-issuer",
+        issuerName: "Test Issuer",
+        expiry: "90 days",
+        attribute: {},
+      },
+      {
+        type: "age",
+        holder: "GHOLDER2",
+        issuerId: "test-issuer",
+        issuerName: "Test Issuer",
+        expiry: "90 days",
+        attribute: { date_of_birth: "1990-01-01" },
+      },
+    ]);
+
+    expect(batch.total).toBe(2);
+    expect(batch.successful).toBe(2);
+    expect(batch.failed).toBe(0);
+    expect(batch.results).toHaveLength(2);
+    expect(batch.results[0].success).toBe(true);
+    expect(batch.results[0].credential?.type).toBe("kyc");
+    expect(batch.results[1].success).toBe(true);
+    expect(batch.results[1].credential?.type).toBe("age");
+  });
+
+  it("handles partial failure without failing the entire batch", async () => {
+    const issuer = new IssuerClient({ privateKey: TEST_PRIVATE_KEY_64 });
+    const batch = await issuer.issueBatch([
+      {
+        type: "kyc",
+        holder: "GHOLDER1",
+        issuerId: "test-issuer",
+        issuerName: "Test Issuer",
+        expiry: "90 days",
+        attribute: {},
+      },
+      {
+        // @ts-expect-error — invalid credential type
+        type: "nonexistent_type",
+        holder: "GHOLDER2",
+        issuerId: "test-issuer",
+        issuerName: "Test Issuer",
+        expiry: "90 days",
+        attribute: {},
+      },
+      {
+        type: "income",
+        holder: "GHOLDER3",
+        issuerId: "test-issuer",
+        issuerName: "Test Issuer",
+        expiry: "90 days",
+        attribute: { income: "250000" },
+      },
+    ]);
+
+    expect(batch.total).toBe(3);
+    expect(batch.successful).toBe(2);
+    expect(batch.failed).toBe(1);
+    expect(batch.results[0].success).toBe(true);
+    expect(batch.results[0].credential?.holder).toBe("GHOLDER1");
+    expect(batch.results[1].success).toBe(false);
+    expect(batch.results[1].error).toMatch(/Unknown credential type/);
+    expect(batch.results[2].success).toBe(true);
+    expect(batch.results[2].credential?.holder).toBe("GHOLDER3");
+  });
+});
+

@@ -80,6 +80,20 @@ export interface IssueParams {
   claimParams?: ClaimParams;
 }
 
+export interface BatchIssueItemResult {
+  index: number;
+  success: boolean;
+  credential?: Credential;
+  error?: string;
+}
+
+export interface BatchIssueResult {
+  total: number;
+  successful: number;
+  failed: number;
+  results: BatchIssueItemResult[];
+}
+
 export interface IssuerClientOptions {
   /** 64-character hex secp256k1 private key. Server-side only — never NEXT_PUBLIC_. */
   privateKey: string;
@@ -295,6 +309,44 @@ export class IssuerClient {
       expiry: normalizeExpiry(expiry, issuedAt),
       ...employmentExtra,
       ...(claimParams && Object.values(claimParams).some((v) => v !== undefined) ? { claimParams } : {}),
+    };
+  }
+
+  /**
+   * Issue a batch of credentials in one call with partial-failure semantics.
+   * Every item is evaluated and signed independently. If one item fails, the
+   * remaining items continue to be processed.
+   */
+  async issueBatch(items: IssueParams[]): Promise<BatchIssueResult> {
+    const results: BatchIssueItemResult[] = [];
+    let successful = 0;
+    let failed = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      try {
+        const credential = await this.issue(item);
+        results.push({
+          index: i,
+          success: true,
+          credential,
+        });
+        successful++;
+      } catch (err) {
+        results.push({
+          index: i,
+          success: false,
+          error: (err as Error).message,
+        });
+        failed++;
+      }
+    }
+
+    return {
+      total: items.length,
+      successful,
+      failed,
+      results,
     };
   }
 }

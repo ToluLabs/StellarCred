@@ -93,6 +93,25 @@ interface Credential {
 }
 ```
 
+### `issuer.issueBatch(items: IssueParams[]): Promise<BatchIssueResult>`
+
+Issues multiple credentials in a single call with partial-failure semantics. Each item is validated and signed independently; failures on one item do not block subsequent items.
+
+Returns:
+```ts
+interface BatchIssueResult {
+  total: number;
+  successful: number;
+  failed: number;
+  results: Array<{
+    index: number;
+    success: boolean;
+    credential?: Credential;
+    error?: string;
+  }>;
+}
+```
+
 ### `issuer.publicKey(): { x: number[]; y: number[] }`
 
 Returns the uncompressed public key (32-byte `x`/`y`) for the configured private key — register this with `IssuerRegistry` so proofs signed by this issuer can be verified on-chain.

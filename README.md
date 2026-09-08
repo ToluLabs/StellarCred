@@ -97,7 +97,7 @@ circuits/               Noir circuits (UltraHonk · Noir 1.0.0-beta.9 / bb 0.87.
 fixtures/<type>/        real vk / proof / public_inputs per type (contract tests)
 frontend/               Next.js 14 app (App Router)
   app/                    landing, holder, verify, issuer, apps, developers, docs
-  app/api/issue/          server-side credential issuance, via @stellarcred/issuer
+  app/api/issue/          server-side credential issuance, via @stellarcred/issuer (single & /batch)
   packages/sdk/           @stellarcred/sdk — hasClaim / getClaims / buildVerifyUrl
   packages/issuer/        @stellarcred/issuer — server-only issuance (value/salt/commitment/sig)
   lib/                    proof.ts (noir_js + bb.js), contracts.ts (stellar-sdk), wallet
