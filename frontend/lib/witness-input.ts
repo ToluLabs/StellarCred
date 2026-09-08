@@ -27,6 +27,8 @@ const DIGITS_RE = /^[0-9]+$/;
 export interface ClaimParams {
   threshold_years?: string;
   threshold?: string;
+  min?: string;
+  max?: string;
   restricted?: string[];
   /** "0" = denylist (default), "1" = allowlist */
   mode?: string;
@@ -205,7 +207,31 @@ export function validateWitnessCredential(
   switch (type) {
     case "age":
       return checkThreshold(params.threshold_years, "credential.claimParams.threshold_years");
-    case "income":
+    case "income": {
+      const thresholdErr = checkThreshold(params.threshold, "credential.claimParams.threshold");
+      if (thresholdErr) return thresholdErr;
+
+      const minErr = checkThreshold(params.min, "credential.claimParams.min");
+      if (minErr) return minErr;
+
+      const maxErr = checkThreshold(params.max, "credential.claimParams.max");
+      if (maxErr) return maxErr;
+
+      if ((params.min !== undefined) !== (params.max !== undefined)) {
+        return err(
+          "credential.claimParams",
+          "must provide both min and max for income range mode",
+        );
+      }
+      if (params.min !== undefined && params.max !== undefined) {
+        const min = BigInt(params.min);
+        const max = BigInt(params.max);
+        if (min > max) {
+          return err("credential.claimParams.max", "must be greater than or equal to credential.claimParams.min");
+        }
+      }
+      return null;
+    }
     case "funds":
     case "accreditation":
       return checkThreshold(params.threshold, "credential.claimParams.threshold");

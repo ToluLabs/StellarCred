@@ -7,6 +7,8 @@ import { isStorageAvailable } from "./safe-storage";
 export interface ClaimParams {
   threshold_years?: string;
   threshold?: string;
+  min?: string;
+  max?: string;
   restricted?: string[];
   /** "0" = denylist/block (default), "1" = allowlist/allow */
   mode?: string;

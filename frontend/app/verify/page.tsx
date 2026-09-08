@@ -106,6 +106,8 @@ function VerifyInner() {
     claim: claimParam,
     thresholdYears: searchParams.get("threshold_years"),
     threshold: searchParams.get("threshold"),
+    min: searchParams.get("min"),
+    max: searchParams.get("max"),
     restricted: searchParams.get("restricted"),
     currentOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
   });
@@ -124,6 +126,8 @@ function VerifyInner() {
       )
         ? minThresholdParam
         : undefined),
+    min: searchParams.get("min") ?? undefined,
+    max: searchParams.get("max") ?? undefined,
     restricted:
       searchParams.get("restricted")?.split(",").filter(Boolean) ?? undefined,
     mode: searchParams.get("mode") ?? undefined,
@@ -149,6 +153,8 @@ function VerifyInner() {
     paramValidation.claimError,
     paramValidation.thresholdYearsError,
     paramValidation.thresholdError,
+    paramValidation.minError,
+    paramValidation.maxError,
     paramValidation.restrictedError,
   ].filter(Boolean) as string[];
   const [done, setDone] = useState(false);
@@ -226,6 +232,8 @@ function VerifyInner() {
         claim: null,
         thresholdYears: null,
         threshold: null,
+        min: null,
+        max: null,
         restricted: null,
         currentOrigin: window.location.origin,
       });
@@ -694,15 +702,19 @@ function VerifyInner() {
                             : key === "age" &&
                                 claimParamsFromUrl.threshold_years
                               ? `age ≥ ${claimParamsFromUrl.threshold_years}`
-                              : key === "income" && claimParamsFromUrl.threshold
-                                ? `income > $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
-                                : key === "accreditation" &&
-                                    claimParamsFromUrl.threshold
-                                  ? `net worth ≥ $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
-                                  : key === "employment" &&
+                              : key === "income" &&
+                                  claimParamsFromUrl.min &&
+                                  claimParamsFromUrl.max
+                                ? `income $${Number(claimParamsFromUrl.min).toLocaleString("en-US")}–$${Number(claimParamsFromUrl.max).toLocaleString("en-US")}`
+                                : key === "income" && claimParamsFromUrl.threshold
+                                  ? `income > $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
+                                  : key === "accreditation" &&
                                       claimParamsFromUrl.threshold
-                                    ? `seniority ≥ ${claimParamsFromUrl.threshold} yrs`
-                                    : m.claim}
+                                    ? `net worth ≥ $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
+                                    : key === "employment" &&
+                                        claimParamsFromUrl.threshold
+                                      ? `seniority ≥ ${claimParamsFromUrl.threshold} yrs`
+                                      : m.claim}
                         </span>
                       </div>
 

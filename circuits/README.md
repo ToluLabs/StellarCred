@@ -79,7 +79,12 @@ The following tables define the ABI order of public inputs for each credential c
 | 0 | `commitment` | `Field` | `Poseidon2([income, salt], 2)` |
 | 1 | `issuer_x` | `[u8; 32]` | Issuer secp256k1 public key X coordinate |
 | 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
-| 3 | `threshold` | `u64` | Minimum required annual income |
+| 3 | `threshold` | `u64` | Threshold mode lower bound; set to `0` when using range mode |
+| 4 | `min` | `u64` | Inclusive lower bound of the income band in range mode |
+| 5 | `max` | `u64` | Inclusive upper bound of the income band in range mode |
+| 6 | `mode` | `u64` | `0` = threshold mode (`income >= threshold`), `1` = range mode (`min <= income <= max`) |
+
+The circuit keeps the legacy threshold check (`mode = 0`) and adds an inclusive range check (`mode = 1`) without revealing the underlying income value. In range mode, both `min` and `max` must be supplied and `min <= max` must hold.
 
 ### `funds_proof`
 | Index | Name | Type | Description |

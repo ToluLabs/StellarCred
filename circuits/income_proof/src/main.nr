@@ -23,6 +23,9 @@ fn main(
     issuer_x: pub [u8; 32],
     issuer_y: pub [u8; 32],
     threshold: pub u64,
+    min: pub u64,
+    max: pub u64,
+    mode: pub u64,
 ) {
     // Binds the private income to the issuer-signed commitment and verifies the
     // issuer's signature in-circuit. circuits/lib/src/lib.nr covers what each
@@ -34,15 +37,16 @@ fn main(
     // different incomes onto the same commitment.
     credential_lib::assert_committed_and_signed(income as Field, salt, sig, commitment, issuer_x, issuer_y);
 
-    // The claim itself, proved rather than asserted. `threshold` is a public
-    // input the prover chooses, so on its own it is an unbacked assertion; this
-    // constraint is what binds it to the signed private income. It cannot be
-    // enforced on-chain because the contract never sees `income`, so without it
-    // a holder submits whatever threshold they want and still verifies.
-    // The contract remains responsible for confirming that the `threshold` in
-    // the public inputs is the figure its policy actually requires. The circuit
-    // proves the relation; it cannot know the policy.
-    assert(income >= threshold);
+    // Threshold mode preserves the historical behaviour (income >= threshold).
+    // Range mode proves the band constraint without revealing the exact value.
+    assert(mode == 0 || mode == 1);
+    if mode == 0 {
+        assert(income >= threshold);
+    } else {
+        assert(min <= max);
+        assert(income >= min);
+        assert(income <= max);
+    }
 }
 
 // --- Tests ---------------------------------------------------------------
@@ -52,9 +56,26 @@ global INC_ZERO_SIG: [u8; 64] = [0; 64];
 global INC_ZERO_X: [u8; 32]   = [0; 32];
 global INC_ZERO_Y: [u8; 32]   = [0; 32];
 
+#[test]
+fn test_threshold_mode_still_works() {
+    let income: u64 = 250000;
+    let threshold: u64 = 200000;
+    let commitment = Poseidon2::hash([income as Field, 0x1], 2);
+    main(income, 0x1, INC_ZERO_SIG, commitment, INC_ZERO_X, INC_ZERO_Y, threshold, 0, 0, 0);
+}
+
+#[test]
+fn test_income_range_mode_passes() {
+    let income: u64 = 180000;
+    let min: u64 = 150000;
+    let max: u64 = 220000;
+    let commitment = Poseidon2::hash([income as Field, 0x2], 2);
+    main(income, 0x2, INC_ZERO_SIG, commitment, INC_ZERO_X, INC_ZERO_Y, 0, min, max, 1);
+}
+
 #[test(should_fail)]
 fn test_wrong_commitment_rejected() {
-    main(250000, 0xabcd, INC_ZERO_SIG, 0x1, INC_ZERO_X, INC_ZERO_Y, 100000);
+    main(250000, 0xabcd, INC_ZERO_SIG, 0x1, INC_ZERO_X, INC_ZERO_Y, 100000, 0, 0, 0);
 }
 
 // income < threshold: person does not meet the minimum.
@@ -63,7 +84,7 @@ fn test_income_below_threshold_rejected() {
     let income: u64    = 49999;
     let threshold: u64 = 50000;
     let bad_commitment = 0x2;
-    main(income, 0x1, INC_ZERO_SIG, bad_commitment, INC_ZERO_X, INC_ZERO_Y, threshold);
+    main(income, 0x1, INC_ZERO_SIG, bad_commitment, INC_ZERO_X, INC_ZERO_Y, threshold, 0, 0, 0);
 }
 
 // income == threshold - 1: off-by-one boundary.
@@ -72,7 +93,25 @@ fn test_income_one_below_threshold_rejected() {
     let income: u64    = 99999;
     let threshold: u64 = 100000;
     let bad_commitment = 0x3;
-    main(income, 0x1, INC_ZERO_SIG, bad_commitment, INC_ZERO_X, INC_ZERO_Y, threshold);
+    main(income, 0x1, INC_ZERO_SIG, bad_commitment, INC_ZERO_X, INC_ZERO_Y, threshold, 0, 0, 0);
+}
+
+#[test(should_fail)]
+fn test_income_range_below_min_rejected() {
+    let income: u64 = 120000;
+    let min: u64 = 150000;
+    let max: u64 = 220000;
+    let commitment = Poseidon2::hash([income as Field, 0x3], 2);
+    main(income, 0x3, INC_ZERO_SIG, commitment, INC_ZERO_X, INC_ZERO_Y, 0, min, max, 1);
+}
+
+#[test(should_fail)]
+fn test_income_range_above_max_rejected() {
+    let income: u64 = 250000;
+    let min: u64 = 150000;
+    let max: u64 = 220000;
+    let commitment = Poseidon2::hash([income as Field, 0x4], 2);
+    main(income, 0x4, INC_ZERO_SIG, commitment, INC_ZERO_X, INC_ZERO_Y, 0, min, max, 1);
 }
 
 // salt mismatch.
@@ -82,7 +121,7 @@ fn test_salt_mismatch_rejected() {
     let real_salt: Field = 0xfeed;
     let wrong_salt: Field = 0xface;
     let commitment = Poseidon2::hash([income as Field, real_salt], 2);
-    main(income, wrong_salt, INC_ZERO_SIG, commitment, INC_ZERO_X, INC_ZERO_Y, 100000);
+    main(income, wrong_salt, INC_ZERO_SIG, commitment, INC_ZERO_X, INC_ZERO_Y, 100000, 0, 0, 0);
 }
 
 // --- Property-based boundary tests (logic-only) --------------------------

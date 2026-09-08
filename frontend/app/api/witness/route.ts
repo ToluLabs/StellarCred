@@ -118,14 +118,19 @@ async function buildInputs(
         current_date: currentDate,
         threshold_years: asFieldString(params.threshold_years, DEFAULT_THRESHOLD_YEARS),
       };
-    case "income":
+    case "income": {
+      const hasRange = params.min !== undefined || params.max !== undefined;
       return {
         income: value,
         salt,
         ...sigInputs,
         commitment,
-        threshold: asFieldString(params.threshold, DEFAULT_INCOME_THRESHOLD),
+        threshold: asFieldString(params.threshold, hasRange ? "0" : DEFAULT_INCOME_THRESHOLD),
+        min: asFieldString(params.min, hasRange ? "0" : "0"),
+        max: asFieldString(params.max, hasRange ? "0" : "0"),
+        mode: hasRange ? "1" : "0",
       };
+    }
     case "jurisdiction":
       return {
         country_code: value,

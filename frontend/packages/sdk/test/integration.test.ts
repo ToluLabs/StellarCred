@@ -193,6 +193,18 @@ describe("StellarCred SDK integration (testnet)", () => {
       expect(url).toContain("claim=funds");
     });
 
+    it("appends income min/max for banded income claims", () => {
+      const url = buildVerifyUrl({
+        returnUrl: "https://example.com/vault",
+        claim: "income",
+        claimParams: { min: "100000", max: "250000" },
+      });
+
+      expect(url).toContain("min=100000");
+      expect(url).toContain("max=250000");
+      expect(url).toContain("claim=income");
+    });
+
     it("appends restricted as comma-separated list for jurisdiction claims", () => {
       const url = buildVerifyUrl({
         returnUrl: "https://example.com/app",

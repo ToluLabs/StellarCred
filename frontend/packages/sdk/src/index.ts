@@ -888,6 +888,10 @@ export function buildVerifyUrl(options: {
     threshold_years?: string;
     /** For "income" / "funds" claims: minimum value in whole units (default varies). */
     threshold?: string;
+    /** For "income" claims in range mode: inclusive minimum value. */
+    min?: string;
+    /** For "income" claims in range mode: inclusive maximum value. */
+    max?: string;
     /** For "jurisdiction" claims: ISO 3166-1 numeric codes (default []). */
     restricted?: string | string[];
     /** For "jurisdiction" claims: "block" = denylist (default), "allow" = allowlist. */
@@ -922,9 +926,11 @@ export function buildVerifyUrl(options: {
   url.searchParams.set("return_url", returnUrl);
   url.searchParams.set("claim", options.claim);
   if (options.claimParams) {
-    const { threshold_years, threshold, restricted, mode } = options.claimParams;
+    const { threshold_years, threshold, min, max, restricted, mode } = options.claimParams;
     if (threshold_years) url.searchParams.set("threshold_years", threshold_years);
     if (threshold) url.searchParams.set("threshold", threshold);
+    if (min) url.searchParams.set("min", min);
+    if (max) url.searchParams.set("max", max);
     if (restricted) {
       url.searchParams.set("restricted", Array.isArray(restricted) ? restricted.join(",") : restricted);
     }

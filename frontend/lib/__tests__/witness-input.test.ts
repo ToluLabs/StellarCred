@@ -126,6 +126,11 @@ describe("validateWitnessCredential", () => {
     expect(validateWitnessCredential("funds", cred)).toBeNull();
   });
 
+  it("accepts an income band when min and max are both integers", () => {
+    const cred = validCredential({ claimParams: { min: "100000", max: "250000" } });
+    expect(validateWitnessCredential("income", cred)).toBeNull();
+  });
+
   it("ignores an omitted threshold — the route applies a default", () => {
     expect(validateWitnessCredential("income", validCredential())).toBeNull();
   });

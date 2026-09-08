@@ -157,6 +157,8 @@ export function validateVerifyParams(params: {
   claim: string | null;
   thresholdYears: string | null;
   threshold: string | null;
+  min: string | null;
+  max: string | null;
   restricted: string | null;
   currentOrigin?: string;
 }): {
@@ -164,6 +166,8 @@ export function validateVerifyParams(params: {
   claimError: string | null;
   thresholdYearsError: string | null;
   thresholdError: string | null;
+  minError: string | null;
+  maxError: string | null;
   restrictedError: string | null;
   hasErrors: boolean;
 } {
@@ -188,20 +192,47 @@ export function validateVerifyParams(params: {
     min: 1,
   });
 
+  const minResult = validateNumericParam(params.min, {
+    name: "min",
+    min: 1,
+  });
+
+  const maxResult = validateNumericParam(params.max, {
+    name: "max",
+    min: 1,
+  });
+
   const rResult = validateRestrictedList(params.restricted);
 
   const returnUrlError = returnUrlResult.ok ? null : returnUrlResult.error;
   const thresholdYearsError = tyResult.ok ? null : (tyResult as { ok: false; error: string }).error;
   const thresholdError = tResult.ok ? null : (tResult as { ok: false; error: string }).error;
+  const minError = minResult.ok ? null : (minResult as { ok: false; error: string }).error;
+  const maxError = maxResult.ok ? null : (maxResult as { ok: false; error: string }).error;
   const restrictedError = rResult.ok ? null : rResult.error;
+
+  if (params.min && params.max && Number(params.min) > Number(params.max)) {
+    return {
+      returnUrlError,
+      claimError,
+      thresholdYearsError,
+      thresholdError,
+      minError: "Invalid min: must be less than or equal to max.",
+      maxError: "Invalid max: must be greater than or equal to min.",
+      restrictedError,
+      hasErrors: true,
+    };
+  }
 
   return {
     returnUrlError,
     claimError,
     thresholdYearsError,
     thresholdError,
+    minError,
+    maxError,
     restrictedError,
-    hasErrors: !!(returnUrlError ?? claimError ?? thresholdYearsError ?? thresholdError ?? restrictedError),
+    hasErrors: !!(returnUrlError ?? claimError ?? thresholdYearsError ?? thresholdError ?? minError ?? maxError ?? restrictedError),
   };
 }
 

@@ -39,6 +39,8 @@ export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 export interface ClaimParams {
   threshold_years?: string;
   threshold?: string;
+  min?: string;
+  max?: string;
   restricted?: string[];
   /** "0" = denylist/block (default), "1" = allowlist/allow */
   mode?: string;
@@ -199,6 +201,13 @@ function buildClaimLabel(type: CredentialType, claimParams?: ClaimParams): strin
     case "age":
       return `age ≥ ${claimParams?.threshold_years ?? "18"}`;
     case "income": {
+      const min = claimParams?.min;
+      const max = claimParams?.max;
+      if (min && max) {
+        const minNum = Number(min);
+        const maxNum = Number(max);
+        return `income $${minNum.toLocaleString("en-US")}–$${maxNum.toLocaleString("en-US")}`;
+      }
       const t = Number(claimParams?.threshold ?? "200000");
       return `income > $${t.toLocaleString("en-US")}`;
     }
