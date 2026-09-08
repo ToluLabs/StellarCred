@@ -875,6 +875,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "human_airdrop"
+version = "0.0.0"
+dependencies = [
+ "credential_verifier",
+ "issuer_registry",
+ "proof_registry",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"

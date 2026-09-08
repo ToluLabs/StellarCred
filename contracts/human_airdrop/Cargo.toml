@@ -1,0 +1,20 @@
+[package]
+name = "human_airdrop"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+# Real contract crates, used only to deploy live dependencies in native tests.
+# Kept out of [dependencies] to avoid linking their exported wasm symbols.
+proof_registry = { path = "../proof_registry" }
+credential_verifier = { path = "../credential_verifier" }
+issuer_registry = { path = "../issuer_registry" }
