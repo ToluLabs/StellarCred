@@ -406,7 +406,7 @@ impl IssuerRegistry {
         env.storage()
             .persistent()
             .get(&DataKey::Issuer(issuer_id.clone()))
-            .unwrap_or_else(|| panic_with_error!(env, Error::IssuerNotFound))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::IssuerNotFound))
     }
 
     fn roles(env: &Env) -> Map<Symbol, Address> {
@@ -432,7 +432,7 @@ impl IssuerRegistry {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized));
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         admin.require_auth();
     }
 }

@@ -204,21 +204,21 @@ impl GatedPool {
         env.storage()
             .instance()
             .get(&DataKey::Registry)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
     fn required_type(env: &Env) -> Symbol {
         env.storage()
             .instance()
             .get(&DataKey::RequiredType)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
     fn min_threshold(env: &Env) -> Option<u64> {
         env.storage()
             .instance()
             .get(&DataKey::MinThreshold)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 }
 
