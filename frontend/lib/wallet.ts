@@ -23,6 +23,7 @@ import {
   WalletConnectAllowedMethods,
   WALLET_CONNECT_ID,
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { LedgerModule } from "@creit.tech/stellar-wallets-kit/modules/ledger.module";
 import { NETWORK, NETWORK_PASSPHRASE } from "./stellar";
 
 const APP_NETWORK =
@@ -55,10 +56,11 @@ let kit: StellarWalletsKit | null = null;
 export function getKit(): StellarWalletsKit {
   if (!kit) {
     const wc = walletConnectModule();
+    const ledger = new LedgerModule();
     kit = new StellarWalletsKit({
       network: APP_NETWORK,
       selectedWalletId: FREIGHTER_ID,
-      modules: wc ? [...allowAllModules(), wc] : allowAllModules(),
+      modules: wc ? [...allowAllModules(), ledger, wc] : [...allowAllModules(), ledger],
     });
   }
   return kit;
