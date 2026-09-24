@@ -12,6 +12,7 @@ import CopyButton from "@/components/CopyButton";
 import { Check } from "@/components/Check";
 import { EXPLORER_TX } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
+import { useToast } from "@/components/Toast";
 import { useBatchProofFlow } from "@/lib/hooks/useBatchProofFlow";
 import type { Credential } from "@/lib/credential";
 import { ProofStep } from "./ProofStep";
@@ -30,6 +31,7 @@ export function BatchProofFlowView({
   onProved: (txHash: string, commitments: string[]) => void;
 }) {
   const { networkMismatch } = useWallet();
+  const toast = useToast();
   const [showRaw, setShowRaw] = useState(false);
   const networkMismatchRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
@@ -42,6 +44,7 @@ export function BatchProofFlowView({
     batchError,
     batchFee,
     blockedByNetwork,
+    cancel,
   } = useBatchProofFlow(creds, holder, networkMismatch, onProved);
 
   const isSubmitting = batchStage === "submitting";
@@ -98,6 +101,23 @@ export function BatchProofFlowView({
             );
           })}
         </div>
+
+        {/* Cancel while proofs are still being generated */}
+        {batchStage === "generating" && (
+          <div style={{ marginBottom: "1.25rem" }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                cancel();
+                toast.info("Batch proof generation cancelled");
+                onBack();
+              }}
+              style={{ fontSize: "0.75rem" }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
 
         {/* Submission step */}
         <ProofStep

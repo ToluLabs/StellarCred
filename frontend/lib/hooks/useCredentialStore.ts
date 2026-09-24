@@ -25,9 +25,15 @@ import { isStorageAvailable } from "../safe-storage";
 const STORAGE_KEY = "stellarcred:credentials";
 
 export function useCredentialStore() {
-  const [creds, setCreds] = useState<Credential[]>(() => loadCredentials());
+  const [creds, setCreds] = useState<Credential[]>([]);
 
-  // ── Cross-tab sync ─────────────────────────────────────────────────────────
+  // ── Initial load ──────────────────────────────────────────────────────────
+  // The credential store is async, so hydrate on mount.
+  useEffect(() => {
+    loadCredentials().then(setCreds);
+  }, []);
+
+  // ── Cross-tab sync ────────────────────────────────────────────────────────
   // When another tab writes to the credentials localStorage key, reload.
   // Debounced (100 ms) to avoid thrash on rapid batch writes.
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,7 +45,7 @@ export function useCredentialStore() {
       if (e.key === STORAGE_KEY) {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => {
-          setCreds(loadCredentials());
+          loadCredentials().then(setCreds);
         }, 100);
       }
     };
@@ -54,23 +60,23 @@ export function useCredentialStore() {
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   const reload = useCallback(() => {
-    setCreds(loadCredentials());
+    loadCredentials().then(setCreds);
   }, []);
 
   const save = useCallback((cred: Credential) => {
-    setCreds(saveCredential(cred));
+    saveCredential(cred).then(setCreds);
   }, []);
 
   const remove = useCallback((commitment: string) => {
-    setCreds(removeCredential(commitment));
+    removeCredential(commitment).then(setCreds);
   }, []);
 
   const markCredentialProved = useCallback((commitment: string, txHash: string) => {
-    setCreds(_markProved(commitment, txHash));
+    _markProved(commitment, txHash).then(setCreds);
   }, []);
 
   const markCredentialsProved = useCallback((commitments: string[], txHash: string) => {
-    setCreds(_markAllProved(commitments, txHash));
+    _markAllProved(commitments, txHash).then(setCreds);
   }, []);
 
   return {

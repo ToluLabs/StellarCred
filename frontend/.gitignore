@@ -10,6 +10,9 @@ next-env.d.ts
 # Copied from node_modules/@aztec/bb.js by scripts/copy-bb.mjs (predev/prebuild)
 /public/bb/
 
+# Bundled from lib/proof-worker.ts by scripts/build-proof-worker.mjs (predev/prebuild)
+/public/workers/
+
 /test-results/
 /playwright-report/
 /blob-report/

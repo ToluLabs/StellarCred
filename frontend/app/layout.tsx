@@ -1,9 +1,12 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { OnboardingTour } from "@/components/OnboardingTour";
+import { getLocale } from "next-intl/server";
 import { SiteNav } from "@/components/SiteNav";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { Footer } from "@/components/Footer";
+import { LocaleMetaTags } from "@/components/LocaleMetaTags";
 import { WalletProvider } from "@/lib/wallet-context";
 import { ToastProvider } from "@/components/Toast";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
@@ -27,23 +30,25 @@ const mono = JetBrains_Mono({
   variable: "--font-mono",
 });
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "StellarCred — Prove anything. Reveal nothing.",
   description:
     "Zero-knowledge credentials on Stellar. Prove facts about yourself without the data ever touching the chain.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const locale = await getLocale();
+
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${body.variable} ${display.variable} ${mono.variable}`}
-      // Omit `data-theme` so the blocking boot script owns first paint
-      // (avoids flashing the wrong palette before hydration).
       suppressHydrationWarning
     >
       <head>
@@ -51,6 +56,7 @@ export default function RootLayout({
           id="theme-detection"
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
         />
+        <LocaleMetaTags />
       </head>
       <body>
         <a href="#main-content" className="skip-link">
@@ -58,6 +64,7 @@ export default function RootLayout({
         </a>
         <ToastProvider>
           <WalletProvider>
+            <OnboardingTour />
             <SiteNav />
             <NetworkBanner />
             <OnboardingWizard />

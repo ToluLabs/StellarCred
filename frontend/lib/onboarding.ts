@@ -5,6 +5,7 @@ import { isStorageAvailable } from "./safe-storage";
 
 const STORAGE_KEY = "stellarcred:onboarding";
 const RESET_EVENT = "stellarcred:onboarding:reset";
+const LEGACY_STORAGE_KEY = "stellarcred_onboarding_seen";
 
 export type OnboardingStep =
   | "welcome"
@@ -22,11 +23,8 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
 ];
 
 export interface OnboardingState {
-  /** Current step index (0-based). */
   step: number;
-  /** Whether the wizard has been dismissed. */
   dismissed: boolean;
-  /** Whether the user completed the full wizard. */
   completed: boolean;
 }
 
@@ -40,7 +38,13 @@ function loadState(): OnboardingState {
   if (!isStorageAvailable()) return DEFAULT_STATE;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_STATE;
+    if (!raw) {
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy === "1") {
+        return { ...DEFAULT_STATE, dismissed: true };
+      }
+      return DEFAULT_STATE;
+    }
     const parsed = JSON.parse(raw) as Partial<OnboardingState>;
     return {
       step: typeof parsed.step === "number" ? parsed.step : 0,
@@ -61,35 +65,50 @@ function saveState(state: OnboardingState): void {
   }
 }
 
-/**
- * Whether the onboarding wizard should be shown.
- * Returns true if the user has never dismissed or completed it.
- */
 export function shouldShowOnboarding(): boolean {
   const state = loadState();
   return !state.dismissed && !state.completed;
 }
 
-/**
- * Reset onboarding state so the wizard will show again on next page load.
- * Used by the "Take tour" nav button.
- */
 export function resetOnboarding(): void {
   saveState(DEFAULT_STATE);
-  // Dispatch a custom event so the wizard re-renders immediately
-  // without a full page reload.
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(RESET_EVENT));
   }
 }
 
-/**
- * Hook to manage onboarding wizard state.
- *
- * Tracks progress in localStorage so the wizard is resumable and
- * persistent across page reloads. Returning users who completed or
- * dismissed the wizard will never see it again.
- */
+// Legacy API for OnboardingTour component
+export function hasSeenTour(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    if (localStorage.getItem(STORAGE_KEY)) {
+      const state = loadState();
+      return state.dismissed || state.completed;
+    }
+    return localStorage.getItem(LEGACY_STORAGE_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+export function markTourSeen(): void {
+  try {
+    localStorage.setItem(LEGACY_STORAGE_KEY, "1");
+    saveState({ ...DEFAULT_STATE, dismissed: true });
+  } catch {
+    // Silently fail
+  }
+}
+
+export function resetTour(): void {
+  try {
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    resetOnboarding();
+  } catch {
+    // Silently fail
+  }
+}
+
 export function useOnboarding() {
   const [state, setState] = useState<OnboardingState>(DEFAULT_STATE);
   const [mounted, setMounted] = useState(false);
@@ -98,7 +117,6 @@ export function useOnboarding() {
     setState(loadState());
     setMounted(true);
 
-    // Listen for external resets (e.g. "Take tour" nav button)
     function onReset() {
       setState(loadState());
     }

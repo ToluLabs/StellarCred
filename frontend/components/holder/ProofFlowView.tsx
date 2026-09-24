@@ -17,6 +17,7 @@ import { proofSubmissionConfigured } from "@/lib/config";
 import { truncateHash } from "@/lib/format";
 import { EXPLORER_TX } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
+import { useToast } from "@/components/Toast";
 import { useProofFlow, type SubmitFn } from "@/lib/hooks/useProofFlow";
 import { credTtlSecs } from "@/lib/proof-helpers";
 import type { Credential } from "@/lib/credential";
@@ -42,11 +43,20 @@ export function ProofFlowView({
   submitFn?: SubmitFn;
 }) {
   const { networkMismatch } = useWallet();
+  const toast = useToast();
   const [showRaw, setShowRaw] = useState(false);
   const submitButtonRef = useRef<HTMLButtonElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
-  const { stage, proof, txHash, error, errorPhase, fee, elapsed, onSubmit, doSignAndSubmit, onRetrySubmit } = useProofFlow(cred, submitFn);
+  const { stage, proof, txHash, error, errorPhase, fee, elapsed, onSubmit, doSignAndSubmit, onRetrySubmit, cancel } = useProofFlow(cred, submitFn);
+
+  // User-initiated cancel: aborts the proof inside the prover worker and
+  // returns to the list.
+  const handleCancel = () => {
+    cancel();
+    toast.info("Proof generation cancelled");
+    onBack();
+  };
 
   // Focus management
   useEffect(() => {
@@ -79,7 +89,7 @@ export function ProofFlowView({
     if (hash) onProved(hash);
   };
 
-  const isGenerating = stage === "witness" || stage === "proving" || stage === "circuit" || stage === "proof";
+  const isGenerating = stage === "witness" || stage === "circuit" || stage === "proof";
   const proofDone = stage === "generated" || stage === "preflight" || stage === "readyToSign" || stage === "submitting" || stage === "confirmed";
   const submitDone = stage === "confirmed";
 
@@ -137,8 +147,18 @@ export function ProofFlowView({
                     ]} />
                   </div>
                   <span style={{ fontSize: "0.72rem", color: "var(--faint)" }}>
-                    First run loads the WASM prover (~5–15 s)
+                    First run loads the WASM prover (~5–15 s). Proving runs off
+                    the main thread, so this page stays responsive.
                   </span>
+                  <div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={handleCancel}
+                      style={{ fontSize: "0.75rem" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               ) : proofDone && proof ? (
                 <div style={{ marginTop: "0.4rem" }}>

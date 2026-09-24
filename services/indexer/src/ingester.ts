@@ -194,7 +194,10 @@ function decodeScVal(b64: string): unknown {
     }
     return native;
   } catch {
-    return null;
+    // Not valid base64 XDR — treat the raw value as a literal string so that
+    // already-decoded / plain-string topics (e.g. "proof", "verified") still
+    // match parseEvent's topic comparisons instead of silently becoming null.
+    return b64;
   }
 }
 
@@ -599,6 +602,11 @@ export function createIngester(config: Config, db: Db): Ingester {
     try {
       events = await fetchEvents(cursor, finalityCeiling);
     } catch (err) {
+      // Record the error but do NOT advance the cursor — we'll retry next tick.
+      health.lastError = (err as Error).message;
+      health.lastErrorTime = Date.now();
+      health.consecutiveErrors++;
+      health.fetchFailures++;
       console.warn("[indexer] Horizon fetch error:", (err as Error).message);
       fetchErrorsTotal++;
       return 0;

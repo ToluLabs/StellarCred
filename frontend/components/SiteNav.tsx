@@ -5,32 +5,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconBook2, IconCode, IconMenu2, IconX, IconHelp } from "@tabler/icons-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { resetOnboarding } from "@/lib/onboarding";
 
 const LINKS = [
-  { href: "/holder", label: "Wallet" },
-  { href: "/verify", label: "Verify" },
-  { href: "/issuer", label: "Issuer" },
-  { href: "/apps", label: "Apps" },
+  { href: "/holder",  label: "Wallet",  id: "nav-holder" },
+  { href: "/verify",  label: "Verify",  id: "nav-verify" },
+  { href: "/issuer",  label: "Issuer" },
+  { href: "/apps",    label: "Apps",    id: "nav-apps" },
 ];
 
 function ShieldIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden>
-      <path
-        d="M11 2.5L4 5.5v5.25c0 4.97 3.253 9.63 7 10.75 3.747-1.12 7-5.78 7-10.75V5.5L11 2.5z"
-        fill="rgba(62,207,142,0.12)"
-        stroke="#3ecf8e"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 11.2l2.1 2.1 4-4"
-        stroke="#3ecf8e"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M11 2.5L4 5.5v5.25c0 4.97 3.253 9.63 7 10.75 3.747-1.12 7-5.78 7-10.75V5.5L11 2.5z" fill="rgba(62,207,142,0.12)" stroke="#3ecf8e" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M8 11.2l2.1 2.1 4-4" stroke="#3ecf8e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -42,8 +31,6 @@ export function SiteNav() {
 
   useEffect(() => setMenuOpen(false), [pathname]);
 
-  // Close on Escape or a click/tap outside the nav — standard disclosure
-  // pattern behaviour. Only listens while the menu is actually open.
   useEffect(() => {
     if (!menuOpen) return;
 
@@ -90,6 +77,7 @@ export function SiteNav() {
             <Link
               key={l.href}
               href={l.href}
+              id={l.id}
               className={pathname.startsWith(l.href) ? "active" : undefined}
             >
               {l.label}
@@ -100,12 +88,11 @@ export function SiteNav() {
         <div id="mobile-nav-right" className="nav-right">
           <button
             type="button"
-            className="seg-link"
+            className="seg-link nav-reset-btn"
             onClick={() => {
               resetOnboarding();
             }}
             title="Replay onboarding tour"
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
           >
             <IconHelp size={14} stroke={1.8} />
             Tour
@@ -125,6 +112,7 @@ export function SiteNav() {
             Developers
           </Link>
           <ThemeToggle />
+          <LanguageSwitcher />
         </div>
       </div>
     </header>

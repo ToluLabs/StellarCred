@@ -4,14 +4,17 @@
  * useBatchProofFlow — manages the state machine for batch proof generation
  * and submission of multiple credentials in a single on-chain transaction.
  *
- * Proofs are generated sequentially (one credential at a time), then all are
- * submitted atomically via ProofRegistry.submit_proofs.
+ * Proofs are generated sequentially (one credential at a time) inside the
+ * dedicated prover worker (lib/proof-client.ts), then all are submitted
+ * atomically via ProofRegistry.submit_proofs. Each credential's proving runs
+ * off the main thread, so the per-credential rows keep animating while
+ * proving happens on the worker.
  */
 
 import { useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 import { proofSubmissionConfigured } from "../config";
-import { computeWitness, proveWithBackend } from "../proof";
+import { proveOffMainThread } from "../proof-client";
 import {
   submitProofs,
   preflightSubmitProofs,
@@ -54,51 +57,43 @@ export function useBatchProofFlow(
   const credsRef = useRef(creds);
   const holderRef = useRef(holder);
   const onProvedRef = useRef(onProved);
+  /** The in-flight batch's controller — aborting it cancels the worker's job. */
+  const abortRef = useRef<AbortController | null>(null);
   useEffect(() => { credsRef.current = creds; }, [creds]);
   useEffect(() => { holderRef.current = holder; }, [holder]);
   useEffect(() => { onProvedRef.current = onProved; }, [onProved]);
 
+  // User-initiated cancel: aborts whatever proof is in flight inside the
+  // worker, not just this component's view of the batch.
+  const cancel = () => {
+    abortRef.current?.abort();
+  };
+
   // ── Sequential proof generation ────────────────────────────────────────────
   // Runs once on mount. Each credential is proved in sequence to avoid
-  // overloading the WASM worker pool.
+  // overloading the worker; every heavy step happens inside it.
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
     toast.info(`Generating ${creds.length} proofs…`);
 
     (async () => {
       for (let i = 0; i < creds.length; i++) {
-        if (cancelled) return;
+        if (signal.aborted) return;
         const cred = creds[i];
 
-        // Witness
         setCredStates((prev) => {
           const next = [...prev];
           next[i] = { status: "witness" };
           return next;
         });
 
-        let witness: Uint8Array;
-        try {
-          witness = await computeWitness(cred.type, cred as unknown as Record<string, unknown>);
-        } catch (e) {
-          if (cancelled) return;
-          setCredStates((prev) => {
-            const next = [...prev];
-            next[i] = { status: "error", message: (e as Error).message };
-            return next;
-          });
-          setBatchStage("error");
-          const parsed = parseContractError((e as Error).message);
-          setBatchError(parsed);
-          toast.error(`Proof generation failed for ${cred.title}: ${parsed.friendly}`);
-          return;
-        }
-
-        if (cancelled) return;
-
-        // Proving
+        // Elapsed timer for this credential, started when the worker reports
+        // its first proving stage and always cleared before moving on.
         const start = Date.now();
-        const timer = setInterval(() => {
+        let timer: ReturnType<typeof setInterval> | null = null;
+        const tick = () =>
           setCredStates((prev) => {
             const next = [...prev];
             if (next[i].status === "proving") {
@@ -106,19 +101,30 @@ export function useBatchProofFlow(
             }
             return next;
           });
-        }, 1000);
-        setCredStates((prev) => {
-          const next = [...prev];
-          next[i] = { status: "proving", elapsed: 0 };
-          return next;
-        });
 
         let result: { proof: Uint8Array; publicInputs: Uint8Array };
         try {
-          result = await proveWithBackend(cred.type, witness);
+          result = await proveOffMainThread(
+            {
+              credentialType: cred.type,
+              credential: cred as unknown as Record<string, unknown>,
+            },
+            {
+              signal,
+              onProgress: (stage) => {
+                if (signal.aborted || stage === "witness" || timer) return;
+                timer = setInterval(tick, 1000);
+                setCredStates((prev) => {
+                  const next = [...prev];
+                  next[i] = { status: "proving", elapsed: 0 };
+                  return next;
+                });
+              },
+            },
+          );
         } catch (e) {
-          clearInterval(timer);
-          if (cancelled) return;
+          if (timer) clearInterval(timer);
+          if (signal.aborted) return;
           setCredStates((prev) => {
             const next = [...prev];
             next[i] = { status: "error", message: (e as Error).message };
@@ -131,8 +137,8 @@ export function useBatchProofFlow(
           return;
         }
 
-        clearInterval(timer);
-        if (cancelled) return;
+        if (timer) clearInterval(timer);
+        if (signal.aborted) return;
 
         generatedProofs.current[i] = result;
         setCredStates((prev) => {
@@ -144,8 +150,14 @@ export function useBatchProofFlow(
       }
     })();
 
-    return () => { cancelled = true; };
-  }, [creds, toast]); // eslint-disable-line react-hooks/exhaustive-deps -- mounts once for the batch; creds/toast are stable refs
+    return () => {
+      // Cancels whatever proof is in flight inside the worker, not just this
+      // component's view of the batch.
+      controller.abort();
+      abortRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Auto-submit when all proofs are ready ──────────────────────────────────
   // Fires once when every credential has status "ready" and the wallet is on
@@ -218,5 +230,6 @@ export function useBatchProofFlow(
     batchError,
     batchFee,
     blockedByNetwork,
+    cancel,
   };
 }

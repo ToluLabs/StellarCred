@@ -40,7 +40,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     rateLimitMax: 120,
     rateLimitEnabled: true,
     ...overrides,
-  };
+  } as Config;
 }
 
 /**

@@ -1,9 +1,13 @@
 import { createRequire } from "module";
 import withBundleAnalyzer from "@next/bundle-analyzer";
+import createNextIntlPlugin from "next-intl/plugin";
 
 const withBundleReport = withBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
+
+const withNextIntl = createNextIntlPlugin();
+
 
 const require = createRequire(import.meta.url);
 const bufferPath = require.resolve("buffer/");
@@ -146,4 +150,4 @@ const nextConfig = {
   },
 };
 
-export default withBundleReport(nextConfig);
+export default withBundleReport(withNextIntl(nextConfig));

@@ -10,6 +10,8 @@ export const logger = pino({
 // Correlates one issuance across /api/issue -> /api/witness -> /api/plaid-balance
 // (and any Persona relay round-trip) so every log line for a single request can
 // be grepped by requestId.
+// Note: resolveRequestId is now defined in middleware.ts to avoid crypto module
+// imports in edge runtime
 
 /**
  * Canonical request-id resolver shared by API route handlers.

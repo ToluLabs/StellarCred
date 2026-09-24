@@ -12,8 +12,8 @@ import { exportCredentials, parseCredential, type Credential } from "../credenti
 
 export function useImportExport() {
   /** Downloads every locally stored credential as a JSON backup file. */
-  const downloadBackup = useCallback(() => {
-    const json = exportCredentials();
+  const downloadBackup = useCallback(async () => {
+    const json = await exportCredentials();
     if (!json || json === "[]") return;
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);

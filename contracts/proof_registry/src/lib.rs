@@ -1983,6 +1983,8 @@ impl ProofRegistry {
         }
     }
 
+    /// Revoke an existing proof before expiry. The caller must be both a
+    /// currently trusted issuer and the issuer stored on that proof record.
     #[allow(deprecated)]
     pub fn revoke(env: Env, issuer: Address, holder: Address, credential_type: Symbol) {
         issuer.require_auth();
@@ -1998,6 +2000,9 @@ impl ProofRegistry {
             .persistent()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::ProofNotFound));
+        if record.issuer.as_ref() != Some(&issuer) {
+            panic_with_error!(&env, Error::NotAuthorized);
+        }
         record.revoked = true;
         env.storage().persistent().set(&key, &record);
         env.storage()

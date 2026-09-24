@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 
 interface ContractVersion {
   address: string;
@@ -16,6 +17,7 @@ interface VersionInfo {
 }
 
 export function Footer() {
+  const t = useTranslations();
   const [versionInfo, setVersionInfo] = useState<VersionInfo>({
     loading: true,
   });
@@ -49,7 +51,7 @@ export function Footer() {
     <footer className="site-footer">
       <div className="site-footer-inner">
         <span className="faint" style={{ fontSize: "0.8125rem" }}>
-          © {new Date().getFullYear()} StellarCred
+          {t("footer.copyright", { year: new Date().getFullYear() })}
         </span>
         <div className="row" style={{ gap: "1.5rem" }}>
           <a
@@ -79,6 +81,7 @@ export function Footer() {
             @stellarcred/sdk
           </a>
           <a href="/developers" className="footer-link">
+            {t("footer.docs")}
             Docs
           </a>
 
@@ -95,10 +98,10 @@ export function Footer() {
               color: "inherit",
               textDecoration: "none",
             }}
-            title="Click to show version information"
+            title={t("footer.versionInfo")}
           >
             <span className="mono" style={{ fontSize: "0.75rem" }}>
-              {versionInfo.app_version || "app"}
+              {versionInfo.app_version || t("footer.app")}
             </span>
           </button>
         </div>
@@ -115,18 +118,18 @@ export function Footer() {
             }}
           >
             <div style={{ marginBottom: "0.5rem", fontWeight: 500 }}>
-              Deployment Versions
+              {t("footer.deploymentVersions")}
             </div>
 
             {/* App Version */}
             <div style={{ marginBottom: "0.5rem" }}>
-              <span className="faint">App:</span>{" "}
-              <span className="mono">{versionInfo.app_version || "unknown"}</span>
+              <span className="faint">{t("footer.app")}:</span>{" "}
+              <span className="mono">{versionInfo.app_version || t("footer.unknown")}</span>
             </div>
 
             {/* SDK Version */}
             <div style={{ marginBottom: "0.5rem" }}>
-              <span className="faint">SDK:</span>{" "}
+              <span className="faint">{t("footer.sdk_label")}:</span>{" "}
               <span className="mono">{sdkVersion}</span>
             </div>
 
@@ -145,7 +148,7 @@ export function Footer() {
                             : "var(--color-error, #e74c3c)",
                       }}
                     >
-                      {cv.version || "unknown"}
+                      {cv.version || t("footer.unknown")}
                       {cv.status === "error" && ` (${cv.message})`}
                     </span>
                   </div>
@@ -171,7 +174,7 @@ export function Footer() {
                   textDecoration: "underline",
                 }}
               >
-                Close
+                {t("common.close")}
               </button>
             </div>
           </div>

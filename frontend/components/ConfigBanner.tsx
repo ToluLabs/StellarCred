@@ -68,28 +68,19 @@ export function ConfigBanner({ requireIssuance = false }: { requireIssuance?: bo
 
   return (
     <div
-      className="row"
-      style={{
-        gap: "0.6rem",
-        padding: "0.7rem 1rem",
-        marginBottom: "1.5rem",
-        borderRadius: "var(--radius)",
-        border: "1px solid var(--border-strong)",
-        background: "var(--bg-soft)",
-        fontSize: "0.8125rem",
-        alignItems: "flex-start",
-      }}
+      className="config-banner"
       role="alert"
     >
-      <IconInfoCircle size={16} className="muted" style={{ flexShrink: 0, marginTop: 2 }} />
-      <span className="muted">
-        <strong style={{ color: "var(--text)" }}>App not fully configured.</strong>{" "}
+
+      <IconInfoCircle size={16} className="config-banner__icon" />
+      <span className="config-banner__text">
+        <strong className="config-banner__strong">App not fully configured.</strong>{" "}
         Active network: <strong>{NETWORK}</strong>.{" "}
         {requireIssuance ? "Credential issuance and " : ""}On-chain submission is
         disabled — missing env vars:{" "}
-        <span className="mono">{allMissing.join(", ")}</span>. Run{" "}
-        <span className="mono">./scripts/deploy.sh</span> and set them in{" "}
-        <span className="mono">frontend/.env.local</span>.
+        <span className="config-banner__code">{allMissing.join(", ")}</span>. Run{" "}
+        <span className="config-banner__code">./scripts/deploy.sh</span> and set them in{" "}
+        <span className="config-banner__code">frontend/.env.local</span>.
       </span>
     </div>
   );

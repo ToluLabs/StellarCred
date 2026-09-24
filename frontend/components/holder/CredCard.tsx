@@ -44,21 +44,21 @@ export function CredCard({
   const [showHistory, setShowHistory] = useState(false);
 
   return (
-    <div className="card" style={{ padding: "1rem 1.25rem" }}>
-      <div className="between" style={{ alignItems: "center", gap: "0.75rem" }}>
+    <div className="card cred-card">
+      <div className="cred-card__top">
         {/* left: credential info */}
-        <div style={{ minWidth: 0 }}>
+        <div className="cred-card__info">
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{c.title}</span>
+            <span className="cred-card__title">{c.title}</span>
             <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
           </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--faint)", marginTop: "0.15rem" }}>
+          <div className="cred-card__meta">
             <div>
               {c.issuer} &middot; <span>{truncateHash(c.commitment)}</span>
               {status === "proved" && (
                 <>
                   {" "}
-                  <span style={{ color: "var(--accent)", opacity: 0.75 }}>
+                  <span className="cred-card__expires">
                     expires in {daysRemaining(c)}d
                   </span>
                   {c.provedTxHash && (
@@ -68,7 +68,7 @@ export function CredCard({
                         href={EXPLORER_TX(c.provedTxHash)}
                         target="_blank"
                         rel="noreferrer"
-                        style={{ color: "inherit", display: "inline-flex", alignItems: "center", gap: "0.15rem" }}
+                        className="cred-card__tx-link"
                       >
                         {c.provedTxHash.slice(0, 6)}&hellip;<IconExternalLink size={10} />
                       </a>
@@ -77,14 +77,14 @@ export function CredCard({
                 </>
               )}
               {status === "expired" && (
-                <> <span style={{ color: "var(--danger)", opacity: 0.8 }}>expired</span></>
+                <> <span className="cred-card__expired">expired</span></>
               )}
             </div>
-            <div style={{ marginTop: "0.1rem" }}>
+            <div className="cred-card__expiry">
               {credIsExpired(c) ? (
-                <span style={{ color: "var(--danger)", fontWeight: 500 }}>Expired</span>
+                <span className="cred-card__expired-label">Expired</span>
               ) : (
-                <span style={{ color: credExpiryWithinDays(c, 30) ? "var(--warn)" : "var(--faint)" }}>
+                <span className={credExpiryWithinDays(c, 30) ? "cred-card__expiring" : "faint"}>
                   Expires {formatExpiryDate(credExpiryTimestamp(c))}
                 </span>
               )}
@@ -110,7 +110,6 @@ export function CredCard({
               className="btn btn-ghost btn-sm"
               title="View details"
               onClick={onInspect}
-              style={{ padding: "0.3rem 0.4rem", color: "var(--faint)" }}
             >
               <IconInfoCircle size={13} />
             </button>
@@ -137,7 +136,6 @@ export function CredCard({
             className="btn btn-ghost btn-sm"
             title="History"
             onClick={() => setShowHistory(!showHistory)}
-            style={{ padding: "0.3rem 0.4rem", color: showHistory ? "var(--accent)" : "var(--faint)" }}
           >
             <IconHistory size={13} />
           </button>
@@ -145,7 +143,6 @@ export function CredCard({
             className="btn btn-ghost btn-sm"
             title="Remove"
             onClick={onRemove}
-            style={{ padding: "0.3rem 0.4rem", color: "var(--faint)" }}
           >
             <IconTrash size={13} />
           </button>

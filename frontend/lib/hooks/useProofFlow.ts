@@ -6,13 +6,19 @@
  *
  * Stages: idle → witness → circuit → proof → generated → preflight → readyToSign → submitting → confirmed | error
  *
+ * The witness/circuit/proof stages are reported by the dedicated prover
+ * worker (lib/proof-client.ts) — the whole proof runs off the main thread,
+ * so this hook only translates worker progress into UI state and keeps the
+ * AbortSignal that cancels the job across the worker boundary.
+ *
  * No exhaustive-deps hacks: every effect dependency is explicit and minimal.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 
-import { computeWitness, proveWithBackend, withTimeout, ProofTimeoutError, DEFAULT_PROOF_TIMEOUT_MS } from "../proof";
+import { proveOffMainThread } from "../proof-client";
+import { withTimeout, ProofTimeoutError, DEFAULT_PROOF_TIMEOUT_MS } from "../proof-timeout";
 import {
   submitProof as defaultSubmitProof,
   preflightSubmitProof,
@@ -29,7 +35,6 @@ export type Stage =
   | "witness"
   | "circuit"
   | "proof"
-  | "proving"
   | "generated"
   | "preflight"
   | "readyToSign"
@@ -63,8 +68,34 @@ export function useProofFlow(
   const [fee, setFee] = useState<FeeEstimate | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** The in-flight job's controller — aborting it cancels the work in the worker. */
+  const abortRef = useRef<AbortController | null>(null);
   const toast = useToast();
   const { addEvent } = useProofTimeline(cred);
+
+  // User-initiated cancel: aborts the proof inside the prover worker (witness
+  // fetch cancelled, backend destroyed), not just this component's view of it.
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  // Restart the "elapsed" clock for a new phase. Always clears the previous
+  // interval first: the old two-stage flow assigned a second interval over
+  // timerRef without clearing the witness one, so two intervals ticked the
+  // same state for the rest of the proof.
+  const startElapsedTimer = useCallback((from: number) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setElapsed(0);
+    timerRef.current = setInterval(
+      () => setElapsed(Math.floor((Date.now() - from) / 1000)),
+      1000,
+    );
+  }, []);
+  const stopElapsedTimer = useCallback(() => {
+    if (!timerRef.current) return;
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+  }, []);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -74,11 +105,15 @@ export function useProofFlow(
   }, []);
 
   // ── Proof generation ───────────────────────────────────────────────────────
-  // Fires automatically when `cred` changes (single dependency).
+  // Fires automatically when `cred` changes (single dependency). Witness
+  // generation and UltraHonk proving both run in the dedicated prover worker;
+  // only progress messages come back, so the UI thread stays free to repaint
+  // the progress bar and accept a cancel click.
   useEffect(() => {
     if (!cred) return;
 
     const controller = new AbortController();
+    abortRef.current = controller;
     const { signal } = controller;
 
     setStage("witness");
@@ -87,44 +122,40 @@ export function useProofFlow(
     setError(null);
     setErrorPhase(null);
     setFee(null);
-    setElapsed(0);
+
+    // The worker's first non-witness progress message also restarts the
+    // elapsed clock, matching the previous flow's per-stage timing.
+    let provingStarted = false;
 
     toast.info(`Generating proof for ${cred.title}…`);
 
     (async () => {
       try {
-        const start = Date.now();
-        timerRef.current = setInterval(
-          () => setElapsed(Math.floor((Date.now() - start) / 1000)),
-          1000,
-        );
+        setStage("witness");
+        startElapsedTimer(Date.now());
 
-        // Stage 1: witness (server)
-        const witness = await withTimeout(
-          (sig) =>
-            computeWitness(
-              cred.type,
-              cred as unknown as Record<string, unknown>,
-              sig,
-            ),
-          { signal, timeoutMs: DEFAULT_PROOF_TIMEOUT_MS },
-        );
-        if (signal.aborted) return;
-
-        // Stage 2: prove (browser WASM)
-        setStage("proving");
-        const proveStart = Date.now();
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = setInterval(
-          () => setElapsed(Math.floor((Date.now() - proveStart) / 1000)),
-          1000,
-        );
-
+        // withTimeout keeps the deadline on this side of the boundary: when it
+        // fires it aborts the signal, which cancels the worker's job, and the
+        // rejection is surfaced as ProofTimeoutError.
         const result = await withTimeout(
           (sig) =>
-            proveWithBackend(cred.type, witness, sig, (step) => {
-              if (!sig.aborted) setStage(step);
-            }),
+            proveOffMainThread(
+              {
+                credentialType: cred.type,
+                credential: cred as unknown as Record<string, unknown>,
+              },
+              {
+                signal: sig,
+                onProgress: (workerStage) => {
+                  if (sig.aborted) return;
+                  if (workerStage !== "witness" && !provingStarted) {
+                    provingStarted = true;
+                    startElapsedTimer(Date.now());
+                  }
+                  setStage(workerStage);
+                },
+              },
+            ),
           { signal, timeoutMs: DEFAULT_PROOF_TIMEOUT_MS },
         );
         if (signal.aborted) return;
@@ -135,6 +166,8 @@ export function useProofFlow(
         toast.success(`Proof generated for ${cred.title}`);
       } catch (e) {
         if (signal.aborted) return;
+        // ProofTimeoutError gets a distinct user-visible message — half the
+        // point is that stalled provers fail visibly, not as a generic error.
         if (e instanceof ProofTimeoutError) {
           setError({
             code: null,
@@ -153,19 +186,18 @@ export function useProofFlow(
         setStage("error");
         toast.error(`Proof generation failed: ${parsed.friendly}`);
       } finally {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
+        // Always clean up: the timer. The abort controller stays referenced by
+        // cancel() until the next run replaces it.
+        stopElapsedTimer();
       }
     })();
 
     return () => {
+      // Unmounting (or switching credential) cancels the in-flight job in the
+      // worker, not just this component's view of it.
       controller.abort();
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      abortRef.current = null;
+      stopElapsedTimer();
     };
   }, [cred]); // eslint-disable-line react-hooks/exhaustive-deps -- cred is the sole trigger; addEvent/toast are stable refs
 
@@ -293,6 +325,7 @@ export function useProofFlow(
     onPreflight,
     doSignAndSubmit,
     onRetrySubmit,
+    cancel,
     reset,
   };
 }

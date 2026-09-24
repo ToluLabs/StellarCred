@@ -1,4 +1,4 @@
-// Client-side zero-knowledge proof generation.
+// Client-side zero-knowledge proof generation — the proving *engine*.
 //
 // Witness generation (Noir circuit execution) runs server-side via POST /api/witness —
 // this avoids bundling @noir-lang/acvm_js WASM through Next.js/webpack, which fails in
@@ -10,71 +10,20 @@
 // for witness generation only; the proof itself is computed locally.
 //
 // Toolchain must match the contracts: Noir 1.0.0-beta.9 / bb 0.87.0.
+//
+// ── Where this code runs ────────────────────────────────────────────────────
+// Everything below is context-free on purpose: it touches no DOM and reads
+// cross-origin isolation off `globalThis`, so the exact same module runs either
+//   • inside the dedicated prover worker (lib/proof-worker.ts) — the normal
+//     path, keeping witness decoding, backend construction and proof
+//     orchestration off the main thread — or
+//   • on the main thread, as the fallback lib/proof-client.ts uses when Web
+//     Workers are unavailable (jsdom/unit tests, a worker blocked by CSP, or a
+//     worker script that failed to load).
+// Because both paths share this module, the fallback is behaviourally identical
+// to the worker path — only the thread differs.
 
 import type { CredentialType } from "./stellar";
-
-// ── Proof timeout ─────────────────────────────────────────────────────────────
-// Stalled provers (wasm hang, network stall on witness fetch) should fail
-// visibly instead of spinning forever. withTimeout composes a deadline onto
-// the existing AbortController plumbing: the caller's signal is forwarded
-// unchanged so user-initiated cancellation still works; when the deadline
-// fires first we throw ProofTimeoutError instead of a raw AbortError.
-
-/** Default maximum time (ms) a proof generation step may take. */
-export const DEFAULT_PROOF_TIMEOUT_MS = 120_000; // 2 minutes
-
-/** Thrown when proof generation exceeds the timeout window. */
-export class ProofTimeoutError extends Error {
-  constructor(ms: number) {
-    super(`Proof timed out after ${ms / 1000} seconds`);
-    this.name = "ProofTimeoutError";
-  }
-}
-
-/**
- * Wraps an abortable async function with a deadline. Returns the result or
- * throws `ProofTimeoutError` if the deadline fires before the function
- * resolves. The caller's `signal` is forwarded — when the *caller* aborts
- * (user cancel), the original error propagates unchanged; only a timeout
- * produces `ProofTimeoutError`.
- */
-export function withTimeout<T>(
-  fn: (signal: AbortSignal) => Promise<T>,
-  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
-): Promise<T> {
-  const {
-    timeoutMs = DEFAULT_PROOF_TIMEOUT_MS,
-    signal: callerSignal,
-  } = opts;
-
-  // Short-circuit: caller already cancelled.
-  if (callerSignal?.aborted) {
-    return Promise.reject(new DOMException("Aborted", "AbortError"));
-  }
-
-  const controller = new AbortController();
-  let timedOut = false;
-
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-
-  // Forward caller abort to our controller.
-  const onCallerAbort = () => controller.abort();
-  callerSignal?.addEventListener("abort", onCallerAbort);
-
-  const promise = fn(controller.signal).finally(() => {
-    clearTimeout(timer);
-    callerSignal?.removeEventListener("abort", onCallerAbort);
-  });
-
-  // If timeout fired, swap the raw AbortError for a ProofTimeoutError.
-  return promise.catch((err) => {
-    if (timedOut) throw new ProofTimeoutError(timeoutMs);
-    throw err;
-  });
-}
 
 /** The compiled Noir circuit artifact emitted by circuits/scripts/build.sh to
  * /public/circuits/<type>.json.
@@ -89,6 +38,14 @@ export interface GeneratedProof {
   /** Public inputs serialized as concatenated 32-byte big-endian field elements. */
   publicInputs: Uint8Array;
 }
+
+/**
+ * A circuit the prover can run: any single-credential type, plus the
+ * multi-credential `aggregate` circuit (which is not itself a credential type
+ * but is compiled and served exactly like one). Naming this once keeps the
+ * `as any` casts the aggregate path used to need out of the codebase.
+ */
+export type ProverCircuit = CredentialType | "aggregate";
 
 // bb.js returns public inputs as an array of 0x-prefixed field hex strings. The
 // contract expects them concatenated as 32-byte big-endian values.
@@ -140,22 +97,30 @@ type Backend = InstanceType<BbModule["UltraHonkBackend"]>;
 // destroyAllBackends when it's time to let the wasm memory go (e.g. the
 // holder page unmounting or the tab closing) -- this module never does so on
 // its own.
-const backendCache = new Map<CredentialType, Promise<Backend>>();
+const backendCache = new Map<ProverCircuit, Promise<Backend>>();
 
-// Multithreading is only safe once the page is crossOriginIsolated (COOP/COEP
-// headers — see next.config.mjs). Read the live value at construction time
-// rather than caching it, so a proxy/CDN stripping those headers still falls
-// back correctly to the single-threaded path. Omitting `threads` when
-// isolated lets bb.js pick its own worker-pool size (it reads
-// navigator.hardwareConcurrency internally); logged once so the choice is
-// visible in the field.
+// Multithreading is only safe once the *realm running this code* is
+// crossOriginIsolated (COOP/COEP headers — see next.config.mjs). Read the live
+// value at construction time rather than caching it, so a proxy/CDN stripping
+// those headers still falls back correctly to the single-threaded path.
+// Omitting `threads` when isolated lets bb.js pick its own worker-pool size
+// (it reads navigator.hardwareConcurrency internally); logged once so the
+// choice is visible in the field.
+//
+// `globalThis`, not `window`: this module normally executes inside the
+// dedicated prover worker, which has no `window`. A dedicated worker created
+// by a cross-origin-isolated page is itself cross-origin isolated, so
+// `globalThis.crossOriginIsolated` / SharedArrayBuffer stay available there and
+// bb.js takes the same multithreaded path it took on the main thread. (bb.js
+// makes the identical `typeof window !== "undefined" ? window : globalThis`
+// check internally before choosing its thread count.)
 let loggedIsolation = false;
 
 function backendOptions(): { threads?: number } {
-  const isolated = typeof window !== "undefined" && window.crossOriginIsolated;
+  const isolated = Boolean(globalThis.crossOriginIsolated);
   if (!loggedIsolation) {
     loggedIsolation = true;
-    console.info(`[proof] crossOriginIsolated=${!!isolated}`);
+    console.info(`[proof] crossOriginIsolated=${isolated}`);
   }
   if (isolated) {
     return {};
@@ -163,7 +128,7 @@ function backendOptions(): { threads?: number } {
   return { threads: 1 };
 }
 
-async function buildBackend(type: CredentialType): Promise<Backend> {
+async function buildBackend(type: ProverCircuit): Promise<Backend> {
   const circuitRes = await fetch(`/circuits/${type}.json`);
   if (!circuitRes.ok) {
     throw new Error(
@@ -181,7 +146,7 @@ async function buildBackend(type: CredentialType): Promise<Backend> {
 // an in-flight warm -- share this exact promise instead of racing separate
 // constructions, since the cache is checked and populated synchronously
 // (no `await` between the `get` and the `set`).
-function getBackend(type: CredentialType): Promise<Backend> {
+function getBackend(type: ProverCircuit): Promise<Backend> {
   let pending = backendCache.get(type);
   if (!pending) {
     pending = buildBackend(type);
@@ -203,7 +168,7 @@ function getBackend(type: CredentialType): Promise<Backend> {
 // eventual prove click hits an already-warm cache. If warming fails (network
 // error, wasm init failure, etc.) it's logged and swallowed -- the real
 // prove click still falls back to constructing fresh via proveWithBackend.
-export function warmBackend(type: CredentialType): void {
+export function warmBackend(type: ProverCircuit): void {
   const before = backendCache.get(type);
   const pending = getBackend(type);
   if (pending !== before) {
@@ -215,7 +180,7 @@ export function warmBackend(type: CredentialType): void {
 
 // Destroys and evicts the cached backend for `type`, if one exists. Safe to
 // call even when nothing was ever warmed/proved for that type.
-export async function destroyBackend(type: CredentialType): Promise<void> {
+export async function destroyBackend(type: ProverCircuit): Promise<void> {
   const pending = backendCache.get(type);
   if (!pending) return;
   backendCache.delete(type);
@@ -226,14 +191,6 @@ export async function destroyBackend(type: CredentialType): Promise<void> {
     // Construction itself failed, or destroy() threw -- either way there's
     // nothing left to clean up.
   }
-}
-
-// Reports whether a backend for `type` is already cached (or warming in
-// flight). Used by proof telemetry (lib/proof-perf.ts) to distinguish cold
-// vs. warm prove timings so the debug view can separate first-run costs from
-// expected reuse.
-export function isProverWarm(type: CredentialType): boolean {
-  return backendCache.has(type);
 }
 
 // Destroys every cached backend. Intended for page unmount / navigating away
@@ -247,7 +204,7 @@ export async function destroyAllBackends(): Promise<void> {
 // Exported so ProofFlow can report progress between stages.
 // When signal is provided, fetch abort cancels the server-side witness computation.
 export async function computeWitness(
-  type: CredentialType,
+  type: ProverCircuit,
   credential: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
@@ -281,7 +238,7 @@ export async function computeWitness(
 // destroyAllBackends, called from use-warm-prover.ts on unmount).
 // When signal is provided, aborting it terminates the WASM worker mid-proof.
 export async function proveWithBackend(
-  type: CredentialType,
+  type: ProverCircuit,
   witness: Uint8Array,
   signal?: AbortSignal,
   onStep?: (step: "circuit" | "proof") => void,
@@ -309,7 +266,7 @@ export async function proveWithBackend(
 
 // Convenience wrapper — runs both stages in sequence.
 export async function generateProof(
-  type: CredentialType,
+  type: ProverCircuit,
   credential: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<GeneratedProof> {
@@ -357,6 +314,7 @@ function resolveAggregateField(
 
 export async function computeAggregateWitness(
   inputs: AggregateInput,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   // Build the merged credential object with prefixed keys matching the aggregate
   // circuit's parameter names. Noir treats `pub` parameters as ordinary witness
@@ -401,6 +359,7 @@ export async function computeAggregateWitness(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "aggregate", credential: aggregateCredential }),
+    signal,
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
@@ -416,8 +375,8 @@ export async function computeAggregateWitness(
 
 export async function generateAggregateProof(
   inputs: AggregateInput,
+  signal?: AbortSignal,
 ): Promise<GeneratedProof> {
-  const witness = await computeAggregateWitness(inputs);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return proveWithBackend("aggregate" as any, witness);
+  const witness = await computeAggregateWitness(inputs, signal);
+  return proveWithBackend("aggregate", witness, signal);
 }
