@@ -1,0 +1,9 @@
+[package]
+name = "composite_proof"
+type = "bin"
+authors = [""]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+poseidon = { tag = "v0.2.6", git = "https://github.com/noir-lang/poseidon" }
+credential_lib = { path = "../lib" }

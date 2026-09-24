@@ -106,3 +106,64 @@ MERKLE_LINES=$(node "$SCRIPTS/merkle_tree.js" path $SM_VALUES --for $SM_MEMBER)
 echo "done. demo issuer public key:"
 node "$SCRIPTS/sign.js" --pubkey
 
+
+echo "composite_proof..."
+# Use age_proof (index 0) and set_membership (index 1) for a mixed policy:
+# Policy: (Age >= 18) AND (Jurisdiction in set)
+# We pad index 2 and 3 with the age_proof credential but skip them in policy.
+C_AGE=$(commit 3650 12345)
+SM_VALUES="840 276 566 356"
+SM_MEMBER="840"
+SM_SALT="42"
+C_SM=$(commit $SM_MEMBER $SM_SALT)
+MERKLE_ROOT=$(node "$SCRIPTS/merkle_tree.js" root $SM_VALUES)
+MERKLE_LINES=$(node "$SCRIPTS/merkle_tree.js" path $SM_VALUES --for $SM_MEMBER | grep -v 'value =' | grep -v 'salt =' | grep -v 'commitment =')
+
+node -e "
+const fs = require('fs');
+const sign = require('$SCRIPTS/sign.js');
+const c_age = '$C_AGE';
+const c_sm = '$C_SM';
+const sig_age = sign.sign(BigInt(c_age));
+const sig_sm = sign.sign(BigInt(c_sm));
+const arr = (u) => '[' + Array.from(u).join(', ') + ']';
+
+const values = ['3650', '$SM_MEMBER', '3650', '3650'];
+const salts = ['12345', '42', '12345', '12345'];
+const sigs = [arr(sig_age.sig), arr(sig_sm.sig), arr(sig_age.sig), arr(sig_age.sig)];
+const commitments = ['\"'+c_age+'\"', '\"'+c_sm+'\"', '\"'+c_age+'\"', '\"'+c_age+'\"'];
+const issuer_xs = [arr(sig_age.x), arr(sig_sm.x), arr(sig_age.x), arr(sig_age.x)];
+const issuer_ys = [arr(sig_age.y), arr(sig_sm.y), arr(sig_age.y), arr(sig_age.y)];
+
+const paths = [
+    Array(8).fill('\"0\"'),
+    [${MERKLE_LINES.match(/path = \[(.*)\]/)[1]}],
+    Array(8).fill('\"0\"'),
+    Array(8).fill('\"0\"')
+];
+const indices = [
+    Array(8).fill(0),
+    [${MERKLE_LINES.match(/indices = \[(.*)\]/)[1]}],
+    Array(8).fill(0),
+    Array(8).fill(0)
+];
+
+const kinds = [1, 2, 0, 0]; // 1=threshold, 2=membership, 0=padding
+const thresholds = ['3650', '0', '0', '0']; // exact threshold for age
+const merkle_roots = ['\"0\"', '\"$MERKLE_ROOT\"', '\"0\"', '\"0\"'];
+const ops = [0, 2, 0]; // (T0 AND T1) AND T2(ignored via LEFT)
+
+console.log(\`values = [\${values.map(v => '\"'+v+'\"').join(', ')}]\`);
+console.log(\`salts = [\${salts.map(v => '\"'+v+'\"').join(', ')}]\`);
+console.log(\`sigs = [\${sigs.join(', ')}]\`);
+console.log(\`paths = [\${paths.map(p => '['+p.join(', ')+']').join(', ')}]\`);
+console.log(\`indices = [\${indices.map(i => '['+i.join(', ')+']').join(', ')}]\`);
+console.log(\`commitments = [\${commitments.join(', ')}]\`);
+console.log(\`issuer_xs = [\${issuer_xs.join(', ')}]\`);
+console.log(\`issuer_ys = [\${issuer_ys.join(', ')}]\`);
+console.log(\`kinds = [\${kinds.join(', ')}]\`);
+console.log(\`thresholds = [\${thresholds.map(v => '\"'+v+'\"').join(', ')}]\`);
+console.log(\`merkle_roots = [\${merkle_roots.join(', ')}]\`);
+console.log(\`ops = [\${ops.join(', ')}]\`);
+" > "$ROOT/composite_proof/Prover.toml"
+

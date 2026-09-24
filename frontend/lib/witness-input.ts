@@ -162,6 +162,13 @@ export function validateWitnessCredential(
   // its own full set of 15 inputs: 6 private fields (secrets, salts,
   // signatures) + 9 public fields (commitments, issuer pubkeys, age
   // date/threshold, num_credentials).
+  
+  if (type === "composite") {
+    if (!Array.isArray(cred.values) || cred.values.length > 4) return { field: "credential.values", message: "max terms is 4" };
+    if (!Array.isArray(cred.salts) || cred.salts.length > 4) return { field: "credential.salts", message: "max terms is 4" };
+    if (!Array.isArray(cred.ops) || cred.ops.length > 3) return { field: "credential.ops", message: "max ops is 3" };
+    return null;
+  }
   if (type === "aggregate") {
     return (
       checkField(cred.kyc_secret, "credential.kyc_secret") ??

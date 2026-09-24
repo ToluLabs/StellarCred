@@ -22,6 +22,7 @@ import kycCircuit from "../../../public/circuits/kyc.json";
 import accreditationCircuit from "../../../public/circuits/accreditation.json";
 import employmentCircuit from "../../../public/circuits/employment.json";
 import aggregateCircuit from "../../../public/circuits/aggregate.json";
+import compositeCircuit from "../../../public/circuits/composite_proof.json";
 
 /**
  * Resolve the current date (UTC days since epoch) used as a public input
@@ -160,6 +161,22 @@ async function buildInputs(
         commitment,
         min_seniority: params.threshold ?? String(cred.seniority ?? "3"),
       };
+    
+    case "composite":
+      return {
+        values: cred.values,
+        salts: cred.salts,
+        sigs: cred.sigs,
+        paths: cred.paths,
+        indices: cred.indices,
+        commitments: cred.commitments,
+        issuer_xs: cred.issuer_xs,
+        issuer_ys: cred.issuer_ys,
+        kinds: cred.kinds,
+        thresholds: cred.thresholds,
+        merkle_roots: cred.merkle_roots,
+        ops: cred.ops,
+      };
     case "aggregate":
       return {
         kyc_secret: String(cred.kyc_secret),
@@ -200,6 +217,9 @@ function circuitFor(type: string) {
       return employmentCircuit;
     case "aggregate":
       return aggregateCircuit;
+
+    case "composite":
+      return compositeCircuit;
     case "kyc":
     default:
       return kycCircuit;

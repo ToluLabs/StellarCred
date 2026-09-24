@@ -13,4 +13,5 @@ members = [
     "employment_proof",
     "aggregate_proof",
     "set_membership",
+    "composite_proof",
 ]

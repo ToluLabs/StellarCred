@@ -243,7 +243,7 @@ export class RpcError extends Error {
 }
 
 /** The credential types StellarCred supports. Matches the contract Symbols. */
-export const CLAIM_TYPES = ["kyc", "age", "income", "jurisdiction", "funds", "accreditation"] as const;
+export const CLAIM_TYPES = ["kyc", "age", "income", "jurisdiction", "funds", "accreditation", "composite"] as const;
 /**
  * Union type representing every supported StellarCred credential.
  *
@@ -779,7 +779,7 @@ export interface PresetVerificationResult {
  * @example
  * const { allValid, results } = await verifyPreset("G1ABC…", [
  *   { type: "kyc" },
- *   { type: "accreditation", minThreshold: 1_000_000 },
+ *   { type: "accreditation", "composite", minThreshold: 1_000_000 },
  * ]);
  * if (allValid) grantAccess();
  */
