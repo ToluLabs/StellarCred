@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "size": "size-limit",
-    "check:i18n": "node scripts/check-i18n-parity.mjs"
+    "check:i18n": "node scripts/check-i18n-parity.mjs",
+    "check:holder-size": "node scripts/check-holder-size.mjs"
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",

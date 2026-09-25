@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Credential } from "@/lib/credential";
+import { parseCredential, type Credential } from "@/lib/credential";
 
 export function ImportPanel({
   onImport,
@@ -15,7 +15,7 @@ export function ImportPanel({
 
   function onAdd() {
     try {
-      onImport(JSON.parse(json));
+      onImport(parseCredential(json));
     } catch (e) {
       setError((e as Error).message);
     }

@@ -31,6 +31,7 @@ export function CredCard({
   onRemove,
   onInspect,
   isPreview,
+  selection,
 }: {
   c: Credential;
   address: string;
@@ -38,6 +39,11 @@ export function CredCard({
   onRemove: () => void;
   onInspect?: () => void;
   isPreview?: boolean;
+  selection?: {
+    checked: boolean;
+    blockedReason: string | null;
+    onToggle: () => void;
+  };
 }) {
   const status = proofStatus(c);
   const { events } = useProofTimeline(c);
@@ -47,11 +53,22 @@ export function CredCard({
     <div className="card cred-card">
       <div className="cred-card__top">
         {/* left: credential info */}
-        <div className="cred-card__info">
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-            <span className="cred-card__title">{c.title}</span>
-            <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
-          </div>
+        <div className="cred-card__info" style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+          {selection && (
+            <input
+              type="checkbox"
+              checked={selection.checked}
+              disabled={Boolean(selection.blockedReason)}
+              title={selection.blockedReason ?? undefined}
+              onChange={selection.onToggle}
+              style={{ marginTop: "0.2rem", cursor: selection.blockedReason ? "not-allowed" : "pointer" }}
+            />
+          )}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+              <span className="cred-card__title">{c.title}</span>
+              <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
+            </div>
           <div className="cred-card__meta">
             <div>
               {c.issuer} &middot; <span>{truncateHash(c.commitment)}</span>
@@ -90,6 +107,7 @@ export function CredCard({
               )}
             </div>
           </div>
+        </div>
         </div>
 
         {/* right: badges + buttons */}
