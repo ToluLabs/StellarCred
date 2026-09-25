@@ -1,7 +1,9 @@
 // Unit coverage for lib/wallet.ts's kit-agnostic behavior. Real wallet
 // extensions/WalletConnect relays aren't available in jsdom (see the note in
 // app/verify/__tests__/verify-flow.test.tsx), so StellarWalletsKit and the
-// WalletConnect module are mocked; what's under test is StellarCred's own
+// Ledger/WalletConnect connector modules are mocked (getKit() lazy-loads both
+// via dynamic import(), which vitest's module mocking intercepts the same as
+// static imports); what's under test is StellarCred's own
 // logic on top of them — error-kind mapping, per-wallet error context
 // (regression guard for a bug where every "not installed" error hardcoded
 // "Freighter" regardless of which wallet was actually being connected), and
@@ -56,6 +58,13 @@ vi.mock("@creit.tech/stellar-wallets-kit/modules/walletconnect.module", () => {
   };
 });
 
+vi.mock("@creit.tech/stellar-wallets-kit/modules/ledger.module", () => {
+  class MockLedgerModule {
+    id = "ledger";
+  }
+  return { LedgerModule: MockLedgerModule };
+});
+
 const wallet = (id: string, name: string, url: string): ISupportedWallet => ({
   id,
   name,
@@ -78,7 +87,7 @@ describe("lib/wallet.ts", () => {
     vi.resetModules();
     const mod = await import("../wallet");
     ({ getKit, connect, restore, signTx, getNetworkOk } = mod);
-    kit = getKit() as unknown as MockKitInstance;
+    kit = (await getKit()) as unknown as MockKitInstance;
   });
 
   describe("connect", () => {
@@ -267,7 +276,7 @@ describe("lib/wallet.ts getKit() WalletConnect module wiring", () => {
     const { getKit } = await import("../wallet");
     const { WalletConnectModule } = await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
 
-    const modules = (getKit() as unknown as MockKitInstance).modules;
+    const modules = ((await getKit()) as unknown as MockKitInstance).modules;
     expect(modules.some((m) => m instanceof WalletConnectModule)).toBe(false);
   });
 
@@ -277,7 +286,7 @@ describe("lib/wallet.ts getKit() WalletConnect module wiring", () => {
     const { getKit } = await import("../wallet");
     const { WalletConnectModule } = await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
 
-    const modules = (getKit() as unknown as MockKitInstance).modules;
+    const modules = ((await getKit()) as unknown as MockKitInstance).modules;
     const wc = modules.find((m) => m instanceof WalletConnectModule) as unknown as { params: { projectId: string } } | undefined;
     expect(wc).toBeDefined();
     expect(wc?.params.projectId).toBe("test-project-id");

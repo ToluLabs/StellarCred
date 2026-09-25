@@ -18,3 +18,5 @@ allowBuilds:
   tiny-secp256k1: true
   usb: true
   utf-8-validate: true
+overrides:
+  '@ledgerhq/hw-transport-webusb': 6.35.0
