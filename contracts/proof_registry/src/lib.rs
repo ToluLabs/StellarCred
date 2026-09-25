@@ -27,10 +27,18 @@
 //! constructor seeds the `admin`, `upgrader` and `pauser` roles with the
 //! deployer address, and each privileged function is guarded by the role it
 //! maps to (`upgrade` → `upgrader`, `pause`/`unpause` → `pauser`,
-//! `migrate_record` → `admin`, `set_admin` → root admin). Roles are stored as a
+//! `migrate_record` → `admin`). Roles are stored as a
 //! `Map<Symbol, Address>` (role name → current holder); the root admin can
 //! delegate or rotate holders via `grant_role` / `revoke_role`, and anyone can
 //! query membership with `has_role`.
+//!
+//! Admin transfer is two-step (#343): the root admin calls `propose_admin`
+//! with the incoming address, and that address must call `accept_admin` to
+//! take over. On acceptance, the accepted address becomes the new root admin
+//! AND inherits every role the outgoing admin held — a wholesale governance
+//! transfer, matching what the old single-step `set_admin` did. A pending
+//! proposal can be overwritten by another `propose_admin` or cleared with
+//! `cancel_admin_proposal`.
 
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
@@ -228,6 +236,9 @@ pub struct ProofSubmission {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    /// Pending root-admin candidate set by `propose_admin` and consumed by
+    /// `accept_admin` (#343).
+    PendingAdmin,
     /// RBAC: role name (Symbol) → current holder (Address).
     Roles,
     Verifier,
@@ -266,6 +277,8 @@ pub enum Error {
     RoleNotHeld = 13,
     /// `revoke_role` named an address that is not the current holder of the role.
     RoleHolderMismatch = 14,
+    /// `accept_admin` was called with no pending proposal (#343).
+    NoPendingAdmin = 15,
 }
 
 #[contract]
@@ -333,29 +346,72 @@ impl ProofRegistry {
         env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
-    /// Transfer the root admin to `new_admin`. Root-admin only.
-    ///
-    /// This is a wholesale governance transfer: the `Admin` key and every role
-    /// currently held by the old root admin move to `new_admin`, so the old
-    /// root loses all privileged access (including upgrade and pause power)
-    /// exactly as it did before roles existed. Fine-grained delegation
-    /// afterwards uses `grant_role` / `revoke_role`.
-    pub fn set_admin(env: Env, new_admin: Address) {
-        let admin: Address = env
+    /// Propose a new root admin. Root-admin only. Overwrites any existing
+    /// pending proposal. Emits `("proof_reg", "adm_prop")` with the proposed
+    /// address as the payload (#343).
+    #[allow(deprecated)]
+    pub fn propose_admin(env: Env, new_admin: Address) {
+        Self::require_admin(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+
+        env.events().publish(
+            (symbol_short!("proof_reg"), symbol_short!("adm_prop")),
+            new_admin,
+        );
+    }
+
+    /// Accept the pending root-admin role. Callable only by the address named
+    /// in the most recent `propose_admin`. On success the accepted address
+    /// becomes the new `DataKey::Admin` AND inherits every role the outgoing
+    /// admin held — matching the wholesale governance transfer the old
+    /// single-step `set_admin` performed. Emits `("proof_reg", "adm_acc")`
+    /// with the new admin as the payload (#343).
+    #[allow(deprecated)]
+    pub fn accept_admin(env: Env) {
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NoPendingAdmin));
+        pending.require_auth();
+
+        let old_admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
-        admin.require_auth();
 
+        // Wholesale governance transfer: hand the new admin every role the old
+        // admin held, so upgrade/pause power moves with the admin key.
         let mut roles: Map<Symbol, Address> = Self::roles(&env);
         for (role, holder) in roles.iter() {
-            if holder == admin {
-                roles.set(role, new_admin.clone());
+            if holder == old_admin {
+                roles.set(role, pending.clone());
             }
         }
         env.storage().instance().set(&DataKey::Roles, &roles);
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage().instance().set(&DataKey::Admin, &pending);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events().publish(
+            (symbol_short!("proof_reg"), symbol_short!("adm_acc")),
+            pending,
+        );
+    }
+
+    /// Cancel a pending admin proposal. Root-admin only. Emits
+    /// `("proof_reg", "adm_canc")` with an empty payload (#343).
+    #[allow(deprecated)]
+    pub fn cancel_admin_proposal(env: Env) {
+        Self::require_admin(&env);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events().publish(
+            (symbol_short!("proof_reg"), symbol_short!("adm_canc")),
+            (),
+        );
     }
 
     pub fn admin(env: Env) -> Address {
@@ -363,6 +419,11 @@ impl ProofRegistry {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
+
+    /// Read the current pending admin proposal, if any (#343).
+    pub fn pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
     }
 
     /// Assign `address` as the holder of `role`, replacing any previous holder.
@@ -1189,7 +1250,8 @@ impl ProofRegistry {
     }
 
     /// Require the root admin key to be authenticated. Used by the role
-    /// management functions (`grant_role` / `revoke_role`), which stay on the
+    /// management functions (`grant_role` / `revoke_role`) and by
+    /// `propose_admin` / `cancel_admin_proposal`, which stay on the
     /// bootstrap trust anchor rather than a delegatable role.
     fn require_admin(env: &Env) {
         let admin: Address = env
