@@ -1,10 +1,34 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import createMiddleware from "next-intl/middleware";
 import { getCorsHeaders, isOriginAllowed } from "@/lib/cors";
-import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
+import { logger, stripSensitiveFields } from "@/lib/logger";
 import { reportError } from "@/lib/error-reporting";
+import { locales, defaultLocale } from "@/i18n.config";
+
+function resolveRequestId(inbound: string | null | undefined): string {
+  const REQUEST_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+  if (inbound && REQUEST_ID_RE.test(inbound)) return inbound;
+  
+  // Use Web Crypto API (available in edge runtime) instead of Node.js crypto
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Create i18n middleware for locale routing
+const intlMiddleware = createMiddleware({
+  locales: locales as unknown as string[],
+  defaultLocale,
+  localePrefix: 'as-needed', // Only prefix non-default locales (/es/*, not /en/*)
+});
 
 export function middleware(request: NextRequest) {
+  // Handle i18n routing first
+  if (!request.nextUrl.pathname.startsWith("/api")) {
+    return intlMiddleware(request);
+  }
+
   const requestId = resolveRequestId(request.headers.get("x-request-id"));
   const startTime = Date.now();
 
@@ -87,5 +111,10 @@ function logRequest(
 }
 
 export const config = {
-  matcher: "/api/:path*",
+  matcher: [
+    // API routes - handle CORS and logging
+    "/api/:path*",
+    // All pages - handle i18n routing (except static assets)
+    "/((?!_next|.*\\..*|public).*)",
+  ],
 };

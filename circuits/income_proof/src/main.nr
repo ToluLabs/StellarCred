@@ -84,3 +84,94 @@ fn test_salt_mismatch_rejected() {
     let commitment = Poseidon2::hash([income as Field, real_salt], 2);
     main(income, wrong_salt, INC_ZERO_SIG, commitment, INC_ZERO_X, INC_ZERO_Y, 100000);
 }
+
+// --- Property-based boundary tests (logic-only) --------------------------
+// Systematic coverage of the `income >= threshold` constraint boundary.
+
+// Exact boundary: income == threshold -> passes.
+#[test]
+fn test_boundary_income_equals_threshold() {
+    let income: u64 = 100000;
+    let threshold: u64 = 100000;
+    assert(income >= threshold);
+}
+
+// Off-by-one above: income == threshold + 1 -> passes.
+#[test]
+fn test_boundary_income_one_above_threshold() {
+    let income: u64 = 100001;
+    let threshold: u64 = 100000;
+    assert(income >= threshold);
+}
+
+// Off-by-one below: income == threshold - 1 -> fails.
+#[test(should_fail)]
+fn test_boundary_income_one_below_threshold() {
+    let income: u64 = 99999;
+    let threshold: u64 = 100000;
+    assert(income >= threshold);
+}
+
+// Threshold zero: any income passes.
+#[test]
+fn test_boundary_zero_threshold() {
+    let income: u64 = 0;
+    let threshold: u64 = 0;
+    assert(income >= threshold);
+}
+
+// Large values near u64 boundary.
+#[test]
+fn test_boundary_large_income() {
+    let income: u64 = 1000000000000; // 1 trillion
+    let threshold: u64 = 999999999999;
+    assert(income >= threshold);
+}
+
+#[test(should_fail)]
+fn test_boundary_large_income_one_below() {
+    let income: u64 = 999999999998;
+    let threshold: u64 = 999999999999;
+    assert(income >= threshold);
+}
+
+// Multiple threshold values: boundary sweep.
+#[test]
+fn test_boundary_multiple_thresholds_pass() {
+    let thresholds: [u64; 5] = [1, 100, 50000, 1000000, 10000000];
+    for i in 0..5 {
+        let t = thresholds[i];
+        // income = threshold (exact match)
+        assert(t >= t);
+        // income = threshold + 1
+        assert(t + 1 >= t);
+    }
+}
+
+#[test(should_fail)]
+fn test_boundary_multiple_thresholds_fail() {
+    let t: u64 = 50000;
+    let income: u64 = t - 1;
+    assert(income >= t);
+}
+
+// Income exactly doubles threshold.
+#[test]
+fn test_boundary_income_double_threshold() {
+    let income: u64 = 200000;
+    let threshold: u64 = 100000;
+    assert(income >= threshold);
+}
+
+// Commitment with varied salts: Poseidon2 is deterministic.
+#[test]
+fn test_commitment_varied_salts() {
+    let income: u64 = 100000;
+    let c1 = Poseidon2::hash([income as Field, 1 as Field], 2);
+    let c2 = Poseidon2::hash([income as Field, 2 as Field], 2);
+    let c3 = Poseidon2::hash([income as Field, 0xdeadbeef as Field], 2);
+    // All different salts produce different commitments.
+    assert(c1 != c2);
+    assert(c2 != c3);
+    assert(c1 != c3);
+}

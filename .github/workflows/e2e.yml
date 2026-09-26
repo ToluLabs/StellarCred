@@ -1,0 +1,102 @@
+name: StellarCred E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+# This workflow is intentionally not attached to pull_request. Protected
+# environment secrets are never available to fork PRs or arbitrary branches.
+permissions:
+  contents: read
+
+jobs:
+  happy-path-testnet:
+    name: Full happy path on ephemeral testnet
+    if: github.repository == 'ToluLabs/StellarCred'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: stellarcred-e2e
+    concurrency:
+      group: stellarcred-e2e-testnet
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust and wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          targets: wasm32v1-none
+
+      - name: Install Node and pnpm
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Stellar CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install stellar-cli --locked --version 27.0.0
+          stellar --version
+
+      - name: Install Noir and Barretenberg
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
+          export PATH="$HOME/.nargo/bin:$PATH"
+          noirup -v 1.0.0-beta.9
+          curl -fsSL https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          export PATH="$HOME/.bb:$PATH"
+          bbup -v 0.87.0
+
+      - name: Build circuit and contract artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$PATH"
+          ./circuits/scripts/build.sh
+          cargo build --release --target wasm32v1-none --locked
+
+      - name: Run deploy → issue → prove → verify E2E
+        id: e2e
+        shell: bash
+        env:
+          ISSUER_PRIVATE_KEY: ${{ secrets.STELLARCRED_E2E_ISSUER_PRIVATE_KEY }}
+          STELLAR_RPC_URL: ${{ vars.STELLARCRED_E2E_RPC_URL || 'https://soroban-testnet.stellar.org' }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$PATH"
+          started=$(date +%s)
+          ./scripts/e2e-testnet.sh 2>&1 | tee e2e.log
+          elapsed=$(( $(date +%s) - started ))
+          echo "elapsed_seconds=$elapsed" >> "$GITHUB_OUTPUT"
+
+      - name: Publish timing report
+        if: always()
+        run: |
+          {
+            echo "## StellarCred E2E timing"
+            echo "- Workflow: deploy, issuer registration, issue, real proof, submit, is_verified, cleanup"
+            echo "- Duration: ${{ steps.e2e.outputs.elapsed_seconds || 'unavailable' }} seconds"
+            echo "- Network: ephemeral funded testnet wallet; local artifacts cleaned on exit"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload redacted E2E log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stellarcred-e2e-log
+          path: e2e.log
+          retention-days: 7

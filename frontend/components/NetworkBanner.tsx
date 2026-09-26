@@ -11,7 +11,7 @@ export function NetworkBanner() {
   const { address, networkMismatch } = useWallet();
   if (!address || !networkMismatch) return null;
 
-  const want = NETWORK === "public" ? "Mainnet" : "Testnet";
+  const want = NETWORK === "mainnet" ? "Mainnet" : NETWORK === "futurenet" ? "Futurenet" : "Testnet";
 
   return (
     <div

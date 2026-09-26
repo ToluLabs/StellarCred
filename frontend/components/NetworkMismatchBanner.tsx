@@ -28,7 +28,7 @@ export function NetworkMismatchBanner() {
       <IconAlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} aria-hidden="true" />
       <span>
         Your wallet is on the wrong network. Switch to{" "}
-        <strong>{NETWORK === "public" ? "Mainnet" : "Testnet"}</strong> in your wallet
+        <strong>{NETWORK === "mainnet" ? "Mainnet" : NETWORK === "futurenet" ? "Futurenet" : "Testnet"}</strong> in your wallet
         extension to submit — proving still works, but submission is blocked
         until networks match.
       </span>

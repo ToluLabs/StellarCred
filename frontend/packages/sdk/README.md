@@ -304,6 +304,10 @@ StellarCred stores ZK proofs on Stellar. A holder proves a claim once (in their 
 
 The `minThreshold` check calls `ProofRegistry.check_claim` on-chain, which compares the threshold stored in the proof's public inputs against your required minimum. It is not a frontend check — the contract enforces it.
 
+### Contract Events & Indexing
+
+For backend indexers, analytics services, or event-driven integrations monitoring proof submissions, revocations, and lifecycle events, see the authoritative [EVENTS.md](../../../EVENTS.md) (or [docs/EVENTS.md](../../../docs/EVENTS.md)) for complete topic schemas, payload structures, and drift guarantees.
+
 ## License
 
 MIT

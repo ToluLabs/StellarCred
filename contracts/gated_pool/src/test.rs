@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::*;
 use credential_verifier::{CredentialVerifier, CredentialVerifierClient};
 use issuer_registry::{IssuerRegistry, IssuerRegistryClient};
@@ -7,8 +5,8 @@ use proof_registry::{ProofRegistry, ProofRegistryClient};
 use proptest::prelude::*;
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Ledger as _},
-    vec, Address, Bytes, BytesN, Env, Symbol,
+    testutils::{Address as _, Events as _, Ledger as _},
+    vec, Address, Bytes, BytesN, Env, IntoVal, Symbol,
 };
 
 // Real UltraHonk artifacts, so the KYC gate exercises genuine verification.
@@ -320,6 +318,23 @@ fn deposit_emits_event() {
     prove_kyc(&env, &h, &user);
     h.pool.deposit(&user, &250);
 
+    assert_eq!(
+        env.events().all().filter_by_contract(&h.pool.address),
+        vec![
+            &env,
+            (
+                h.pool.address.clone(),
+                (symbol_short!("gate_pool"), symbol_short!("deposit")).into_val(&env),
+                EventDeposit {
+                    caller: user.clone(),
+                    amount: 250,
+                    new_balance: 250,
+                }
+                .into_val(&env),
+            ),
+        ],
+    );
+
     // Verify balance was updated
     assert_eq!(h.pool.get_balance(&user), 250);
 }
@@ -334,7 +349,27 @@ fn withdraw_emits_event() {
     prove_kyc(&env, &h, &user);
     h.pool.deposit(&user, &500);
 
+    // Drain deposit events
+    let _ = env.events().all();
+
     h.pool.withdraw(&user, &200);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&h.pool.address),
+        vec![
+            &env,
+            (
+                h.pool.address.clone(),
+                (symbol_short!("gate_pool"), symbol_short!("withdraw")).into_val(&env),
+                EventWithdraw {
+                    caller: user.clone(),
+                    amount: 200,
+                    new_balance: 300,
+                }
+                .into_val(&env),
+            ),
+        ],
+    );
 
     // Verify balance was updated
     assert_eq!(h.pool.get_balance(&user), 300);

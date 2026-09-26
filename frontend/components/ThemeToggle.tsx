@@ -63,16 +63,7 @@ export function ThemeToggle() {
       id="theme-toggle"
       aria-label={ariaLabel}
       aria-pressed={activeTheme === "dark"}
-      style={{
-        background: "none",
-        border: "none",
-        padding: "0.25rem 0.5rem",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "var(--muted)",
-      }}
+      className="theme-toggle-btn"
     >
       <span className="sun-icon" aria-hidden="true">
         <IconSun size={15} stroke={1.8} />

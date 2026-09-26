@@ -126,14 +126,14 @@ jobs:
 
       # ── Upload artifacts for independent inspection ───────────────────────
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wasm-artifacts-${{ github.sha }}
           path: build-1/*.wasm
           retention-days: 30
 
       - name: Upload SHA-256 manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wasm-sha256-${{ github.sha }}
           path: build-1/sha256sums.txt

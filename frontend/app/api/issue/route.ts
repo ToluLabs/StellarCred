@@ -32,6 +32,12 @@ import {
   MAX_KEY_LENGTH_BYTES,
   type CachedResponse,
 } from "../../../lib/idempotency";
+import {
+  auditLogAppend,
+  auditLogBootstrap,
+  auditLogFilePath,
+  auditLogPersist,
+} from "../../../lib/audit-log";
 
 // Server-side only — never shipped to the browser.
 // Set ISSUER_PRIVATE_KEY in .env.local to the 64-char hex secp256k1 private
@@ -676,6 +682,49 @@ async function executeRequest(
         }),
       );
     }
+
+    // ── Hash-chained, PII-free issuance audit log ───────────────────────────
+    // Append one entry per signed commitment. Entries carry ONLY the
+    // commitment (a Poseidon2 hash — not the underlying attribute), the
+    // issuer id, the issuance timestamp, and the request id — never
+    // first_name/last_name/id_number/wallet address. Each entry chains to the
+    // previous entry's hash so tampering is detectable via the
+    // `pnpm verify:audit-log` command (docs/audit-log.md).
+    try {
+      await auditLogBootstrap(auditLogFilePath());
+      for (const credential of credentials) {
+        const entry = auditLogAppend({
+          timestamp: credential.issuedAt,
+          requestId,
+          issuer: issuerId ?? "",
+          commitment: credential.commitment,
+        });
+        logger.info(
+          stripSensitiveFields({
+            event: "audit_log_appended",
+            credentialType: credential.type,
+            issuerId,
+            requestId,
+            auditIndex: entry.index,
+            auditHash: entry.hash,
+          }),
+        );
+      }
+      await auditLogPersist(auditLogFilePath());
+    } catch (auditError) {
+      // The audit log must never break issuance; surface the failure loudly
+      // so operators know the trail is incomplete.
+      logger.error(
+        stripSensitiveFields({
+          event: "audit_log_persist_failed",
+          issuerId,
+          walletAddress,
+          error: (auditError as Error).message,
+          requestId,
+        }),
+      );
+    }
+
     outcome = "success";
     return sendResponse(NextResponse.json({ credentials }));
   } catch (e) {

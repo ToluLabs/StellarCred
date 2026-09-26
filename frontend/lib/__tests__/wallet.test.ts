@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { ISupportedWallet, ModuleInterface } from "@creit.tech/stellar-wallets-kit";
+import { WalletConnectError, getWalletErrorInfo, getWalletReportUrl } from "../wallet";
 
 interface MockKitInstance {
   modules: ModuleInterface[];
@@ -184,6 +185,74 @@ describe("lib/wallet.ts", () => {
       kit.getNetwork.mockRejectedValue(new Error("not supported"));
       await expect(getNetworkOk()).resolves.toBe(true);
     });
+  });
+});
+
+// Each WalletErrorKind must produce a distinct, actionable message, and
+// user-cancellation (dismissed/rejected) must be flagged benign (not shown as a
+// hard error). This pins the copy the UI renders per kind.
+describe("lib/wallet.ts getWalletErrorInfo() per-kind error mapping", () => {
+  it("maps not-installed to an install prompt with a pick-another-wallet nudge", () => {
+    const err = new WalletConnectError("not-installed", "xBull isn't available. Install it to continue.", {
+      walletName: "xBull",
+      installUrl: "https://xbull.app",
+    });
+    const info = getWalletErrorInfo(err);
+    expect(info.benign).toBe(false);
+    expect(info.action).toBe("install");
+    expect(info.title).toMatch(/not installed/i);
+    expect(info.message).toContain("xBull");
+    expect(info.message.toLowerCase()).toMatch(/pick another wallet/i);
+  });
+
+  it("maps not-installed without a wallet to a generic install message", () => {
+    const info = getWalletErrorInfo(new WalletConnectError("not-installed", "No wallet"));
+    expect(info.message).toMatch(/pick another wallet/i);
+  });
+
+  it("maps dismissed to a benign 'you cancelled — try again' note", () => {
+    const info = getWalletErrorInfo(new WalletConnectError("dismissed", "Connection cancelled"));
+    expect(info.benign).toBe(true);
+    expect(info.action).toBe("retry");
+    expect(info.title).toMatch(/cancelled/i);
+    expect(info.message.toLowerCase()).toMatch(/try again/i);
+  });
+
+  it("maps rejected to a benign 'declined — try again' note", () => {
+    const info = getWalletErrorInfo(new WalletConnectError("rejected", "Connection cancelled"));
+    expect(info.benign).toBe(true);
+    expect(info.action).toBe("retry");
+    expect(info.title).toMatch(/declined/i);
+    expect(info.message.toLowerCase()).toMatch(/try again/i);
+  });
+
+  it("maps timeout to a distinct 'wallet didn't respond — retry' message (a hard error)", () => {
+    const info = getWalletErrorInfo(new WalletConnectError("timeout", "Connection timed out"));
+    expect(info.benign).toBe(false);
+    expect(info.action).toBe("retry");
+    expect(info.title).toMatch(/didn't respond/i);
+    expect(info.message.toLowerCase()).toMatch(/try again/i);
+  });
+
+  it("maps unknown to a generic message plus a way to report", () => {
+    const info = getWalletErrorInfo(new WalletConnectError("unknown", "Something went wrong"));
+    expect(info.benign).toBe(false);
+    expect(info.action).toBe("retry-report");
+    expect(info.title).toMatch(/something went wrong/i);
+    expect(info.message.toLowerCase()).toMatch(/report/i);
+  });
+
+  it("treats any unrecognized kind as unknown", () => {
+    const err = { kind: "entirely-unrecognized" } as unknown as WalletConnectError;
+    const info = getWalletErrorInfo(err);
+    expect(info.action).toBe("retry-report");
+  });
+
+  it("getWalletReportUrl returns a pre-filled GitHub issue link for the repo", () => {
+    const url = getWalletReportUrl();
+    expect(url).toMatch(/^https:\/\/github\.com\/ToluLabs\/StellarCred\/issues\/new/);
+    expect(url).toContain("labels=bug");
+    expect(new URL(url).searchParams.get("title")).toContain("Wallet connection failed");
   });
 });
 

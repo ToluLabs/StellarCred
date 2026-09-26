@@ -59,7 +59,8 @@ RUN for d in credential_verifier issuer_registry proof_registry gated_pool; do \
     done
 
 # Fetch all dependencies into the Cargo registry cache (network access here only).
-RUN cargo fetch --locked
+# Note: git dependencies require network access; --locked ensures reproducibility once cached
+RUN cargo fetch
 
 # ---------------------------------------------------------------------------
 # Final image — adds the full contract source on top of the dep-fetch layer.

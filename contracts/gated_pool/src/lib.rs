@@ -42,6 +42,13 @@ const DAY_IN_LEDGERS: u32 = 17280;
 const BALANCE_BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const BALANCE_TTL: u32 = 120 * DAY_IN_LEDGERS;
 
+// ── Contract versioning ──────────────────────────────────────────────────────
+// Semantic version: MAJOR.MINOR.PATCH
+// Increment MAJOR on breaking changes (new entry points, changed ABI)
+// Increment MINOR on additive changes (new events, new query endpoints)
+// Increment PATCH on bug fixes with no ABI changes
+const CONTRACT_VERSION: u32 = 1_000_000; // 1.0.0 encoded as (major * 1000000) + (minor * 1000) + patch
+
 /// Typed client for the deployed ProofRegistry contract. Declared as an
 /// interface so this contract links only the client, not the registry's
 /// exported wasm symbols.
@@ -93,6 +100,14 @@ impl GatedPool {
         env.storage()
             .instance()
             .set(&DataKey::MinThreshold, &min_threshold);
+    }
+
+    /// Returns the contract version as an encoded u32.
+    /// Encoding: (major * 1000000) + (minor * 1000) + patch
+    /// Example: 1.2.3 -> 1002003
+    pub fn version(env: Env) -> u32 {
+        let _ = env; // Silence unused warning
+        CONTRACT_VERSION
     }
 
     /// Deposit `amount`. Requires a currently-valid proof for the configured claim.
@@ -207,4 +222,5 @@ impl GatedPool {
     }
 }
 
+#[cfg(test)]
 mod test;

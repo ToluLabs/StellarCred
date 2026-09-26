@@ -36,12 +36,43 @@ function env(key: string, nextPublicKey?: string): string {
   );
 }
 
+// ── Single network selector (Issue #408) ─────────────────────────────────────
+// STELLARCRED_NETWORK / NEXT_PUBLIC_STELLAR_NETWORK (testnet | mainnet |
+// futurenet) picks a coherent preset for RPC URL and network passphrase.
+// Explicit URL/passphrase env vars override the preset.
+
+type StellarNetwork = "testnet" | "mainnet" | "futurenet";
+
+const NETWORK_PRESETS: Record<StellarNetwork, { rpcUrl: string; networkPassphrase: string }> = {
+  testnet: {
+    rpcUrl: "https://soroban-testnet.stellar.org",
+    networkPassphrase: "Test SDF Network ; September 2015",
+  },
+  mainnet: {
+    rpcUrl: "https://soroban.stellar.org",
+    networkPassphrase: "Public Global Stellar Network ; September 2015",
+  },
+  futurenet: {
+    rpcUrl: "https://soroban-futurenet.stellar.org",
+    networkPassphrase: "Test SDF Future Network ; October 2022",
+  },
+};
+
+function parseNetwork(raw: string | undefined): StellarNetwork {
+  const key = (raw ?? "").trim().toLowerCase();
+  if (key === "public" || key === "main") return "mainnet";
+  if (key === "testnet" || key === "mainnet" || key === "futurenet") return key;
+  return "testnet";
+}
+
+const _preset = NETWORK_PRESETS[parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))];
+
 let _config = {
   registryId: env("STELLARCRED_REGISTRY_ID", "NEXT_PUBLIC_PROOF_REGISTRY_ID"),
-  rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || "https://soroban-testnet.stellar.org",
+  rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || _preset.rpcUrl,
   networkPassphrase:
     env("STELLARCRED_NETWORK_PASSPHRASE", "NEXT_PUBLIC_NETWORK_PASSPHRASE") ||
-    "Test SDF Network ; September 2015",
+    _preset.networkPassphrase,
   baseUrl: env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") || "https://stellarcred.xyz",
   requestTimeoutMs: 10_000,
   retries: 3,
@@ -277,7 +308,7 @@ export interface Claim {
 // Low-level read: ProofRegistry.is_verified via simulation
 // ---------------------------------------------------------------------------
 
-import { Client as ProofRegistryClient } from "../../proof-registry/src/index.js";
+import { Client as ProofRegistryClient } from "../../proof-registry/src/index";
 import { configure as configureSharedClaims } from "./claims";
 
 type StellarSDK = typeof import("@stellar/stellar-sdk");
@@ -718,6 +749,60 @@ export async function hasClaims(
   return results;
 }
 
+/** One claim type + optional minimum threshold within a selective-disclosure preset (#386). */
+export interface PresetClaim {
+  type: ClaimType;
+  /** Same semantics as {@link ClaimOptions.minThreshold} — omit for a binary claim. */
+  minThreshold?: number;
+}
+
+/** Result of {@link verifyPreset}. */
+export interface PresetVerificationResult {
+  /** Per-type pass/fail, same shape {@link hasClaims} returns. */
+  results: Partial<Record<ClaimType, boolean>>;
+  /** True only if every claim in the preset passed. */
+  allValid: boolean;
+}
+
+/**
+ * Verifies every claim in a selective-disclosure preset — a holder-defined,
+ * shareable bundle like "Investor onboarding" (kyc + accreditation +
+ * jurisdiction) — against one wallet in a single batched call.
+ *
+ * This is a thin wrapper over {@link hasClaims}: presets themselves are not
+ * an on-chain concept (there is no preset registry), they're just a named,
+ * shareable list of `(type, minThreshold)` pairs a holder defines and a
+ * protocol requests out-of-band (e.g. via the deep link/QR the holder page
+ * generates) — verification is still exactly the same trustless on-chain
+ * `ProofRegistry` read every other claim check in this SDK uses.
+ *
+ * @example
+ * const { allValid, results } = await verifyPreset("G1ABC…", [
+ *   { type: "kyc" },
+ *   { type: "accreditation", minThreshold: 1_000_000 },
+ * ]);
+ * if (allValid) grantAccess();
+ */
+export async function verifyPreset(
+  wallet: string,
+  claims: readonly PresetClaim[],
+  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs">,
+): Promise<PresetVerificationResult> {
+  const types = claims.map((c) => c.type);
+  const minThresholds: Partial<Record<ClaimType, number>> = {};
+  for (const c of claims) {
+    if (c.minThreshold !== undefined) minThresholds[c.type] = c.minThreshold;
+  }
+
+  const results = await hasClaims(wallet, types, {
+    minThresholds,
+    trustedIssuers: opts?.trustedIssuers,
+    requestTimeoutMs: opts?.requestTimeoutMs,
+  });
+  const allValid = types.length > 0 && types.every((t) => results[t] === true);
+  return { results, allValid };
+}
+
 /**
  * Returns every active claim a wallet has proven, across all known credential
  * types. Useful for profile pages and protocol dashboards.
@@ -848,6 +933,52 @@ export function buildVerifyUrl(options: {
     }
   }
   return url.toString();
+}
+
+/**
+ * Build a shareable embed URL for the StellarCred public verification badge.
+ *
+ * @example
+ * const url = buildBadgeUrl({
+ *   wallet: "G1ABC…",
+ *   claim: "kyc",
+ *   theme: "dark",
+ * });
+ */
+export function buildBadgeUrl(options: {
+  wallet: string;
+  claim: string;
+  theme?: "dark" | "light" | "auto";
+  compact?: boolean;
+  baseUrl?: string;
+}): string {
+  const base = options.baseUrl ?? _config.baseUrl;
+  const url = new URL("/badge", base);
+  url.searchParams.set("wallet", options.wallet);
+  url.searchParams.set("claim", options.claim);
+  if (options.theme && options.theme !== "auto") {
+    url.searchParams.set("theme", options.theme);
+  }
+  if (options.compact) {
+    url.searchParams.set("compact", "1");
+  }
+  return url.toString();
+}
+
+/**
+ * Generate an HTML <iframe> embed code snippet for the verification badge.
+ */
+export function buildBadgeEmbedCode(options: {
+  wallet: string;
+  claim: string;
+  theme?: "dark" | "light" | "auto";
+  compact?: boolean;
+  baseUrl?: string;
+}): string {
+  const src = buildBadgeUrl(options);
+  const width = options.compact ? "180" : "260";
+  const height = options.compact ? "36" : "54";
+  return `<iframe src="${src}" width="${width}" height="${height}" frameborder="0" scrolling="no" style="border:none;overflow:hidden;border-radius:8px;" title="StellarCred Verification Badge"></iframe>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1045,7 +1176,10 @@ export const StellarCred = {
   getClaim,
   hasClaims,
   getClaims,
+  verifyPreset,
   buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
   parseReturnParams,
   watchClaim,
   CLAIM_TYPES,

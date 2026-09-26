@@ -103,4 +103,5 @@ The following tables define the ABI order of public inputs for each credential c
 | 0 | `commitment` | `Field` | `Poseidon2([country_code, salt], 2)` |
 | 1 | `issuer_x` | `[u8; 32]` | Issuer secp256k1 public key X coordinate |
 | 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
-| 3 | `restricted` | `[u64; 8]` | List of up to 8 restricted ISO 3166-1 numeric codes (padded with `0`s) |
+| 3 | `restricted` | `[u64; 8]` | List of up to 8 ISO 3166-1 numeric codes (padded with `0`s) |
+| 4 | `mode` | `u64` | Proof mode: `0` = denylist (country NOT in list), `1` = allowlist (country IS in list) |

@@ -9,7 +9,7 @@
 // Next's build-time inliner sees them. Do NOT import lib/env.ts from here —
 // it is server-only and throws in the browser.
 
-import { CONTRACTS } from "./stellar";
+import { CONTRACTS, SPONSOR_ACCOUNT_ID } from "./stellar";
 
 type ContractKey = keyof typeof CONTRACTS;
 
@@ -60,4 +60,9 @@ export function missingIssueConfigEnvVars(): string[] {
 
 export function issuanceConfigured(): boolean {
   return missingIssueConfigEnvVars().length === 0;
+}
+
+/** Whether the gasless / sponsored submission relay is configured. */
+export function sponsorConfigured(): boolean {
+  return Boolean(SPONSOR_ACCOUNT_ID);
 }

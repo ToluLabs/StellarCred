@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const isVerified = vi.fn();
 const checkClaim = vi.fn();
 
-vi.mock("../../proof-registry/src/index.js", () => ({
+vi.mock("../../proof-registry/src/index", () => ({
   Client: vi.fn(function ProofRegistryClient() {
     return {
       is_verified: isVerified,
@@ -25,6 +25,7 @@ import {
   configure,
   hasClaim,
   getClaims,
+  verifyPreset,
   ConfigError,
   InvalidAddressError,
   RpcError,
@@ -379,5 +380,68 @@ describe("SDK withRetry with exponential backoff", () => {
     expect(error).toBeDefined();
     expect(error.message).toBe("network error");
     expect(operation).toHaveBeenCalledTimes(4); // initial + 3 retries
+  });
+});
+
+// ── verifyPreset (#386) ──────────────────────────────────────────────────────
+
+describe("verifyPreset", () => {
+  beforeEach(() => {
+    isVerified.mockReset();
+    checkClaim.mockReset();
+    configure({ registryId: "C_TEST_REGISTRY" });
+  });
+
+  it("is allValid when every claim in the preset passes", async () => {
+    isVerified.mockResolvedValue({ result: [true, 1_700_000_000n, 1_800_000_000n] });
+
+    const { allValid, results } = await verifyPreset(WALLET, [
+      { type: "kyc" },
+      { type: "jurisdiction" },
+    ]);
+
+    expect(allValid).toBe(true);
+    expect(results).toEqual({ kyc: true, jurisdiction: true });
+  });
+
+  it("is not allValid when any single claim fails, but still reports every result", async () => {
+    isVerified.mockImplementation(async ({ credential_type }: { credential_type: string }) => ({
+      result: [credential_type === "kyc", 1_700_000_000n, 1_800_000_000n],
+    }));
+
+    const { allValid, results } = await verifyPreset(WALLET, [
+      { type: "kyc" },
+      { type: "jurisdiction" },
+    ]);
+
+    expect(allValid).toBe(false);
+    expect(results).toEqual({ kyc: true, jurisdiction: false });
+  });
+
+  it("routes a thresholded claim through check_claim with the preset's minThreshold", async () => {
+    checkClaim.mockResolvedValue({ result: true });
+
+    const { allValid } = await verifyPreset(WALLET, [
+      { type: "accreditation", minThreshold: 1_000_000 },
+    ]);
+
+    expect(allValid).toBe(true);
+    expect(checkClaim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credential_type: "accreditation",
+        min_threshold: 1_000_000n,
+      }),
+    );
+  });
+
+  it("is not allValid for an empty preset", async () => {
+    const { allValid, results } = await verifyPreset(WALLET, []);
+    expect(allValid).toBe(false);
+    expect(results).toEqual({});
+    expect(isVerified).not.toHaveBeenCalled();
+  });
+
+  it("is exported on the StellarCred namespace", () => {
+    expect(StellarCred.verifyPreset).toBe(verifyPreset);
   });
 });

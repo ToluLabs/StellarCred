@@ -1,9 +1,19 @@
 import type { Metadata } from "next";
 import { CONTRACTS } from "@/lib/stellar";
+import dynamic from "next/dynamic";
 import CopyButton from "@/components/CopyButton";
 
+const SDKPlayground = dynamic(() => import("@/components/SDKPlayground"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ padding: "2rem 0", color: "var(--muted)", textAlign: "center" }}>
+      Loading playground…
+    </div>
+  ),
+});
+
 export const metadata: Metadata = {
-  title: "Developers · StellarCred",
+  title: "StellarCred — Developers",
   description: "Integrate StellarCred in minutes — one contract call, no backend.",
 };
 
@@ -334,6 +344,8 @@ let trusted = vec![&env, persona_issuer.clone(), jumio_issuer.clone()];
 let kyc_ok = registry.check_claim(&holder, &symbol_short!("kyc"), &None, &Some(trusted));
 require!(kyc_ok, Error::KycRequired);`}</Code>
       </Section>
+
+      <SDKPlayground />
 
       <div style={{ height: "4rem" }} />
     </div>

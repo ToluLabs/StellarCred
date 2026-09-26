@@ -1,9 +1,10 @@
-#![cfg(test)]
-
 use super::*;
 use soroban_sdk::{
     symbol_short,
-    testutils::{storage::Persistent as _, Address as _, Events as _, Ledger as _},
+    testutils::{
+        storage::Persistent as _, Address as _, Events as _, Ledger as _, MockAuth,
+        MockAuthInvoke,
+    },
     vec, Address, Bytes, Env, IntoVal, Symbol,
 };
 
@@ -123,24 +124,15 @@ fn verifies_jurisdiction_allowlist() {
     let env = Env::default();
     env.mock_all_auths();
     let c = setup(&env);
-
-    // The allowlist fixture is a generated artifact; if the repo doesn't have a
-    // fresh proof bundle checked in, keep the test focused on the contract's
-    // ability to accept a set_vk call for the jurisdiction circuit and to reject
-    // malformed data instead of relying on a placeholder byte sequence.
-    let vk = fixture!("jurisdiction_allow", "vk");
     c.set_vk(
         &Symbol::new(&env, "jurisdiction"),
         &1u32,
-        &Bytes::from_slice(&env, vk),
+        &Bytes::from_slice(&env, fixture!("jurisdiction_allow", "vk")),
     );
-
-    let bad_proof = Bytes::from_array(&env, &[0u8; 16]);
-    let bad_inputs = Bytes::from_slice(&env, fixture!("jurisdiction_allow", "public_inputs"));
-    assert!(!c.verify_proof(
+    assert!(c.verify_proof(
         &Symbol::new(&env, "jurisdiction"),
-        &bad_proof,
-        &bad_inputs,
+        &Bytes::from_slice(&env, fixture!("jurisdiction_allow", "proof")),
+        &Bytes::from_slice(&env, fixture!("jurisdiction_allow", "public_inputs")),
         &None,
     ));
 }
@@ -317,7 +309,9 @@ fn set_vk_emits_event() {
                 )
                     .into_val(&env),
                 EventVkSet {
-                    admin: admin.clone()
+                    admin: admin.clone(),
+                    version: 1u32,
+                    contract_version: 1_000_000,
                 }
                 .into_val(&env),
             ),
@@ -619,4 +613,327 @@ fn deprecation_timestamp_is_contract_time() {
     c.set_vk(&symbol_short!("kyc"), &1, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
     c.deprecate_version(&symbol_short!("kyc"), &1);
     assert_eq!(env.as_contract(&c.address, || env.storage().persistent().get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1)).unwrap()), 123_456);
+}
+
+// ── Event schema & drift tests (Issue #429) ──────────────────────────────────
+
+#[test]
+fn prune_version_emits_expected_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    c.set_vk(&symbol_short!("kyc"), &1, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+    // Drains the set_vk event
+    let _ = env.events().all();
+
+    c.deprecate_version(&symbol_short!("kyc"), &1);
+
+    let deprecated_at = env.as_contract(&c.address, || {
+        env.storage().persistent().get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1)).unwrap()
+    });
+    env.ledger().with_mut(|li| li.timestamp = deprecated_at + MAX_PROOF_VALIDITY_SECONDS);
+
+    c.prune_version(&symbol_short!("kyc"), &1);
+
+    let all_events = env.events().all().filter_by_contract(&c.address);
+    assert_eq!(
+        all_events,
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (
+                    symbol_short!("cred_ver"),
+                    symbol_short!("vk_pruned"),
+                    symbol_short!("kyc"),
+                )
+                    .into_val(&env),
+                EventVkPruned {
+                    admin: admin.clone(),
+                    version: 1,
+                    contract_version: 1_000_000,
+                }
+                .into_val(&env),
+            ),
+        ],
+    );
+}
+
+#[test]
+fn deprecate_version_emits_no_events() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    c.set_vk(&symbol_short!("kyc"), &1, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+    let expected = vec![
+        &env,
+        (
+            c.address.clone(),
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("vk_set"),
+                symbol_short!("kyc"),
+            )
+                .into_val(&env),
+            EventVkSet {
+                admin,
+                version: 1,
+                contract_version: 1_000_000,
+            }
+            .into_val(&env),
+        ),
+    ];
+    // Drains the set_vk event
+    assert_eq!(env.events().all().filter_by_contract(&c.address), expected);
+
+    c.deprecate_version(&symbol_short!("kyc"), &1);
+    // Deprecation modifies storage status and emits no new events
+    assert_eq!(env.events().all().filter_by_contract(&c.address), vec![&env]);
+}
+
+// ── RBAC tests (Issue #123) ─────────────────────────────────────────────────
+
+#[test]
+fn constructor_seeds_admin_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    // The deployer is seeded the admin role at construction…
+    assert!(c.has_role(&symbol_short!("admin"), &admin));
+    // …and no other address or role holds it.
+    let stranger = Address::generate(&env);
+    assert!(!c.has_role(&symbol_short!("admin"), &stranger));
+    assert!(!c.has_role(&symbol_short!("upgrader"), &admin));
+}
+
+#[test]
+fn admin_can_grant_and_revoke_roles() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = setup(&env);
+    let delegate = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    // Delegation.
+    c.grant_role(&symbol_short!("admin"), &delegate);
+    assert!(c.has_role(&symbol_short!("admin"), &delegate));
+
+    // Granting the same role again moves it to the new holder.
+    c.grant_role(&symbol_short!("admin"), &stranger);
+    assert!(!c.has_role(&symbol_short!("admin"), &delegate));
+    assert!(c.has_role(&symbol_short!("admin"), &stranger));
+
+    // Revoking an address that is not the current holder is rejected.
+    let res = c.try_revoke_role(&symbol_short!("admin"), &delegate);
+    assert!(res.is_err());
+
+    // Revocation.
+    c.revoke_role(&symbol_short!("admin"), &stranger);
+    assert!(!c.has_role(&symbol_short!("admin"), &stranger));
+
+    // Revoking an unassigned role is a harmless no-op.
+    let res = c.try_revoke_role(&symbol_short!("admin"), &stranger);
+    assert!(res.is_ok());
+}
+
+#[test]
+fn grant_revoke_require_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = setup(&env);
+    let delegate = Address::generate(&env);
+
+    // No auths mocked → the root admin's required auth fails.
+    let res = c
+        .mock_auths(&[])
+        .try_grant_role(&symbol_short!("upgrader"), &delegate);
+    assert!(res.is_err());
+    let res = c
+        .mock_auths(&[])
+        .try_revoke_role(&symbol_short!("admin"), &delegate);
+    assert!(res.is_err());
+}
+
+#[test]
+fn set_vk_requires_admin_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let delegate = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    c.grant_role(&symbol_short!("admin"), &delegate);
+
+    // The admin-role holder can set a VK…
+    c.mock_auths(&[MockAuth {
+        address: &delegate,
+        invoke: &MockAuthInvoke {
+            contract: &id,
+            fn_name: "set_vk",
+            args: (
+                &symbol_short!("kyc"),
+                &1u32,
+                Bytes::from_slice(&env, fixture!("kyc", "vk")),
+            )
+                .into_val(&env),
+            sub_invokes: &[],
+        },
+    }])
+    .set_vk(&symbol_short!("kyc"), &1u32, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+
+    // …a non-holder cannot.
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &stranger,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "set_vk",
+                args: (
+                    &symbol_short!("kyc"),
+                    &2u32,
+                    Bytes::from_slice(&env, fixture!("kyc", "vk")),
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_set_vk(&symbol_short!("kyc"), &2u32, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+    assert!(res.is_err());
+    assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 1);
+
+    // After revocation the former holder loses the ability too.
+    c.revoke_role(&symbol_short!("admin"), &delegate);
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &delegate,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "set_vk",
+                args: (
+                    &symbol_short!("kyc"),
+                    &2u32,
+                    Bytes::from_slice(&env, fixture!("kyc", "vk")),
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_set_vk(&symbol_short!("kyc"), &2u32, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+    assert!(res.is_err());
+
+    // The root admin (the Admin key holder) can restore the role and act again.
+    c.grant_role(&symbol_short!("admin"), &admin);
+    assert!(c.has_role(&symbol_short!("admin"), &admin));
+    c.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &id,
+            fn_name: "set_vk",
+            args: (
+                &symbol_short!("kyc"),
+                &2u32,
+                Bytes::from_slice(&env, fixture!("kyc", "vk")),
+            )
+                .into_val(&env),
+            sub_invokes: &[],
+        },
+    }])
+    .set_vk(&symbol_short!("kyc"), &2u32, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+    assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 2);
+}
+
+#[test]
+fn deprecate_and_refresh_require_admin_role() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    // Register a VK first so deprecate/refresh have something to act on.
+    c.set_vk(&symbol_short!("kyc"), &1u32, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+
+    // Delegate the admin role to a separate key.
+    let delegate = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    c.grant_role(&symbol_short!("admin"), &delegate);
+
+    // The admin-role holder can deprecate a version…
+    c.mock_auths(&[MockAuth {
+        address: &delegate,
+        invoke: &MockAuthInvoke {
+            contract: &id,
+            fn_name: "deprecate_version",
+            args: (&symbol_short!("kyc"), &1u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }])
+    .deprecate_version(&symbol_short!("kyc"), &1u32);
+
+    // …and refresh the latest-version TTL…
+    c.mock_auths(&[MockAuth {
+        address: &delegate,
+        invoke: &MockAuthInvoke {
+            contract: &id,
+            fn_name: "refresh_latest_version_ttl",
+            args: (&symbol_short!("kyc"),).into_val(&env),
+            sub_invokes: &[],
+        },
+    }])
+    .refresh_latest_version_ttl(&symbol_short!("kyc"));
+    assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 1);
+
+    // A non-holder cannot do either.
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &stranger,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "deprecate_version",
+                args: (&symbol_short!("kyc"), &1u32).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_deprecate_version(&symbol_short!("kyc"), &1u32);
+    assert!(res.is_err());
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &stranger,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "refresh_latest_version_ttl",
+                args: (&symbol_short!("kyc"),).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_refresh_latest_version_ttl(&symbol_short!("kyc"));
+    assert!(res.is_err());
+}
+
+#[test]
+fn has_role_is_a_public_view() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let delegate = Address::generate(&env);
+
+    // Readable with zero mocked auths — no authorization required.
+    assert!(c.mock_auths(&[]).has_role(&symbol_short!("admin"), &admin));
+    assert!(!c.mock_auths(&[]).has_role(&symbol_short!("admin"), &delegate));
+
+    c.grant_role(&Symbol::new(&env, "issuer_manager"), &delegate);
+    assert!(c.has_role(&Symbol::new(&env, "issuer_manager"), &delegate));
 }

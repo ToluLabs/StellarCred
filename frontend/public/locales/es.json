@@ -1,0 +1,126 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "close": "Cerrar",
+    "retry": "Reintentar",
+    "connecting": "Conectando…",
+    "show": "Mostrar",
+    "hide": "Ocultar",
+    "selectLanguage": "Seleccionar idioma"
+  },
+  "nav": {
+    "brand": "StellarCred",
+    "wallet": "Cartera",
+    "verify": "Verificar",
+    "issuer": "Emisor",
+    "apps": "Aplicaciones",
+    "docs": "Documentos",
+    "developers": "Desarrolladores",
+    "toggleMenu": "Abrir menú"
+  },
+  "footer": {
+    "copyright": "© {year} StellarCred",
+    "github": "GitHub",
+    "sdk": "@stellarcred/sdk",
+    "docs": "Documentos",
+    "versionInfo": "Haz clic para mostrar información de versión",
+    "deploymentVersions": "Versiones de Implementación",
+    "app": "Aplicación",
+    "sdk_label": "SDK",
+    "unknown": "desconocido"
+  },
+  "theme": {
+    "dark": "Cambiar a modo oscuro",
+    "light": "Cambiar a modo claro"
+  },
+  "wallet": {
+    "connect": "Conectar cartera",
+    "disconnect": "Haz clic para desconectar",
+    "install": "Instalar {walletName}",
+    "error": "Error",
+    "errorMessage": "Ocurrió un error"
+  },
+  "home": {
+    "hero": {
+      "badge": "Credenciales de conocimiento cero · Testnet de Stellar",
+      "title_part1": "Compruébalo todo.",
+      "title_part2": "No reveles nada.",
+      "subtitle": "Obtén una credencial de un emisor de confianza, genera una prueba de conocimiento cero UltraHonk localmente y verifica tu reclamo en Stellar — sin que los datos subyacentes toquen nunca la cadena.",
+      "cta_demo": "Ver la demostración",
+      "cta_credential": "Obtener una credencial"
+    },
+    "stats": {
+      "types": "Tipos de credenciales",
+      "system": "Sistema de prueba ZK",
+      "generation": "Generación de prueba",
+      "validity": "Validez de la prueba"
+    },
+    "how_it_works": {
+      "title": "Cómo funciona StellarCred",
+      "step_01_title": "Emitir",
+      "step_01_body": "Un emisor de confianza firma una credencial a tu cartera. Vive en tu dispositivo — nunca en un servidor.",
+      "step_02_title": "Probar",
+      "step_02_body": "Genera una prueba de conocimiento cero localmente en tu navegador. Solo el reclamo se va; los datos detrás de él nunca lo hacen.",
+      "step_03_title": "Verificar",
+      "step_03_body": "Cualquier protocolo de Stellar lee ProofRegistry en la cadena. Una prueba, válida en todos los protocolos, durante 30 días."
+    },
+    "trusted_everywhere": {
+      "title": "Verificado una vez. De confianza en todas partes.",
+      "subtitle": "Cualquier protocolo en Stellar puede verificar tus credenciales en una llamada de contrato. Tu prueba es válida en todas partes.",
+      "direct_verify": "Verificar directamente",
+      "direct_verify_body": "Visita StellarCred antes de usar cualquier aplicación. Tus credenciales funcionan en todas partes, al instante.",
+      "get_verified": "Verificarse",
+      "verify_through_app": "Verificar a través de una aplicación",
+      "verify_through_app_body": "Las aplicaciones que integran StellarCred muestran un botón \"Verificar\". Completa la verificación y vuelve automáticamente."
+    },
+    "developers": {
+      "title": "Construido para desarrolladores",
+      "claim": "Requerir un reclamo",
+      "redirect": "Redirigir si es necesario",
+      "verified": "El usuario regresa verificado",
+      "verified_body": "Prueba en la cadena, lectura en una llamada. No se necesita backend.",
+      "learn_more": "Leer la documentación del desarrollador"
+    },
+    "cta": {
+      "title": "¿Listo para probarlo?",
+      "subtitle": "Conecta una cartera Stellar en testnet, obtén una credencial y genera tu primera prueba ZK en la cadena en menos de un minuto.",
+      "get_started": "Empezar",
+      "dashboard": "Abrir panel de control"
+    }
+  },
+  "network": {
+    "wrongNetwork": "Red incorrecta detectada. Cambia tu cartera a {network} para continuar.",
+    "testnet": "Testnet",
+    "mainnet": "Mainnet"
+  },
+  "config": {
+    "notConfigured": "La aplicación no está completamente configurada.",
+    "issuanceDisabled": "La emisión de credenciales y el envío en cadena están deshabilitados — variables de entorno faltantes:",
+    "submissionDisabled": "El envío en cadena está deshabilitado — variables de entorno faltantes:",
+    "deployScript": "./scripts/deploy.sh",
+    "envLocation": "frontend/.env.local"
+  },
+  "credential": {
+    "details": "Detalles de credencial",
+    "transfer": "Transferir a otro dispositivo",
+    "rawJson": "JSON sin procesar",
+    "type": "Tipo",
+    "issuer": "Emisor",
+    "issuerId": "ID del Emisor",
+    "commitment": "Compromiso",
+    "issued": "Emitido",
+    "expiry": "Vencimiento",
+    "claim": "Reclamo"
+  },
+  "errors": {
+    "title": "Error",
+    "generic": "Ocurrió un error"
+  },
+  "formats": {
+    "dateTime": {
+      "short": "d MMM yyyy",
+      "medium": "d MMM yyyy H:mm",
+      "long": "EEEE, d MMMM yyyy"
+    }
+  }
+}
