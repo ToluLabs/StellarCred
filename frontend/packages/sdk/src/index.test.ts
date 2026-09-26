@@ -455,10 +455,6 @@ import {
 } from "./index";
 
 describe("isBrowser", () => {
-  it("returns false in the test (Node.js) environment", () => {
-    expect(isBrowser()).toBe(false);
-  });
-
   it("returns true when window is defined", () => {
     const originalWindow = (globalThis as any).window;
     (globalThis as any).window = {};
@@ -468,6 +464,18 @@ describe("isBrowser", () => {
       if (originalWindow === undefined) {
         delete (globalThis as any).window;
       } else {
+        (globalThis as any).window = originalWindow;
+      }
+    }
+  });
+
+  it("returns false when window is not defined", () => {
+    const originalWindow = (globalThis as any).window;
+    delete (globalThis as any).window;
+    try {
+      expect(isBrowser()).toBe(false);
+    } finally {
+      if (originalWindow !== undefined) {
         (globalThis as any).window = originalWindow;
       }
     }
