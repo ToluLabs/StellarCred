@@ -511,6 +511,45 @@ export function createIngester(config: Config, db: Db): Ingester {
 
     // Filter out events beyond the finality boundary
     return records.filter((ev) => {
+      const evLedger = typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
+    // Fetch head ledger (best-effort) so lag is visible in /health.
+    // We fire this in parallel with the events fetch so we don't add
+    // serial latency to every tick.
+    const [, page] = await Promise.all([
+      fetchHeadLedger(),
+      (async () => {
+        health.fetchAttempts++;
+        try {
+          return await fetchEventsWithRetry(
+            url.toString(),
+            AbortSignal.timeout(15_000)
+          );
+        } catch (err) {
+          // All retries exhausted — record the error but do NOT advance cursor.
+          health.lastError = (err as Error).message;
+          health.lastErrorTime = Date.now();
+          health.consecutiveErrors++;
+          health.fetchFailures++;
+          throw err;
+        }
+      })(),
+    ]);
+
+    const records = page._embedded?.records ?? [];
+    if (records.length === 0) {
+      // Successful empty fetch — reset error state and update lag.
+      health.consecutiveErrors = 0;
+      health.lastError = null;
+      health.headLedger = cachedHeadLedger;
+      health.lag =
+        cachedHeadLedger > 0 ? cachedHeadLedger - (await db.getLastLedger()) : -1;
+      return [];
+    }
+    const page = (await res.json()) as HorizonEventsPage;
+    const records = page._embedded?.records ?? [];
+
+    // Filter out events beyond the finality boundary
+    return records.filter((ev) => {
       const evLedger =
         typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
       return evLedger <= maxLedger;
@@ -585,6 +624,38 @@ export function createIngester(config: Config, db: Db): Ingester {
     if (finalityCeiling <= lastLedger) {
       // Head hasn't advanced past our cursor + lag yet — nothing to do.
       return 0;
+    }
+
+    // 2. Detect potential reorg: if our cursor claims to have ingested
+    //    a ledger that is now beyond the network head, the chain was
+    //    likely reorged past our last checkpoint.
+    if (lastLedger > headLedger) {
+      console.warn(
+        `[indexer] REORG DETECTED: cursor=${lastLedger} > head=${headLedger}. ` +
+          `Rolling back to head and re-scanning.`
+      );
+      return reconcile(headLedger);
+    }
+
+    // 3. Build the Horizon cursor. For a fresh start with startLedger
+    //    configured, begin there; otherwise resume from lastLedger.
+    const cursorNum = lastLedger > 0 ? lastLedger * 100_000 : 0;
+    const cursor =
+      config.startLedger > 0 && lastLedger === 0
+        ? String(config.startLedger * 100_000)
+        : cursorNum > 0
+        ? String(cursorNum)
+        : undefined;
+
+    // 4. Fetch events up to the finality ceiling.
+    let events: HorizonContractEvent[];
+    try {
+      events = await fetchEvents(cursor, finalityCeiling);
+    } catch (err) {
+      console.warn("[indexer] Horizon fetch error:", (err as Error).message);
+      return 0;
+    }
+
     }
 
     // 3. Build the Horizon cursor. For a fresh start with startLedger
