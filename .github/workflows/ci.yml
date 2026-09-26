@@ -310,6 +310,9 @@ jobs:
       - name: Check i18n locale key parity
         run: pnpm check:i18n
 
+      - name: Check HolderPageClient size limit
+        run: pnpm check:holder-size
+
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
