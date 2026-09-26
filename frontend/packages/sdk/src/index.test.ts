@@ -32,6 +32,8 @@ import {
   TimeoutError,
   StellarCred,
   withRetry,
+  warnServerConfigInBrowser,
+  _resetServerConfigWarnings,
 } from "./index";
 import { hasClaim as sharedHasClaim } from "./claims";
 
@@ -443,5 +445,148 @@ describe("verifyPreset", () => {
 
   it("is exported on the StellarCred namespace", () => {
     expect(StellarCred.verifyPreset).toBe(verifyPreset);
+  });
+});
+
+// ── Browser config boundary guard (Issue #535) ──────────────────────────────
+
+describe("warnServerConfigInBrowser", () => {
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+  beforeEach(() => {
+    warnSpy.mockClear();
+    _resetServerConfigWarnings();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    _resetServerConfigWarnings();
+  });
+
+  describe("in a browser environment (window defined)", () => {
+    beforeEach(() => {
+      vi.stubGlobal("window", {});
+    });
+
+    it("warns when registryId looks like an unsubstituted env var ($VAR)", () => {
+      warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0][0]).toContain("registryId");
+      expect(warnSpy.mock.calls[0][0]).toContain("server-only");
+    });
+
+    it("warns when rpcUrl is a private-network address", () => {
+      warnServerConfigInBrowser({ rpcUrl: "http://localhost:8000/rpc" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0][0]).toContain("rpcUrl");
+    });
+
+    it("warns for 192.168.x.x private RPC URLs", () => {
+      warnServerConfigInBrowser({ rpcUrl: "http://192.168.1.10:8001/rpc" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0][0]).toContain("rpcUrl");
+    });
+
+    it("warns for 10.x.x.x private RPC URLs", () => {
+      warnServerConfigInBrowser({ rpcUrl: "https://10.0.0.5/rpc" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+    });
+
+    it("warns for 172.16-31.x.x private RPC URLs", () => {
+      warnServerConfigInBrowser({ rpcUrl: "http://172.20.0.1/rpc" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+    });
+
+    it("warns when registryId uses template-literal-style interpolation (${VAR})", () => {
+      warnServerConfigInBrowser({ registryId: "${PROOF_REGISTRY_ID}" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+    });
+
+    it("warns once and not again for the same key+value combination", () => {
+      warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+      warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+      warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+    });
+
+    it("warns again after _resetServerConfigWarnings()", () => {
+      warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+      _resetServerConfigWarnings();
+      warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("does NOT warn for a plain public contract ID (no $ prefix)", () => {
+      warnServerConfigInBrowser({ registryId: "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does NOT warn for a well-known public RPC URL", () => {
+      warnServerConfigInBrowser({ rpcUrl: "https://soroban-testnet.stellar.org" });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does NOT warn for a public mainnet RPC URL", () => {
+      warnServerConfigInBrowser({ rpcUrl: "https://soroban.stellar.org" });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does NOT warn when all opts are undefined", () => {
+      warnServerConfigInBrowser({});
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does NOT warn in production mode (NODE_ENV=production)", () => {
+      const orig = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+        expect(warnSpy).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = orig;
+      }
+    });
+  });
+
+  describe("in a Node.js environment (window undefined)", () => {
+    beforeEach(() => {
+      // Ensure window is not defined (default in Vitest Node environment).
+      // vi.unstubAllGlobals() in afterEach will clean any accidental stubs.
+    });
+
+    it("does NOT warn even for suspicious config values", () => {
+      warnServerConfigInBrowser({ registryId: "$PROOF_REGISTRY_ID" });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does NOT warn for private-network RPC URLs", () => {
+      warnServerConfigInBrowser({ rpcUrl: "http://localhost:8000/rpc" });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("configure() integration", () => {
+    it("triggers the browser warning when configure() is called in a browser with a suspicious value", () => {
+      vi.stubGlobal("window", {});
+      configure({ registryId: "$PROOF_REGISTRY_ID", rpcUrl: "http://localhost:8000" });
+      expect(warnSpy).toHaveBeenCalledOnce();
+      // Both keys should appear in the single warning
+      const msg = warnSpy.mock.calls[0][0] as string;
+      expect(msg).toContain("registryId");
+      expect(msg).toContain("rpcUrl");
+    });
+
+    it("does NOT trigger the browser warning when configure() is called in Node", () => {
+      // window is not stubbed — Node environment
+      configure({ registryId: "$PROOF_REGISTRY_ID" });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("does NOT trigger the browser warning for NEXT_PUBLIC_ safe values in a browser", () => {
+      vi.stubGlobal("window", {});
+      // A well-known public Soroban testnet URL — not a private network
+      configure({ rpcUrl: "https://soroban-testnet.stellar.org", registryId: "CLEGITREGISTRYID" });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
   });
 });

@@ -36,6 +36,89 @@ StellarCred.configure({
 const eligible = await StellarCred.hasClaim(walletAddress, "kyc");
 ```
 
+When calling `hasClaim()` server-side (e.g. in a Next.js Route Handler or middleware), use the server entry point to make the intent explicit:
+
+```ts
+// Server-side gating — use the /server entry point
+import { hasClaim, configure } from "@stellarcred/sdk/server";
+
+configure({ registryId: process.env.STELLARCRED_REGISTRY_ID });
+const eligible = await hasClaim(walletAddress, "kyc");
+```
+
+See the [Trust boundary](#trust-boundary) section for why this matters.
+
+## Trust boundary
+
+The SDK is **read-only** — it makes free simulated calls to the Stellar RPC and never touches secrets or signs anything. That means it is safe to run in a browser. However, there is a seam where an integrator following a server-side gating pattern can accidentally push server config into client code:
+
+```ts
+// ❌ Dangerous: leaks PROOF_REGISTRY_ID into the browser bundle
+// "use client"
+import StellarCred from "@stellarcred/sdk";
+StellarCred.configure({
+  registryId: process.env.PROOF_REGISTRY_ID,  // non-NEXT_PUBLIC_ var → ends up undefined in browser,
+                                               // but if the bundler inlines env vars it is exposed
+});
+```
+
+### What is safe to expose to a browser
+
+| Config key | Browser-safe? | Notes |
+|---|---|---|
+| `registryId` | ✅ when `NEXT_PUBLIC_PROOF_REGISTRY_ID` | The contract ID is public on-chain; exposing it is fine |
+| `rpcUrl` | ✅ when using public Stellar RPC endpoints | Never pass a private-network / internal node URL |
+| `networkPassphrase` | ✅ always | Public constant |
+| `baseUrl` | ✅ always | Public StellarCred URL |
+
+### What must stay server-side
+
+- `ISSUER_PRIVATE_KEY` (from `@stellarcred/issuer`) — **never** prefixed `NEXT_PUBLIC_`, never in a browser bundle. This package has nothing to do with it, but it is the most critical secret in the full stack.
+- A `registryId` or `rpcUrl` that is only meaningful server-side (private/internal RPC nodes, air-gapped networks).
+
+### Dev-mode warning
+
+In development (`NODE_ENV !== "production"`), calling `configure()` in a browser with config that looks server-only triggers a `console.warn`:
+
+```
+[StellarCred] configure() was called in a browser with config that looks server-only
+(keys: registryId, rpcUrl). These values may have been intended for server-side use
+only. Safe browser config uses NEXT_PUBLIC_* env vars or values that do not reference
+private-network endpoints. If you are gating access server-side, import from
+"@stellarcred/sdk/server" to make the intent explicit at the import site.
+```
+
+Values that trigger the warning:
+- Unsubstituted env var references (`$PROOF_REGISTRY_ID`, `${PROOF_REGISTRY_ID}`)
+- Private-network / localhost RPC URLs (`localhost`, `127.x`, `10.x`, `192.168.x`, `172.16-31.x`)
+
+Values that **don't** trigger the warning:
+- Public Stellar RPC URLs (`https://soroban-testnet.stellar.org`, `https://soroban.stellar.org`)
+- Plain contract IDs (Stellar Strkey format)
+- Values already exposed via a `NEXT_PUBLIC_*` env var
+
+### Server-side gating pattern
+
+Use the `@stellarcred/sdk/server` entry point when calling `hasClaim()` on the server to gate access. It is identical to the main entry point in behaviour, but the import path makes the server intent explicit — code reviewers and import-boundary linters can flag it immediately if it appears in a client component:
+
+```ts
+// ✅ Correct: import from the server entry point in server-only files
+import { hasClaim, configure } from "@stellarcred/sdk/server";
+
+configure({ registryId: process.env.STELLARCRED_REGISTRY_ID });
+
+export async function GET(req: Request) {
+  const wallet = getSessionWallet(req); // from YOUR session — never from URL params
+  const ok = await hasClaim(wallet, "kyc");
+  if (!ok) return new Response("Forbidden", { status: 403 });
+  // ...
+}
+```
+
+**Always re-verify on the server.** The `sc_verified` / `sc_wallet` params in the return URL from `buildVerifyUrl` are untrusted hints — anyone can craft a URL with those params. The trustless source of truth is the on-chain `ProofRegistry`, queried via `hasClaim()`. See [`parseReturnParams`](#parsereturnparams) for the full trust model.
+
+---
+
 ## Configuration
 
 Call `configure()` once before any other call, or set environment variables — both approaches work in Node.js, Next.js, and edge runtimes.
