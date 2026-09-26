@@ -460,7 +460,7 @@ impl CredentialVerifier {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized));
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         admin.require_auth();
         admin
     }
