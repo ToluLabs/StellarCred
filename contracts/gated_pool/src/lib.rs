@@ -1,18 +1,26 @@
 #![no_std]
-//! GatedPool (demo)
+//! GatedPool
 //!
-//! A mock DeFi pool that gates **deposits** behind a valid KYC proof in the
+//! A DeFi pool that gates **deposits** behind a valid KYC proof in the
 //! ProofRegistry. Withdrawals are open to the authorized balance owner even
-//! after their credential expires or is revoked. This is the contract that
-//! makes the demo concrete: same call, two outcomes — "Access Denied" without
-//! a proof, "Access Granted" after one is submitted.
+//! after their credential expires or is revoked.
 //!
-//! Balances are tracked as a plain ledger here (no real token transfer) to keep
-//! the demo self-contained; swap in a token client for production.
+//! ### Real Token Transfer & Demo Modes
+//! - **Real Token Transfer Mode**: When initialized with a token address
+//!   (`token: Some(Address)`), `deposit` and `withdraw` perform real token
+//!   transfers using the Soroban `token::Client`. The pool contract holds
+//!   the deposited tokens. In `deposit`, tokens are transferred from caller to
+//!   the pool before balance updates. In `withdraw`, tokens are transferred from
+//!   the pool to the caller before reducing the balance. If any transfer fails
+//!   (e.g., insufficient funds or authorization rejection), the transaction
+//!   reverts immediately, preventing state divergence.
+//! - **Reference Demo Mode**: When initialized with `token: None`, balances are
+//!   tracked as a self-contained internal ledger without moving actual token
+//!   value. This mode is explicitly intended for isolated reference demos.
 
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
-    symbol_short, Address, Env, Symbol, Vec,
+    symbol_short, token, Address, Env, Symbol, Vec,
 };
 
 // ── Event payload structs ───────────────────────────────────────────────────
@@ -47,7 +55,7 @@ const BALANCE_TTL: u32 = 120 * DAY_IN_LEDGERS;
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
 // Increment MINOR on additive changes (new events, new query endpoints)
 // Increment PATCH on bug fixes with no ABI changes
-const CONTRACT_VERSION: u32 = 1_000_000; // 1.0.0 encoded as (major * 1000000) + (minor * 1000) + patch
+const CONTRACT_VERSION: u32 = 1_001_000; // 1.1.0 encoded as (major * 1000000) + (minor * 1000) + patch
 
 /// Typed client for the deployed ProofRegistry contract. Declared as an
 /// interface so this contract links only the client, not the registry's
@@ -68,6 +76,7 @@ pub enum DataKey {
     Registry,
     RequiredType,
     MinThreshold,
+    Token,
     Balance(Address),
 }
 
@@ -87,11 +96,14 @@ pub struct GatedPool;
 #[contractimpl]
 impl GatedPool {
     /// `registry` is the deployed ProofRegistry contract address.
+    /// `token` is an optional configured token contract address. When provided,
+    /// real transfers are executed on deposits and withdrawals.
     pub fn __constructor(
         env: Env,
         registry: Address,
         required_type: Symbol,
         min_threshold: Option<u64>,
+        token: Option<Address>,
     ) {
         env.storage().instance().set(&DataKey::Registry, &registry);
         env.storage()
@@ -100,6 +112,9 @@ impl GatedPool {
         env.storage()
             .instance()
             .set(&DataKey::MinThreshold, &min_threshold);
+        if let Some(t) = token {
+            env.storage().instance().set(&DataKey::Token, &t);
+        }
     }
 
     /// Returns the contract version as an encoded u32.
@@ -111,6 +126,7 @@ impl GatedPool {
     }
 
     /// Deposit `amount`. Requires a currently-valid proof for the configured claim.
+    /// If a token contract is configured, transfers `amount` from `caller` to the pool.
     #[allow(deprecated)]
     pub fn deposit(env: Env, caller: Address, amount: i128) {
         caller.require_auth();
@@ -127,6 +143,14 @@ impl GatedPool {
         );
         if !verified {
             panic_with_error!(&env, Error::NotKycVerified);
+        }
+
+        // If real token is configured, perform transfer from caller to pool contract.
+        // Transfer failure (e.g. insufficient funds) will panic and revert the transaction,
+        // preventing the internal ledger balance from diverging.
+        if let Some(token_addr) = env.storage().instance().get::<_, Address>(&DataKey::Token) {
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&caller, &env.current_contract_address(), &amount);
         }
 
         let balance = Self::balance_of(&env, &caller) + amount;
@@ -148,6 +172,7 @@ impl GatedPool {
     /// access to their own funds after the credential used for deposit expires
     /// or is revoked. The caller must still authorize the operation, provide a
     /// positive amount, and stay within their recorded balance.
+    /// If a token contract is configured, transfers `amount` from the pool to `caller`.
     #[allow(deprecated)]
     pub fn withdraw(env: Env, caller: Address, amount: i128) {
         caller.require_auth();
@@ -161,6 +186,14 @@ impl GatedPool {
         let remaining = balance
             .checked_sub(amount)
             .unwrap_or_else(|| panic_with_error!(&env, Error::InsufficientBalance));
+
+        // If real token is configured, transfer from pool contract to caller.
+        // Transfer failure will panic and revert the transaction, leaving caller balance intact.
+        if let Some(token_addr) = env.storage().instance().get::<_, Address>(&DataKey::Token) {
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&env.current_contract_address(), &caller, &amount);
+        }
+
         Self::set_balance(&env, &caller, remaining);
 
         env.events().publish(
@@ -179,6 +212,10 @@ impl GatedPool {
 
     pub fn registry_address(env: Env) -> Address {
         Self::registry(&env)
+    }
+
+    pub fn token_address(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Token)
     }
 
     pub fn gate(env: Env) -> (Symbol, Option<u64>) {
