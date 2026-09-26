@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { getLocale } from "next-intl/server";
 import { SiteNav } from "@/components/SiteNav";
@@ -12,22 +12,34 @@ import { ToastProvider } from "@/components/Toast";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
-const body = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+// Self-hosted via next/font/local instead of next/font/google: the Google
+// loader fetches font CSS/metadata from fonts.googleapis.com at BUILD time,
+// which fails on CI runners with restricted or proxied egress (a 200 response
+// with a mangled body made the loader crash with
+// "TypeError: Cannot read properties of null (reading '1')" instead of
+// erroring cleanly). The woff2 files are the latin-subset variable fonts
+// exactly as served by Google Fonts (Inter 100-900, Space Grotesk 300-700,
+// JetBrains Mono 100-800); the weight ranges below cover every weight the
+// previous per-weight declarations used.
+const body = localFont({
+  src: "./fonts/inter-latin-variable.woff2",
+  weight: "100 900",
   variable: "--font-body",
+  display: "swap",
 });
 
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+const display = localFont({
+  src: "./fonts/space-grotesk-latin-variable.woff2",
+  weight: "300 700",
   variable: "--font-display",
+  display: "swap",
 });
 
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
+  src: "./fonts/jetbrains-mono-latin-variable.woff2",
+  weight: "100 800",
   variable: "--font-mono",
+  display: "swap",
 });
 
 export const dynamic = "force-dynamic";
