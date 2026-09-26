@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import createMiddleware from "next-intl/middleware";
+
 import { getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { logger, stripSensitiveFields } from "@/lib/logger";
 import { reportError } from "@/lib/error-reporting";
-import { locales, defaultLocale } from "@/i18n.config";
+import { locales, defaultLocale, type Locale } from "@/i18n.config";
 
 function resolveRequestId(inbound: string | null | undefined): string {
   const REQUEST_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -16,17 +16,48 @@ function resolveRequestId(inbound: string | null | undefined): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Create i18n middleware for locale routing
-const intlMiddleware = createMiddleware({
-  locales: locales as unknown as string[],
-  defaultLocale,
-  localePrefix: 'as-needed', // Only prefix non-default locales (/es/*, not /en/*)
-});
+
 
 export function middleware(request: NextRequest) {
   // Handle i18n routing first
   if (!request.nextUrl.pathname.startsWith("/api")) {
-    return intlMiddleware(request);
+    const { pathname } = request.nextUrl;
+    
+    // Check if pathname starts with a non-default locale (e.g. /es or /es/...)
+    let locale: Locale = defaultLocale;
+    let targetPath = pathname;
+
+    for (const loc of locales) {
+      if (loc === defaultLocale) continue;
+      if (pathname === `/${loc}` || pathname.startsWith(`/${loc}/`)) {
+        locale = loc;
+        targetPath = pathname.slice(loc.length + 1) || "/";
+        break;
+      }
+    }
+
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-next-intl-locale", locale);
+
+    let response: NextResponse;
+    if (targetPath !== pathname) {
+      const url = request.nextUrl.clone();
+      url.pathname = targetPath;
+      response = NextResponse.rewrite(url, {
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    } else {
+      response = NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    }
+
+    response.cookies.set("NEXT_LOCALE", locale, { path: "/", maxAge: 31536000, sameSite: "lax" });
+    return response;
   }
 
   const requestId = resolveRequestId(request.headers.get("x-request-id"));
