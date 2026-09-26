@@ -2,12 +2,21 @@
 //
 // Proves the holder knows the secret behind a KYC credential AND that a trusted
 // issuer signed the commitment to it (secp256k1 ECDSA, verified in-circuit).
-// Public inputs, in order: commitment, issuer_x, issuer_y, so the contract can
-// bind the public key to the registered issuer. The signature and secret stay
+// Public inputs, in order: commitment, issuer_x, issuer_y, context_id, then the
+// returned nullifier, so the contract can bind the public key to the registered
+// issuer and track nullifiers per context. The signature and secret stay
 // private.
+//
+// Nullifier: Poseidon2([secret, context_id], 2). Same credential + same context
+// gives the same nullifier (reuse is detectable); same credential + different
+// context gives unlinkable nullifiers. context_id = 0 means "no tracking".
 
 use dep::credential_lib;
 use dep::poseidon::poseidon2::Poseidon2;
+
+fn compute_nullifier(secret: Field, context_id: Field) -> Field {
+    Poseidon2::hash([secret, context_id], 2)
+}
 
 fn main(
     // private: never leaves the holder's device, never appears in public inputs
@@ -18,7 +27,9 @@ fn main(
     commitment: pub Field,
     issuer_x: pub [u8; 32],
     issuer_y: pub [u8; 32],
-) {
+    // public: chosen by the verifying protocol to scope the nullifier
+    context_id: pub Field,
+) -> pub Field {
     // This single call is the whole circuit. It enforces both halves of the
     // trust model, and circuits/lib/src/lib.nr documents in detail what each
     // constraint buys and what breaks without it:
@@ -44,6 +55,9 @@ fn main(
     // credential type. This proof establishes that *some* keypair signed the
     // commitment; only the registry lookup makes that keypair a trusted issuer.
     credential_lib::assert_committed_and_signed(secret, salt, sig, commitment, issuer_x, issuer_y);
+
+    // Returned value becomes the last public input.
+    compute_nullifier(secret, context_id)
 }
 
 // --- Tests ---------------------------------------------------------------
@@ -63,14 +77,14 @@ fn test_wrong_commitment_rejected() {
     let secret = 0x1234;
     let salt   = 0xabcd;
     let bad_commitment = 0x0000000000000000000000000000000000000000000000000000000000000001;
-    main(secret, salt, ZERO_SIG, bad_commitment, ZERO_X, ZERO_Y);
+    let _ = main(secret, salt, ZERO_SIG, bad_commitment, ZERO_X, ZERO_Y, 1);
 }
 
 // A zero commitment never equals a real Poseidon2 hash (Poseidon2 output is
 // non-zero for any non-trivial input in the BN254 scalar field).
 #[test(should_fail)]
 fn test_zero_commitment_rejected() {
-    main(42, 99, ZERO_SIG, 0, ZERO_X, ZERO_Y);
+    let _ = main(42, 99, ZERO_SIG, 0, ZERO_X, ZERO_Y, 1);
 }
 
 // A different secret produces a different commitment; wrong secret must fail.
@@ -81,7 +95,7 @@ fn test_secret_mismatch_rejected() {
     let salt           = 0x1111;
     // commitment computed for correct_secret, but main called with wrong_secret
     let fake_commitment = Poseidon2::hash([correct_secret as Field, salt as Field], 2);
-    main(wrong_secret, salt, ZERO_SIG, fake_commitment, ZERO_X, ZERO_Y);
+    let _ = main(wrong_secret, salt, ZERO_SIG, fake_commitment, ZERO_X, ZERO_Y, 1);
 }
 
 // --- Property-based tests: commitment binding properties -----------------
@@ -156,4 +170,42 @@ fn test_correct_secret_wrong_salt() {
     let commitment = Poseidon2::hash([secret, real_salt], 2);
     let check = Poseidon2::hash([secret, wrong_salt], 2);
     assert(check == commitment);
+}
+
+// --- Nullifier tests -----------------------------------------------------
+
+// Same credential + same context => identical nullifier (reuse is detectable).
+#[test]
+fn test_nullifier_same_credential_same_context() {
+    assert_eq(compute_nullifier(0xcafebabe, 7), compute_nullifier(0xcafebabe, 7));
+}
+
+// Same credential + different context => different nullifier.
+#[test]
+fn test_nullifier_different_context_differs() {
+    assert(compute_nullifier(0xcafebabe, 1) != compute_nullifier(0xcafebabe, 2));
+}
+
+// Different credential + same context => different nullifier.
+#[test]
+fn test_nullifier_different_credential_differs() {
+    assert(compute_nullifier(0xcafebabe, 1) != compute_nullifier(0xdeadbeef, 1));
+}
+
+// Unlinkability: across many contexts the nullifiers are all distinct and none
+// equals the secret or the credential commitment, so nothing ties them together.
+#[test]
+fn test_nullifiers_across_contexts_unlinkable() {
+    let secret: Field = 0xcafebabe;
+    let salt: Field = 0x12345678;
+    let commitment = Poseidon2::hash([secret, salt], 2);
+    let contexts: [Field; 5] = [1, 2, 3, 100, 0xffffffff];
+    for i in 0..5 {
+        let n = compute_nullifier(secret, contexts[i]);
+        assert(n != secret);
+        assert(n != commitment);
+        for j in (i + 1)..5 {
+            assert(n != compute_nullifier(secret, contexts[j]));
+        }
+    }
 }

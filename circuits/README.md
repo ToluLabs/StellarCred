@@ -105,3 +105,15 @@ The following tables define the ABI order of public inputs for each credential c
 | 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
 | 3 | `restricted` | `[u64; 8]` | List of up to 8 ISO 3166-1 numeric codes (padded with `0`s) |
 | 4 | `mode` | `u64` | Proof mode: `0` = denylist (country NOT in list), `1` = allowlist (country IS in list) |
+
+### Nullifier privacy argument
+
+- `nullifier = Poseidon2([secret, context_id], 2)`; `secret` is a high-entropy
+  value known only to the holder and never published.
+- Same credential + same context → same nullifier (reuse is detectable).
+- Same credential + different contexts → outputs that are computationally
+  independent without `secret` (Poseidon2 modeled as a PRF keyed by `secret`),
+  so they cannot be linked to each other or to the credential.
+- The UltraHonk proof is zero-knowledge, so nothing beyond the public inputs leaks.
+- Caveat: the submitting wallet address is public, so one wallet using several
+  contexts is linkable by address. `context_id = 0` disables tracking.
