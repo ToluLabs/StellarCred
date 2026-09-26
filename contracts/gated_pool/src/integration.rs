@@ -33,9 +33,15 @@
 //! | ClaimRevoked          | `EventProofRevoked` ("proof_reg", "revoked", <type>)   |
 //! | DepositRejected       | (no event — the gate panics with `NotKycVerified`)     |
 //!
-//! `env.events().all()` returns the events published by the *last* contract
-//! invocation, so asserting the full filtered event list after each lifecycle
-//! step verifies both payload correctness and cross-contract emission order.
+//! # Event buffer lifetime (soroban-env-host 26.x)
+//!
+//! `env.events().all()` returns only the events published by the **most recent
+//! top-level contract invocation**: the host clears the event buffer whenever a
+//! new top-level invocation starts, *including read-only calls* made through a
+//! generated client. Every event assertion below therefore sits immediately
+//! after the call that emitted the events, and any follow-up reads are placed
+//! after the assertion. This still verifies payload correctness and
+//! cross-contract emission order within each step of the lifecycle.
 
 use super::*;
 use credential_verifier::{CredentialVerifier, CredentialVerifierClient, EventVkSet};
@@ -183,9 +189,8 @@ fn four_contract_lifecycle_end_to_end() {
     // 3. Register the issuer in IssuerRegistry → IssuerRegistered.
     w.issuer_registry
         .register_issuer(&w.issuer, &pubkey, &vec![&env, symbol_short!("kyc")]);
-    assert!(w
-        .issuer_registry
-        .is_valid_issuer(&w.issuer, &symbol_short!("kyc")));
+    // Event assertion must directly follow the emitting call: any top-level
+    // invocation (even a read) clears the event buffer observed by `all()`.
     assert_eq!(
         env.events().all().filter_by_contract(&w.issuer_registry.address),
         vec![
@@ -201,11 +206,14 @@ fn four_contract_lifecycle_end_to_end() {
             ),
         ],
     );
+    assert!(w
+        .issuer_registry
+        .is_valid_issuer(&w.issuer, &symbol_short!("kyc")));
 
     // 4. Set the verification key in CredentialVerifier → VerificationKeySet.
     w.verifier
         .set_vk(&symbol_short!("kyc"), &1u32, &Bytes::from_slice(&env, VK));
-    assert_eq!(w.verifier.get_latest_version(&symbol_short!("kyc")), 1);
+    // Event assertion directly after the emitting call (see note above).
     assert_eq!(
         env.events().all().filter_by_contract(&w.verifier.address),
         vec![
@@ -227,6 +235,7 @@ fn four_contract_lifecycle_end_to_end() {
             ),
         ],
     );
+    assert_eq!(w.verifier.get_latest_version(&symbol_short!("kyc")), 1);
 
     // 5. Submit the valid UltraHonk proof through ProofRegistry → ProofSubmitted.
     w.registry.submit_proof(
@@ -238,20 +247,7 @@ fn four_contract_lifecycle_end_to_end() {
         &None,
         &EXPIRY,
     );
-
-    // 6. The proof created the expected claim (no event; observed on-chain).
-    assert_eq!(
-        w.registry.is_verified(&holder, &symbol_short!("kyc"), &None),
-        (true, T0, EXPIRY),
-    );
-    let record = w
-        .registry
-        .get_record(&holder, &symbol_short!("kyc"))
-        .expect("claim should exist after submit_proof");
-    assert!(!record.revoked);
-    assert_eq!(record.issuer, Some(w.issuer.clone()));
-    assert_eq!(record.expiry, EXPIRY);
-    assert_eq!(w.registry.claim_expiry(&holder, &symbol_short!("kyc")), EXPIRY);
+    // Event assertion directly after the emitting call (see note above).
     assert_eq!(
         env.events().all().filter_by_contract(&w.registry.address),
         vec![
@@ -275,9 +271,23 @@ fn four_contract_lifecycle_end_to_end() {
         ],
     );
 
+    // 6. The proof created the expected claim (no event; observed on-chain).
+    assert_eq!(
+        w.registry.is_verified(&holder, &symbol_short!("kyc"), &None),
+        (true, T0, EXPIRY),
+    );
+    let record = w
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .expect("claim should exist after submit_proof");
+    assert!(!record.revoked);
+    assert_eq!(record.issuer, Some(w.issuer.clone()));
+    assert_eq!(record.expiry, EXPIRY);
+    assert_eq!(w.registry.claim_expiry(&holder, &symbol_short!("kyc")), EXPIRY);
+
     // 7. GatedPool accepts a deposit backed by the claim → DepositAccepted.
     w.pool.deposit(&holder, &500);
-    assert_eq!(w.pool.get_balance(&holder), 500);
+    // Event assertion directly after the emitting call (see note above).
     assert_eq!(
         env.events().all().filter_by_contract(&w.pool.address),
         vec![
@@ -294,19 +304,12 @@ fn four_contract_lifecycle_end_to_end() {
             ),
         ],
     );
+    assert_eq!(w.pool.get_balance(&holder), 500);
 
     // 8. Revoke the claim (the issuing issuer, through ProofRegistry)
     //    → ClaimRevoked.
     w.registry.revoke(&w.issuer, &holder, &symbol_short!("kyc"));
-    assert!(!w
-        .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
-        .0);
-    assert!(w
-        .registry
-        .get_record(&holder, &symbol_short!("kyc"))
-        .expect("revocation marks the record, it does not delete it")
-        .revoked);
+    // Event assertion directly after the emitting call (see note above).
     assert_eq!(
         env.events().all().filter_by_contract(&w.registry.address),
         vec![
@@ -328,6 +331,15 @@ fn four_contract_lifecycle_end_to_end() {
             ),
         ],
     );
+    assert!(!w
+        .registry
+        .is_verified(&holder, &symbol_short!("kyc"), &None)
+        .0);
+    assert!(w
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .expect("revocation marks the record, it does not delete it")
+        .revoked);
 
     // 9. Deposits are rejected after revocation. A rejected deposit has no
     // on-chain event (the gate panics with GatedPool::NotKycVerified before
@@ -335,11 +347,11 @@ fn four_contract_lifecycle_end_to_end() {
     // empty event list for the failed invocation.
     let res = w.pool.try_deposit(&holder, &100);
     assert_eq!(expect_err_code(res), Error::NotKycVerified as u32);
-    assert_eq!(w.pool.get_balance(&holder), 500);
     assert_eq!(
         env.events().all().filter_by_contract(&w.pool.address),
         vec![&env],
     );
+    assert_eq!(w.pool.get_balance(&holder), 500);
 
     // Revocation gates future deposits but must not trap existing funds:
     // withdrawals stay open for the balance owner.
@@ -359,7 +371,6 @@ fn four_contract_lifecycle_end_to_end() {
         &EXPIRY,
     );
     w.pool.deposit(&holder_b, &50);
-    assert_eq!(w.pool.get_balance(&holder_b), 50);
 
     env.ledger()
         .with_mut(|li| li.timestamp = EXPIRY + 1);
@@ -369,11 +380,11 @@ fn four_contract_lifecycle_end_to_end() {
         .0);
     let res = w.pool.try_deposit(&holder_b, &10);
     assert_eq!(expect_err_code(res), Error::NotKycVerified as u32);
-    assert_eq!(w.pool.get_balance(&holder_b), 50);
     assert_eq!(
         env.events().all().filter_by_contract(&w.pool.address),
         vec![&env],
     );
+    assert_eq!(w.pool.get_balance(&holder_b), 50);
 
     // Funds remain withdrawable after the credential expired.
     w.pool.withdraw(&holder_b, &50);
@@ -418,14 +429,14 @@ fn untrusted_issuer_cannot_submit_through_proof_registry() {
     );
 
     // No claim was cached, nothing was emitted, and the gate stays closed.
-    assert!(w
-        .registry
-        .get_record(&holder, &symbol_short!("kyc"))
-        .is_none());
     assert_eq!(
         env.events().all().filter_by_contract(&w.registry.address),
         vec![&env],
     );
+    assert!(w
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .is_none());
     let res = w.pool.try_deposit(&holder, &100);
     assert_eq!(expect_err_code(res), Error::NotKycVerified as u32);
 }
@@ -660,11 +671,10 @@ fn issuer_revoked_midflight_rejects_submission() {
         .issuer_registry
         .is_valid_issuer(&w.issuer, &symbol_short!("kyc")));
     w.issuer_registry.revoke_issuer(&w.issuer);
-    assert!(!w
-        .issuer_registry
-        .is_valid_issuer(&w.issuer, &symbol_short!("kyc")));
 
-    // Revocation is audited on the IssuerRegistry itself.
+    // Revocation is audited on the IssuerRegistry itself. The event assertion
+    // must directly follow the emitting call: any top-level invocation (even a
+    // read) clears the event buffer observed by `all()`.
     assert_eq!(
         env.events().all().filter_by_contract(&w.issuer_registry.address),
         vec![
@@ -679,6 +689,9 @@ fn issuer_revoked_midflight_rejects_submission() {
             ),
         ],
     );
+    assert!(!w
+        .issuer_registry
+        .is_valid_issuer(&w.issuer, &symbol_short!("kyc")));
 
     // The mid-flight submission now fails the cross-contract trust check.
     let holder = Address::generate(&env);
@@ -695,14 +708,14 @@ fn issuer_revoked_midflight_rejects_submission() {
         expect_err_code(res),
         ProofRegistryError::IssuerNotTrusted as u32
     );
-    assert!(w
-        .registry
-        .get_record(&holder, &symbol_short!("kyc"))
-        .is_none());
     assert_eq!(
         env.events().all().filter_by_contract(&w.registry.address),
         vec![&env],
     );
+    assert!(w
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .is_none());
 
     // And the pool's gate stays closed for the holder.
     let res = w.pool.try_deposit(&holder, &100);
