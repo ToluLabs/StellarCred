@@ -292,6 +292,10 @@ if (hint.state !== expectedSessionNonce) {
           The deployed StellarCred contracts on{" "}
           <span className="mono">{process.env.NEXT_PUBLIC_STELLAR_NETWORK ?? "testnet"}</span>.
         </p>
+         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "0.75rem" }}>
+           See{" "} <a href="/DEPLOYMENTS.md" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }} >
+            DEPLOYMENTS.md
+            </a>{" "} for the authoritative contract IDs, versions, WASM hashes, and deployment dates for each network. </p>
         <table
           style={{
             width: "100%",
