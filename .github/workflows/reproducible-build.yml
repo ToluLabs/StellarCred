@@ -74,6 +74,7 @@ jobs:
                      target/wasm32v1-none/release/issuer_registry.wasm \
                      target/wasm32v1-none/release/proof_registry.wasm \
                      target/wasm32v1-none/release/gated_pool.wasm \
+                     target/wasm32v1-none/release/human_airdrop.wasm \
                   /out/
             "
 
@@ -100,6 +101,7 @@ jobs:
                      target/wasm32v1-none/release/issuer_registry.wasm \
                      target/wasm32v1-none/release/proof_registry.wasm \
                      target/wasm32v1-none/release/gated_pool.wasm \
+                     target/wasm32v1-none/release/human_airdrop.wasm \
                   /out/
             "
 
@@ -126,14 +128,14 @@ jobs:
 
       # ── Upload artifacts for independent inspection ───────────────────────
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: wasm-artifacts-${{ github.sha }}
           path: build-1/*.wasm
           retention-days: 30
 
       - name: Upload SHA-256 manifest
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: wasm-sha256-${{ github.sha }}
           path: build-1/sha256sums.txt

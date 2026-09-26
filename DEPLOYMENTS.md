@@ -16,6 +16,7 @@ These contracts are deployed on the Stellar Testnet (passphrase: `Test SDF Netwo
 | **Credential Verifier** | `credential_verifier.wasm` | `CCUUSDWSCSML3DFXVNEXQN7OFYXY2PGBOLKJR5R4Q5JPK47V4TYPQUKJ` | `f3f26e37a960362784fbcd419de71986f06fc0655adfae08ba392f57ab7a199f` |
 | **Proof Registry** | `proof_registry.wasm` | `CBEXHUMCNS4TJWNYXRFJNIWCNUW62MHAXL4JOBT764CLMHAPNJKIRWXV` | `ddf30335aa7dcf9146c9929003f3a4c1d1070f2c5d9482ca2e36886bfb34e0c4` |
 | **Gated Pool** | `gated_pool.wasm` | `CCKQQGWNKMFWAYPT37KEI5WQSCDEPH6H7XZEFJ3UB5BH5SVZBUPVUGI3` | `32986998d4bf7277cbb3161d1236c349dcc39faa530a8ba2e74e00d1c27092d0` |
+| **Human Airdrop** | `human_airdrop.wasm` | *Placeholder — To be filled post-deployment* | *Recorded on first reproducible build* |
 
 ### Stellar Mainnet
 
@@ -27,6 +28,7 @@ These contracts will be deployed on the Stellar Mainnet (passphrase: `Public Glo
 | **Credential Verifier** | `credential_verifier.wasm` | *Placeholder — To be filled post-deployment* | `f3f26e37a960362784fbcd419de71986f06fc0655adfae08ba392f57ab7a199f` |
 | **Proof Registry** | `proof_registry.wasm` | *Placeholder — To be filled post-deployment* | `ddf30335aa7dcf9146c9929003f3a4c1d1070f2c5d9482ca2e36886bfb34e0c4` |
 | **Gated Pool** | `gated_pool.wasm` | *Placeholder — To be filled post-deployment* | `32986998d4bf7277cbb3161d1236c349dcc39faa530a8ba2e74e00d1c27092d0` |
+| **Human Airdrop** | `human_airdrop.wasm` | *Placeholder — To be filled post-deployment* | *Recorded on first reproducible build* |
 
 ---
 

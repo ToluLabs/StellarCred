@@ -325,6 +325,56 @@ Emitted when a caller withdraws from their balance.
 
 ---
 
+## HumanAirdrop (`contract = "humandrop"`)
+
+The verified-human-once distribution reference contract
+(see [ANTI_SYBIL.md](ANTI_SYBIL.md)). Its topics carry the **campaign id** in
+the third slot instead of a credential type.
+
+### `humandrop.created` — Campaign created
+
+**Topics:** `("humandrop", "created", <campaign_id>)`
+
+**Payload — `EventCampaignCreated`:**
+
+| Field | Type | Description |
+|---|---|---|
+| `admin` | `Address` | Admin that created the campaign. |
+| `credential_type` | `Symbol` | Credential the campaign requires. |
+| `amount` | `i128` | Allocation per human. |
+| `budget` | `i128` | Total distributable budget. |
+
+### `humandrop.claimed` — A verified human claimed
+
+**Topics:** `("humandrop", "claimed", <campaign_id>)`
+
+**Payload — `EventClaimed`:**
+
+| Field | Type | Description |
+|---|---|---|
+| `caller` | `Address` | Address that claimed. |
+| `nullifier` | `BytesN<32>` | The campaign-scoped nullifier that was burned. Reveals nothing about the credential — an indexer can count unique humans without identifying them. |
+| `amount` | `i128` | Allocation distributed. |
+| `claims` | `u32` | Unique humans that have claimed so far. |
+
+### `humandrop.consumed` — An external distributor burned a claim
+
+Emitted by `consume`, the integration point for third-party distribution
+contracts that run their own payout.
+
+**Topics:** `("humandrop", "consumed", <campaign_id>)`
+
+**Payload — `EventConsumed`:**
+
+| Field | Type | Description |
+|---|---|---|
+| `consumer` | `Address` | The distributing contract that authorised the consume. |
+| `holder` | `Address` | Address whose one-shot claim was burned. |
+| `nullifier` | `BytesN<32>` | The burned nullifier. |
+| `claims` | `u32` | Unique humans that have claimed so far. |
+
+---
+
 ## Credential Types Reference
 
 | Symbol | Rust Construction | Public Input Threshold Field | Description |

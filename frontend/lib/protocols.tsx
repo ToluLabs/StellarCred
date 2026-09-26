@@ -5,12 +5,28 @@ import {
   IconWorld,
   IconTrendingUp,
   IconCurrencyDollar,
+  IconGift,
 } from "@tabler/icons-react";
 
 export interface Requirement {
   label: string;
   type: string;
   minThreshold?: number;
+}
+
+/**
+ * Nullifier-gated distribution config (see `contracts/human_airdrop`). When a
+ * protocol carries this, the app page renders the one-claim-per-human demo.
+ */
+export interface AirdropCampaign {
+  /** `campaign_id` Symbol passed to `human_airdrop.claim`. */
+  campaignId: string;
+  /** App scope hashed into every nullifier for this campaign. */
+  scope: string;
+  /** Per-human allocation, formatted for display. */
+  amountLabel: string;
+  /** Credential the campaign requires. */
+  credentialType: string;
 }
 
 export interface Protocol {
@@ -25,9 +41,31 @@ export interface Protocol {
   inputLabel: string;
   inputDefault: string;
   icon: React.ReactNode;
+  /** Present on nullifier-gated, one-claim-per-human distributions. */
+  airdrop?: AirdropCampaign;
 }
 
 export const PROTOCOLS: Protocol[] = [
+  {
+    id: "humandrop",
+    name: "HumanDrop",
+    tagline: "One-Claim-Per-Human Airdrop",
+    description:
+      "A Sybil-resistant token distribution. Eligibility is a KYC proof, but the anti-Sybil guarantee comes from a campaign-scoped nullifier derived from the credential itself — so one human claims exactly once, however many wallets they fund.",
+    stat: { label: "Allocation per human", value: "250 XLM", sub: "4,000 humans · one claim each" },
+    requirements: [{ label: "KYC verified", type: "kyc" }],
+    verifyUrl: "/verify?return_url=/apps/humandrop&claim=kyc",
+    actionLabel: "Claim airdrop",
+    inputLabel: "Allocation (XLM)",
+    inputDefault: "250",
+    icon: <IconGift size={18} stroke={1.6} />,
+    airdrop: {
+      campaignId: "drop1",
+      scope: "stellarcred:airdrop:humandrop-2026",
+      amountLabel: "250 XLM",
+      credentialType: "kyc",
+    },
+  },
   {
     id: "lendfi",
     name: "LendFi",
