@@ -89,3 +89,44 @@ stellar contract inspect --id <CONTRACT_ID> --network mainnet
 ```
 
 Alternatively, search the Contract ID on a Stellar block explorer (like [Stellar.expert](https://stellar.expert)) and verify that the deployed WASM hash matches your locally computed hash.
+# Contract Deployments
+
+This file is the authoritative registry of deployed StellarCred contracts.
+
+Integrators should use the contract IDs recorded here rather than relying on
+environment variable examples, local configuration, or undocumented values.
+
+## Testnet
+
+| Contract | Contract ID | Version | WASM Hash | Deploy Date |
+|---|---|---|---|---|
+| ProofRegistry | TBD | TBD | TBD | TBD |
+| IssuerRegistry | TBD | TBD | TBD | TBD |
+| CredentialVerifier | TBD | TBD | TBD | TBD |
+| GatedPool | TBD | TBD | TBD | TBD |
+
+## Mainnet
+
+| Contract | Contract ID | Version | WASM Hash | Deploy Date |
+|---|---|---|---|---|
+| ProofRegistry | TBD | TBD | TBD | TBD |
+| IssuerRegistry | TBD | TBD | TBD | TBD |
+| CredentialVerifier | TBD | TBD | TBD | TBD |
+| GatedPool | TBD | TBD | TBD | TBD |
+
+## Updating this registry
+
+`DEPLOYMENTS.md` must be updated whenever a contract is deployed or upgraded.
+
+For every deployment, record:
+
+- Network
+- Contract ID
+- Contract version
+- WASM hash
+- Deployment date
+
+The deployment runbook is responsible for ensuring this file is updated before
+a deployment is considered complete.
+
+Do not use `.env.example` as the authoritative source for deployed contract IDs.

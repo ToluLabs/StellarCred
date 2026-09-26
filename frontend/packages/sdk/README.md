@@ -66,6 +66,17 @@ behavior: it returns `false` or an empty result by default, and throws
 | `STELLARCRED_NETWORK_PASSPHRASE` | `NEXT_PUBLIC_NETWORK_PASSPHRASE` |
 | `STELLARCRED_BASE_URL` | `NEXT_PUBLIC_STELLARCRED_BASE_URL` |
 
+## Contract Deployments
+
+For the authoritative list of deployed StellarCred contract IDs, contract
+versions, WASM hashes, and deployment dates by network, see
+[`DEPLOYMENTS.md`](../../../DEPLOYMENTS.md).
+
+Use the deployment registry when configuring the SDK for a specific network
+rather than relying on `.env.example` placeholders or undocumented contract
+IDs.
+
+
 ## API
 
 ### `hasClaim(wallet, claimType, opts?)`
