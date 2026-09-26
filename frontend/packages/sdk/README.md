@@ -9,6 +9,20 @@ Protocols call one function. No API key, no backend, no personal data handling �
 ```bash
 npm install @stellarcred/sdk
 ```
+
+> **Note on NPM Publication**:
+> Official `@stellarcred/sdk` releases are cut via git tags (e.g. `v0.1.1`).
+> In local development environments or before an upstream npm publish token is configured, you can consume the SDK directly from this repository:
+>
+> ```bash
+> # Build the SDK inside the monorepo:
+> cd frontend/packages/sdk
+> pnpm install
+> pnpm build
+>
+> # Link or import directly into your project:
+> pnpm link ./frontend/packages/sdk
+> ```
 ## API Reference
 
 Generate the SDK API documentation locally:
@@ -509,3 +523,25 @@ See [`examples/svelte-gate/ClaimGate.svelte`](./examples/svelte-gate/ClaimGate.s
   <p>{type}: {ok ? '✅' : '❌'}</p>
 {/each}{/if}
 ```
+
+## Release Process
+
+The SDK follows [Semantic Versioning](https://semver.org/). Releases are fully automated through `.github/workflows/release.yml`.
+
+### How Releases Work:
+1. **Version Declaration**: The canonical version is maintained in `frontend/packages/sdk/package.json` (e.g. `"version": "0.1.1"`).
+2. **Cutting a Release**:
+   - Update `package.json` version and document changes in `frontend/packages/sdk/CHANGELOG.md` and root `CHANGELOG.md`.
+   - Create and push a signed git tag matching the version with a `v` prefix:
+     ```bash
+     git tag -a v0.1.1 -m "Release v0.1.1"
+     git push origin v0.1.1
+     ```
+3. **Workflow Execution**:
+   - `.github/workflows/release.yml` triggers on `v*` tag pushes.
+   - It validates that the git tag version strictly matches `package.json`.
+   - Runs `pnpm build` to compile the dual CJS/ESM distribution bundles with TypeScript definitions.
+   - Generates release notes from conventional commit messages.
+   - Creates an official GitHub Release with release artifacts.
+   - Publishes `@stellarcred/sdk` with public access to the npm registry using `NPM_TOKEN`.
+
