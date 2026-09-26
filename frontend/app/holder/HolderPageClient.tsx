@@ -78,7 +78,7 @@ function credTtlSecs(cred: Credential): number {
 // Downloads every locally stored credential as a JSON backup file. Pairs with
 // the "Import credential JSON" panel: the file's contents can be pasted back
 // here (or into another browser/device) to restore. Credentials live only in
-// this browser's localStorage, so this is the only backup path — see the
+// this browser&apos;s localStorage, so this is the only backup path — see the
 // "Where your credentials live" docs section.
 async function downloadBackup(): Promise<void> {
   const json = await exportCredentials();
@@ -159,10 +159,10 @@ function CredCard({
   onRemove: () => void;
   onInspect: () => void;
   isPreview?: boolean;
-  /** Batch selection controls — omitted on cards that can't be batched. */
+  /** Batch selection controls — omitted on cards that can&apos;t be batched. */
   selection?: {
     checked: boolean;
-    /** Why this card can't currently be added, or null when it can. */
+    /** Why this card can&apos;t currently be added, or null when it can. */
     blockedReason: string | null;
     onToggle: () => void;
   };
@@ -200,7 +200,37 @@ function CredCard({
                       >
                         {c.provedTxHash.slice(0, 6)}…<IconExternalLink size={10} />
                       </a>
-                    </>
+                    
+      {/* Destructive Action Confirmation Modal */}
+      {confirmBulkAction && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0, 0, 0, 0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div className="modal-card" style={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", padding: "1.5rem", maxWidth: "420px", width: "90%" }}>
+            <h3 style={{ marginTop: 0, fontSize: "1.2rem" }}>
+              {confirmBulkAction.type === "clear-expired" ? "Clear Expired Credentials?" : "Remove Selected Credentials?"}
+            </h3>
+            <p className="faint" style={{ fontSize: "0.9rem", margin: "1rem 0" }}>
+              Are you sure you want to remove {confirmBulkAction.commitments.length} credential{confirmBulkAction.commitments.length > 1 ? "s" : ""}? This will permanently remove them from your browser&apos;s encrypted local storage.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end", gap: "0.75rem" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setConfirmBulkAction(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                style={{ backgroundColor: "#dc2626", color: "#fff" }}
+                onClick={() => executeBulkRemove(confirmBulkAction.commitments)}
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </>
                   )}
                 </>
               )}
@@ -450,6 +480,22 @@ function HolderInner() {
 
   // Selecting is only offered when a batch is actually possible: a connected
   // wallet and at least two credentials of distinct types.
+  
+  const [confirmBulkAction, setConfirmBulkAction] = useState<{
+    type: "remove-selected" | "clear-expired";
+    commitments: string[];
+  } | null>(null);
+
+  async function executeBulkRemove(commitments: string[]) {
+    for (const commitment of commitments) {
+      await removeCredential(commitment);
+    }
+    const updated = await loadCredentials();
+    setCreds(updated);
+    setSelectedCommitments([]);
+    setConfirmBulkAction(null);
+  }
+
   const distinctUnprovedTypes = new Set(unproved.map((c) => c.type)).size;
   const canBatch = Boolean(address) && distinctUnprovedTypes >= 2;
   const canSubmitBatch = selectedCreds.length >= 2;
@@ -604,6 +650,22 @@ function HolderInner() {
           {expired.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
               <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
+              
+  {expired.length > 0 && (
+    <div className="between" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "8px", alignItems: "center" }}>
+      <span className="faint" style={{ fontSize: "0.85rem", color: "#fca5a5" }}>
+        {expired.length} expired credential{expired.length > 1 ? "s" : ""}
+      </span>
+      <button
+        className="btn btn-sm btn-ghost"
+        style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.3)" }}
+        onClick={() => setConfirmBulkAction({ type: "clear-expired", commitments: expired.map(c => c.commitment) })}
+      >
+        Clear all expired
+      </button>
+    </div>
+  )}
+
               {expired.map((c) => (
                 <CredCard
                   key={c.commitment}
@@ -675,6 +737,18 @@ function HolderInner() {
                         ? `Prove ${selectedCreds.length} selected in one transaction`
                         : "Prove several in one transaction"}
                     </button>
+                    
+  {selectedCreds.length > 0 && (
+    <button
+      className="btn btn-ghost btn-sm"
+      style={{ color: "#ef4444" }}
+      onClick={() => setConfirmBulkAction({ type: "remove-selected", commitments: selectedCommitments })}
+    >
+      <IconTrash size={14} style={{ marginRight: "0.25rem" }} />
+      Remove selected ({selectedCreds.length})
+    </button>
+  )}
+
                     {selectedCreds.length > 0 ? (
                       <button
                         className="btn btn-ghost btn-sm"
