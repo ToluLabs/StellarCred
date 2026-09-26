@@ -224,3 +224,6 @@ impl GatedPool {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod integration;
