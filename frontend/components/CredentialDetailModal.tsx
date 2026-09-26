@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { IconX, IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { formatDate, formatDateTime, getLocaleString } from "@/lib/i18n";
 import { type Locale } from "@/i18n.config";
+import { type ClaimParams } from "@/lib/credential";
 import CopyButton from "./CopyButton";
 
 function parseTtlSecs(expiry: string): number {
@@ -22,7 +23,7 @@ interface CredentialDetailModalProps {
     commitment: string;
     issuedAt: number;
     expiry: string;
-    claimParams?: Record<string, unknown>;
+    claimParams?: ClaimParams | Record<string, unknown>;
   };
   onClose: () => void;
   /**
