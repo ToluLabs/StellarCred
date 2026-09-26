@@ -13,6 +13,8 @@ export function NetworkMismatchBanner() {
   return (
     <div
       className="row"
+      role="alert"
+      aria-live="polite"
       style={{
         gap: "0.6rem",
         padding: "0.7rem 1rem",
@@ -23,7 +25,7 @@ export function NetworkMismatchBanner() {
         fontSize: "0.8125rem",
       }}
     >
-      <IconAlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} />
+      <IconAlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} aria-hidden="true" />
       <span>
         Your wallet is on the wrong network. Switch to{" "}
         <strong>{NETWORK === "mainnet" ? "Mainnet" : NETWORK === "futurenet" ? "Futurenet" : "Testnet"}</strong> in your wallet

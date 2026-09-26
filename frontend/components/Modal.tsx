@@ -15,6 +15,8 @@ const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export interface ModalProps {
+  /** Optional HTML id prefix for ARIA attributes */
+  id?: string;
   /** Dialog title shown in the header */
   title: string;
   /** Called when the user dismisses the modal (Escape, backdrop click) */
@@ -28,6 +30,7 @@ export interface ModalProps {
 }
 
 export function Modal({
+  id,
   title,
   onClose,
   children,
@@ -41,6 +44,8 @@ export function Modal({
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  const titleId = id ? `${id}-title` : `modal-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
   // Keep the latest onClose in a ref so the keydown listener below can stay
   // registered once instead of tearing down/re-adding on every render (most
@@ -98,7 +103,7 @@ export function Modal({
         className={`modal card ${className}`.trim()}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -112,7 +117,13 @@ export function Modal({
             marginBottom: "var(--spacing-lg, 1rem)",
           }}
         >
-          <span className="eyebrow">{title}</span>
+          <h2
+            id={titleId}
+            className="eyebrow"
+            style={{ margin: 0, fontSize: "inherit", fontWeight: "inherit" }}
+          >
+            {title}
+          </h2>
           <button
             className="btn btn-ghost btn-sm modal-close-btn"
             onClick={onClose}

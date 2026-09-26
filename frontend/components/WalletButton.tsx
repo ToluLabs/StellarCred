@@ -18,11 +18,12 @@ export function WalletButton() {
             onClick={disconnect}
             disabled={connecting}
             title="Click to disconnect"
+            aria-label={`Connected wallet ${truncateAddress(address)}. Click to disconnect.`}
             style={{ fontFamily: "var(--font-mono), monospace", fontSize: "0.8rem" }}
           >
-            <IconWallet size={14} />
+            <IconWallet size={14} aria-hidden="true" />
             {truncateAddress(address)}
-            <IconChevronDown size={13} style={{ opacity: 0.5 }} />
+            <IconChevronDown size={13} style={{ opacity: 0.5 }} aria-hidden="true" />
           </button>
 
           <CopyButton value={address} />
@@ -32,8 +33,9 @@ export function WalletButton() {
           className="btn btn-primary"
           onClick={connect}
           disabled={connecting}
+          aria-label={connecting ? "Connecting wallet" : "Connect wallet"}
         >
-          <IconWallet size={14} />
+          <IconWallet size={14} aria-hidden="true" />
           {connecting ? "Connecting…" : "Connect wallet"}
         </button>
       )}

@@ -53,8 +53,9 @@ export function TransferExportModal({ cred, onClose }: { cred: Credential; onClo
         it becomes a QR code. You&rsquo;ll enter the same passphrase on the other device to import it.
       </p>
 
-      <label className="field-label">Passphrase</label>
+      <label htmlFor="export-passphrase" className="field-label">Passphrase</label>
       <input
+        id="export-passphrase"
         type="password"
         value={passphrase}
         onChange={(e) => setPassphrase(e.target.value)}
@@ -62,15 +63,16 @@ export function TransferExportModal({ cred, onClose }: { cred: Credential; onClo
         autoFocus
       />
 
-      <label className="field-label" style={{ marginTop: "0.75rem" }}>Confirm passphrase</label>
+      <label htmlFor="export-confirm-passphrase" className="field-label" style={{ marginTop: "0.75rem" }}>Confirm passphrase</label>
       <input
+        id="export-confirm-passphrase"
         type="password"
         value={confirm}
         onChange={(e) => setConfirm(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && onGenerate()}
       />
 
-      {error && <p style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.6rem" }}>{error}</p>}
+      {error && <p role="alert" style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.6rem" }}>{error}</p>}
 
       <button
         className="btn btn-primary"
