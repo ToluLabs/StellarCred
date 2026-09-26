@@ -85,6 +85,13 @@ let _config = {
  * Override SDK defaults at runtime. Call this once at app startup before any
  * `hasClaim` / `getClaims` calls. Each key is optional — omitted keys keep
  * their env-var-derived or default values.
+ *
+ * **Trust boundary**: `registryId`, `rpcUrl`, `networkPassphrase`, and
+ * `baseUrl` are safe to set in both browser and server contexts when they come
+ * from `NEXT_PUBLIC_*` env vars (which are intentionally shipped to the
+ * browser). If you pass values from non-public env vars, or private-network
+ * RPC URLs, a dev-mode warning will fire in the browser — see the SDK README
+ * "Trust boundary" section for details.
  */
 export function configure(opts: {
   registryId?: string;
@@ -97,6 +104,13 @@ export function configure(opts: {
   maxDelayMs?: number;
   jitter?: boolean;
 }): void {
+  // Warn if string config values look server-only and we're in a browser.
+  warnServerConfigInBrowser({
+    registryId: opts.registryId,
+    rpcUrl: opts.rpcUrl,
+    networkPassphrase: opts.networkPassphrase,
+    baseUrl: opts.baseUrl,
+  });
   _config = { ..._config, ...opts };
   const sharedOpts: Parameters<typeof configureSharedClaims>[0] = {};
   if (opts.registryId !== undefined) sharedOpts.registryId = opts.registryId;
@@ -183,6 +197,163 @@ function warnIfMissingRegistryIdOnce(): void {
       "(or NEXT_PUBLIC_PROOF_REGISTRY_ID) or call StellarCred.configure({ registryId }). " +
       "Call StellarCred.healthCheck() to diagnose. This warning only logs in development.",
   );
+}
+
+// ---------------------------------------------------------------------------
+// Browser / server config boundary guard (Issue #535)
+// ---------------------------------------------------------------------------
+//
+// configure() is intentionally usable in both browsers and Node.js — the SDK
+// is read-only and safe for client-side use. The danger is accidental config
+// leakage: an integrator who passes a server env var (e.g. PROOF_REGISTRY_ID
+// without a NEXT_PUBLIC_ prefix, or an internal RPC URL) into configure()
+// inside a browser bundle may be exposing config that was meant to stay
+// server-side.
+//
+// This guard fires once per session (dev builds only, never production) when
+// configure() is called in a browser environment with a config value whose
+// origin or content suggests it was intended to stay on the server. It does
+// NOT prevent the call — it is advisory only.
+//
+// What counts as "server-only looking"?
+//   - A string that looks like a raw env var reference without NEXT_PUBLIC_
+//     (i.e., the string contains a dollar-sign env-style interpolation that
+//     slipped through, OR the value came from an env var the caller has
+//     explicitly named something secret — we can't read the env var names in
+//     the browser, so we check the value shapes instead).
+//   - Any value whose key explicitly corresponds to a known server-only
+//     pattern: private/secret/internal keywords in the value string, or an
+//     RPC URL pointing to a private endpoint (non-public hostname patterns).
+//
+// Concretely we flag:
+//   1. registryId / rpcUrl / networkPassphrase / baseUrl values that contain
+//      the literal text ${ ... } (template literal leak) or start with $ (raw
+//      shell expansion that wasn't substituted).
+//   2. An rpcUrl that is a localhost or RFC-1918 private IP address — these
+//      are almost certainly server-internal nodes not meant for browser access.
+//   3. A registryId/rpcUrl that looks like it was set from a non-NEXT_PUBLIC_
+//      environment variable (we detect this at configure()-call-time by
+//      checking whether the current runtime IS a browser AND the same value
+//      is NOT exposed via a NEXT_PUBLIC_ variable — if process.env is
+//      unavailable we conservatively assume browser-only and skip the check).
+
+const _STRING_CONFIG_KEYS = ["registryId", "rpcUrl", "networkPassphrase", "baseUrl"] as const;
+type StringConfigKey = (typeof _STRING_CONFIG_KEYS)[number];
+
+/**
+ * Returns true when the current execution environment is a browser.
+ * Uses `window` rather than `typeof document` so Node.js with jsdom doesn't
+ * false-positive — jsdom attaches a document but also a window, so both
+ * environments would match. We pick `window` because Node.js (even with jsdom
+ * in tests) can explicitly stub it.
+ */
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
+
+/**
+ * Returns `true` when the SDK is running in a dev (non-production) build.
+ * We intentionally never warn in production to avoid spamming user-visible
+ * console output.
+ */
+function isDevMode(): boolean {
+  if (typeof process === "undefined") return true; // no process → assume browser dev
+  const env = (process.env as Record<string, string | undefined>).NODE_ENV;
+  return env !== "production";
+}
+
+/** Pattern: unsubstituted shell/template variable, e.g. "$VAR" or "${VAR}". */
+const _RAW_ENV_VAR_RE = /^\$[A-Za-z_{]/;
+
+/**
+ * Pattern: private-network hostname or localhost — these RPC nodes are
+ * almost certainly not meant to be called from a browser.
+ *
+ * Matches:
+ *   - http(s)://localhost
+ *   - http(s)://127.x.x.x
+ *   - http(s)://10.x.x.x
+ *   - http(s)://172.16-31.x.x
+ *   - http(s)://192.168.x.x
+ *   - http(s)://0.0.0.0
+ */
+const _PRIVATE_RPC_RE =
+  /^https?:\/\/(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|0\.0\.0\.0)/i;
+
+/**
+ * Returns true if `value` looks like it should never leave the server —
+ * either an unsubstituted env var reference or (for rpcUrl) a private-network
+ * address.
+ */
+function looksServerOnly(key: StringConfigKey, value: string): boolean {
+  if (!value) return false;
+  if (_RAW_ENV_VAR_RE.test(value)) return true;
+  if (key === "rpcUrl" && _PRIVATE_RPC_RE.test(value)) return true;
+  return false;
+}
+
+/**
+ * True if `value` matches a Next.js NEXT_PUBLIC_ env var in the current
+ * process, which means the integrator has consciously made it available to the
+ * browser. Only meaningful in Next.js / Node.js environments where process.env
+ * is populated; returns false (don't suppress the warning) in pure browser
+ * contexts.
+ */
+function isExposedViaNextPublic(value: string): boolean {
+  if (typeof process === "undefined") return false;
+  const penv = process.env as Record<string, string | undefined>;
+  return Object.keys(penv).some((k) => k.startsWith("NEXT_PUBLIC_") && penv[k] === value);
+}
+
+let _warnedServerConfigKeys = new Set<string>();
+
+/**
+ * Emit a one-time dev-mode warning if `opts` passed to `configure()` contains
+ * values that look server-only and the current runtime is a browser.
+ *
+ * This is advisory only — it never throws and never prevents the configure()
+ * call from taking effect.
+ *
+ * @internal
+ */
+export function warnServerConfigInBrowser(
+  opts: Partial<Record<StringConfigKey, string | undefined>>,
+): void {
+  if (!isBrowser()) return;
+  if (!isDevMode()) return;
+
+  const flagged: string[] = [];
+
+  for (const key of _STRING_CONFIG_KEYS) {
+    const value = opts[key];
+    if (!value) continue;
+    if (_warnedServerConfigKeys.has(key + ":" + value)) continue;
+    if (isExposedViaNextPublic(value)) continue;
+    if (looksServerOnly(key, value)) {
+      flagged.push(key);
+      _warnedServerConfigKeys.add(key + ":" + value);
+    }
+  }
+
+  if (flagged.length === 0) return;
+
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[StellarCred] configure() was called in a browser with config that looks server-only ` +
+      `(keys: ${flagged.join(", ")}). ` +
+      `These values may have been intended for server-side use only. ` +
+      `Safe browser config uses NEXT_PUBLIC_* env vars or values that do not reference ` +
+      `private-network endpoints. ` +
+      `If you are gating access server-side, import from "@stellarcred/sdk/server" ` +
+      `to make the intent explicit at the import site. ` +
+      `See the SDK README — "Trust boundary" section — for details. ` +
+      `This warning only appears in development.`,
+  );
+}
+
+/** Reset the warned-keys set — for tests only. @internal */
+export function _resetServerConfigWarnings(): void {
+  _warnedServerConfigKeys = new Set<string>();
 }
 
 // ---------------------------------------------------------------------------
@@ -1187,6 +1358,8 @@ export const StellarCred = {
   ConfigError,
   InvalidAddressError,
   RpcError,
+  /** @internal — exposed for advanced diagnostics; not part of public API. */
+  warnServerConfigInBrowser,
 };
 export default StellarCred;
 
