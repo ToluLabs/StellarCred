@@ -36,6 +36,102 @@ function env(key: string, nextPublicKey?: string): string {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Trust-boundary guard — warn when server-only config reaches a browser
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the code is executing in a browser context.
+ * Tests can override `globalThis.window` to exercise both paths.
+ */
+export function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
+
+/**
+ * Keys that look like they were read from bare (non-NEXT_PUBLIC_) env vars,
+ * i.e. values that an integrator intends to keep server-side.
+ *
+ * The check is heuristic: we flag configure() values that match known
+ * server-only env var names (`STELLARCRED_*` without a NEXT_PUBLIC_ variant,
+ * or the raw private-key / secret env vars the docs show). False positives are
+ * possible but negligible — the warning fires once per configure() call at
+ * development time, never in production.
+ */
+const SERVER_ONLY_ENV_PATTERN =
+  /^(STELLARCRED_REGISTRY_ID|STELLARCRED_RPC_URL|STELLARCRED_NETWORK|STELLARCRED_NETWORK_PASSPHRASE|STELLARCRED_BASE_URL|ISSUER_PRIVATE_KEY|PRIVATE_KEY|SECRET_KEY)$/i;
+
+/**
+ * Checks whether an env-var value was sourced from a bare (non-NEXT_PUBLIC_)
+ * env var by comparing it against the raw process.env values.
+ */
+function looksLikeServerEnvValue(value: string): boolean {
+  if (typeof process === "undefined" || !value) return false;
+  const envRecord = process.env as Record<string, string | undefined>;
+  // If the value matches any known server-only env key, flag it.
+  return Object.keys(envRecord).some(
+    (key) => SERVER_ONLY_ENV_PATTERN.test(key) && envRecord[key] === value,
+  );
+}
+
+let _warnedServerConfig = false;
+
+/**
+ * Emits a development-only, once-per-session console warning when configure()
+ * is called in a browser context with values that appear to have come from
+ * server-only environment variables.
+ *
+ * This is a heuristic guard — it cannot be exhaustive. The canonical defence
+ * is server-side re-verification: never grant access based solely on values
+ * received from the browser.
+ *
+ * @internal
+ */
+export function warnServerConfig(opts: Record<string, unknown>): void {
+  if (!isBrowser()) return;
+
+  const isDev =
+    typeof process !== "undefined" &&
+    (process.env as Record<string, string | undefined>)?.NODE_ENV !== "production";
+  if (!isDev) return;
+  if (_warnedServerConfig) return;
+
+  const suspectKeys: string[] = [];
+
+  for (const [key, value] of Object.entries(opts)) {
+    if (typeof value !== "string" || !value) continue;
+    if (looksLikeServerEnvValue(value)) {
+      suspectKeys.push(key);
+    }
+  }
+
+  if (suspectKeys.length === 0) return;
+
+  _warnedServerConfig = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[StellarCred] configure() was called in a browser with values that look like ` +
+      `they came from server-only environment variables (${suspectKeys.join(", ")}). ` +
+      `Make sure you are not leaking private config into your client bundle.\n` +
+      `\n` +
+      `Safe client-side config: NEXT_PUBLIC_PROOF_REGISTRY_ID, NEXT_PUBLIC_RPC_URL, ` +
+      `NEXT_PUBLIC_NETWORK_PASSPHRASE, NEXT_PUBLIC_STELLARCRED_BASE_URL.\n` +
+      `\n` +
+      `Config that must stay server-side: ISSUER_PRIVATE_KEY, bare STELLARCRED_* vars ` +
+      `(without NEXT_PUBLIC_ prefix). Server-side re-verification via hasClaim() is ` +
+      `always required before granting access — never trust client-supplied config.\n` +
+      `\n` +
+      `If you need to read claims server-side only, import from "@stellarcred/sdk/server" ` +
+      `instead — that entry point throws immediately if imported in a browser.\n` +
+      `This warning only appears in development. See the SDK README for the full trust model.`,
+  );
+}
+
+/** @internal — resets the one-time warning flag; for tests only. */
+export function _resetWarnServerConfig(): void {
+  _warnedServerConfig = false;
+}
+
 // ── Single network selector (Issue #408) ─────────────────────────────────────
 // STELLARCRED_NETWORK / NEXT_PUBLIC_STELLAR_NETWORK (testnet | mainnet |
 // futurenet) picks a coherent preset for RPC URL and network passphrase.
@@ -81,6 +177,18 @@ let _config = {
   jitter: true,
 };
 
+// Warn at module load time when env-var-derived config looks server-only and
+// we're in a browser. This catches the "import at the top of a client module
+// that reads bare STELLARCRED_* vars" pattern even before configure() is called.
+if (isBrowser()) {
+  const _envDerivedConfig: Record<string, unknown> = {};
+  if (_config.registryId) _envDerivedConfig.registryId = _config.registryId;
+  if (_config.rpcUrl) _envDerivedConfig.rpcUrl = _config.rpcUrl;
+  if (_config.networkPassphrase) _envDerivedConfig.networkPassphrase = _config.networkPassphrase;
+  if (_config.baseUrl) _envDerivedConfig.baseUrl = _config.baseUrl;
+  warnServerConfig(_envDerivedConfig);
+}
+
 /**
  * Override SDK defaults at runtime. Call this once at app startup before any
  * `hasClaim` / `getClaims` calls. Each key is optional — omitted keys keep
@@ -97,6 +205,8 @@ export function configure(opts: {
   maxDelayMs?: number;
   jitter?: boolean;
 }): void {
+  // Warn in dev when server-only env-var values are passed from a browser context.
+  warnServerConfig(opts as Record<string, unknown>);
   _config = { ..._config, ...opts };
   const sharedOpts: Parameters<typeof configureSharedClaims>[0] = {};
   if (opts.registryId !== undefined) sharedOpts.registryId = opts.registryId;
