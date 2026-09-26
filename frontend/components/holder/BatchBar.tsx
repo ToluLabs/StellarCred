@@ -1,6 +1,6 @@
 "use client";
 
-import { IconStack2 } from "@tabler/icons-react";
+import { IconStack2, IconTrash } from "@tabler/icons-react";
 import { MAX_BATCH_SIZE } from "@/lib/contracts";
 import { proofSubmissionConfigured } from "@/lib/config";
 
@@ -11,6 +11,7 @@ export function BatchBar({
   onProveBatch,
   onClear,
   onSelectEligible,
+  onRemoveSelected,
 }: {
   selectedCount: number;
   atBatchLimit: boolean;
@@ -18,6 +19,7 @@ export function BatchBar({
   onProveBatch: () => void;
   onClear: () => void;
   onSelectEligible: () => void;
+  onRemoveSelected?: () => void;
 }) {
   return (
     <div
@@ -49,6 +51,16 @@ export function BatchBar({
             ? `Prove ${selectedCount} selected in one transaction`
             : "Prove several in one transaction"}
         </button>
+        {selectedCount > 0 && onRemoveSelected && (
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ color: "#ef4444" }}
+            onClick={onRemoveSelected}
+          >
+            <IconTrash size={14} style={{ marginRight: "0.25rem" }} />
+            Remove selected ({selectedCount})
+          </button>
+        )}
         {selectedCount > 0 ? (
           <button className="btn btn-ghost btn-sm" onClick={onClear}>
             Clear

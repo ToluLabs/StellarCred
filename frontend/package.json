@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "size": "size-limit",
     "check:i18n": "node scripts/check-i18n-parity.mjs",
-    "check:holder-size": "node scripts/check-holder-size.mjs"
+    "check:holder-size": "node scripts/check-holder-size.mjs",
+    "verify:audit-log": "node --import tsx --experimental-strip-types scripts/verify-audit-log.ts"
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",

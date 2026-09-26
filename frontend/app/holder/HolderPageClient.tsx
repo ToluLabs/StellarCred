@@ -33,6 +33,7 @@ import { ImportPanel } from "@/components/holder/ImportPanel";
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
 import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { GuardianRecoveryControl } from "@/components/holder/GuardianRecoveryControl";
+import { BulkRemoveModal } from "@/components/holder/BulkRemoveModal";
 
 const TransferExportModal = dynamic(
   () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
@@ -97,6 +98,19 @@ function HolderInner() {
     selectEligible,
     clearSelection,
   } = useBatchSelection(unproved, address, (msg) => toast.error(msg));
+
+  const [confirmBulkAction, setConfirmBulkAction] = useState<{
+    type: "remove-selected" | "clear-expired";
+    commitments: string[];
+  } | null>(null);
+
+  async function executeBulkRemove(commitments: string[]) {
+    for (const commitment of commitments) {
+      await remove(commitment);
+    }
+    clearSelection();
+    setConfirmBulkAction(null);
+  }
 
   return (
     <>
@@ -242,6 +256,33 @@ function HolderInner() {
           {expired.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
               <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
+              <div
+                className="between"
+                style={{
+                  marginBottom: "1rem",
+                  padding: "0.75rem 1rem",
+                  background: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.2)",
+                  borderRadius: "8px",
+                  alignItems: "center",
+                }}
+              >
+                <span className="faint" style={{ fontSize: "0.85rem", color: "#fca5a5" }}>
+                  {expired.length} expired credential{expired.length > 1 ? "s" : ""}
+                </span>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.3)" }}
+                  onClick={() =>
+                    setConfirmBulkAction({
+                      type: "clear-expired",
+                      commitments: expired.map((c) => c.commitment),
+                    })
+                  }
+                >
+                  Clear all expired
+                </button>
+              </div>
               {expired.map((c) => (
                 <CredCard
                   key={c.commitment}
@@ -289,6 +330,12 @@ function HolderInner() {
                   onProveBatch={() => setView({ kind: "batch", creds: selectedCreds })}
                   onClear={clearSelection}
                   onSelectEligible={selectEligible}
+                  onRemoveSelected={() =>
+                    setConfirmBulkAction({
+                      type: "remove-selected",
+                      commitments: selectedCommitments,
+                    })
+                  }
                 />
               )}
             </div>
@@ -393,6 +440,15 @@ function HolderInner() {
             toast.success(`Imported ${c.title}`);
           }}
           onClose={() => setImportPayload(null)}
+        />
+      )}
+
+      {confirmBulkAction && (
+        <BulkRemoveModal
+          type={confirmBulkAction.type}
+          count={confirmBulkAction.commitments.length}
+          onCancel={() => setConfirmBulkAction(null)}
+          onConfirm={() => executeBulkRemove(confirmBulkAction.commitments)}
         />
       )}
     </>

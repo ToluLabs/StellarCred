@@ -79,6 +79,7 @@ import { parseCorsOrigins } from "./config";
 import { createCorsMiddleware } from "./cors";
 import { RateLimiter } from "./rate-limit";
 import type { RecentCursor } from "./db";
+import { requireAuth } from "./auth";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -214,6 +215,15 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
   app.locals["rateLimiter"] = rateLimiter;
   app.use(rateLimiter.middleware());
 
+  // ── Auth guard ───────────────────────────────────────────────────────────
+  // requireAuth(undefined) → no-op; public mode, all endpoints open (default).
+  // requireAuth("secret")  → enforces Bearer / X-API-Key on guarded routes.
+  // Resolved from config first so tests can inject the key directly without
+  // touching the environment.
+  const envApiKey = process.env["API_KEY"]?.trim();
+  const apiKey = config?.apiKey ?? (envApiKey || undefined);
+  const guard = requireAuth(apiKey);
+
   // ── GET /health ──────────────────────────────────────────────────────────
   // Exposes ingester lag so operators can alert when the indexer falls behind.
   //
@@ -319,8 +329,11 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
   );
 
   // ── GET /claims?wallet=G… ────────────────────────────────────────────────
+  // Gated when API_KEY is set: per-wallet claim history makes per-holder
+  // correlation much easier than per-ledger chain queries.
   app.get(
     "/claims",
+    guard,
     asyncHandler(async (req, res) => {
       const wallet = req.query["wallet"];
       if (typeof wallet !== "string" || wallet.trim() === "") {
@@ -336,8 +349,10 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
   );
 
   // ── GET /stats ───────────────────────────────────────────────────────────
+  // Gated when API_KEY is set: reveals total verified-holder counts per type.
   app.get(
     "/stats",
+    guard,
     asyncHandler(async (_req, res) => {
       const stats = await db.stats();
       res.json({ stats });
@@ -347,6 +362,7 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
   // ── GET /recent?limit=20&cursor=<opaque> ──────────────────────────────────
   app.get(
     "/recent",
+    guard,
     asyncHandler(async (req, res) => {
       const rawLimit = parseInt(String(req.query["limit"] ?? DEFAULT_LIMIT), 10);
       const limit = isNaN(rawLimit) || rawLimit < 1
