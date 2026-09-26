@@ -21,12 +21,41 @@ function env(key: string, nextPublicKey?: string): string {
   );
 }
 
+// Single network selector (Issue #408): STELLARCRED_NETWORK /
+// NEXT_PUBLIC_STELLAR_NETWORK (testnet | mainnet | futurenet) picks a
+// coherent preset for RPC URL and network passphrase. Explicit overrides win.
+type StellarNetwork = "testnet" | "mainnet" | "futurenet";
+
+const NETWORK_PRESETS: Record<StellarNetwork, { rpcUrl: string; networkPassphrase: string }> = {
+  testnet: {
+    rpcUrl: "https://soroban-testnet.stellar.org",
+    networkPassphrase: "Test SDF Network ; September 2015",
+  },
+  mainnet: {
+    rpcUrl: "https://soroban.stellar.org",
+    networkPassphrase: "Public Global Stellar Network ; September 2015",
+  },
+  futurenet: {
+    rpcUrl: "https://soroban-futurenet.stellar.org",
+    networkPassphrase: "Test SDF Future Network ; October 2022",
+  },
+};
+
+function parseNetwork(raw: string | undefined): StellarNetwork {
+  const key = (raw ?? "").trim().toLowerCase();
+  if (key === "public" || key === "main") return "mainnet";
+  if (key === "testnet" || key === "mainnet" || key === "futurenet") return key;
+  return "testnet";
+}
+
+const _preset = NETWORK_PRESETS[parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))];
+
 let _config = {
   registryId: env("STELLARCRED_REGISTRY_ID", "NEXT_PUBLIC_PROOF_REGISTRY_ID"),
-  rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || "https://soroban-testnet.stellar.org",
+  rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || _preset.rpcUrl,
   networkPassphrase:
     env("STELLARCRED_NETWORK_PASSPHRASE", "NEXT_PUBLIC_NETWORK_PASSPHRASE") ||
-    "Test SDF Network ; September 2015",
+    _preset.networkPassphrase,
   baseUrl: env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") || "https://stellarcred.xyz",
   requestTimeoutMs: 10_000,
 };

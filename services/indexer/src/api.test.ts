@@ -7,11 +7,11 @@
 
 import request from "supertest";
 import type { Application } from "express";
-import { buildApp } from "./api";
+import { buildApp, serializeClaim } from "./api";
 import { createSqliteDb } from "./db";
-import type { Db } from "./db";
+import type { Db, ClaimRow } from "./db";
 import type { Config } from "./config";
-import type { Ingester, IngesterHealth } from "./ingester";
+import type { Ingester, IngesterHealth, IngesterMetrics } from "./ingester";
 
 import os from "os";
 import path from "path";
@@ -34,12 +34,22 @@ function makeIngester(overrides?: Partial<IngesterHealth>): Ingester {
     fetchFailures: 0,
     ...overrides,
   };
+  const metrics: IngesterMetrics = {
+    eventsProcessedTotal: 0,
+    fetchErrorsTotal: 0,
+    uptimeSeconds: 0,
+    dbWriteLatencySeconds: 0,
+    lag: -1,
+    ...overrides,
+  };
   return {
     tick: async () => 0,
     reconcile: async () => 0,
     start: () => {},
     stop: () => {},
+    shutdown: async () => {},
     getHealth: () => ({ ...health }),
+    getMetrics: () => ({ ...metrics }),
   };
 }
 
@@ -48,6 +58,7 @@ function makeConfig(sqlitePath: string): Config {
     stellarNetwork: "testnet",
     horizonUrl: "https://horizon-testnet.stellar.org",
     rpcUrl: "https://soroban-testnet.stellar.org",
+    networkPassphrase: "Test SDF Network ; September 2015",
     proofRegistryContractId: "CTEST",
     dbDriver: "sqlite",
     sqlitePath,
@@ -329,6 +340,101 @@ describe("GET /recent", () => {
   });
 });
 
+// ── /issuers/:issuer/stats ───────────────────────────────────────────────────
+// Reputation stats for one issuer, derived entirely from indexed events (#398).
+
+describe("GET /issuers/:issuer/stats", () => {
+  it("returns a zeroed row for an issuer with no indexed claims", async () => {
+    const res = await request(app).get("/issuers/GUNKNOWN/stats");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      issuer: "GUNKNOWN",
+      total: 0,
+      active: 0,
+      revoked: 0,
+      credential_types: [],
+      first_seen: null,
+    });
+  });
+
+  it("aggregates total/active/revoked, credential types, and first_seen across an issuer's claims", async () => {
+    const dbc = db as ReturnType<typeof createSqliteDb>;
+    dbc.upsertClaim({
+      wallet: "GA1",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 2000,
+      expiry: 9999999,
+      ledger_sequence: 1,
+      threshold: null,
+      revoked: 0,
+    });
+    dbc.upsertClaim({
+      wallet: "GA2",
+      credential_type: "age",
+      issuer: "GISSUER",
+      verified_at: 1000, // earlier than GA1's claim — should win as first_seen
+      expiry: 9999999,
+      ledger_sequence: 2,
+      threshold: 21,
+      revoked: 0,
+    });
+    dbc.upsertClaim({
+      wallet: "GA3",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 3000,
+      expiry: 9999999,
+      ledger_sequence: 3,
+      threshold: null,
+      revoked: 0,
+    });
+    dbc.revokeClaim("GA3", "kyc");
+
+    const res = await request(app).get("/issuers/GISSUER/stats");
+    expect(res.status).toBe(200);
+    expect(res.body.issuer).toBe("GISSUER");
+    expect(res.body.total).toBe(3);
+    expect(res.body.active).toBe(2);
+    expect(res.body.revoked).toBe(1);
+    expect(res.body.credential_types.sort()).toEqual(["age", "kyc"]);
+    expect(res.body.first_seen).toBe(1000);
+  });
+
+  it("does not mix up claims from a different issuer", async () => {
+    const dbc = db as ReturnType<typeof createSqliteDb>;
+    dbc.upsertClaim({
+      wallet: "GA1",
+      credential_type: "kyc",
+      issuer: "GISSUER_A",
+      verified_at: 1000,
+      expiry: 9999999,
+      ledger_sequence: 1,
+      threshold: null,
+      revoked: 0,
+    });
+    dbc.upsertClaim({
+      wallet: "GA2",
+      credential_type: "kyc",
+      issuer: "GISSUER_B",
+      verified_at: 1000,
+      expiry: 9999999,
+      ledger_sequence: 2,
+      threshold: null,
+      revoked: 0,
+    });
+
+    const res = await request(app).get("/issuers/GISSUER_A/stats");
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+  });
+
+  it("returns 400 for an empty issuer path parameter", async () => {
+    const res = await request(app).get("/issuers/%20/stats");
+    expect(res.status).toBe(400);
+  });
+});
+
 // ── 404 ───────────────────────────────────────────────────────────────────────
 
 describe("unknown routes", () => {
@@ -417,5 +523,135 @@ describe("CORS & Rate Limiting integration in API", () => {
       .get("/stats")
       .set("X-Forwarded-For", "203.0.113.99");
     expect(otherIpRes.status).toBe(200);
+  });
+});
+
+// ── Response schema (#349) ───────────────────────────────────────────────────
+// Pins the wire shape /claims and /recent claims are serialized to, and
+// specifically covers the cross-backend quirk that motivated it: `pg` parses
+// Postgres BIGINT columns as strings, while better-sqlite3 hands back plain
+// numbers for the same columns. serializeClaim is the one place that gets
+// normalized, so it's tested directly against a string-typed row (simulating
+// what the Postgres adapter's `pg.Pool` actually returns) rather than only
+// through the SQLite-backed integration tests below, which would never
+// exercise the string case at all.
+
+describe("claim response schema", () => {
+  it("normalizes a Postgres-shaped row (BIGINT columns as strings) to numbers", () => {
+    // Mirrors exactly what `pg` hands back for BIGINT/BIGSERIAL columns —
+    // not what ClaimRow's TypeScript type declares, which is the point.
+    const pgShapedRow = {
+      id: "7",
+      wallet: "GALICE",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: "1700000000",
+      expiry: "1999999999",
+      ledger_sequence: "123456789",
+      threshold: "50000",
+      revoked: 0,
+    } as unknown as ClaimRow;
+
+    const serialized = serializeClaim(pgShapedRow);
+
+    expect(serialized).toEqual({
+      id: 7,
+      wallet: "GALICE",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 1700000000,
+      expiry: 1999999999,
+      ledger_sequence: 123456789,
+      threshold: 50000,
+      revoked: 0,
+    });
+    for (const field of [
+      "id",
+      "verified_at",
+      "expiry",
+      "ledger_sequence",
+      "threshold",
+      "revoked",
+    ] as const) {
+      expect(typeof serialized[field]).toBe("number");
+    }
+  });
+
+  it("passes a null threshold through as null, not 0 or NaN", () => {
+    const row = {
+      id: "1",
+      wallet: "GALICE",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: "1000",
+      expiry: "9999999",
+      ledger_sequence: "1",
+      threshold: null,
+      revoked: 0,
+    } as unknown as ClaimRow;
+
+    expect(serializeClaim(row).threshold).toBeNull();
+  });
+
+  it("produces identical output whether the row's numeric fields arrive as strings or numbers", () => {
+    const numeric: ClaimRow = {
+      id: 7,
+      wallet: "GALICE",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 1700000000,
+      expiry: 1999999999,
+      ledger_sequence: 123456789,
+      threshold: 50000,
+      revoked: 0,
+    };
+    const stringified = {
+      ...numeric,
+      id: String(numeric.id),
+      verified_at: String(numeric.verified_at),
+      expiry: String(numeric.expiry),
+      ledger_sequence: String(numeric.ledger_sequence),
+      threshold: String(numeric.threshold),
+    } as unknown as ClaimRow;
+
+    expect(serializeClaim(stringified)).toEqual(serializeClaim(numeric));
+  });
+
+  it("GET /claims and GET /recent both return the exact documented key set — no leaked internal columns", async () => {
+    (db as ReturnType<typeof createSqliteDb>).upsertClaim({
+      wallet: "GALICE",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 1000,
+      expiry: 9999999,
+      ledger_sequence: 42,
+      threshold: 500,
+      revoked: 0,
+    });
+
+    const expectedKeys = [
+      "id",
+      "wallet",
+      "credential_type",
+      "issuer",
+      "verified_at",
+      "expiry",
+      "ledger_sequence",
+      "threshold",
+      "revoked",
+    ].sort();
+
+    const claimsRes = await request(app).get("/claims?wallet=GALICE");
+    expect(claimsRes.status).toBe(200);
+    expect(claimsRes.body.claims).toHaveLength(1);
+    expect(Object.keys(claimsRes.body.claims[0]).sort()).toEqual(expectedKeys);
+    for (const field of ["id", "verified_at", "expiry", "ledger_sequence", "revoked"]) {
+      expect(typeof claimsRes.body.claims[0][field]).toBe("number");
+    }
+
+    const recentRes = await request(app).get("/recent");
+    expect(recentRes.status).toBe(200);
+    expect(recentRes.body.claims).toHaveLength(1);
+    expect(Object.keys(recentRes.body.claims[0]).sort()).toEqual(expectedKeys);
   });
 });

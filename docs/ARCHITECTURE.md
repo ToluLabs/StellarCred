@@ -161,6 +161,53 @@ sequenceDiagram
     Wallet-->>Browser: Proof Submitted
 ```
 
+### Client-side proving runs in a dedicated Web Worker
+
+Witness generation and proof orchestration execute in a dedicated worker
+(`frontend/lib/proof-worker.ts`), not on the UI thread. Even with multithreaded
+bb.js, the surrounding work — decoding the witness response, constructing the
+UltraHonk backend, driving `generateProof`, and serializing ~14.5 kB of proof
+bytes — was enough to jank the progress UI mid-proof.
+
+```
+main thread (UI)                        prover worker
+────────────────                        ─────────────
+{ command: "prove", jobId, request } →  POST /api/witness + hex decode
+                                        backend construction (cached per type)
+← { event: "progress", stage }          UltraHonk proving via bb.js
+← { event: "result", proof, … }         proof serialization (transferred)
+{ command: "cancel", jobId }         →  aborts the witness fetch, destroys
+                                        the backend, stopping the proof
+```
+
+- **Protocol** — `frontend/lib/proof-protocol.ts` is types-only, shared by both
+  sides, so it can never create a runtime edge between the threads.
+- **Progress** — the worker posts one message per stage (`witness` → `circuit`
+  → `proof`), which is what keeps the holder page's progress bar and elapsed
+  timer animating during the heaviest operation.
+- **Cancellation** — an `AbortSignal` cannot cross a worker boundary, so
+  `lib/proof-client.ts` translates an abort into a `cancel` command and rejects
+  locally with the same `AbortError` the inline path throws. The worker aborts
+  the in-flight witness fetch and destroys the WASM backend, which is what
+  actually stops bb.js.
+- **Cross-origin isolation** — a dedicated worker created by a
+  `crossOriginIsolated` page is itself cross-origin isolated, so
+  `SharedArrayBuffer` remains available inside it and bb.js keeps its
+  multithreaded path. `lib/proof.ts` reads `globalThis.crossOriginIsolated`
+  (not `window`) for exactly this reason, and the worker's `ready` message
+  reports the values it observed so a broken COOP/COEP deployment is visible in
+  the console rather than silently single-threading.
+- **Fallback** — when Workers are unavailable (unit tests, a worker blocked by
+  CSP, a worker script that fails to load) the same request runs inline on the
+  main thread through the identical `lib/proof.ts` engine, so behaviour does not
+  depend on which path was taken.
+- **Why the worker is a file under `public/`** — `scripts/build-proof-worker.mjs`
+  bundles the TypeScript source into `public/workers/proof-worker.js` on
+  predev/prebuild, mirroring how `copy-bb.mjs` stages bb.js. Next's App Router
+  runs every app-graph module through `next-flight-client-module-loader`, which
+  empties a webpack worker chunk, so the worker is served as a plain native ES
+  module instead. The TypeScript source stays the single source of truth.
+
 ## Consuming Protocols Flow
 
 This sequence diagram shows how third-party protocols (dApps) consume verified credentials by checking the ProofRegistry.

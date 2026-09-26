@@ -22,11 +22,33 @@
 //!
 //! `submit_aggregate_proof` verifies a single aggregate proof covering N
 //! credential types (N=2 PoC: KYC + age) and stores all claims atomically.
+//!
+//! Privileged actions are governed by role-based access control (RBAC): the
+//! constructor seeds the `admin`, `upgrader` and `pauser` roles with the
+//! deployer address, and each privileged function is guarded by the role it
+//! maps to (`upgrade` → `upgrader`, `pause`/`unpause` → `pauser`,
+//! `migrate_record` → `admin`, `set_admin` → root admin). Roles are stored as a
+//! `Map<Symbol, Address>` (role name → current holder); the root admin can
+//! delegate or rotate holders via `grant_role` / `revoke_role`, and anyone can
+//! query membership with `has_role`.
 
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
     symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Val, Vec,
 };
+
+// ── Contract versioning ──────────────────────────────────────────────────────
+// Semantic version: MAJOR.MINOR.PATCH
+// Increment MAJOR on breaking changes (new entry points, changed ABI)
+// Increment MINOR on additive changes (new events, new query endpoints)
+// Increment PATCH on bug fixes with no ABI changes
+const CONTRACT_VERSION: u32 = 1_000_000; // 1.0.0 encoded as (major * 1000000) + (minor * 1000) + patch
+
+// ── Data schema versioning ──────────────────────────────────────────────────────
+// ProofRecord schema versions: used for forward-compatible migrations.
+// Increment when ProofRecord structure changes (fields added, removed, or reordered).
+// Current schema: includes vk_version, issuer, threshold, revoked, verified_at, expiry.
+const PROOF_RECORD_SCHEMA_VERSION: u32 = 1;
 
 // ── Event topic constants ────────────────────────────────────────────────────
 
@@ -41,7 +63,7 @@ use soroban_sdk::{
 
 /// Payload emitted when a proof is successfully verified and stored.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EventProofSubmitted {
     pub holder: Address,
     pub issuer: Address,
@@ -51,27 +73,70 @@ pub struct EventProofSubmitted {
 
 /// Payload emitted when an issuer revokes a holder's proof.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EventProofRevoked {
     pub holder: Address,
     pub issuer: Address,
     pub revoked_at: u64,
 }
 
-/// Payload emitted when submissions are paused by admin.
+/// Payload emitted when submissions are paused.
+/// Topics: ("proof_reg", "paused")
+///
+/// The `admin` field carries the address that performed the pause — under RBAC
+/// this is the holder of the `pauser` role, which may differ from the root
+/// admin. The field name is kept as `admin` to preserve the event ABI that
+/// existing indexers parse.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EventPaused {
     pub admin: Address,
     pub paused_at: u64,
 }
 
-/// Payload emitted when submissions are unpaused by admin.
+/// Payload emitted when submissions are unpaused.
+/// Topics: ("proof_reg", "unpaused")
+///
+/// The `admin` field carries the address that performed the unpause — under
+/// RBAC this is the holder of the `pauser` role (see [`EventPaused`]).
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EventUnpaused {
     pub admin: Address,
     pub unpaused_at: u64,
+}
+
+/// Payload emitted when the contract is upgraded (new WASM deployed).
+/// Topics: ("proof_reg", "upgraded")
+#[contracttype]
+#[derive(Clone)]
+pub struct EventContractUpgraded {
+    pub admin: Address,
+    pub new_wasm_hash: BytesN<32>,
+    pub upgraded_at: u64,
+    /// Previous contract version (encoded as major * 1000000 + minor * 1000 + patch)
+    pub from_version: u32,
+    /// New contract version (encoded as major * 1000000 + minor * 1000 + patch)
+    pub to_version: u32,
+}
+
+/// Payload emitted when a holder grants a verifier delegated read access
+/// (#396). `credential_type` is already in the event topic tuple, matching
+/// `EventProofSubmitted`'s convention, so it isn't repeated here.
+#[contracttype]
+#[derive(Clone)]
+pub struct EventVerificationGranted {
+    pub holder: Address,
+    pub verifier: Address,
+    pub expiry: u64,
+}
+
+/// Payload emitted when a holder revokes a previously-granted delegation.
+#[contracttype]
+#[derive(Clone)]
+pub struct EventVerificationRevoked {
+    pub holder: Address,
+    pub verifier: Address,
 }
 
 // Persistent-entry lifetime management
@@ -163,10 +228,21 @@ pub struct ProofSubmission {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    /// RBAC: role name (Symbol) → current holder (Address).
+    Roles,
     Verifier,
     IssuerRegistry,
     Paused,
     Proof(Address, Symbol),
+    /// Tracks the schema version of stored ProofRecords.
+    /// Used for forward-compatible migrations when ProofRecord shape changes.
+    ProofRecordSchemaVersion,
+    /// Timestamp of the last data migration (for audit trail).
+    LastMigrationTimestamp,
+    /// (holder, verifier, credential_type) -> expiry (unix seconds). A
+    /// scoped, time-boxed grant letting `verifier` read `holder`'s
+    /// `credential_type` result via `check_delegated_verification` (#396).
+    Delegation(Address, Address, Symbol),
 }
 
 #[contracterror]
@@ -186,6 +262,10 @@ pub enum Error {
     SubmissionsPaused = 11,
     /// `expiry` is not in the future, or is too far in the future.
     InvalidExpiry = 12,
+    /// The caller is not the holder of the role required by this function.
+    RoleNotHeld = 13,
+    /// `revoke_role` named an address that is not the current holder of the role.
+    RoleHolderMismatch = 14,
 }
 
 #[contract]
@@ -208,18 +288,58 @@ impl ProofRegistry {
             .instance()
             .set(&DataKey::IssuerRegistry, &issuer_registry);
         env.storage().instance().set(&DataKey::Paused, &false);
+        // Seed the admin, upgrader and pauser roles with the deployer so the
+        // contract works out of the box; each role can be delegated to a
+        // different key via `grant_role` so upgrade power and pause power are
+        // scoped and rotatable independently of day-to-day administration.
+        let mut roles: Map<Symbol, Address> = Map::new(&env);
+        roles.set(symbol_short!("admin"), admin.clone());
+        roles.set(symbol_short!("upgrader"), admin.clone());
+        roles.set(symbol_short!("pauser"), admin);
+        env.storage().instance().set(&DataKey::Roles, &roles);
     }
 
+    /// Returns the contract version as an encoded u32.
+    /// Encoding: (major * 1000000) + (minor * 1000) + patch
+    /// Example: 1.2.3 -> 1002003
+    pub fn version(env: Env) -> u32 {
+        let _ = env; // Silence unused warning
+        CONTRACT_VERSION
+    }
+
+    /// Replace the contract wasm. Upgrader-role only — the holder of the
+    /// `upgrader` role may be a different key than the root admin, so upgrade
+    /// power can be delegated or rotated independently of other governance.
+    #[allow(deprecated)]
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        let admin: Address = env
-            .storage()
+        Self::require_role(&env, &symbol_short!("upgrader"));
+
+        let from_version = CONTRACT_VERSION;
+        env.events().publish(
+            (symbol_short!("proof_reg"), symbol_short!("upgraded")),
+            EventContractUpgraded {
+                admin: Self::roles(&env).get(symbol_short!("upgrader")).unwrap(),
+                new_wasm_hash: new_wasm_hash.clone(),
+                upgraded_at: env.ledger().timestamp(),
+                from_version,
+                to_version: from_version,
+            },
+        );
+
+        env.storage()
             .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
-        admin.require_auth();
+            .set(&DataKey::LastMigrationTimestamp, &env.ledger().timestamp());
+
         env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
+    /// Transfer the root admin to `new_admin`. Root-admin only.
+    ///
+    /// This is a wholesale governance transfer: the `Admin` key and every role
+    /// currently held by the old root admin move to `new_admin`, so the old
+    /// root loses all privileged access (including upgrade and pause power)
+    /// exactly as it did before roles existed. Fine-grained delegation
+    /// afterwards uses `grant_role` / `revoke_role`.
     pub fn set_admin(env: Env, new_admin: Address) {
         let admin: Address = env
             .storage()
@@ -227,6 +347,14 @@ impl ProofRegistry {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
         admin.require_auth();
+
+        let mut roles: Map<Symbol, Address> = Self::roles(&env);
+        for (role, holder) in roles.iter() {
+            if holder == admin {
+                roles.set(role, new_admin.clone());
+            }
+        }
+        env.storage().instance().set(&DataKey::Roles, &roles);
         env.storage().instance().set(&DataKey::Admin, &new_admin);
     }
 
@@ -237,19 +365,62 @@ impl ProofRegistry {
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
     }
 
-    #[allow(deprecated)]
-    pub fn pause(env: Env) {
-        let admin: Address = env
+    /// Assign `address` as the holder of `role`, replacing any previous holder.
+    /// Root-admin only. Use this to delegate or rotate a role's key — e.g. hand
+    /// the `upgrader` role to a release engineer, or the `pauser` role to an
+    /// operations key — so each privileged capability is scoped and rotatable
+    /// independently.
+    pub fn grant_role(env: Env, role: Symbol, address: Address) {
+        Self::require_admin(&env);
+        let mut roles: Map<Symbol, Address> = Self::roles(&env);
+        roles.set(role, address);
+        env.storage().instance().set(&DataKey::Roles, &roles);
+    }
+
+    /// Remove `address` as the holder of `role`. Root-admin only.
+    ///
+    /// The named address must be the current holder (revoking a different
+    /// address is a no-op risk, so it is rejected with `RoleHolderMismatch`
+    /// instead). A role with no holder is simply unassigned — no one can act
+    /// under it until it is granted again.
+    pub fn revoke_role(env: Env, role: Symbol, address: Address) {
+        Self::require_admin(&env);
+        let mut roles: Map<Symbol, Address> = Self::roles(&env);
+        match roles.get(role.clone()) {
+            Some(current) if current == address => {
+                roles.remove(role);
+                env.storage().instance().set(&DataKey::Roles, &roles);
+            }
+            Some(_) => panic_with_error!(&env, Error::RoleHolderMismatch),
+            // Unassigned role — nothing to revoke.
+            None => {}
+        }
+    }
+
+    /// True iff `address` currently holds `role`.
+    pub fn has_role(env: Env, role: Symbol, address: Address) -> bool {
+        match env
             .storage()
             .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
-        admin.require_auth();
+            .get::<_, Map<Symbol, Address>>(&DataKey::Roles)
+        {
+            Some(roles) => roles.get(role) == Some(address),
+            None => false,
+        }
+    }
+
+    /// Pause new submissions. Pauser-role only — the `pauser` role may be held
+    /// by a different key than the root admin, so emergency pause power can be
+    /// delegated (e.g. to an operations or security key) without handing over
+    /// full administration.
+    #[allow(deprecated)]
+    pub fn pause(env: Env) {
+        let pauser = Self::require_role(&env, &symbol_short!("pauser"));
         env.storage().instance().set(&DataKey::Paused, &true);
         env.events().publish(
             (symbol_short!("proof_reg"), symbol_short!("paused")),
             EventPaused {
-                admin,
+                admin: pauser,
                 paused_at: env.ledger().timestamp(),
             },
         );
@@ -257,17 +428,12 @@ impl ProofRegistry {
 
     #[allow(deprecated)]
     pub fn unpause(env: Env) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
-        admin.require_auth();
+        let pauser = Self::require_role(&env, &symbol_short!("pauser"));
         env.storage().instance().set(&DataKey::Paused, &false);
         env.events().publish(
             (symbol_short!("proof_reg"), symbol_short!("unpaused")),
             EventUnpaused {
-                admin,
+                admin: pauser,
                 unpaused_at: env.ledger().timestamp(),
             },
         );
@@ -535,6 +701,92 @@ impl ProofRegistry {
         }
     }
 
+    /// Grant `verifier` a scoped, time-boxed right to read `holder`'s
+    /// `credential_type` result via `check_delegated_verification`, until
+    /// `expiry` (#396). Purely additive: `is_verified` remains a public read
+    /// exactly as before for every caller — this is a discoverable,
+    /// on-chain consent record apps can condition *their own* gated
+    /// experiences on, not a change to the underlying read's semantics
+    /// (Soroban storage has no confidentiality to gate in the first place).
+    /// Granting the same (holder, verifier, credential_type) again simply
+    /// overwrites the previous expiry.
+    #[allow(deprecated)]
+    pub fn grant_verification(
+        env: Env,
+        holder: Address,
+        verifier: Address,
+        credential_type: Symbol,
+        expiry: u64,
+    ) {
+        holder.require_auth();
+        Self::validate_expiry(&env, expiry);
+
+        let key = DataKey::Delegation(holder.clone(), verifier.clone(), credential_type.clone());
+        env.storage().persistent().set(&key, &expiry);
+        Self::bump_ttl(&env, &key, expiry);
+
+        env.events().publish(
+            (
+                symbol_short!("proof_reg"),
+                symbol_short!("dlg_grant"),
+                credential_type,
+            ),
+            EventVerificationGranted {
+                holder,
+                verifier,
+                expiry,
+            },
+        );
+    }
+
+    /// Revoke a previously-granted delegation. The holder authorizes their
+    /// own revocation, same as `revoke_proof`. A no-op (not an error) if no
+    /// such delegation exists.
+    #[allow(deprecated)]
+    pub fn revoke_verification(env: Env, holder: Address, verifier: Address, credential_type: Symbol) {
+        holder.require_auth();
+        env.storage().persistent().remove(&DataKey::Delegation(
+            holder.clone(),
+            verifier.clone(),
+            credential_type.clone(),
+        ));
+        env.events().publish(
+            (
+                symbol_short!("proof_reg"),
+                symbol_short!("dlg_revok"),
+                credential_type,
+            ),
+            EventVerificationRevoked { holder, verifier },
+        );
+    }
+
+    /// `verifier`'s delegated view of `holder`'s `credential_type` result
+    /// (#396): returns `is_verified`'s own `(valid, verified_at, expiry)` —
+    /// but only if `verifier` currently holds a non-expired
+    /// `grant_verification` delegation from `holder` for that credential
+    /// type; otherwise `(false, 0, 0)`, mirroring `is_verified`'s own
+    /// "never submitted" shape so callers can't distinguish "no delegation"
+    /// from "no claim" by shape alone (deliberately — see the module-level
+    /// note on this not being a confidentiality boundary).
+    pub fn check_delegated_verification(
+        env: Env,
+        holder: Address,
+        verifier: Address,
+        credential_type: Symbol,
+    ) -> (bool, u64, u64) {
+        let now = env.ledger().timestamp();
+        let delegation_key =
+            DataKey::Delegation(holder.clone(), verifier, credential_type.clone());
+        let delegated = match env.storage().persistent().get::<_, u64>(&delegation_key) {
+            Some(expiry) => expiry > now,
+            None => false,
+        };
+        if !delegated {
+            return (false, 0, 0);
+        }
+        Self::is_verified(env, holder, credential_type, None)
+    }
+
     pub fn check_claim(
         env: Env,
         holder: Address,
@@ -627,6 +879,8 @@ impl ProofRegistry {
         }
     }
 
+    /// Revoke an existing proof before expiry. The caller must be both a
+    /// currently trusted issuer and the issuer stored on that proof record.
     #[allow(deprecated)]
     pub fn revoke(env: Env, issuer: Address, holder: Address, credential_type: Symbol) {
         issuer.require_auth();
@@ -642,6 +896,9 @@ impl ProofRegistry {
             .persistent()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::ProofNotFound));
+        if record.issuer.as_ref() != Some(&issuer) {
+            panic_with_error!(&env, Error::NotAuthorized);
+        }
         record.revoked = true;
         env.storage().persistent().set(&key, &record);
         env.storage()
@@ -664,13 +921,20 @@ impl ProofRegistry {
         );
     }
 
+    /// Admin-role only. Migration from the legacy 4-field `ProofRecord` layout (no
+    /// `issuer`, no `vk_version`) to the current 6-field layout. Reads the
+    /// stored map as a generic `Map<Symbol, Val>` to determine the field count
+    /// without triggering the struct-deserialisation panic that would occur on
+    /// a shape mismatch.
+    ///
+    /// - Idempotent: records already in the current 6-field shape are a no-op.
+    /// - Migrated records are written with `issuer: None` so they fail closed
+    ///   under an active `trusted_issuers` filter (there is no issuer to check
+    ///   against) and `vk_version: 0` (the "latest at submission time"
+    ///   sentinel, which is what legacy records were verified against).
+    /// - Only the holder of the `admin` role may call this function.
     pub fn migrate_record(env: Env, holder: Address, credential_type: Symbol) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
-        admin.require_auth();
+        Self::require_role(&env, &symbol_short!("admin"));
 
         let key = DataKey::Proof(holder.clone(), credential_type.clone());
 
@@ -702,6 +966,56 @@ impl ProofRegistry {
 
     pub fn issuer_registry_address(env: Env) -> Address {
         Self::issuer_registry(&env)
+    }
+
+    /// Returns the current ProofRecord schema version.
+    /// Used to detect when data migrations are needed.
+    pub fn proof_record_schema_version(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::ProofRecordSchemaVersion)
+            .unwrap_or(PROOF_RECORD_SCHEMA_VERSION)
+    }
+
+    /// Returns the timestamp of the last data migration, or 0 if none has occurred.
+    /// Useful for audit trails and monitoring schema evolution.
+    pub fn last_migration_timestamp(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::LastMigrationTimestamp)
+            .unwrap_or(0)
+    }
+
+    /// Admin-only: triggers a data migration (for future schema changes).
+    /// This is a placeholder that can be extended when ProofRecord structure changes.
+    /// Currently, this function:
+    /// 1. Records the current schema version
+    /// 2. Emits an event for audit trail purposes
+    /// 3. Can be extended to transform existing ProofRecords if needed
+    #[allow(deprecated)]
+    pub fn migrate_data(env: Env) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+        admin.require_auth();
+
+        // Ensure schema version is recorded
+        let current_version = Self::proof_record_schema_version(env.clone());
+        if current_version != PROOF_RECORD_SCHEMA_VERSION {
+            env.storage()
+                .instance()
+                .set(&DataKey::ProofRecordSchemaVersion, &PROOF_RECORD_SCHEMA_VERSION);
+        }
+
+        // Record migration timestamp
+        env.storage()
+            .instance()
+            .set(&DataKey::LastMigrationTimestamp, &env.ledger().timestamp());
+
+        // Future: Add ProofRecord transformation logic here if structure changes
+        // For now, this serves as a checkpoint for audit trail
     }
 
     fn validate_expiry(env: &Env, expiry: u64) {
@@ -856,6 +1170,36 @@ impl ProofRegistry {
             panic_with_error!(env, Error::SubmissionsPaused);
         }
     }
+
+    fn roles(env: &Env) -> Map<Symbol, Address> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Roles)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
+    }
+
+    /// Require `address` to be authenticated as the current holder of `role`,
+    /// returning the holder so callers can attribute an action to it.
+    fn require_role(env: &Env, role: &Symbol) -> Address {
+        let holder: Address = Self::roles(env)
+            .get(role.clone())
+            .unwrap_or_else(|| panic_with_error!(env, Error::RoleNotHeld));
+        holder.require_auth();
+        holder
+    }
+
+    /// Require the root admin key to be authenticated. Used by the role
+    /// management functions (`grant_role` / `revoke_role`), which stay on the
+    /// bootstrap trust anchor rather than a delegatable role.
+    fn require_admin(env: &Env) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized));
+        admin.require_auth();
+    }
 }
 
+#[cfg(test)]
 mod test;

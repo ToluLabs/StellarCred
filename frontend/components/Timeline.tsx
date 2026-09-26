@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { IconCheck, IconExternalLink, IconAlertTriangle, IconCertificate, IconCpu, IconCloudUpload } from "@tabler/icons-react";
+import { IconCheck, IconExternalLink, IconAlertTriangle, IconCertificate, IconCpu, IconCloudUpload, IconShieldCheck } from "@tabler/icons-react";
 import { EXPLORER_TX } from "@/lib/stellar";
 import type { TimelineEvent } from "@/lib/useProofTimeline";
 
@@ -15,6 +15,7 @@ export function Timeline({ events }: TimelineProps) {
     return {
       issued: { title: "Credential Issued", icon: <IconCertificate size={14} />, color: "var(--accent)" },
       generated: { title: "Proof Generated", icon: <IconCpu size={14} />, color: "var(--accent)" },
+      preflight: { title: "Preflight Simulation Passed", icon: <IconShieldCheck size={14} />, color: "var(--accent)" },
       submitted: { title: "Proof Submitted", icon: <IconCloudUpload size={14} />, color: "var(--accent)" },
       verified: { title: "On-chain Verified", icon: <IconCheck size={14} />, color: "var(--accent)" },
       expired: { title: "Credential Expired", icon: <IconAlertTriangle size={14} />, color: "var(--danger)" },

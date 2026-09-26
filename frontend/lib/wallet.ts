@@ -26,7 +26,9 @@ import {
 import { NETWORK, NETWORK_PASSPHRASE } from "./stellar";
 
 const APP_NETWORK =
-  NETWORK === "public" ? WalletNetwork.PUBLIC : WalletNetwork.TESTNET;
+  NETWORK === "mainnet" ? WalletNetwork.PUBLIC :
+  NETWORK === "futurenet" ? WalletNetwork.TESTNET : // kit has no futurenet; fall back to testnet signing
+  WalletNetwork.TESTNET;
 
 const CONNECT_TIMEOUT_MS = 30_000;
 const APP_BASE_URL = process.env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? "https://stellarcred.xyz";

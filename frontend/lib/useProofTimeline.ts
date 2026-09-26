@@ -4,7 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import type { Credential } from "./credential";
 import { isStorageAvailable } from "./safe-storage";
 
-export type TimelineEventStage = "issued" | "generated" | "submitted" | "verified" | "expired";
+export type TimelineEventStage =
+  | "issued"
+  | "generated"
+  | "preflight"
+  | "submitted"
+  | "verified"
+  | "expired";
 
 export interface TimelineEvent {
   stage: TimelineEventStage;

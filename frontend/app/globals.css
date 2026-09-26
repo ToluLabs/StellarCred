@@ -1,7 +1,7 @@
-/* ===========================================================================
+/* =====
    StellarCred - Premium design system
    Dark surfaces with green ZK accent, Space Grotesk headings, dot-grid bg.
-   =========================================================================== */
+   ===== */
 
 :root {
   color-scheme: dark;
@@ -58,13 +58,13 @@
   --card: #ffffff;
   --card-hover: #f3f3f1;
   --text: #111110;
-  --muted: #6f6e6b;
+  --muted: #686764;
   --faint: #736f69;
   --border: #e5e3de;
   --border-strong: #c8c6c1;
   --accent: #1a7a4a;
   --accent-dim: #135c37;
-  --accent-soft: rgba(26, 122, 74, 0.06);  /* Light green surface tint */
+  --accent-soft: rgba(26, 122, 74, 0.06);
   --accent-glow: rgba(26, 122, 74, 0.12);
   --on-accent: #ffffff;
 }
@@ -977,6 +977,24 @@ textarea:focus-visible {
   }
 }
 
+/* ---- Onboarding Tour -------------------------------------------------------- */
+
+.tour-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.55);cursor:pointer;animation:tour-fade-in 0.3s ease}
+.tour-highlight{position:relative;z-index:9999!important;box-shadow:0 0 0 4px var(--accent,#3ecf8e),0 0 24px rgba(62,207,142,0.3)!important;border-radius:var(--radius,8px)!important}
+.tour-tooltip{position:fixed;z-index:10000;background:var(--bg-raised,#1a1a2e);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:var(--radius-lg,12px);padding:1.5rem;box-shadow:0 16px 48px rgba(0,0,0,0.4);animation:tour-slide-up 0.3s ease;min-width:280px}
+.tour-close{position:absolute;top:0.75rem;right:0.75rem;background:none;border:none;color:var(--muted,#888);cursor:pointer;padding:4px;border-radius:4px;display:grid;place-items:center}
+.tour-close:hover{color:var(--text,#fff);background:rgba(255,255,255,0.06)}
+.tour-step-indicator{font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted,#888);margin-bottom:0.75rem}
+.tour-title{font-size:1.1rem;font-weight:600;margin-bottom:0.5rem;color:var(--text,#fff)}
+.tour-body{font-size:0.875rem;line-height:1.6;color:var(--muted,#999);margin-bottom:1.25rem}
+.tour-actions{display:flex;gap:0.5rem;align-items:center}
+.tour-skip{display:block;margin-top:0.75rem;background:none;border:none;color:var(--muted,#777);font-size:0.75rem;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.tour-skip:hover{color:var(--text,#fff)}
+@keyframes tour-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes tour-slide-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---- Copy Button ------------------------------------------------------------ */
+
 .copy-button {
   display: inline-flex;
   align-items: center;
@@ -1137,8 +1155,6 @@ textarea:focus-visible {
   overflow-y: auto;
   box-shadow: var(--shadow-card);
   animation: modal-in 0.2s var(--ease) both;
-  /* Programmatically focused on open (for the Tab trap) — a focus ring
-     around the whole dialog on open would look like a rendering glitch. */
   outline: none;
 }
 
@@ -1166,4 +1182,396 @@ textarea:focus-visible {
     bottom: 1rem;
     max-width: none;
   }
+}
+
+/* ===========================================================================
+   CredCard component styles (extracted from inline styles)
+   =========================================================================== */
+
+.cred-card {
+  padding: var(--spacing-xl, 1rem) var(--spacing-2xl, 1.25rem);
+}
+
+.cred-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg, 0.75rem);
+  flex-wrap: wrap;
+}
+
+.cred-card__info {
+  min-width: 0;
+  flex: 1;
+}
+
+.cred-card__title {
+  font-weight: 600;
+  font-size: var(--type-lg, 0.9rem);
+}
+
+.cred-card__meta {
+  font-size: var(--type-md, 0.75rem);
+  color: var(--faint);
+  margin-top: var(--spacing-xs, 0.15rem);
+}
+
+.cred-card__expires {
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+.cred-card__tx-link {
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.cred-card__expired {
+  color: var(--danger);
+  opacity: 0.8;
+}
+
+.cred-card__expiry {
+  margin-top: var(--spacing-xs, 0.1rem);
+}
+
+.cred-card__expired-label {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.cred-card__expiring {
+  color: var(--warn);
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .card-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* ===========================================================================
+   ConfigBanner component styles (extracted from inline styles)
+   =========================================================================== */
+
+.config-banner {
+  display: flex;
+  gap: var(--spacing-md, 0.6rem);
+  padding: var(--spacing-md, 0.7rem) var(--spacing-xl, 1rem);
+  margin-bottom: var(--spacing-3xl, 1.5rem);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-soft);
+  font-size: var(--type-base, 0.8125rem);
+  align-items: flex-start;
+}
+
+.config-banner__icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.config-banner__text {
+  color: var(--muted);
+}
+
+.config-banner__strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.config-banner__code {
+  font-family: var(--font-mono), monospace;
+  font-size: var(--type-sm, 0.72rem);
+}
+
+/* ===========================================================================
+   Theme toggle button styles (extracted from inline styles)
+   =========================================================================== */
+
+.theme-toggle-btn {
+  background: none;
+  border: none;
+  padding: var(--spacing-sm, 0.25rem) var(--spacing-md, 0.5rem);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-normal, 0.15s var(--ease)), background var(--transition-normal, 0.15s var(--ease));
+}
+
+.theme-toggle-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.theme-toggle-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ===========================================================================
+   SiteNav badge styles (extracted from inline styles)
+   =========================================================================== */
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm, 0.35rem);
+  font-size: var(--type-sm, 0.8125rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+  padding: var(--spacing-sm, 0.4rem) var(--spacing-md, 0.8rem);
+  border-radius: 999px;
+  transition: color var(--transition-normal, 0.15s var(--ease)), background var(--transition-normal, 0.15s var(--ease));
+}
+
+.nav-badge:hover {
+  color: var(--text);
+}
+
+.nav-badge.active {
+  color: var(--accent);
+  background: rgba(62, 207, 142, 0.1);
+}
+
+/* ===========================================================================
+   Modal component styles (extracted from inline styles)
+   =========================================================================== */
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg, 1rem);
+  flex-wrap: wrap;
+}
+
+.modal-close-btn {
+  padding: var(--spacing-xs, 0.3rem) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-lg, 1.25rem);
+  height: var(--spacing-lg, 1.25rem);
+}
+
+/* ===========================================================================
+   Footer layout styles (extracted from inline styles)
+   =========================================================================== */
+
+.site-footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md, 1rem);
+}
+
+.site-footer-inner .row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xl, 1.5rem);
+}
+
+/* ===========================================================================
+   Eyebrow label styles (for documentation and section headers)
+   =========================================================================== */
+
+.eyebrow-block {
+  display: block;
+  margin-bottom: var(--spacing-sm, 0.5rem);
+}
+
+/* ===========================================================================
+   Large CTA section styles (used in homepage)
+   =========================================================================== */
+
+.cta-section {
+  margin-top: var(--spacing-5xl, 8rem);
+}
+
+.cta-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 1rem);
+}
+
+.cta-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: rgba(62, 207, 142, 0.08);
+  border: 1px solid rgba(62, 207, 142, 0.18);
+  display: grid;
+  place-items: center;
+}
+
+.cta-cta {
+  align-self: flex-start;
+}
+
+.cta-flow {
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  font-size: var(--type-sm, 0.8rem);
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+/* ===========================================================================
+   Hero section styles (used in homepage)
+   =========================================================================== */
+
+.hero-section {
+  padding-top: var(--spacing-3xl, 3rem);
+}
+
+.hero-eyebrow {
+  margin-bottom: var(--spacing-3xl, 2rem);
+}
+
+.hero-grid {
+  align-items: center;
+  gap: var(--spacing-4xl, 4rem);
+}
+
+.hero-stats {
+  margin-top: var(--spacing-3xl, 3.5rem);
+}
+
+.cta-strip {
+  margin-top: var(--spacing-5xl, 8rem);
+}
+
+.cta-strip-card {
+  padding: var(--spacing-3xl, 3rem);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, rgba(62,207,142,0.06) 0%, rgba(62,207,142,0.02) 100%);
+  border: 1px solid rgba(62,207,142,0.15);
+  text-align: center;
+}
+
+.cta-strip-cta {
+  margin-top: var(--spacing-2xl, 1.75rem);
+}
+
+.cta-strip-message {
+  margin-bottom: var(--spacing-2xl, 2rem);
+  max-width: 440px;
+  margin: 0 auto var(--spacing-2xl, 2rem);
+}
+
+/* ===========================================================================
+   Icon wrapper styles (used for feature icons)
+   =========================================================================== */
+
+.icon-wrapper {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: rgba(62, 207, 142, 0.08);
+  border: 1px solid rgba(62, 207, 142, 0.18);
+  display: grid;
+  place-items: center;
+}
+
+/* ===========================================================================
+   Ecosystem tags styles (used in homepage)
+   =========================================================================== */
+
+.ecosystem-tags {
+  display: flex;
+  gap: var(--spacing-sm, 0.6rem);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-xl, 1.75rem);
+}
+
+.ecosystem-tag {
+  padding: var(--spacing-sm, 0.45rem) var(--spacing-md, 0.9rem);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: var(--type-base, 0.8125rem);
+  color: var(--muted);
+}
+
+/* ===========================================================================
+   Proof flow detail styles (extracted from BatchProofFlowView inline styles)
+   =========================================================================== */
+
+.proof-flow-detail {
+  margin-top: var(--spacing-xl, 1.5rem);
+}
+
+.proof-flow-label {
+  font-weight: 600;
+  font-size: var(--type-lg, 0.9375rem);
+}
+
+.proof-flow-desc {
+  font-size: var(--type-base, 0.8125rem);
+  margin-top: var(--spacing-sm, 0.45rem);
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.proof-flow-note {
+  font-size: var(--type-sm, 0.72rem);
+  padding: var(--spacing-xs, 0.2rem) var(--spacing-sm, 0.5rem);
+  color: var(--faint);
+}
+
+/* ===========================================================================
+   Network mismatch banner styles (extracted from inline styles)
+   =========================================================================== */
+
+.network-mismatch {
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  color: var(--danger);
+  font-weight: 600;
+  font-size: var(--type-base, 0.875rem);
+}
+
+.network-mismatch-desc {
+  font-size: var(--type-base, 0.8125rem);
+  margin-top: var(--spacing-sm, 0.45rem);
+  line-height: 1.65;
+  color: var(--text);
+}
+
+/* ===========================================================================
+   Empty state styles (used in holder dashboard)
+   =========================================================================== */
+
+.empty-state {
+  margin-top: var(--spacing-xl, 1.5rem);
+  text-align: center;
+}
+
+.empty-state-title {
+  font-weight: 600;
+  font-size: var(--type-lg, 0.9375rem);
+}
+
+.empty-state-desc {
+  color: var(--muted);
+  font-size: var(--type-base, 0.8375rem);
+  margin-top: var(--spacing-xs, 0.25rem);
+  line-height: 1.5;
 }

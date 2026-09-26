@@ -3,15 +3,22 @@
 import type { Credential } from "./credential";
 import { loadCredentials, saveCredential } from "./credential";
 
-const PBKDF2_ITERATIONS = 100_000;
+/** OWASP-recommended minimum for PBKDF2-HMAC-SHA256 (2023+). */
+const PBKDF2_ITERATIONS = 600_000;
+
+/** Legacy iteration count — old v1 backups used this value. */
+const PBKDF2_ITERATIONS_V1 = 100_000;
+
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
 
 export interface EncryptedBackup {
-  version: 1;
+  version: 2;
   salt: string;
   iv: string;
   ciphertext: string;
+  /** KDF iteration count — stored so future tuning is possible. */
+  iterations: number;
 }
 
 function toBase64(buf: ArrayBuffer | Uint8Array): string {
@@ -36,7 +43,8 @@ function fromBase64(b64: string): ArrayBuffer {
 
 async function deriveKey(
   passphrase: string,
-  salt: ArrayBuffer
+  salt: ArrayBuffer,
+  iterations = PBKDF2_ITERATIONS,
 ): Promise<CryptoKey> {
   const enc = new TextEncoder();
 
@@ -52,7 +60,7 @@ async function deriveKey(
     {
       name: "PBKDF2",
       salt,
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -71,7 +79,7 @@ export async function createEncryptedBackup(
   if (!passphrase) {
     throw new Error("Passphrase must not be empty");
   }
-  const credentials = loadCredentials();
+  const credentials = await loadCredentials();
   const plaintext = new TextEncoder().encode(JSON.stringify(credentials));
 
   const saltBytes = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
@@ -89,26 +97,37 @@ export async function createEncryptedBackup(
   );
 
   return {
-    version: 1,
+    version: 2,
     salt: toBase64(saltBytes),
     iv: toBase64(ivBytes),
     ciphertext: toBase64(ciphertext),
+    iterations: PBKDF2_ITERATIONS,
   };
 }
 
+/** Accept both v1 (legacy, 100k iterations) and v2 (current, 600k) backups. */
+type BackupEnvelope = EncryptedBackup | (Omit<EncryptedBackup, "version" | "iterations"> & { version: 1 });
+
 export async function decryptBackup(
-  backup: EncryptedBackup,
+  backup: BackupEnvelope,
   passphrase: string
 ): Promise<Credential[]> {
-  if (backup.version !== 1) {
+  if (backup.version !== 1 && backup.version !== 2) {
     throw new Error("Unsupported backup version");
   }
+
+  // v1 backups don't store iterations — use the legacy count.
+  // v2 backups store the exact count used during encryption.
+  const iterations =
+    backup.version === 2 && "iterations" in backup
+      ? backup.iterations
+      : PBKDF2_ITERATIONS_V1;
 
   const salt = fromBase64(backup.salt);
   const iv = fromBase64(backup.iv);
   const ciphertext = fromBase64(backup.ciphertext);
 
-  const key = await deriveKey(passphrase, salt);
+  const key = await deriveKey(passphrase, salt, iterations);
 
   let decrypted: ArrayBuffer;
 
@@ -149,11 +168,11 @@ export async function decryptBackup(
   return parsed as Credential[];
 }
 
-export function mergeCredentials(imported: Credential[]): Credential[] {
-  let current = loadCredentials();
+export async function mergeCredentials(imported: Credential[]): Promise<Credential[]> {
+  let current = await loadCredentials();
 
   for (const cred of imported) {
-    current = saveCredential(cred);
+    current = await saveCredential(cred);
   }
 
   return current;

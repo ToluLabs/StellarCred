@@ -3,12 +3,16 @@
  * Every other module imports from here; never from process.env directly.
  */
 
+import { NETWORK_PRESETS, checkNetworkConsistency, parseNetwork } from "./networks";
+
 export type DbDriver = "sqlite" | "postgres";
 
 export interface Config {
   stellarNetwork: string;
   horizonUrl: string;
   rpcUrl: string;
+  /** Network passphrase matching the selected network (preset or override). */
+  networkPassphrase: string;
   proofRegistryContractId: string;
   dbDriver: DbDriver;
   sqlitePath: string;
@@ -26,6 +30,13 @@ export interface Config {
   rateLimitWindowMs: number;
   rateLimitMax: number;
   rateLimitEnabled: boolean;
+  /**
+   * When set, /claims, /stats, and /recent require the key as either:
+   *   Authorization: Bearer <key>   or   X-API-Key: <key>
+   * Absent or empty → public mode. Treated as optional so Partial<Config>
+   * exposes it in tests without requiring every caller to supply it.
+   */
+  apiKey?: string;
 }
 
 function required(name: string): string {
@@ -58,6 +69,40 @@ export function loadConfig(): Config {
     throw new Error(`DB_DRIVER must be "sqlite" or "postgres", got: ${driver}`);
   }
 
+  // ── Single network selector ────────────────────────────────────────────────
+  // STELLAR_NETWORK (testnet | mainnet | futurenet) picks a coherent preset
+  // for Horizon, RPC, and the network passphrase. Explicit env vars override
+  // the preset — and the preflight below fails loudly if an override mixes
+  // artifacts from a different network (e.g. mainnet passphrase + testnet
+  // RPC), which would otherwise index the wrong chain silently.
+  const rawNetwork = optional("STELLAR_NETWORK", "testnet");
+  const network = parseNetwork(rawNetwork);
+  if (!network) {
+    throw new Error(
+      `STELLAR_NETWORK must be one of testnet | mainnet | futurenet (aliases: public, main), got: "${rawNetwork}"`,
+    );
+  }
+  const preset = NETWORK_PRESETS[network];
+  const envHorizon = process.env["HORIZON_URL"];
+  const envRpc = process.env["RPC_URL"];
+  const envPassphrase = process.env["NETWORK_PASSPHRASE"];
+
+  const mismatchProblems = checkNetworkConsistency({
+    preset,
+    horizonUrl: envHorizon,
+    rpcUrl: envRpc,
+    networkPassphrase: envPassphrase,
+  });
+  if (mismatchProblems.length > 0) {
+    throw new Error(
+      [
+        `Mixed-network configuration detected (STELLAR_NETWORK=${network}):`,
+        ...mismatchProblems.map((p) => `  - ${p}`),
+        `Fix by setting STELLAR_NETWORK to the network your URLs/passphrase belong to, or removing the conflicting overrides.`,
+      ].join("\n"),
+    );
+  }
+
   const rawCors = process.env["CORS_ALLOWED_ORIGINS"] ?? process.env["CORS_ORIGIN"];
   const windowSec = Number(optional("RATE_LIMIT_WINDOW_SECONDS", "60"));
   const maxReq = Number(
@@ -69,12 +114,10 @@ export function loadConfig(): Config {
     optional("RATE_LIMIT_ENABLED", "true").toLowerCase() !== "false";
 
   return {
-    stellarNetwork: optional("STELLAR_NETWORK", "testnet"),
-    horizonUrl: optional(
-      "HORIZON_URL",
-      "https://horizon-testnet.stellar.org"
-    ),
-    rpcUrl: optional("RPC_URL", "https://soroban-testnet.stellar.org"),
+    stellarNetwork: network,
+    horizonUrl: envHorizon ?? preset.horizonUrl,
+    rpcUrl: envRpc ?? preset.rpcUrl,
+    networkPassphrase: envPassphrase ?? preset.networkPassphrase,
     proofRegistryContractId: required("PROOF_REGISTRY_CONTRACT_ID"),
     dbDriver: driver,
     sqlitePath: optional("SQLITE_PATH", "./data/indexer.db"),

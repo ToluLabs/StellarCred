@@ -88,11 +88,39 @@ export interface Db {
   stats(): StatsRow[] | Promise<StatsRow[]>;
 
   /**
+   * Return reputation stats for one issuer, derived entirely from indexed
+   * events (#398): how many credentials they've issued, how many are
+   * currently active vs revoked, which credential types they cover, and
+   * when they first appear in the index. An issuer with no indexed claims
+   * gets a zeroed row rather than an error — same "unknown = empty" contract
+   * as claimsByWallet.
+   */
+  issuerStats(issuer: string): IssuerStatsRow | Promise<IssuerStatsRow>;
+
+  /**
    * Return recent verified (non-revoked) claims, newest first, using keyset
    * (cursor) pagination ordered by (ledger_sequence DESC, id DESC). Fetches up
    * to `limit + 1` rows internally so the page can report whether more exist.
    */
   recent(limit: number, cursor: RecentCursor | null): RecentPage | Promise<RecentPage>;
+
+  /** Insert a new app submission. Returns the new row id. */
+  insertAppSubmission(
+    appName: string,
+    description: string,
+    requiredClaims: string[],
+    verifyUrl: string,
+    contactEmail: string,
+  ): number | Promise<number>;
+
+  /** Return all approved app submissions, newest first. */
+  listApprovedApps(): AppSubmission[] | Promise<AppSubmission[]>;
+
+  /** Return a single app submission by id. */
+  getAppSubmission(id: number): AppSubmission | undefined | Promise<AppSubmission | undefined>;
+
+  /** Update the status of an app submission. */
+  updateSubmissionStatus(id: number, status: SubmissionStatus): void | Promise<void>;
 
   /** Close the underlying connection / pool. */
   close(): void | Promise<void>;
@@ -139,6 +167,35 @@ export interface StatsRow {
   revoked: number;
 }
 
+/** Per-issuer reputation stats derived from indexed events (#398). */
+export interface IssuerStatsRow {
+  issuer: string;
+  /** Total credentials ever issued by this issuer (active + revoked). */
+  total: number;
+  active: number;
+  revoked: number;
+  /** Distinct credential types this issuer has issued, alphabetical. */
+  credential_types: string[];
+  /** Unix seconds of this issuer's earliest indexed claim; null if none. */
+  first_seen: number | null;
+}
+
+// ── App submission types ───────────────────────────────────────────────────
+
+export type SubmissionStatus = "pending" | "approved" | "rejected";
+
+export interface AppSubmission {
+  id: number;
+  app_name: string;
+  description: string;
+  required_claims: string; // JSON array string, e.g. ["kyc","age"]
+  verify_url: string;
+  contact_email: string;
+  status: SubmissionStatus;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
 // ── SQLite adapter ─────────────────────────────────────────────────────────
 
 export function createSqliteDb(config: Config): Db {
@@ -176,6 +233,21 @@ export function createSqliteDb(config: Config): Db {
         );
 
         INSERT OR IGNORE INTO ledger_cursor (id, last_ledger) VALUES (1, 0);
+
+        CREATE TABLE IF NOT EXISTS app_submissions (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_name        TEXT    NOT NULL,
+          description     TEXT    NOT NULL,
+          required_claims TEXT    NOT NULL DEFAULT '[]',
+          verify_url      TEXT    NOT NULL,
+          contact_email   TEXT    NOT NULL,
+          status          TEXT    NOT NULL DEFAULT 'pending',
+          created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+          reviewed_at     TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_app_submissions_status
+          ON app_submissions (status);
       `);
 
       // Migration for databases created before the insertion-cursor `id` column
@@ -299,6 +371,40 @@ export function createSqliteDb(config: Config): Db {
         .all() as StatsRow[];
     },
 
+    issuerStats(issuer: string) {
+      const agg = raw
+        .prepare(
+          `SELECT
+             COUNT(*)                          AS total,
+             COUNT(*) FILTER (WHERE revoked=0) AS active,
+             COUNT(*) FILTER (WHERE revoked=1) AS revoked,
+             MIN(verified_at)                  AS first_seen
+           FROM claims
+           WHERE issuer = ?`
+        )
+        .get(issuer) as {
+        total: number;
+        active: number;
+        revoked: number;
+        first_seen: number | null;
+      };
+      const types = raw
+        .prepare(
+          `SELECT DISTINCT credential_type FROM claims
+           WHERE issuer = ?
+           ORDER BY credential_type`
+        )
+        .all(issuer) as { credential_type: string }[];
+      return {
+        issuer,
+        total: agg.total,
+        active: agg.active,
+        revoked: agg.revoked,
+        credential_types: types.map((t) => t.credential_type),
+        first_seen: agg.first_seen,
+      };
+    },
+
     recent(limit: number, cursor: RecentCursor | null) {
       // Fetch limit + 1 so the caller can tell whether another page exists.
       const rows = cursor
@@ -342,6 +448,47 @@ export function createSqliteDb(config: Config): Db {
         .prepare("SELECT MAX(ledger_sequence) AS max_ledger FROM claims")
         .get() as { max_ledger: number | null } | undefined;
       return row?.max_ledger ?? 0;
+    insertAppSubmission(
+      appName: string,
+      description: string,
+      requiredClaims: string[],
+      verifyUrl: string,
+      contactEmail: string,
+    ) {
+      const info = raw
+        .prepare(
+          `INSERT INTO app_submissions
+             (app_name, description, required_claims, verify_url, contact_email)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(appName, description, JSON.stringify(requiredClaims), verifyUrl, contactEmail);
+      return Number(info.lastInsertRowid);
+    },
+
+    listApprovedApps() {
+      return raw
+        .prepare(
+          `SELECT * FROM app_submissions
+           WHERE status = 'approved'
+           ORDER BY id DESC`
+        )
+        .all() as AppSubmission[];
+    },
+
+    getAppSubmission(id: number) {
+      return raw
+        .prepare("SELECT * FROM app_submissions WHERE id = ?")
+        .get(id) as AppSubmission | undefined;
+    },
+
+    updateSubmissionStatus(id: number, status: SubmissionStatus) {
+      raw
+        .prepare(
+          `UPDATE app_submissions
+           SET status = ?, reviewed_at = datetime('now')
+           WHERE id = ?`
+        )
+        .run(status, id);
     },
 
     close() {
@@ -360,7 +507,17 @@ export function createPostgresDb(config: Config): Db {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Pool } = require("pg") as typeof import("pg");
+  const pg = require("pg") as typeof import("pg");
+  const { Pool } = pg;
+
+  // pg returns INT8/BIGINT and INT4/INTEGER columns as strings by default,
+  // which would make ClaimRow's numeric fields (verified_at, expiry,
+  // ledger_sequence, threshold, revoked) come back as strings on Postgres but
+  // numbers on SQLite. Force them to JS numbers so both backends expose
+  // identical row shapes.
+  pg.types.setTypeParser(20, Number); // INT8 / BIGINT
+  pg.types.setTypeParser(23, Number); // INT4 / INTEGER
+
   const pool = new Pool({ connectionString: config.databaseUrl });
 
   return {
@@ -387,6 +544,21 @@ export function createPostgresDb(config: Config): Db {
         INSERT INTO ledger_cursor (id, last_ledger)
         VALUES (1, 0)
         ON CONFLICT (id) DO NOTHING;
+
+        CREATE TABLE IF NOT EXISTS app_submissions (
+          id              SERIAL PRIMARY KEY,
+          app_name        TEXT    NOT NULL,
+          description     TEXT    NOT NULL,
+          required_claims TEXT    NOT NULL DEFAULT '[]',
+          verify_url      TEXT    NOT NULL,
+          contact_email   TEXT    NOT NULL,
+          status          TEXT    NOT NULL DEFAULT 'pending',
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+          reviewed_at     TIMESTAMPTZ
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_app_submissions_status
+          ON app_submissions (status);
       `);
 
       // Migration for databases created before the insertion-cursor `id` column
@@ -492,6 +664,39 @@ export function createPostgresDb(config: Config): Db {
       return res.rows;
     },
 
+    async issuerStats(issuer: string) {
+      const aggRes = await pool.query<{
+        total: number;
+        active: number;
+        revoked: number;
+        first_seen: string | null;
+      }>(
+        `SELECT
+           COUNT(*)::int                         AS total,
+           COUNT(*) FILTER (WHERE revoked=0)::int AS active,
+           COUNT(*) FILTER (WHERE revoked=1)::int AS revoked,
+           MIN(verified_at)                       AS first_seen
+         FROM claims
+         WHERE issuer = $1`,
+        [issuer]
+      );
+      const typesRes = await pool.query<{ credential_type: string }>(
+        `SELECT DISTINCT credential_type FROM claims
+         WHERE issuer = $1
+         ORDER BY credential_type`,
+        [issuer]
+      );
+      const agg = aggRes.rows[0];
+      return {
+        issuer,
+        total: agg?.total ?? 0,
+        active: agg?.active ?? 0,
+        revoked: agg?.revoked ?? 0,
+        credential_types: typesRes.rows.map((r) => r.credential_type),
+        first_seen: agg?.first_seen != null ? Number(agg.first_seen) : null,
+      };
+    },
+
     async recent(limit: number, cursor: RecentCursor | null) {
       // Fetch limit + 1 so the caller can tell whether another page exists.
       const res = cursor
@@ -539,6 +744,47 @@ export function createPostgresDb(config: Config): Db {
         "SELECT MAX(ledger_sequence) AS max_ledger FROM claims"
       );
       return Number(res.rows[0]?.max_ledger ?? 0);
+    async insertAppSubmission(
+      appName: string,
+      description: string,
+      requiredClaims: string[],
+      verifyUrl: string,
+      contactEmail: string,
+    ) {
+      const res = await pool.query<{ id: number }>(
+        `INSERT INTO app_submissions
+           (app_name, description, required_claims, verify_url, contact_email)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [appName, description, JSON.stringify(requiredClaims), verifyUrl, contactEmail]
+      );
+      return res.rows[0].id;
+    },
+
+    async listApprovedApps() {
+      const res = await pool.query<AppSubmission>(
+        `SELECT * FROM app_submissions
+         WHERE status = 'approved'
+         ORDER BY id DESC`
+      );
+      return res.rows;
+    },
+
+    async getAppSubmission(id: number) {
+      const res = await pool.query<AppSubmission>(
+        "SELECT * FROM app_submissions WHERE id = $1",
+        [id]
+      );
+      return res.rows[0];
+    },
+
+    async updateSubmissionStatus(id: number, status: SubmissionStatus) {
+      await pool.query(
+        `UPDATE app_submissions
+         SET status = $1, reviewed_at = now()
+         WHERE id = $2`,
+        [status, id]
+      );
     },
 
     async close() {

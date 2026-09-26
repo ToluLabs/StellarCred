@@ -25,6 +25,7 @@ const STELLAR_G_ADDRESS = /^G[A-Z2-7]{55}$/;
 const SERVER_SECRET_KEYS = [
   "ISSUER_PRIVATE_KEY",
   "PERSONA_API_KEY",
+  "PERSONA_WEBHOOK_SECRET",
   "PLAID_CLIENT_ID",
   "PLAID_SECRET",
   "PLAID_ACCESS_TOKEN",
@@ -75,6 +76,15 @@ const envSchema = z
     // for local dev Persona redirects), and the SDK applies its own default.
     NEXT_PUBLIC_STELLARCRED_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
 
+    // --- Indexer service -------------------------------------------------------
+    // Base URL of services/indexer's HTTP API. Server-only: only
+    // app/api/issuer-stats/route.ts reads it, so it never needs a
+    // NEXT_PUBLIC_ prefix. Defaults to the indexer's own default PORT (3001).
+    INDEXER_URL: z.preprocess(
+      emptyToUndefined,
+      z.string().url().optional(),
+    ),
+
     // Server-only issuer signing key. Optional: absence runs the public demo
     // issuer key (logged loudly on every boot) instead of a real one.
     ISSUER_PRIVATE_KEY: z.preprocess(
@@ -91,6 +101,7 @@ const envSchema = z
     // --- Persona identity verification (optional; unset = demo mode) ---------
     PERSONA_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
     PERSONA_KYC_TEMPLATE_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+    PERSONA_WEBHOOK_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
 
     // --- Plaid balance attestation (optional; unset = mock mode) --------------
     PLAID_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),

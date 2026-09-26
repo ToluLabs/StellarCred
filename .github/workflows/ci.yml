@@ -63,6 +63,9 @@ jobs:
           key: cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: cargo-
 
+      - name: Update Cargo.lock
+        run: cargo update --aggressive
+
       - name: Install Noir
         shell: bash
         run: |
@@ -121,6 +124,14 @@ jobs:
           export PATH="$HOME/.nargo/bin:$PATH"
           noirup -v 1.0.0-beta.9
 
+      - name: Install Barretenberg
+        shell: bash
+        run: |
+          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          export PATH="$HOME/.bb:$PATH"
+          source "$HOME/.bashrc" 2>/dev/null || true
+          bbup -v 0.87.0
+
       - name: Compile circuits
         run: |
           export PATH="$HOME/.nargo/bin:$PATH"
@@ -128,6 +139,11 @@ jobs:
             echo "=== $dir ==="
             (cd "$dir" && nargo compile)
           done
+
+      - name: Verify deterministic VK hashes
+        run: |
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$PATH"
+          bash ../scripts/verify-vks.sh check
 
       - name: Check staged artifacts are current
         run: |
@@ -212,6 +228,55 @@ jobs:
       - name: Check benchmark.sh syntax
         run: bash -n ../scripts/benchmark.sh
 
+      - name: Run Noir unit tests (nargo test)
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership range_proof; do
+            echo "=== nargo test $dir ==="
+            (cd "$dir" && nargo test)
+          done
+
+  circuit-fuzz:
+    name: Property-based circuit fuzzing
+    runs-on: ubuntu-latest
+    needs: circuits
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Noir toolchain
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
+          export PATH="$HOME/.nargo/bin:$PATH"
+          noirup -v 1.0.0-beta.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Install frontend dependencies (for @noble/curves signing)
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile circuits
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          cd circuits
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof range_proof; do
+            echo "=== compile $dir ==="
+            (cd "$dir" && nargo compile)
+          done
+
+      - name: Run property-based fuzz tests
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          node circuits/scripts/fuzz_circuits.js --iterations 10
+
   frontend:
     name: Frontend typecheck & build
     runs-on: ubuntu-latest
@@ -242,6 +307,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Check i18n locale key parity
+        run: pnpm check:i18n
+
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
@@ -265,6 +333,56 @@ jobs:
 
       - name: Run issuer tests (incl. cross-boundary circuit test)
         run: pnpm --filter @stellarcred/issuer test
+
+  indexer:
+    # The indexer's DB layer supports BOTH SQLite and Postgres, so the same
+    # test matrix must run against both backends or one silently rots. This job
+    # spins up a Postgres 16 service container so the parameterized DB suite
+    # (services/indexer/src/db.test.ts) exercises migrations, upserts, revokes,
+    # cursor updates, etc. on Postgres while also still running the SQLite leg.
+    name: Indexer tests (SQLite + Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/indexer
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: indexer
+          POSTGRES_PASSWORD: indexer
+          POSTGRES_DB: indexer
+        ports:
+          - 5432:5432
+        # Gate job steps until Postgres is accepting connections.
+        options: >-
+          --health-cmd "pg_isready -U indexer -d indexer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: services/indexer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run DB test matrix (SQLite + Postgres) and unit tests
+        run: npm test
+        env:
+          # Dummy contract ID / RPC so the ingester tests run headlessly.
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+          # Point the Postgres leg of the DB matrix at the service container.
+          TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
 
   sdk-integration:
     name: SDK integration tests (testnet)
@@ -372,7 +490,7 @@ jobs:
       - name: Report bundle size on PR
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
-        uses: andresz1/size-limit-action@e7493a72a44b113341c0cf6186ab49c17c4b65c1
+        uses: andresz1/size-limit-action@94bc357df29c36c8f8d50ea497c3e225c3c95d1d
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           script: pnpm size --json

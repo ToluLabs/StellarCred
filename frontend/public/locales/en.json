@@ -1,0 +1,126 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "close": "Close",
+    "retry": "Retry",
+    "connecting": "Connecting…",
+    "show": "Show",
+    "hide": "Hide",
+    "selectLanguage": "Select language"
+  },
+  "nav": {
+    "brand": "StellarCred",
+    "wallet": "Wallet",
+    "verify": "Verify",
+    "issuer": "Issuer",
+    "apps": "Apps",
+    "docs": "Docs",
+    "developers": "Developers",
+    "toggleMenu": "Toggle menu"
+  },
+  "footer": {
+    "copyright": "© {year} StellarCred",
+    "github": "GitHub",
+    "sdk": "@stellarcred/sdk",
+    "docs": "Docs",
+    "versionInfo": "Click to show version information",
+    "deploymentVersions": "Deployment Versions",
+    "app": "App",
+    "sdk_label": "SDK",
+    "unknown": "unknown"
+  },
+  "theme": {
+    "dark": "Switch to dark mode",
+    "light": "Switch to light mode"
+  },
+  "wallet": {
+    "connect": "Connect wallet",
+    "disconnect": "Click to disconnect",
+    "install": "Install {walletName}",
+    "error": "Error",
+    "errorMessage": "An error occurred"
+  },
+  "home": {
+    "hero": {
+      "badge": "Zero-knowledge credentials · Stellar testnet",
+      "title_part1": "Prove anything.",
+      "title_part2": "Reveal nothing.",
+      "subtitle": "Hold a credential from a trusted issuer, generate an UltraHonk zero-knowledge proof locally, and verify your claim on Stellar — without the underlying data ever touching the chain.",
+      "cta_demo": "See the demo",
+      "cta_credential": "Get a credential"
+    },
+    "stats": {
+      "types": "Credential types",
+      "system": "ZK proof system",
+      "generation": "Proof generation",
+      "validity": "Proof validity"
+    },
+    "how_it_works": {
+      "title": "How StellarCred works",
+      "step_01_title": "Issue",
+      "step_01_body": "A trusted issuer signs a credential to your wallet. It lives on your device — never on a server.",
+      "step_02_title": "Prove",
+      "step_02_body": "Generate a zero-knowledge proof locally in your browser. Only the claim leaves; the data behind it never does.",
+      "step_03_title": "Verify",
+      "step_03_body": "Any Stellar protocol reads ProofRegistry on-chain. One proof, valid across every protocol, for 30 days."
+    },
+    "trusted_everywhere": {
+      "title": "Verified once. Trusted everywhere.",
+      "subtitle": "Any protocol on Stellar can verify your credentials in one contract call. Your proof is valid everywhere.",
+      "direct_verify": "Verify directly",
+      "direct_verify_body": "Visit StellarCred before using any app. Your credentials work everywhere, instantly.",
+      "get_verified": "Get verified",
+      "verify_through_app": "Verify through an app",
+      "verify_through_app_body": "Apps that integrate StellarCred show a \"Verify\" button. Complete verification and return automatically."
+    },
+    "developers": {
+      "title": "Built for developers",
+      "claim": "Require a claim",
+      "redirect": "Redirect if needed",
+      "verified": "User returns verified",
+      "verified_body": "On-chain proof, read in one call. No backend needed.",
+      "learn_more": "Read the developer docs"
+    },
+    "cta": {
+      "title": "Ready to try it?",
+      "subtitle": "Connect a Stellar wallet on testnet, get a credential, generate your first on-chain ZK proof in under a minute.",
+      "get_started": "Get started",
+      "dashboard": "Open dashboard"
+    }
+  },
+  "network": {
+    "wrongNetwork": "Wrong network detected. Switch your wallet to {network} to continue.",
+    "testnet": "Testnet",
+    "mainnet": "Mainnet"
+  },
+  "config": {
+    "notConfigured": "App not fully configured.",
+    "issuanceDisabled": "Credential issuance and On-chain submission is disabled — missing env vars:",
+    "submissionDisabled": "On-chain submission is disabled — missing env vars:",
+    "deployScript": "./scripts/deploy.sh",
+    "envLocation": "frontend/.env.local"
+  },
+  "credential": {
+    "details": "Credential details",
+    "transfer": "Transfer to another device",
+    "rawJson": "raw JSON",
+    "type": "Type",
+    "issuer": "Issuer",
+    "issuerId": "Issuer ID",
+    "commitment": "Commitment",
+    "issued": "Issued",
+    "expiry": "Expiry",
+    "claim": "Claim"
+  },
+  "errors": {
+    "title": "Error",
+    "generic": "An error occurred"
+  },
+  "formats": {
+    "dateTime": {
+      "short": "MMM d, yyyy",
+      "medium": "MMM d, yyyy h:mm a",
+      "long": "EEEE, MMMM d, yyyy"
+    }
+  }
+}

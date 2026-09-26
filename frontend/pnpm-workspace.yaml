@@ -9,9 +9,9 @@ packages:
   - 'packages/issuer'
 
 allowBuilds:
+  esbuild: true
   blake-hash: true
   bufferutil: true
-  esbuild: true
   msgpackr-extract: true
   protobufjs: true
   secp256k1: true

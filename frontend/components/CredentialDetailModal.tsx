@@ -1,30 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { IconX, IconChevronDown, IconChevronRight } from "@tabler/icons-react";
+import { formatDate, formatDateTime, getLocaleString } from "@/lib/i18n";
+import { type Locale } from "@/i18n.config";
 import CopyButton from "./CopyButton";
 
 function parseTtlSecs(expiry: string): number {
   const match = expiry.match(/(\d+)/);
   return (match ? parseInt(match[1]) : 30) * 86_400;
-}
-
-function formatDate(unixSecs: number): string {
-  return new Date(unixSecs * 1000).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatDateTime(unixSecs: number): string {
-  return new Date(unixSecs * 1000).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 interface CredentialDetailModalProps {
@@ -53,6 +38,9 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
   const modalRef = useRef<HTMLDivElement>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
+  const locale = useLocale() as Locale;
+  const t = useTranslations();
+  
   onCloseRef.current = onClose;
 
   useEffect(() => {
@@ -94,6 +82,8 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
 
   const ttlSecs = parseTtlSecs(c.expiry);
   const expiryDate = c.issuedAt + ttlSecs;
+  const localeStr = getLocaleString(locale);
+  
   const rawJson = JSON.stringify({
     type: c.type,
     title: c.title,
@@ -107,13 +97,13 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
   }, null, 2);
 
   const fields: Array<{ label: string; value: string }> = [
-    { label: "Type", value: c.title },
-    { label: "Issuer", value: c.issuer },
-    { label: "Issuer ID", value: c.issuerId },
-    { label: "Commitment", value: c.commitment },
-    { label: "Issued", value: formatDateTime(c.issuedAt) },
-    { label: "Expiry", value: `${formatDate(expiryDate)} (${c.expiry})` },
-    { label: "Claim", value: c.claim },
+    { label: t("credential.type"), value: c.title },
+    { label: t("credential.issuer"), value: c.issuer },
+    { label: t("credential.issuerId"), value: c.issuerId },
+    { label: t("credential.commitment"), value: c.commitment },
+    { label: t("credential.issued"), value: formatDateTime(c.issuedAt, localeStr) },
+    { label: t("credential.expiry"), value: `${formatDate(expiryDate, localeStr)} (${c.expiry})` },
+    { label: t("credential.claim"), value: c.claim },
   ];
 
   if (c.claimParams) {
@@ -151,7 +141,7 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Credential details"
+        aria-label={t("credential.details")}
         className="card"
         style={{
           position: "relative",
@@ -165,11 +155,11 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
         onClick={(e) => e.stopPropagation()}
       >
         <div className="between" style={{ marginBottom: "1.25rem" }}>
-          <span className="eyebrow">Credential details</span>
+          <span className="eyebrow">{t("credential.details")}</span>
           <button
             className="btn btn-ghost btn-sm"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
             style={{ padding: "0.3rem 0.4rem", color: "var(--faint)" }}
           >
             <IconX size={16} />
@@ -220,7 +210,7 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
               style={{ width: "100%", marginBottom: "0.75rem", justifyContent: "center" }}
               onClick={() => onTransfer(c)}
             >
-              Transfer to another device
+              {t("credential.transfer")}
             </button>
           )}
           <button
@@ -236,7 +226,7 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
             }}
           >
             {showRaw ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
-            {showRaw ? "Hide" : "Show"} raw JSON
+            {showRaw ? t("common.hide") : t("common.show")} {t("credential.rawJson")}
           </button>
           {showRaw && (
             <div style={{ position: "relative", marginTop: "0.5rem" }}>
