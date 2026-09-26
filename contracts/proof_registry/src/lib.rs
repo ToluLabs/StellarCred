@@ -234,6 +234,10 @@ pub enum DataKey {
     IssuerRegistry,
     Paused,
     Proof(Address, Symbol),
+    /// Tracks an already-used nullifier within a single protocol context.
+    /// A holder can reuse the same underlying credential in a different app
+    /// context without collision, because the key includes the context.
+    Nullifier(Symbol, BytesN<32>),
     /// Tracks the schema version of stored ProofRecords.
     /// Used for forward-compatible migrations when ProofRecord shape changes.
     ProofRecordSchemaVersion,
@@ -262,6 +266,8 @@ pub enum Error {
     SubmissionsPaused = 11,
     /// `expiry` is not in the future, or is too far in the future.
     InvalidExpiry = 12,
+    /// A proof nullifier has already been consumed for this app context.
+    NullifierAlreadyUsed = 13,
     /// The caller is not the holder of the role required by this function.
     RoleNotHeld = 13,
     /// `revoke_role` named an address that is not the current holder of the role.
@@ -451,49 +457,126 @@ impl ProofRegistry {
         vk_version: Option<u32>,
         expiry: u64,
     ) {
-        holder.require_auth();
-        Self::ensure_not_paused(&env);
-        Self::validate_expiry(&env, expiry);
-
-        let registry = IssuerClient::new(&env, &Self::issuer_registry(&env));
-        if !registry.is_valid_issuer(&issuer_id, &credential_type) {
-            panic_with_error!(&env, Error::IssuerNotTrusted);
-        }
-
-        let expected = registry.get_issuer_pubkey(&issuer_id);
-        if !Self::public_inputs_match_pubkey(&public_inputs, &expected) {
-            panic_with_error!(&env, Error::IssuerKeyMismatch);
-        }
-
-        let verifier = VerifierClient::new(&env, &Self::verifier(&env));
-        if !verifier.verify_proof(&credential_type, &proof, &public_inputs, &vk_version) {
-            panic_with_error!(&env, Error::VerificationFailed);
-        }
-
-        let key = DataKey::Proof(holder.clone(), credential_type.clone());
-        let record = ProofRecord {
-            verified_at: env.ledger().timestamp(),
+        Self::submit_proof_inner(
+            &env,
+            holder,
+            issuer_id,
+            credential_type,
+            proof,
+            public_inputs,
+            vk_version,
             expiry,
-            threshold: Self::extract_threshold(&env, &credential_type, &public_inputs),
-            revoked: false,
-            issuer: Some(issuer_id),
-            vk_version: vk_version.unwrap_or(0),
-        };
-        env.storage().persistent().set(&key, &record);
-        Self::bump_ttl(&env, &key, expiry);
+            None,
+            None,
+        );
+    }
 
-        env.events().publish(
-            (
-                symbol_short!("proof_reg"),
-                symbol_short!("submitted"),
-                credential_type,
-            ),
-            EventProofSubmitted {
-                holder,
-                issuer: record.issuer.unwrap(),
-                verified_at: record.verified_at,
-                expiry: record.expiry,
-            },
+    /// App-scoped proof submission.
+    ///
+    /// The protocol derives a per-context nullifier from its credential and passes
+    /// it here alongside the app context. A duplicate nullifier for the same
+    /// context is rejected, while reusing the same underlying credential in a
+    /// different context remains unlinkable because the nullifier key includes the
+    /// app context.
+    #[allow(deprecated)]
+    pub fn submit_proof_with_context(
+        env: Env,
+        holder: Address,
+        issuer_id: Address,
+        credential_type: Symbol,
+        proof: Bytes,
+        public_inputs: Bytes,
+        vk_version: Option<u32>,
+        expiry: u64,
+        app_context: Symbol,
+        nullifier: BytesN<32>,
+    ) {
+        Self::submit_proof_inner(
+            &env,
+            holder,
+            issuer_id,
+            credential_type,
+            proof,
+            public_inputs,
+            vk_version,
+            expiry,
+            Some(app_context),
+            Some(nullifier),
+        );
+    }
+
+    pub fn submit_proof_with_app_context(
+        env: Env,
+        holder: Address,
+        issuer_id: Address,
+        credential_type: Symbol,
+        proof: Bytes,
+        public_inputs: Bytes,
+        vk_version: Option<u32>,
+        expiry: u64,
+        app_context: Symbol,
+        nullifier: BytesN<32>,
+    ) {
+        Self::submit_proof_with_context(
+            env,
+            holder,
+            issuer_id,
+            credential_type,
+            proof,
+            public_inputs,
+            vk_version,
+            expiry,
+            app_context,
+            nullifier,
+        );
+    }
+
+    /// Registers an app-scoped nullifier, refusing any later reuse in the same
+    /// context. The same credential in a different app context is permitted
+    /// because the map key includes both the context and the nullifier.
+    pub fn register_nullifier(env: Env, app_context: Symbol, nullifier: BytesN<32>) {
+        Self::ensure_nullifier_unused(&env, &app_context, &nullifier);
+        env.storage().persistent().set(&DataKey::Nullifier(app_context, nullifier), &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Nullifier(app_context.clone(), nullifier.clone()), PROOF_BUMP_THRESHOLD, PROOF_TTL);
+    }
+
+    /// Returns `true` if a nullifier has already been used for this app context.
+    pub fn check_nullifier(env: Env, app_context: Symbol, nullifier: BytesN<32>) -> bool {
+        env.storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::Nullifier(app_context, nullifier))
+            .unwrap_or(false)
+    }
+
+    pub fn is_nullifier_used(env: Env, app_context: Symbol, nullifier: BytesN<32>) -> bool {
+        Self::check_nullifier(env, app_context, nullifier)
+    }
+
+    pub fn submit_proof_with_nullifier(
+        env: Env,
+        holder: Address,
+        issuer_id: Address,
+        credential_type: Symbol,
+        proof: Bytes,
+        public_inputs: Bytes,
+        vk_version: Option<u32>,
+        expiry: u64,
+        app_context: Symbol,
+        nullifier: BytesN<32>,
+    ) {
+        Self::submit_proof_with_context(
+            env,
+            holder,
+            issuer_id,
+            credential_type,
+            proof,
+            public_inputs,
+            vk_version,
+            expiry,
+            app_context,
+            nullifier,
         );
     }
 
@@ -1046,6 +1129,77 @@ impl ProofRegistry {
         }
     }
 
+    fn submit_proof_inner(
+        env: &Env,
+        holder: Address,
+        issuer_id: Address,
+        credential_type: Symbol,
+        proof: Bytes,
+        public_inputs: Bytes,
+        vk_version: Option<u32>,
+        expiry: u64,
+        app_context: Option<Symbol>,
+        nullifier: Option<BytesN<32>>,
+    ) {
+        holder.require_auth();
+        Self::ensure_not_paused(env);
+        Self::validate_expiry(env, expiry);
+
+        let registry = IssuerClient::new(env, &Self::issuer_registry(env));
+        if !registry.is_valid_issuer(&issuer_id, &credential_type) {
+            panic_with_error!(env, Error::IssuerNotTrusted);
+        }
+
+        let expected = registry.get_issuer_pubkey(&issuer_id);
+        if !Self::public_inputs_match_pubkey(&public_inputs, &expected) {
+            panic_with_error!(env, Error::IssuerKeyMismatch);
+        }
+
+        let verifier = VerifierClient::new(env, &Self::verifier(env));
+        if !verifier.verify_proof(&credential_type, &proof, &public_inputs, &vk_version) {
+            panic_with_error!(env, Error::VerificationFailed);
+        }
+
+        if let (Some(ctx), Some(n)) = (app_context, nullifier) {
+            Self::ensure_nullifier_unused(env, &ctx, &n);
+        }
+
+        let key = DataKey::Proof(holder.clone(), credential_type.clone());
+        let record = ProofRecord {
+            verified_at: env.ledger().timestamp(),
+            expiry,
+            threshold: Self::extract_threshold(env, &credential_type, &public_inputs),
+            revoked: false,
+            issuer: Some(issuer_id),
+            vk_version: vk_version.unwrap_or(0),
+        };
+        env.storage().persistent().set(&key, &record);
+        Self::bump_ttl(env, &key, expiry);
+
+        if let (Some(ctx), Some(n)) = (app_context, nullifier) {
+            env.storage()
+                .persistent()
+                .set(&DataKey::Nullifier(ctx, n), &true);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Nullifier(ctx.clone(), n.clone()), PROOF_BUMP_THRESHOLD, PROOF_TTL);
+        }
+
+        env.events().publish(
+            (
+                symbol_short!("proof_reg"),
+                symbol_short!("submitted"),
+                credential_type,
+            ),
+            EventProofSubmitted {
+                holder,
+                issuer: record.issuer.unwrap(),
+                verified_at: record.verified_at,
+                expiry: record.expiry,
+            },
+        );
+    }
+
     fn read_u64_field(public_inputs: &Bytes, field_index: u32) -> u64 {
         let base = field_index * FIELD_BYTES;
         let mut b = [0u8; 8];
@@ -1053,6 +1207,17 @@ impl ProofRegistry {
             b[i as usize] = public_inputs.get(base + 24 + i).unwrap_or(0);
         }
         u64::from_be_bytes(b)
+    }
+
+    fn ensure_nullifier_unused(env: &Env, app_context: &Symbol, nullifier: &BytesN<32>) {
+        if env
+            .storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::Nullifier(app_context.clone(), nullifier.clone()))
+            .unwrap_or(false)
+        {
+            panic_with_error!(env, Error::NullifierAlreadyUsed);
+        }
     }
 
     /// True iff the secp256k1 public key embedded in `public_inputs` (fields

@@ -207,6 +207,42 @@ fn submit_then_verified() {
 }
 
 #[test]
+fn nullifier_is_unique_per_app_context() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let ir_id = env.register(IssuerRegistry, (admin.clone(),));
+    let issuer = Address::generate(&env);
+    IssuerRegistryClient::new(&env, &ir_id).register_issuer(
+        &issuer,
+        &demo_pubkey(&env),
+        &vec![&env, symbol_short!("kyc")],
+    );
+    let v_id = env.register(CredentialVerifier, (admin.clone(),));
+    CredentialVerifierClient::new(&env, &v_id).set_vk(
+        &symbol_short!("kyc"),
+        &1u32,
+        &Bytes::from_slice(&env, VK),
+    );
+    let pr_id = env.register(ProofRegistry, (admin, v_id, ir_id));
+    let registry = ProofRegistryClient::new(&env, &pr_id);
+
+    let app_a = symbol_short!("app_a");
+    let app_b = symbol_short!("app_b");
+    let nullifier = BytesN::from_array(&env, &[7u8; 32]);
+
+    registry.register_nullifier(&app_a, &nullifier);
+    assert!(registry.check_nullifier(&app_a, &nullifier));
+    assert!(!registry.check_nullifier(&app_b, &nullifier));
+
+    let res = registry.try_register_nullifier(&app_a, &nullifier);
+    assert_eq!(res, Err(Ok(Error::NullifierAlreadyUsed)));
+
+    registry.register_nullifier(&app_b, &nullifier);
+    assert!(registry.check_nullifier(&app_b, &nullifier));
+}
+
+#[test]
 fn submit_sets_ttl_through_expiry() {
     let env = Env::default();
     env.mock_all_auths();
