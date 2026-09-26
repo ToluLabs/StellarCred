@@ -7,6 +7,7 @@ import {
   stripSensitiveFields,
   resolveRequestId,
 } from "@/lib/logger";
+import { reportError } from "@/lib/error-reporting";
 import { env } from "@/lib/env";
 import { fetchPlaidBalance } from "@/lib/plaid";
 import {
@@ -462,6 +463,16 @@ async function executeRequest(
         }),
       );
     }
+    // Report the error to the webhook with the exception forwarded so that
+    // safeErrorMessage can strip stack frames and PII patterns before any
+    // data leaves the process (issue #553).
+    void reportError({
+      method: "POST",
+      path: "/api/issue",
+      requestId,
+      status: 500,
+      exception: e,
+    });
     return sendResponse(
       NextResponse.json({ error: (e as Error).message }, { status: 500 }),
     );

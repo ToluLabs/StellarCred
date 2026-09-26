@@ -293,6 +293,14 @@ stellar contract invoke \
    - Contract versions show 1.1.0 (or new version)
 
 ---
+### Update the deployment registry
+
+ After a successful deployment, update [`DEPLOYMENTS.md`](./DEPLOYMENTS.md)
+with the deployed contract IDs, contract versions, WASM hashes, and deployment
+ date for each affected network.
+
+ A deployment is not considered complete until the deployment registry has been
+ updated and reviewed.
 
 ## Data Migration Strategy
 

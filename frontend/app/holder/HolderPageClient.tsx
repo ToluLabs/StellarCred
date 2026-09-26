@@ -43,10 +43,245 @@ const TransferImportModal = dynamic(
   () => import("@/components/TransferImportModal").then((m) => m.TransferImportModal),
   { ssr: false },
 );
-const CredentialDetailModal = dynamic(
-  () => import("@/components/CredentialDetailModal"),
-  { ssr: false },
-);
+
+// Parse "90 days", "30 days" etc from the credential's expiry string.
+function credTtlSecs(cred: Credential): number {
+  const match = cred.expiry?.match(/(\d+)/);
+  return (match ? parseInt(match[1]) : 30) * 86_400;
+}
+
+// Downloads every locally stored credential as a JSON backup file. Pairs with
+// the "Import credential JSON" panel: the file's contents can be pasted back
+// here (or into another browser/device) to restore. Credentials live only in
+// this browser&apos;s localStorage, so this is the only backup path — see the
+// "Where your credentials live" docs section.
+async function downloadBackup(): Promise<void> {
+  const json = await exportCredentials();
+  if (!json || json === "[]") return;
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `stellarcred-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function proofStatus(cred: Credential): "unproved" | "proved" | "expired" {
+  if (!cred.provedAt) return "unproved";
+  return cred.provedAt + credTtlSecs(cred) > Math.floor(Date.now() / 1000)
+    ? "proved"
+    : "expired";
+}
+
+function isExpiringSoon(cred: Credential, windowDays = 7): boolean {
+  if (!cred.provedAt) return false;
+  const now = Math.floor(Date.now() / 1000);
+  const expiry = cred.provedAt + credTtlSecs(cred);
+  return expiry > now && expiry <= now + windowDays * 86_400;
+}
+
+function daysRemaining(cred: Credential): number {
+  if (!cred.provedAt) return 0;
+  const secsLeft = cred.provedAt + credTtlSecs(cred) - Math.floor(Date.now() / 1000);
+  return Math.max(0, Math.ceil(secsLeft / 86_400));
+}
+
+import { useProofTimeline, addTimelineEvent } from "@/lib/useProofTimeline";
+import { Timeline } from "@/components/Timeline";
+import { IconHistory } from "@tabler/icons-react";
+
+// ── Credential expiry helpers ─────────────────────────────────────────────────
+
+function credExpiryTimestamp(cred: Credential): number {
+  return cred.issuedAt + credTtlSecs(cred);
+}
+
+function credIsExpired(cred: Credential): boolean {
+  return credExpiryTimestamp(cred) <= Math.floor(Date.now() / 1000);
+}
+
+function credExpiryWithinDays(cred: Credential, days: number): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  const ts = credExpiryTimestamp(cred);
+  return ts > now && ts <= now + days * 86_400;
+}
+
+function formatExpiryDate(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// ── Credential card ──────────────────────────────────────────────────────────
+
+function CredCard({
+  c,
+  address,
+  onProve,
+  onRemove,
+  onInspect: _onInspect,
+  isPreview,
+  selection: _selection,
+}: {
+  c: Credential;
+  address: string;
+  onProve: () => void;
+  onRemove: () => void;
+  onInspect: () => void;
+  isPreview?: boolean;
+  /** Batch selection controls — omitted on cards that can&apos;t be batched. */
+  selection?: {
+    checked: boolean;
+    /** Why this card can&apos;t currently be added, or null when it can. */
+    blockedReason: string | null;
+    onToggle: () => void;
+  };
+}) {
+  const status = proofStatus(c);
+  const { events } = useProofTimeline(c);
+  const [showHistory, setShowHistory] = useState(false);
+
+  return (
+    <div className="card" style={{ padding: "1rem 1.25rem" }}>
+      <div className="between" style={{ alignItems: "center", gap: "0.75rem" }}>
+        {/* left: credential info */}
+        <div style={{ minWidth: 0 }}>
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{c.title}</span>
+            <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--faint)", marginTop: "0.15rem" }}>
+            <div>
+              {c.issuer} · <span>{truncateHash(c.commitment)}</span>
+              {status === "proved" && (
+                <>
+                  {" · "}
+                  <span style={{ color: "var(--accent)", opacity: 0.75 }}>
+                    expires in {daysRemaining(c)}d
+                  </span>
+                  {c.provedTxHash && (
+                    <>
+                      {" · "}
+                      <a
+                        href={EXPLORER_TX(c.provedTxHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "inherit", display: "inline-flex", alignItems: "center", gap: "0.15rem" }}
+                      >
+                        {c.provedTxHash.slice(0, 6)}…<IconExternalLink size={10} />
+                      </a>
+                    </>
+                  )}
+                </>
+              )}
+              {status === "expired" && (
+                <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>expired</span></>
+              )}
+            </div>
+            <div style={{ marginTop: "0.1rem" }}>
+              {credIsExpired(c) ? (
+                <span style={{ color: "var(--danger)", fontWeight: 500 }}>Expired</span>
+              ) : (
+                <span style={{ color: credExpiryWithinDays(c, 30) ? "var(--warn)" : "var(--faint)" }}>
+                  Expires {formatExpiryDate(credExpiryTimestamp(c))}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* right: badges + button + trash */}
+        <div className="card-actions">
+          {isPreview && <Badge variant="pending">Preview</Badge>}
+          <Badge variant="verified" dot={false}>Held</Badge>
+          {status === "proved" && !isExpiringSoon(c) && (
+            <Badge variant="verified" dot={false}>On-chain</Badge>
+          )}
+          {status === "proved" && isExpiringSoon(c) && (
+            <Badge variant="pending" dot={true}>Expiring in {daysRemaining(c)}d</Badge>
+          )}
+          {status === "expired" && (
+            <Badge variant="denied" dot={true}>Proof Expired</Badge>
+          )}
+          <button
+            className={`btn btn-sm ${status === "proved" ? "btn-secondary" : "btn-primary"}`}
+            disabled={!address || credIsExpired(c) || !proofSubmissionConfigured()}
+            title={
+              !address
+                ? "Connect a wallet first"
+                : credIsExpired(c)
+                  ? "This credential has expired"
+                  : !proofSubmissionConfigured()
+                    ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
+                    : undefined
+            }
+            onClick={onProve}
+          >
+            {status === "proved"  ? "Re-prove" :
+             status === "expired" ? "Re-prove" :
+                                    "Generate proof"}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            title="History"
+            onClick={() => setShowHistory(!showHistory)}
+            style={{ padding: "0.3rem 0.4rem", color: showHistory ? "var(--accent)" : "var(--faint)" }}
+          >
+            <IconHistory size={13} />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Remove"
+            onClick={onRemove}
+            style={{ padding: "0.3rem 0.4rem", color: "var(--faint)" }}
+          >
+            <IconTrash size={13} />
+          </button>
+        </div>
+      </div>
+      
+      {showHistory && (
+        <Timeline events={events} />
+      )}
+    </div>
+  );
+}
+
+// ── Section header ────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.6rem",
+        marginBottom: "0.65rem",
+        marginTop: "0.25rem",
+      }}
+    >
+      <span
+        style={{
+          fontSize: "0.72rem",
+          fontWeight: 600,
+          letterSpacing: "0.07em",
+          textTransform: "uppercase",
+          color: "var(--faint)",
+        }}
+      >
+        {children}
+      </span>
+      <div style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+    </div>
+  );
+}
+
+// ── Holder page ───────────────────────────────────────────────────────────────
 
 type PageView =
   | { kind: "list" }
@@ -443,13 +678,33 @@ function HolderInner() {
         />
       )}
 
+      {/* Destructive Action Confirmation Modal */}
       {confirmBulkAction && (
-        <BulkRemoveModal
-          type={confirmBulkAction.type}
-          count={confirmBulkAction.commitments.length}
-          onCancel={() => setConfirmBulkAction(null)}
-          onConfirm={() => executeBulkRemove(confirmBulkAction.commitments)}
-        />
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0, 0, 0, 0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div className="modal-card" style={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", padding: "1.5rem", maxWidth: "420px", width: "90%" }}>
+            <h3 style={{ marginTop: 0, fontSize: "1.2rem" }}>
+              {confirmBulkAction.type === "clear-expired" ? "Clear Expired Credentials?" : "Remove Selected Credentials?"}
+            </h3>
+            <p className="faint" style={{ fontSize: "0.9rem", margin: "1rem 0" }}>
+              Are you sure you want to remove {confirmBulkAction.commitments.length} credential{confirmBulkAction.commitments.length > 1 ? "s" : ""}? This will permanently remove them from your browser&apos;s encrypted local storage.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end", gap: "0.75rem" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setConfirmBulkAction(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                style={{ backgroundColor: "#dc2626", color: "#fff" }}
+                onClick={() => executeBulkRemove(confirmBulkAction.commitments)}
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

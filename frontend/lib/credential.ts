@@ -392,6 +392,14 @@ export async function exportCredentials(): Promise<string> {
   return JSON.stringify(await loadCredentials(), null, 2);
 }
 
+async function persistCredentials(next: Credential[]): Promise<void> {
+  if (_cachedKey && _unlockSalt) {
+    localStorage.setItem(STORE_KEY, await serializeEncrypted(JSON.stringify(next)));
+  } else {
+    localStorage.setItem(STORE_KEY, JSON.stringify(next));
+  }
+}
+
 /**
  * Save a credential, encrypting the full credential set with the
  * passphrase-derived key. The store must be unlocked first.
@@ -404,7 +412,7 @@ export async function saveCredential(cred: Credential): Promise<Credential[]> {
       (c) => !(c.type === cred.type && c.commitment === cred.commitment),
     ),
   ];
-  localStorage.setItem(STORE_KEY, await serializeEncrypted(JSON.stringify(next)));
+  await persistCredentials(next);
   return next;
 }
 
@@ -415,7 +423,7 @@ export async function markProved(commitment: string, txHash: string): Promise<Cr
       ? { ...c, provedAt: Math.floor(Date.now() / 1000), provedTxHash: txHash }
       : c,
   );
-  localStorage.setItem(STORE_KEY, await serializeEncrypted(JSON.stringify(next)));
+  await persistCredentials(next);
   return next;
 }
 
@@ -430,14 +438,14 @@ export async function markAllProved(
   const next = all.map((c) =>
     set.has(c.commitment) ? { ...c, provedAt: now, provedTxHash: txHash } : c,
   );
-  localStorage.setItem(STORE_KEY, await serializeEncrypted(JSON.stringify(next)));
+  await persistCredentials(next);
   return next;
 }
 
 export async function removeCredential(commitment: string): Promise<Credential[]> {
   const all = await loadCredentials();
   const next = all.filter((c) => c.commitment !== commitment);
-  localStorage.setItem(STORE_KEY, await serializeEncrypted(JSON.stringify(next)));
+  await persistCredentials(next);
   return next;
 }
 

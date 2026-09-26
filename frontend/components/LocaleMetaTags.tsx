@@ -2,7 +2,7 @@
 
 import { useLocale } from "next-intl";
 import { usePathname } from "next/navigation";
-import { locales, type Locale } from "@/i18n.config";
+import { locales, defaultLocale, type Locale } from "@/i18n.config";
 
 /**
  * Component that adds hreflang meta tags for SEO
@@ -10,9 +10,15 @@ import { locales, type Locale } from "@/i18n.config";
  * 
  * Note: Uses window.location.origin to make it domain-agnostic
  */
-export function LocaleMetaTags() {
-  const locale = useLocale() as Locale;
-  const pathname = usePathname();
+export function LocaleMetaTags({ locale: propLocale }: { locale?: Locale } = {}) {
+  let locale: Locale = propLocale || defaultLocale;
+  try {
+    const hookLocale = useLocale() as Locale;
+    if (hookLocale) locale = hookLocale;
+  } catch {
+    // NextIntlClientProvider not mounted in <head>, use prop or default
+  }
+  const pathname = usePathname() || "/";
 
   // Get the path without locale prefix for constructing alternate URLs
   const getPathForLocale = (targetLocale: Locale): string => {

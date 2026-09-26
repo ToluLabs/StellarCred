@@ -261,53 +261,122 @@ function VerifyInner() {
     clearStalePersonaPending(Boolean(personaInquiryId));
   }, [personaInquiryId]);
 
-  // When Persona redirects back to /verify?inquiry-id=XXX, resume the pending
-  // issue request that was stored in sessionStorage before the redirect.
+  // When Persona redirects back to /verify?inquiry-id=XXX, poll for async
+  // issuance completion via /api/persona/result, falling back to /api/issue.
   useEffect(() => {
     if (!personaInquiryId || !address) return;
     // Read-and-clear: the blob is removed before the resumed call is made,
     // so it's gone whether the issue succeeds or fails.
     const pending = loadPersonaPending();
-    if (!pending) return;
     setBusy(true);
     setError("");
     const requestId = getOrCreateRequestId();
-    fetch("/api/issue", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-request-id": requestId },
-      body: JSON.stringify({ ...pending, persona_inquiry_id: personaInquiryId }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const d = (await res.json().catch(() => null)) as {
+
+    let cancelled = false;
+    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const maxPollAttempts = 15; // up to 30 seconds of polling
+
+    const handleSuccess = async (
+      credentials: import("@/lib/credential").Credential[],
+    ) => {
+      await Promise.all(credentials.map((c) => saveCredential(c)));
+      justIssuedClaims.current = credentials
+        .map((c) => c.type)
+        .filter((t) => VALID_CLAIMS.includes(t as CredentialType));
+
+      setDone(true);
+      toast.success(
+        credentials.length > 1
+          ? "Credentials issued successfully"
+          : "Credential issued successfully",
+      );
+      setTimeout(redirectAfterIssue, 1500);
+    };
+
+    const pollResult = async () => {
+      if (cancelled) return;
+      attempts++;
+      try {
+        const res = await fetch(
+          `/api/persona/result?inquiry_id=${encodeURIComponent(personaInquiryId)}`,
+        );
+        if (res.ok) {
+          const data = (await res.json().catch(() => null)) as {
+            ready?: boolean;
+            status?: string;
+            credentials?: import("@/lib/credential").Credential[];
             error?: string;
           } | null;
-          throw new Error(
-            d?.error ?? "Issuing failed after identity verification",
-          );
-        }
-        return res.json() as Promise<{
-          credentials: import("@/lib/credential").Credential[];
-        }>;
-      })
-      .then(async ({ credentials }) => {
-        await Promise.all(credentials.map((c) => saveCredential(c)));
-        justIssuedClaims.current = credentials.map((c) => c.type).filter((t) => VALID_CLAIMS.includes(t as CredentialType));
 
-        setDone(true);
-        toast.success(
-          credentials.length > 1
-            ? "Credentials issued successfully"
-            : "Credential issued successfully",
-        );
-        setTimeout(redirectAfterIssue, 1500);
-      })
-      .catch((e) => {
+          if (
+            data?.ready &&
+            Array.isArray(data.credentials) &&
+            data.credentials.length > 0
+          ) {
+            await handleSuccess(data.credentials);
+            if (!cancelled) setBusy(false);
+            return;
+          }
+          if (data?.status === "failed") {
+            throw new Error(data.error ?? "Identity verification failed");
+          }
+        }
+      } catch (e) {
+        if (cancelled) return;
         const message = (e as Error).message;
         setError(`${message} (ref: ${requestId})`);
         toast.error(`Credential issuance failed: ${message}`);
-      })
-      .finally(() => setBusy(false));
+        setBusy(false);
+        return;
+      }
+
+      // If pending and still within attempts limit, schedule next poll
+      if (attempts < maxPollAttempts) {
+        pollTimeout = setTimeout(pollResult, 2000);
+      } else {
+        // Fallback to synchronous /api/issue if async webhook hasn't fulfilled
+        try {
+          const res = await fetch("/api/issue", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-request-id": requestId,
+            },
+            body: JSON.stringify({
+              ...pending,
+              persona_inquiry_id: personaInquiryId,
+            }),
+          });
+          if (!res.ok) {
+            const d = (await res.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(
+              d?.error ?? "Issuing failed after identity verification",
+            );
+          }
+          const { credentials } = (await res.json()) as {
+            credentials: import("@/lib/credential").Credential[];
+          };
+          await handleSuccess(credentials);
+        } catch (e) {
+          if (cancelled) return;
+          const message = (e as Error).message;
+          setError(`${message} (ref: ${requestId})`);
+          toast.error(`Credential issuance failed: ${message}`);
+        } finally {
+          if (!cancelled) setBusy(false);
+        }
+      }
+    };
+
+    pollResult();
+
+    return () => {
+      cancelled = true;
+      if (pollTimeout) clearTimeout(pollTimeout);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaInquiryId, address]);
 

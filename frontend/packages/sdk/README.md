@@ -9,6 +9,20 @@ Protocols call one function. No API key, no backend, no personal data handling �
 ```bash
 npm install @stellarcred/sdk
 ```
+
+> **Note on NPM Publication**:
+> Official `@stellarcred/sdk` releases are cut via git tags (e.g. `v0.1.1`).
+> In local development environments or before an upstream npm publish token is configured, you can consume the SDK directly from this repository:
+>
+> ```bash
+> # Build the SDK inside the monorepo:
+> cd frontend/packages/sdk
+> pnpm install
+> pnpm build
+>
+> # Link or import directly into your project:
+> pnpm link ./frontend/packages/sdk
+> ```
 ## API Reference
 
 Generate the SDK API documentation locally:
@@ -65,6 +79,17 @@ behavior: it returns `false` or an empty result by default, and throws
 | `STELLARCRED_RPC_URL` | `NEXT_PUBLIC_RPC_URL` |
 | `STELLARCRED_NETWORK_PASSPHRASE` | `NEXT_PUBLIC_NETWORK_PASSPHRASE` |
 | `STELLARCRED_BASE_URL` | `NEXT_PUBLIC_STELLARCRED_BASE_URL` |
+
+## Contract Deployments
+
+For the authoritative list of deployed StellarCred contract IDs, contract
+versions, WASM hashes, and deployment dates by network, see
+[`DEPLOYMENTS.md`](../../../DEPLOYMENTS.md).
+
+Use the deployment registry when configuring the SDK for a specific network
+rather than relying on `.env.example` placeholders or undocumented contract
+IDs.
+
 
 ## API
 
@@ -298,6 +323,107 @@ Requires `@stellar/stellar-sdk >= 13.0.0` as a peer dependency.
 npm install @stellar/stellar-sdk
 ```
 
+## Trust boundary
+
+The SDK is designed to work in both browsers and Node.js, but there is an
+important boundary between public client-side config and private server-side
+config. Understanding this boundary prevents accidental secret leakage.
+
+### What is safe to expose to the client
+
+| Config | Safe for browser? | Why |
+|---|---|---|
+| `registryId` (ProofRegistry contract ID) | ✅ Yes | A public Stellar contract address — no secret |
+| `rpcUrl` | ✅ Yes | A public RPC endpoint — no secret |
+| `networkPassphrase` | ✅ Yes | A well-known network identifier — no secret |
+| `baseUrl` | ✅ Yes | The StellarCred public URL — no secret |
+
+Pass these via `NEXT_PUBLIC_*` (Next.js) or `VITE_*` (Vite) env vars so they
+are available in browser bundles:
+
+```bash
+# .env.local (Next.js)
+NEXT_PUBLIC_PROOF_REGISTRY_ID=C...
+NEXT_PUBLIC_RPC_URL=https://soroban-testnet.stellar.org
+```
+
+### What must stay server-side only
+
+| Config / Package | Server-only? | Why |
+|---|---|---|
+| `ISSUER_PRIVATE_KEY` | ✅ Server-only | Signs credentials — exposure lets anyone forge credentials |
+| `@stellarcred/issuer` | ✅ Server-only | Contains the signing key; throws if imported in a browser |
+| Server-side `hasClaim` checks | ✅ Server-only for access control | Client-side checks are optimistic UI only (see below) |
+
+Never use `NEXT_PUBLIC_` on `ISSUER_PRIVATE_KEY` or any other secret.
+
+### Server-side re-verification is required
+
+Client-side claim checks (via `hasClaim` in the browser, `useStellarCred`,
+etc.) are optimistic UI only — they improve UX by providing immediate feedback
+but they **cannot be trusted for access control**:
+
+- The browser environment is not trusted; results can be spoofed by the user.
+- `sc_verified=true` return-URL params are untrusted URL hints, not proofs.
+
+**Always re-verify claims server-side before granting access**, using the
+wallet address the user has actually authenticated with (not one from a URL
+param):
+
+```ts
+// ✅ Server-side gate (API route, middleware, server component)
+import StellarCred from "@stellarcred/sdk/server";
+
+const ok = await StellarCred.hasClaim(authenticatedWallet, "kyc");
+if (!ok) return res.status(403).json({ error: "KYC required" });
+```
+
+```ts
+// ⚠️  Client-side check — optimistic UI only, not a security gate
+import StellarCred from "@stellarcred/sdk";
+
+const ok = await StellarCred.hasClaim(wallet, "kyc");
+if (!ok) router.push("/verify"); // redirect to verify, but server will also check
+```
+
+### Server entry point: `@stellarcred/sdk/server`
+
+When importing the SDK in server-side code (API routes, middleware, server
+components, Lambda handlers, etc.), use the dedicated server entry point:
+
+```ts
+// ✅ Explicit server-side import
+import StellarCred from "@stellarcred/sdk/server";
+import { hasClaim, configure } from "@stellarcred/sdk/server";
+```
+
+This is a thin re-export of the same SDK — the API is identical. The separate
+path makes the intent explicit at the import site and suppresses the
+development-mode warning described below.
+
+### Development-mode boundary warning
+
+In development (`NODE_ENV !== "production"`), the SDK emits a **one-time
+`console.warn`** when `configure()` is called from a browser context with
+values that appear to come from server-only environment variables (e.g.
+`STELLARCRED_REGISTRY_ID` or bare `PROOF_REGISTRY_ID` without a `NEXT_PUBLIC_`
+prefix). This catches the common mistake:
+
+```ts
+// ⚠️  Wrong — uses a server-only env var name
+StellarCred.configure({ registryId: process.env.PROOF_REGISTRY_ID });
+
+// ✅ Right — uses the public Next.js alias
+StellarCred.configure({ registryId: process.env.NEXT_PUBLIC_PROOF_REGISTRY_ID });
+```
+
+The warning only fires once per page load, only in development (when `NODE_ENV`
+is not `"production"`), and only in a browser context. It is silent in
+production, in Node.js, and when no suspicious indicators are present.
+
+To silence the warning permanently for server-side code, import from
+`@stellarcred/sdk/server` — the warning is only relevant for browser bundles.
+
 ## How it works
 
 StellarCred stores ZK proofs on Stellar. A holder proves a claim once (in their browser, using UltraHonk / Barretenberg); the result is cached in the `ProofRegistry` contract. Your protocol reads it with a single free simulation — no wallet connection, no fee, no personal data.
@@ -408,3 +534,25 @@ See [`examples/svelte-gate/ClaimGate.svelte`](./examples/svelte-gate/ClaimGate.s
   <p>{type}: {ok ? '✅' : '❌'}</p>
 {/each}{/if}
 ```
+
+## Release Process
+
+The SDK follows [Semantic Versioning](https://semver.org/). Releases are fully automated through `.github/workflows/release.yml`.
+
+### How Releases Work:
+1. **Version Declaration**: The canonical version is maintained in `frontend/packages/sdk/package.json` (e.g. `"version": "0.1.1"`).
+2. **Cutting a Release**:
+   - Update `package.json` version and document changes in `frontend/packages/sdk/CHANGELOG.md` and root `CHANGELOG.md`.
+   - Create and push a signed git tag matching the version with a `v` prefix:
+     ```bash
+     git tag -a v0.1.1 -m "Release v0.1.1"
+     git push origin v0.1.1
+     ```
+3. **Workflow Execution**:
+   - `.github/workflows/release.yml` triggers on `v*` tag pushes.
+   - It validates that the git tag version strictly matches `package.json`.
+   - Runs `pnpm build` to compile the dual CJS/ESM distribution bundles with TypeScript definitions.
+   - Generates release notes from conventional commit messages.
+   - Creates an official GitHub Release with release artifacts.
+   - Publishes `@stellarcred/sdk` with public access to the npm registry using `NPM_TOKEN`.
+

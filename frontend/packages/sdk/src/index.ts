@@ -23,6 +23,116 @@
 //   const ok = await StellarCred.hasClaim(walletAddress, "kyc");
 
 // ---------------------------------------------------------------------------
+// Runtime environment detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the SDK is running in a browser (or browser-like) context.
+ * Used only for development-mode boundary warnings — never throws.
+ */
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
+
+/**
+ * Returns true when the current process is running in development mode.
+ * Recognises the conventional NODE_ENV values used by Next.js, Vite, CRA,
+ * and bare Node.js scripts.  Always returns false when `process` is undefined
+ * (e.g. a plain browser bundle without an env shim).
+ *
+ * Only "production" is treated as non-dev — test and development environments
+ * should both see the warning.
+ */
+function isDev(): boolean {
+  if (typeof process === "undefined") return false;
+  const nodeEnv = (process.env as Record<string, string | undefined>).NODE_ENV;
+  return nodeEnv !== "production";
+}
+
+/**
+ * Fires a one-time `console.warn` when `configure()` is called from a browser
+ * context with values that look like they came from server-only environment
+ * variables (i.e. variables that are never injected into browser bundles by
+ * Next.js / Vite / CRA because they lack the `NEXT_PUBLIC_` / `VITE_` prefix).
+ *
+ * The heuristic is conservative:
+ *  • We only warn in a browser context (window is defined).
+ *  • We only warn in development mode (NODE_ENV !== "production").
+ *  • We only warn when at least one of the suspicious indicators is present:
+ *      - The `registryId` passed to `configure()` came from a bare
+ *        `STELLARCRED_REGISTRY_ID` env var (not the public Next.js alias).
+ *      - Any STELLARCRED_* env variable without a NEXT_PUBLIC_ prefix is
+ *        somehow visible in `process.env` in the browser, which is a strong
+ *        signal that the integrator's bundler is leaking server-side env vars.
+ *
+ * The warning is emitted at most once per page load regardless of how many
+ * times `configure()` is called.
+ */
+let _warnedBoundaryViolation = false;
+/**
+ * @internal — test-only hook to reset the one-shot boundary violation flag
+ * between test cases. Not part of the public API.
+ */
+export function __resetBoundaryWarningForTesting(): void {
+  _warnedBoundaryViolation = false;
+}
+function warnOnClientServerBoundaryViolation(opts: {
+  registryId?: string;
+  rpcUrl?: string;
+}): void {
+  if (!isBrowser()) return;
+  if (!isDev()) return;
+  if (_warnedBoundaryViolation) return;
+
+  const proc = typeof process !== "undefined"
+    ? (process.env as Record<string, string | undefined>)
+    : {};
+
+  // Indicator 1: a bare STELLARCRED_REGISTRY_ID is visible in process.env
+  // inside a browser.  Next.js only exposes NEXT_PUBLIC_* vars to the client
+  // bundle; if STELLARCRED_REGISTRY_ID has a value here it means the bundler
+  // is leaking server-side env vars into the client.
+  const leakedServerVar =
+    !!proc["STELLARCRED_REGISTRY_ID"] ||
+    !!proc["STELLARCRED_RPC_URL"] ||
+    !!proc["STELLARCRED_NETWORK_PASSPHRASE"] ||
+    !!proc["STELLARCRED_BASE_URL"] ||
+    !!proc["STELLARCRED_NETWORK"];
+
+  // Indicator 2: configure() was called with a registryId / rpcUrl value that
+  // is identical to what the bare (non-public) env var would return.  This
+  // catches the pattern:
+  //
+  //   StellarCred.configure({ registryId: process.env.PROOF_REGISTRY_ID })
+  //
+  // where the integrator accidentally used the server-only var name.
+  const serverEnvRegistryId = proc["STELLARCRED_REGISTRY_ID"] ?? proc["PROOF_REGISTRY_ID"];
+  const serverEnvRpcUrl = proc["STELLARCRED_RPC_URL"];
+  const configMatchesServerVar =
+    (opts.registryId !== undefined && opts.registryId !== "" && opts.registryId === serverEnvRegistryId) ||
+    (opts.rpcUrl !== undefined && opts.rpcUrl !== "" && opts.rpcUrl === serverEnvRpcUrl);
+
+  if (!leakedServerVar && !configMatchesServerVar) return;
+
+  _warnedBoundaryViolation = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[StellarCred] configure() was called in a browser context with values that " +
+      "appear to come from server-only environment variables (e.g. STELLARCRED_REGISTRY_ID " +
+      "or PROOF_REGISTRY_ID without the NEXT_PUBLIC_ prefix).\n\n" +
+      "The ProofRegistry contract ID and RPC URL are read-only infrastructure config " +
+      "that is safe to expose to the client — but they must reach the browser through " +
+      "public env vars (NEXT_PUBLIC_PROOF_REGISTRY_ID / NEXT_PUBLIC_RPC_URL in Next.js, " +
+      "VITE_* in Vite) rather than server-only names.\n\n" +
+      "If you are verifying claims server-side (recommended for access control), " +
+      "import from '@stellarcred/sdk/server' instead — the intent is explicit at " +
+      "the import site and this warning will not fire.\n\n" +
+      "See the SDK README §Trust boundary for details. " +
+      "This warning only appears in development mode.",
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Runtime configuration
 // ---------------------------------------------------------------------------
 
@@ -97,6 +207,10 @@ export function configure(opts: {
   maxDelayMs?: number;
   jitter?: boolean;
 }): void {
+  // Warn in dev when configure() is called from a browser with values that
+  // look like they came from server-only (non-public) environment variables.
+  // This is a dev-only, one-shot warning — never fires in production.
+  warnOnClientServerBoundaryViolation({ registryId: opts.registryId, rpcUrl: opts.rpcUrl });
   _config = { ..._config, ...opts };
   const sharedOpts: Parameters<typeof configureSharedClaims>[0] = {};
   if (opts.registryId !== undefined) sharedOpts.registryId = opts.registryId;

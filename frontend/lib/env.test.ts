@@ -64,6 +64,13 @@ describe("loadEnv", () => {
     expect(env.PERSONA_KYC_TEMPLATE_ID).toBe("itmpl_123");
   });
 
+  it("accepts PERSONA_WEBHOOK_SECRET", () => {
+    const env = loadEnv({
+      PERSONA_WEBHOOK_SECRET: "whsec_test123",
+    });
+    expect(env.PERSONA_WEBHOOK_SECRET).toBe("whsec_test123");
+  });
+
   it("rejects a partial Plaid configuration", () => {
     expect(() => loadEnv({ PLAID_ACCESS_TOKEN: "access-sandbox-x" })).toThrow(EnvValidationError);
     expect(() => loadEnv({ PLAID_CLIENT_ID: "cid", PLAID_SECRET: "sec" })).toThrow(
@@ -85,6 +92,9 @@ describe("loadEnv", () => {
       EnvValidationError,
     );
     expect(() => loadEnv({ NEXT_PUBLIC_PLAID_SECRET: "leaked" })).toThrow(EnvValidationError);
+    expect(() => loadEnv({ NEXT_PUBLIC_PERSONA_WEBHOOK_SECRET: "leaked" })).toThrow(
+      EnvValidationError,
+    );
   });
 
   it("reports multiple invalid base fields in a single error rather than failing on the first", () => {

@@ -266,9 +266,10 @@ cd frontend && pnpm install && pnpm dev
 
 ---
 
-## Deployments
+## Contract Deployments
 
-A public record of deployed contract IDs on testnet and mainnet, along with instructions to verify the bytecode integrity from source, is maintained in [DEPLOYMENTS.md](DEPLOYMENTS.md).
+See [`DEPLOYMENTS.md`](./DEPLOYMENTS.md) for the authoritative list of live
+contract IDs, versions, WASM hashes, and deployment dates by network.
 
 ---
 
