@@ -62,6 +62,19 @@ pub struct EventContractUpgraded {
     pub upgraded_at: u64,
 }
 
+/// Payload emitted when the admin is changed.
+/// Topics: ("cred_ver", "admin_changed")
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventAdminChanged {
+    /// The address of the previous admin.
+    pub old_admin: Address,
+    /// The address of the new admin.
+    pub new_admin: Address,
+    /// Timestamp when the change occurred.
+    pub changed_at: u64,
+}
+
 // ── Contract versioning ──────────────────────────────────────────────────────
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
@@ -433,6 +446,51 @@ impl CredentialVerifier {
             Some(roles) => roles.get(role) == Some(address),
             None => false,
         }
+    }
+
+    /// Returns the root admin address.
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
+
+    /// Transfer the root admin to `new_admin`. Root-admin only.
+    ///
+    /// This is a wholesale governance transfer: the `Admin` key and every role
+    /// currently held by the old root admin move to `new_admin`, so the old
+    /// root loses all privileged access exactly as it did before roles existed.
+    /// Fine-grained delegation afterwards uses `grant_role` / `revoke_role`.
+    /// Emits an `admin_changed` event with the transition details.
+    #[allow(deprecated)]
+    pub fn set_admin(env: Env, new_admin: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+        admin.require_auth();
+
+        let mut roles: Map<Symbol, Address> = Self::roles(&env);
+        for (role, holder) in roles.iter() {
+            if holder == admin {
+                roles.set(role, new_admin.clone());
+            }
+        }
+        env.storage().instance().set(&DataKey::Roles, &roles);
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        // Emit: topics = ("cred_ver", "admin_rot")
+        //       data   = EventAdminChanged { old_admin, new_admin, changed_at }
+        env.events().publish(
+            (symbol_short!("cred_ver"), symbol_short!("admin_rot")),
+            EventAdminChanged {
+                old_admin: admin,
+                new_admin,
+                changed_at: env.ledger().timestamp(),
+            },
+        );
     }
 
     fn roles(env: &Env) -> Map<Symbol, Address> {

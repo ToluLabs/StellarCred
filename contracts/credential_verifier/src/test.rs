@@ -937,3 +937,172 @@ fn has_role_is_a_public_view() {
     c.grant_role(&Symbol::new(&env, "issuer_manager"), &delegate);
     assert!(c.has_role(&Symbol::new(&env, "issuer_manager"), &delegate));
 }
+
+// ── Admin rotation tests (#342) ──────────────────────────────────────────────
+
+#[test]
+fn admin_can_transfer_to_new_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // The old admin is currently the root admin.
+    assert_eq!(c.admin(), admin);
+
+    // Old admin transfers to new admin.
+    c.set_admin(&new_admin);
+
+    // New admin is now the root admin.
+    assert_eq!(c.admin(), new_admin);
+
+    // Old admin no longer holds the admin role.
+    assert!(!c.has_role(&symbol_short!("admin"), &admin));
+
+    // New admin now holds the admin role.
+    assert!(c.has_role(&symbol_short!("admin"), &new_admin));
+}
+
+#[test]
+fn admin_transfer_moves_roles_to_new_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // The admin role initially belongs to the deployer.
+    assert!(c.has_role(&symbol_short!("admin"), &admin));
+
+    // Transfer to new admin.
+    c.set_admin(&new_admin);
+
+    // Root admin + every role the old root held move to the new admin.
+    assert_eq!(c.admin(), new_admin);
+    assert!(!c.has_role(&symbol_short!("admin"), &admin));
+    assert!(c.has_role(&symbol_short!("admin"), &new_admin));
+}
+
+#[test]
+fn only_current_admin_can_rotate() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let stranger = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+
+    // A non-admin cannot rotate the admin.
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &stranger,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "set_admin",
+                args: (&new_admin,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_set_admin(&new_admin);
+    assert!(res.is_err());
+}
+
+#[test]
+fn post_rotation_new_admin_can_perform_ops() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let old_admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (old_admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // Rotate to new admin.
+    c.set_admin(&new_admin);
+
+    // New admin can set a VK.
+    c.mock_auths(&[MockAuth {
+        address: &new_admin,
+        invoke: &MockAuthInvoke {
+            contract: &id,
+            fn_name: "set_vk",
+            args: (
+                &symbol_short!("kyc"),
+                &1u32,
+                Bytes::from_slice(&env, fixture!("kyc", "vk")),
+            )
+                .into_val(&env),
+            sub_invokes: &[],
+        },
+    }])
+    .set_vk(&symbol_short!("kyc"), &1u32, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+
+    assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 1);
+}
+
+#[test]
+fn post_rotation_old_admin_cannot_perform_ops() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let old_admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (old_admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // Rotate to new admin.
+    c.set_admin(&new_admin);
+
+    // Old admin can NO LONGER set a VK.
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &old_admin,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "set_vk",
+                args: (
+                    &symbol_short!("kyc"),
+                    &1u32,
+                    Bytes::from_slice(&env, fixture!("kyc", "vk")),
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_set_vk(&symbol_short!("kyc"), &1u32, &Bytes::from_slice(&env, fixture!("kyc", "vk")));
+    assert!(res.is_err());
+}
+
+#[test]
+fn set_admin_emits_expected_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // Drain the initial setup events (none for CredentialVerifier setup).
+    let _ = env.events().all();
+
+    c.set_admin(&new_admin);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&c.address),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("admin_rot")).into_val(&env),
+                EventAdminChanged {
+                    old_admin: admin.clone(),
+                    new_admin: new_admin.clone(),
+                    changed_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
+            ),
+        ],
+    );
+}
