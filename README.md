@@ -360,7 +360,11 @@ are supported), switch it to **testnet**, and fund the account
   different claim type; watch *access denied → granted* as `is_verified` flips.
 
 **Rotating the issuer key** doesn't require a redeploy — generate a new key and
-call `register_issuer` on the existing IssuerRegistry with the new public key.
+call `rotate_issuer_key` on the existing IssuerRegistry with an overlap window,
+so credentials already issued under the old key keep verifying. (Do not use
+`register_issuer` to swap the key: it is rejected for issuers with key history.)
+For a compromised key use `revoke_issuer_key`, which takes effect immediately.
+Full procedure: [docs/ISSUER_KEY_ROTATION.md](docs/ISSUER_KEY_ROTATION.md).
 
 > In-browser proving uses cross-origin isolation (COOP/COEP headers in
 > `next.config.mjs`) for multithreading, falling back to single-threaded.

@@ -153,7 +153,9 @@ sequenceDiagram
     Wallet->>ProofRegistry: submit_proof(holder, issuer_id, credential_type, proof, public_inputs, expiry)
     ProofRegistry->>IssuerRegistry: is_valid_issuer(issuer_id, credential_type)
     IssuerRegistry-->>ProofRegistry: true/false
-    ProofRegistry->>ProofRegistry: Check Public Key in Public Inputs Matches Registered Key
+    ProofRegistry->>IssuerRegistry: is_issuer_key_valid(issuer_id, pubkey_from_public_inputs)
+    IssuerRegistry-->>ProofRegistry: true/false (key in validity window, not revoked)
+    ProofRegistry->>ProofRegistry: Reject if the signing key is not accepted
     ProofRegistry->>Verifier: verify_proof(credential_type, proof, public_inputs)
     Verifier-->>ProofRegistry: true/false
     ProofRegistry->>ProofRegistry: Cache Proof Record (is_verified = true)

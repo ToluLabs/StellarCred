@@ -938,7 +938,7 @@ export default function DocsPage() {
             <div style={{ marginBottom: "0.25rem" }}>
               <ContractRow
                 name="IssuerRegistry"
-                role="Stores trusted issuer addresses, their secp256k1 public keys, and which credential types each is authorised to issue. Admins call register_issuer; anyone can read is_valid_issuer and get_issuer_pubkey."
+                role="Stores trusted issuer addresses, their secp256k1 public keys, and which credential types each is authorised to issue. An issuer can hold several signing keys at once, each with a validity window, so rotating a key does not invalidate credentials already issued under it. Admins call register_issuer, rotate_issuer_key, and revoke_issuer_key; anyone can read is_valid_issuer, get_issuer_pubkey, and get_issuer_keys."
               />
               <ContractRow
                 name="CredentialVerifier"
@@ -946,7 +946,7 @@ export default function DocsPage() {
               />
               <ContractRow
                 name="ProofRegistry"
-                role="The public API for downstream protocols. Calls IssuerRegistry to check trust, verifies the public key in the proof's public inputs matches the registered key, calls CredentialVerifier, and writes (holder, type) → (verified_at, expiry) to persistent storage."
+                role="The public API for downstream protocols. Calls IssuerRegistry to check trust, verifies the public key in the proof's public inputs is a key that issuer currently accepts, calls CredentialVerifier, and writes (holder, type) → (verified_at, expiry) to persistent storage."
               />
               <ContractRow
                 name="GatedPool"

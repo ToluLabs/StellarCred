@@ -69,7 +69,7 @@ Emitted by `revoke` when a registered issuer marks a holder's proof as revoked. 
 
 ### `iss_reg.register` — Issuer registered or updated
 
-Emitted by `register_issuer` (admin-only) when a new issuer is added to the registry, or when an existing issuer's record is overwritten (key rotation, type list update).
+Emitted by `register_issuer` (admin-only) when a new issuer is added to the registry, or when an existing issuer's record is overwritten (credential-type list update). Note that `register_issuer` cannot change an issuer's signing key — use `rotate_issuer_key`, below.
 
 **Topics:** `("iss_reg", "register")`
 
@@ -96,6 +96,50 @@ Emitted by `revoke_issuer` (admin-only) when an issuer is marked as revoked. Exi
 | Field | Type | Description |
 |---|---|---|
 | `issuer` | `Address` | The address of the revoked issuer. |
+
+---
+
+### `iss_reg.key_rot` — Issuer signing key rotated
+
+Emitted by `rotate_issuer_key` (admin-only) when an issuer moves to a new secp256k1 signing key. **Not** a revocation: the outgoing key stays verifiable until `previous_valid_until`, so credentials already issued under it keep working. New issuance uses `new_pubkey`.
+
+**Topics:** `("iss_reg", "key_rot")`
+
+**Payload — `EventIssuerKeyRotated`:**
+
+| Field | Type | Description |
+|---|---|---|
+| `issuer` | `Address` | The issuer whose signing key changed. |
+| `previous_pubkey` | `BytesN<64>` | The key that was in use before this rotation. |
+| `new_pubkey` | `BytesN<64>` | The key that is in use after this rotation. |
+| `previous_valid_until` | `u64` | Ledger timestamp at which `previous_pubkey` stops being accepted. Credentials verified under it must be submitted before then. |
+
+> Consumers should treat this as a schedule trigger, not an alert: the correct
+> response is to confirm issuance has moved to `new_pubkey` and, once
+> `previous_valid_until` passes, that no traffic still presents the old key.
+
+---
+
+### `iss_reg.key_rev` — Issuer signing key revoked
+
+Emitted by `revoke_issuer_key` (admin-only) when a single signing key is emergency-revoked. Takes effect immediately, ignoring any validity window — this is the compromise response, as distinct from the graceful retirement in `iss_reg.key_rot`. The call is idempotent, so the event is emitted only on an actual state change.
+
+**Topics:** `("iss_reg", "key_rev")`
+
+**Payload — `EventIssuerKeyRevoked`:**
+
+| Field | Type | Description |
+|---|---|---|
+| `issuer` | `Address` | The issuer that owned the key. |
+| `pubkey` | `BytesN<64>` | The revoked key. |
+| `revoked_at` | `u64` | Ledger timestamp (seconds) at which the key was revoked. |
+
+> A revoked key can never be reinstated by a later rotation. Note this does not
+> retroactively invalidate `ProofRecord`s already cached by `ProofRegistry`;
+> those expire on their own `expiry` or can be cleared with `revoke_proof`.
+
+See the [issuer key rotation runbook](ISSUER_KEY_ROTATION.md) for the full
+operational procedure.
 
 ---
 

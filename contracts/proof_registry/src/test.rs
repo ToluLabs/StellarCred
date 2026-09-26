@@ -409,6 +409,248 @@ fn non_admin_cannot_pause() {
 
 // ── Batch tests ────────────────────────────────────────────────────────────────
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Issuer key rotation tests (#544)
+//
+// These exercise the full path the issue describes: a credential is issued
+// under a signing key, the issuer rotates that key, and the outstanding
+// credential must still verify. The kyc fixture is a real UltraHonk proof
+// bound to the pubkey embedded in PUBLIC_INPUTS, so it stands in for a
+// credential that was genuinely signed by the outgoing key.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Overlap window for the rotation tests: comfortably inside the 90-day cap
+/// and large enough to be unambiguous.
+const ROTATION_OVERLAP: u64 = 7 * 86_400;
+
+struct RotationHarness {
+    registry: ProofRegistryClient<'static>,
+    issuers: IssuerRegistryClient<'static>,
+    issuer: Address,
+    /// The key the kyc fixture proof is actually signed with.
+    issued_with: BytesN<64>,
+}
+
+fn deploy_for_rotation(env: &Env) -> RotationHarness {
+    let admin = Address::generate(env);
+
+    let ir_id = env.register(IssuerRegistry, (admin.clone(),));
+    let issuers = IssuerRegistryClient::new(env, &ir_id);
+    let issuer = Address::generate(env);
+    let issued_with = demo_pubkey(env);
+    issuers.register_issuer(&issuer, &issued_with, &vec![env, symbol_short!("kyc")]);
+
+    let v_id = env.register(CredentialVerifier, (admin.clone(),));
+    CredentialVerifierClient::new(env, &v_id).set_vk(
+        &symbol_short!("kyc"),
+        &1u32,
+        &Bytes::from_slice(env, VK),
+    );
+
+    let pr_id = env.register(ProofRegistry, (admin, v_id, ir_id));
+    RotationHarness {
+        registry: ProofRegistryClient::new(env, &pr_id),
+        issuers,
+        issuer,
+        issued_with,
+    }
+}
+
+fn submit_kyc(env: &Env, h: &RotationHarness, holder: &Address, expiry: u64) -> bool {
+    h.registry
+        .try_submit_proof(
+            holder,
+            &h.issuer,
+            &symbol_short!("kyc"),
+            &Bytes::from_slice(env, PROOF),
+            &Bytes::from_slice(env, PUBLIC_INPUTS),
+            &None,
+            &expiry,
+        )
+        .is_ok()
+}
+
+#[test]
+fn rotation_does_not_invalidate_an_outstanding_credential() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let h = deploy_for_rotation(&env);
+    let holder = Address::generate(&env);
+
+    // A credential is issued and verified under the original key.
+    assert!(submit_kyc(&env, &h, &holder, 5_000));
+    let (valid, _, _) = h
+        .registry
+        .is_verified(&holder, &symbol_short!("kyc"), &None);
+    assert!(valid);
+
+    // The issuer rotates to a fresh key, with an overlap window.
+    let new_key = BytesN::from_array(&env, &[9u8; 64]);
+    h.issuers
+        .rotate_issuer_key(&h.issuer, &new_key, &ROTATION_OVERLAP);
+
+    // New issuance is expected to use the new key ...
+    assert_eq!(h.issuers.get_issuer_pubkey(&h.issuer), new_key);
+
+    // ... but a holder who has not yet re-proven can still submit the
+    // credential signed by the retired key. This is the regression #544 is
+    // about: previously the registry held a single key, so this failed with
+    // IssuerKeyMismatch and the holder was locked out of their own credential.
+    let late_holder = Address::generate(&env);
+    assert!(submit_kyc(&env, &h, &late_holder, 5_000));
+    let (valid, _, _) = h
+        .registry
+        .is_verified(&late_holder, &symbol_short!("kyc"), &None);
+    assert!(valid);
+}
+
+#[test]
+fn retired_key_is_rejected_once_the_overlap_window_closes() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let h = deploy_for_rotation(&env);
+
+    let new_key = BytesN::from_array(&env, &[9u8; 64]);
+    h.issuers
+        .rotate_issuer_key(&h.issuer, &new_key, &ROTATION_OVERLAP);
+
+    // Just inside the window the outstanding credential still verifies.
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1_000 + ROTATION_OVERLAP - 1);
+    assert!(submit_kyc(
+        &env,
+        &h,
+        &Address::generate(&env),
+        1_000 + ROTATION_OVERLAP + 1_000
+    ));
+
+    // After the window closes the retired key is no longer a registered key,
+    // so the same proof is rejected as an unknown issuer key.
+    let past = 1_000 + ROTATION_OVERLAP + 10;
+    env.ledger().with_mut(|li| li.timestamp = past);
+    assert!(!submit_kyc(
+        &env,
+        &h,
+        &Address::generate(&env),
+        past + 1_000
+    ));
+}
+
+#[test]
+fn emergency_revocation_rejects_outstanding_credentials_immediately() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let h = deploy_for_rotation(&env);
+
+    let new_key = BytesN::from_array(&env, &[9u8; 64]);
+    h.issuers
+        .rotate_issuer_key(&h.issuer, &new_key, &ROTATION_OVERLAP);
+
+    // Well inside the overlap window the retired key would still be accepted.
+    let mid = 1_000 + 1;
+    env.ledger().with_mut(|li| li.timestamp = mid);
+    assert!(submit_kyc(&env, &h, &Address::generate(&env), mid + 1_000));
+
+    // Emergency-revoke the key that signed those credentials.
+    h.issuers.revoke_issuer_key(&h.issuer, &h.issued_with);
+
+    // Effective at once, with no wait-out of the remaining window.
+    let after = mid + 1;
+    env.ledger().with_mut(|li| li.timestamp = after);
+    assert!(!submit_kyc(
+        &env,
+        &h,
+        &Address::generate(&env),
+        after + 1_000
+    ));
+}
+
+#[test]
+fn revoked_key_still_cannot_produce_a_batch_submission() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let h = deploy_for_rotation(&env);
+
+    h.issuers.rotate_issuer_key(
+        &h.issuer,
+        &BytesN::from_array(&env, &[9u8; 64]),
+        &ROTATION_OVERLAP,
+    );
+    h.issuers.revoke_issuer_key(&h.issuer, &h.issued_with);
+
+    let res = h.registry.try_submit_proofs(
+        &Address::generate(&env),
+        &vec![&env, kyc_submission(&env, &h.issuer, 5_000)],
+    );
+    assert!(res.is_err());
+}
+
+#[test]
+fn retired_key_still_backs_an_aggregate_submission() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+
+    // The aggregate fixture packs a kyc + age proof, so both issuers need a
+    // key registered. Only the kyc issuer rotates.
+    let admin = Address::generate(&env);
+    let ir_id = env.register(IssuerRegistry, (admin.clone(),));
+    let ir = IssuerRegistryClient::new(&env, &ir_id);
+
+    let kyc_issuer = Address::generate(&env);
+    let kyc_key = pubkey_from(&env, PUBLIC_INPUTS);
+    ir.register_issuer(&kyc_issuer, &kyc_key, &vec![&env, symbol_short!("kyc")]);
+
+    let age_issuer = Address::generate(&env);
+    ir.register_issuer(
+        &age_issuer,
+        &pubkey_from(&env, AGE_PUBLIC_INPUTS),
+        &vec![&env, symbol_short!("age")],
+    );
+
+    let v_id = env.register(CredentialVerifier, (admin.clone(),));
+    CredentialVerifierClient::new(&env, &v_id).set_vk(
+        &symbol_short!("aggregate"),
+        &1u32,
+        &Bytes::from_slice(&env, AGGREGATE_VK),
+    );
+
+    let pr_id = env.register(ProofRegistry, (admin, v_id, ir_id));
+    let registry = ProofRegistryClient::new(&env, &pr_id);
+
+    // Rotate the kyc issuer only. Its key still appears as a public input of
+    // the aggregate proof, at the packed per-credential offset.
+    ir.rotate_issuer_key(
+        &kyc_issuer,
+        &BytesN::from_array(&env, &[9u8; 64]),
+        &ROTATION_OVERLAP,
+    );
+
+    let holder = Address::generate(&env);
+    let res = registry.try_submit_aggregate_proof(
+        &holder,
+        &vec![&env, kyc_issuer.clone(), age_issuer],
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        &Bytes::from_slice(&env, AGGREGATE_PROOF),
+        &Bytes::from_slice(&env, AGGREGATE_PUBLIC_INPUTS),
+        &vec![&env, 5_000u64, 5_000u64],
+    );
+    assert!(res.is_ok(), "retired kyc key must still back the aggregate");
+    let (kyc_valid, _, _) = registry.is_verified(&holder, &symbol_short!("kyc"), &None);
+    assert!(kyc_valid);
+    let (age_valid, _, _) = registry.is_verified(&holder, &symbol_short!("age"), &None);
+    assert!(age_valid);
+}
+
 #[test]
 fn batch_all_pass() {
     let env = Env::default();
@@ -735,11 +977,9 @@ fn grant_then_verifier_can_check() {
     h.registry
         .grant_verification(&holder, &verifier, &symbol_short!("kyc"), &5000);
 
-    let (valid, verified_at, expiry) = h.registry.check_delegated_verification(
-        &holder,
-        &verifier,
-        &symbol_short!("kyc"),
-    );
+    let (valid, verified_at, expiry) =
+        h.registry
+            .check_delegated_verification(&holder, &verifier, &symbol_short!("kyc"));
     assert!(valid);
     assert_eq!(expiry, 9999); // the underlying claim's own expiry, not the grant's
     let (_, expected_at, _) = h
@@ -758,11 +998,9 @@ fn check_delegated_verification_without_a_grant_returns_false() {
     submit(&env, &h, &holder, 9999);
 
     // The claim itself is valid, but this verifier was never delegated to.
-    let (valid, verified_at, expiry) = h.registry.check_delegated_verification(
-        &holder,
-        &verifier,
-        &symbol_short!("kyc"),
-    );
+    let (valid, verified_at, expiry) =
+        h.registry
+            .check_delegated_verification(&holder, &verifier, &symbol_short!("kyc"));
     assert!(!valid);
     assert_eq!(verified_at, 0);
     assert_eq!(expiry, 0);
@@ -892,12 +1130,9 @@ fn grant_rejects_an_expiry_in_the_past() {
     let verifier = Address::generate(&env);
     env.ledger().with_mut(|li| li.timestamp = 1000);
 
-    let res = h.registry.try_grant_verification(
-        &holder,
-        &verifier,
-        &symbol_short!("kyc"),
-        &500,
-    );
+    let res = h
+        .registry
+        .try_grant_verification(&holder, &verifier, &symbol_short!("kyc"), &500);
     assert!(res.is_err());
 }
 

@@ -9,7 +9,7 @@ This document records the assets StellarCred protects, the trust boundaries it c
 | Issuer signing key | Signs credentials off-chain; compromise lets an attacker mint apparently valid credentials. |
 | Credential secrets | The value and salt used to derive commitments; disclosure breaks privacy and replay resistance. |
 | Holder identity fields | KYC-provided fields such as name, date of birth, or jurisdiction; exposure causes privacy harm. |
-| On-chain trust root | The `IssuerRegistry` state, registered issuer public keys, and credential-type bindings that define which issuers are trusted. |
+| On-chain trust root | The `IssuerRegistry` state, registered issuer public keys and their validity windows, and credential-type bindings that define which issuers are trusted. |
 
 ## Trust Boundaries
 
@@ -25,7 +25,7 @@ This document records the assets StellarCred protects, the trust boundaries it c
 |---|---|
 | Malicious holder | Forge a proof, replay someone else’s credential, or bypass the issuer signature check. |
 | Malicious protocol | Misuse verification APIs, over-request claims, or infer identity data from protocol integration. |
-| Compromised issuer key | Mint credentials for arbitrary holders or credential values. |
+| Compromised issuer key | Mint credentials for arbitrary holders or credential values. Note that a key with a live overlap window can still do this, which is why rotation is not a containment measure. |
 | Network MITM | Alter API responses, redirect issuance flows, or tamper with proof submission traffic. |
 | Malicious issuer | Issue false credentials, violate policy, or attempt to register unauthorized keys. |
 
@@ -33,9 +33,10 @@ This document records the assets StellarCred protects, the trust boundaries it c
 
 | Threat | Mitigation |
 |---|---|
-| Forged proof accepted on-chain | The issuer signature is checked inside the circuit with `std::ecdsa_secp256k1`, and the contract verifies that the public key in the public inputs matches the issuer registered in `IssuerRegistry`. A proof is only valid when it binds to a registered issuer. |
+| Forged proof accepted on-chain | The issuer signature is checked inside the circuit with `std::ecdsa_secp256k1`, and the contract verifies that the public key in the public inputs is one the issuer currently accepts in `IssuerRegistry` (inside its validity window, not revoked). A proof is only valid when it binds to a key that `IssuerRegistry` accepts for that issuer. |
 | Replayed or stale proof submission | ProofRegistry stores verification state with expiry and the protocol reads the cached on-chain result instead of trusting a client-side assertion. Expiration must be aligned with ledger timing and proof freshness requirements. |
-| Stolen issuer key | Store `ISSUER_PRIVATE_KEY` in a secrets manager or HSM-backed environment, rotate it through `IssuerRegistry.register_issuer`, and revoke the old key immediately if compromise is suspected. |
+| Stolen issuer key | Store `ISSUER_PRIVATE_KEY` in a secrets manager or HSM-backed environment. For planned rotation call `IssuerRegistry.rotate_issuer_key` with the shortest overlap window re-issuance can tolerate, so outstanding credentials keep verifying. On suspected compromise call `IssuerRegistry.revoke_issuer_key`, which takes effect immediately rather than waiting out a window. A revoked key can never be reinstated, and `register_issuer` is rejected as a way to change an issuer's key. See [ISSUER_KEY_ROTATION.md](ISSUER_KEY_ROTATION.md). |
+| Superseded key used to mint new credentials during an overlap window | Overlap windows are capped at 90 days (the `ProofRegistry` proof TTL, beyond which a longer window buys nothing) and at 4 keys per issuer. A rotation never extends a window that is already closing, so an overlap cannot be widened indefinitely. Operators should prefer the shortest workable window; containment of an exposed key is a revocation, not a rotation. |
 | Identity leakage | The API must not persist or log holder identity fields after the KYC call returns, and only the fields required to derive the credential should be handled. The PR checklist explicitly reviews this behavior. |
 | Network MITM | Keep the browser/API and API/provider interactions on authenticated TLS channels, avoid exposing server-side secrets to the client, and treat all client inputs as attacker-controlled. |
 | Malicious issuer registers the wrong public key | `IssuerRegistry` is the sole on-chain trust root for issuer binding, so issuer registration is an administrative action and contracts reject issuers that are not registered with the expected credential types. |

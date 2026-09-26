@@ -23,7 +23,7 @@ Areas of particular interest:
 | Area | Risk |
 |------|------|
 | `contracts/proof_registry` | Forged proofs accepted on-chain |
-| `contracts/issuer_registry` | Unauthorized issuer registration |
+| `contracts/issuer_registry` | Unauthorized issuer registration, or abuse of key rotation to keep a superseded key signing |
 | `app/api/issue/route.ts` | Server-side signing key exposure, credential forgery |
 | In-circuit ECDSA (`std::ecdsa_secp256k1`) | Signature bypass |
 | Persona KYC relay | Identity data leakage, bypass |
@@ -31,7 +31,8 @@ Areas of particular interest:
 ## Security model notes
 
 - `ISSUER_PRIVATE_KEY` must never have a `NEXT_PUBLIC_` prefix — it is server-side only.
-- The issuer's secp256k1 signature is verified **inside** the ZK proof (`std::ecdsa_secp256k1`), and the contract checks the public key from public inputs matches the registered issuer key. A valid proof requires a registered issuer to have signed the credential.
+- The issuer's secp256k1 signature is verified **inside** the ZK proof (`std::ecdsa_secp256k1`), and the contract checks the public key from public inputs is one the issuer currently accepts. A valid proof requires a trusted issuer to have signed the credential.
+- An issuer may hold several signing keys at once, each with a validity window, so a key rotation does not invalidate outstanding credentials. A key is accepted only if it is inside its window and has not been revoked; an issuer registered before key tracking existed falls back to its single registered key. See [docs/ISSUER_KEY_ROTATION.md](docs/ISSUER_KEY_ROTATION.md).
 - `prehash: false` is required when signing — Noir uses the raw 32-byte commitment as the message digest. Changing this breaks all existing proofs.
 - Identity fields from KYC providers are used only to derive credential values and are never stored or logged after the API call completes.
 
@@ -48,8 +49,9 @@ Before deploying StellarCred to the Stellar mainnet, verify that all security pa
 
 ### 2. Issuer Cryptographic Keys (Issuer Key)
 - [ ] **Secret Key Protection:** The `ISSUER_PRIVATE_KEY` must be securely stored in production-grade environment secrets (e.g., AWS Secrets Manager, GCP Secret Manager, or Vercel Encrypted Environment Variables). It must never be checked into git or exposed to the client-side (do not prefix with `NEXT_PUBLIC_`).
-- [ ] **Key Rotation Procedures:** Test and document the key rotation procedure. Registering a new issuer key in `IssuerRegistry` must be validated, and the corresponding private key updated in the API environment without service disruption.
-- [ ] **Revocation:** Ensure compromised issuer keys can be immediately removed or revoked in `IssuerRegistry` by the admin.
+- [ ] **Key Rotation Procedures:** Test and document the key rotation procedure. Use `IssuerRegistry::rotate_issuer_key` with an explicit overlap window (max 90 days) so outstanding credentials stay verifiable, then update the corresponding private key in the API environment without service disruption. Do **not** change an issuer's key via `register_issuer` — it is rejected for issuers with key history precisely to avoid stranding outstanding credentials. The full procedure is in [docs/ISSUER_KEY_ROTATION.md](docs/ISSUER_KEY_ROTATION.md).
+- [ ] **Revocation:** Ensure compromised issuer keys can be immediately removed or revoked in `IssuerRegistry` by the admin. Use `IssuerRegistry::revoke_issuer_key`, which takes effect at once rather than waiting out a rotation window. Note that revoking a key does not retroactively clear `ProofRecord`s already cached by `ProofRegistry`; those expire on their own `expiry` or need an explicit `revoke_proof`.
+- [ ] **Overlapping-key Risk:** Choose the shortest rotation overlap window your re-issuance process tolerates. During the window a superseded key can still mint new credentials, so a long overlap is a live risk, not just a convenience.
 
 ### 3. Time-to-Live (TTL) & Ledger Close Times
 - [ ] **Ledger Close Alignment:** The verification caching duration (`expiry` / TTL) must be aligned with Stellar mainnet ledger close times (average 5 seconds per ledger).

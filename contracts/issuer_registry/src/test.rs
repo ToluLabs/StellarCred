@@ -2,7 +2,11 @@
 
 use super::*;
 use proptest::prelude::*;
-use soroban_sdk::{symbol_short, testutils::Address as _, vec, Address, Bytes, BytesN, Env};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Ledger as _},
+    vec, Address, Bytes, BytesN, Env,
+};
 
 fn setup(env: &Env) -> (Address, IssuerRegistryClient<'_>) {
     let admin = Address::generate(env);
@@ -349,6 +353,426 @@ fn set_issuer_metadata_requires_admin() {
     client.set_issuer_metadata(&issuer, &Some(String::from_str(&env, "x")), &None, &None);
 }
 
+// ── Issuer key rotation / revocation tests (#544) ─────────────────────────
+
+/// Overlap window used across the rotation tests: long enough that "still
+/// inside the window" is unambiguous, short enough to jump past in a test.
+const OVERLAP: u64 = 7 * 86_400;
+
+fn mk(env: &Env, seed: u8) -> BytesN<64> {
+    BytesN::from_array(env, &[seed; 64])
+}
+
+#[test]
+fn registered_key_is_tracked_and_valid() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let pubkey = mk(&env, 7);
+    client.register_issuer(&issuer, &pubkey, &vec![&env, symbol_short!("kyc")]);
+
+    assert!(client.is_issuer_key_valid(&issuer, &pubkey));
+
+    let keys = client.get_issuer_keys(&issuer);
+    assert_eq!(keys.len(), 1);
+    let recorded = keys.get(0).unwrap();
+    assert_eq!(recorded.pubkey, pubkey);
+    // The registered key is the issuer's current key: open-ended, never revoked.
+    assert_eq!(recorded.valid_until, None);
+    assert!(!recorded.revoked);
+    assert_eq!(recorded.revoked_at, None);
+}
+
+#[test]
+fn unknown_issuer_key_is_invalid() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    client.register_issuer(&issuer, &mk(&env, 7), &vec![&env, symbol_short!("kyc")]);
+
+    assert!(!client.is_issuer_key_valid(&issuer, &mk(&env, 8)));
+    assert!(!client.is_issuer_key_valid(&Address::generate(&env), &mk(&env, 7)));
+}
+
+#[test]
+fn rotation_keeps_outstanding_credential_key_valid() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let old_key = mk(&env, 1);
+    let new_key = mk(&env, 2);
+    client.register_issuer(&issuer, &old_key, &vec![&env, symbol_short!("kyc")]);
+
+    client.rotate_issuer_key(&issuer, &new_key, &OVERLAP);
+
+    // The new key is current ...
+    assert!(client.is_issuer_key_valid(&issuer, &new_key));
+    // ... and the old key still verifies outstanding credentials. This is the
+    // regression #544 is about: before rotation support, the registry only held
+    // one key, so rotating silently broke every credential already issued.
+    assert!(client.is_issuer_key_valid(&issuer, &old_key));
+
+    // `Issuer::pubkey` still reports the current key, so existing indexers,
+    // UIs and the SDK keep working without changes.
+    assert_eq!(client.get_issuer_pubkey(&issuer), new_key);
+
+    let old_record = client.get_issuer_key(&issuer, &old_key).unwrap();
+    assert_eq!(old_record.valid_until, Some(1_000 + OVERLAP));
+    assert!(!old_record.revoked);
+    assert_eq!(client.get_issuer_keys(&issuer).len(), 2);
+}
+
+#[test]
+fn old_key_stops_being_valid_once_the_overlap_closes() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let old_key = mk(&env, 1);
+    let new_key = mk(&env, 2);
+    client.register_issuer(&issuer, &old_key, &vec![&env, symbol_short!("kyc")]);
+    client.rotate_issuer_key(&issuer, &new_key, &OVERLAP);
+
+    // One second before the window closes the old key is still honoured.
+    env.ledger()
+        .with_mut(|li| li.timestamp = 1_000 + OVERLAP - 1);
+    assert!(client.is_issuer_key_valid(&issuer, &old_key));
+
+    // The window is exclusive at its end: at the boundary the old key is gone,
+    // while the new key is unaffected.
+    env.ledger().with_mut(|li| li.timestamp = 1_000 + OVERLAP);
+    assert!(!client.is_issuer_key_valid(&issuer, &old_key));
+    assert!(client.is_issuer_key_valid(&issuer, &new_key));
+}
+
+#[test]
+fn emergency_revocation_invalidates_a_key_immediately() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let compromised = mk(&env, 1);
+    let new_key = mk(&env, 2);
+    client.register_issuer(&issuer, &compromised, &vec![&env, symbol_short!("kyc")]);
+    client.rotate_issuer_key(&issuer, &new_key, &OVERLAP);
+
+    // Mid-window, before any emergency: the old key is still good.
+    env.ledger().with_mut(|li| li.timestamp = 1_000 + 1);
+    assert!(client.is_issuer_key_valid(&issuer, &compromised));
+
+    // Revocation ignores the remaining overlap entirely.
+    client.revoke_issuer_key(&issuer, &compromised);
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000 + 2);
+    assert!(!client.is_issuer_key_valid(&issuer, &compromised));
+    // The current key is untouched by a revocation of a different key.
+    assert!(client.is_issuer_key_valid(&issuer, &new_key));
+
+    let record = client.get_issuer_key(&issuer, &compromised).unwrap();
+    assert!(record.revoked);
+    assert_eq!(record.revoked_at, Some(1_000 + 1));
+}
+
+#[test]
+fn revoking_the_current_key_stops_it_being_accepted() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let key = mk(&env, 5);
+    client.register_issuer(&issuer, &key, &vec![&env, symbol_short!("kyc")]);
+    client.revoke_issuer_key(&issuer, &key);
+
+    // This is the case that would be unsafe if validity fell back to
+    // `Issuer::pubkey`: the revoked key is still the issuer's registered key.
+    assert!(!client.is_issuer_key_valid(&issuer, &key));
+}
+
+#[test]
+fn revocation_is_idempotent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let key = mk(&env, 5);
+    client.register_issuer(&issuer, &key, &vec![&env, symbol_short!("kyc")]);
+
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.revoke_issuer_key(&issuer, &key);
+    // An emergency runbook must be safe to re-run.
+    env.ledger().with_mut(|li| li.timestamp = 2_000);
+    client.revoke_issuer_key(&issuer, &key);
+
+    let record = client.get_issuer_key(&issuer, &key).unwrap();
+    // The original revocation timestamp is preserved, not advanced.
+    assert!(record.revoked);
+    assert_eq!(record.revoked_at, Some(1_000));
+}
+
+#[test]
+fn revoked_key_cannot_be_reinstated_by_rotation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let burned = mk(&env, 1);
+    let other = mk(&env, 2);
+    client.register_issuer(&issuer, &burned, &vec![&env, symbol_short!("kyc")]);
+    client.rotate_issuer_key(&issuer, &other, &OVERLAP);
+    client.revoke_issuer_key(&issuer, &burned);
+
+    // Rotation is not a recovery path for a compromised key.
+    let res = client.try_rotate_issuer_key(&issuer, &burned, &OVERLAP);
+    assert!(res.is_err());
+    assert!(!client.is_issuer_key_valid(&issuer, &burned));
+}
+
+#[test]
+fn rotation_does_not_extend_an_already_closing_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let key_a = mk(&env, 1);
+    let key_b = mk(&env, 2);
+    let key_c = mk(&env, 3);
+    client.register_issuer(&issuer, &key_a, &vec![&env, symbol_short!("kyc")]);
+
+    client.rotate_issuer_key(&issuer, &key_b, &1_000);
+    client.rotate_issuer_key(&issuer, &key_c, &9_000);
+
+    // key_a keeps the earlier deadline; only the key actually being rotated out
+    // gets the new window.
+    assert_eq!(
+        client.get_issuer_key(&issuer, &key_a).unwrap().valid_until,
+        Some(2_000)
+    );
+    assert_eq!(
+        client.get_issuer_key(&issuer, &key_b).unwrap().valid_until,
+        Some(10_000)
+    );
+    assert_eq!(
+        client.get_issuer_key(&issuer, &key_c).unwrap().valid_until,
+        None
+    );
+}
+
+#[test]
+fn rotating_back_reuses_the_existing_key_slot() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let key_a = mk(&env, 1);
+    let key_b = mk(&env, 2);
+    client.register_issuer(&issuer, &key_a, &vec![&env, symbol_short!("kyc")]);
+
+    client.rotate_issuer_key(&issuer, &key_b, &OVERLAP);
+    client.rotate_issuer_key(&issuer, &key_a, &OVERLAP);
+
+    // key_a was re-promoted rather than added as a new entry, so the index
+    // stays at two keys and no slot is consumed.
+    assert_eq!(client.get_issuer_keys(&issuer).len(), 2);
+    assert!(client.is_issuer_key_valid(&issuer, &key_a));
+    assert_eq!(client.get_issuer_pubkey(&issuer), key_a);
+}
+
+#[test]
+fn rotation_backfills_a_pre_upgrade_issuer_with_no_history() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let legacy_key = mk(&env, 4);
+    let new_key = mk(&env, 5);
+    client.register_issuer(&issuer, &legacy_key, &vec![&env, symbol_short!("kyc")]);
+
+    // Simulate state written before key tracking existed: drop the key index so
+    // only the `Issuer` struct remains.
+    env.as_contract(&client.address, || {
+        env.storage()
+            .persistent()
+            .remove(&DataKey::IssuerKeys(issuer.clone()));
+    });
+
+    client.rotate_issuer_key(&issuer, &new_key, &OVERLAP);
+
+    // The legacy key is back-filled inside its window rather than being
+    // silently orphaned.
+    assert!(client.is_issuer_key_valid(&issuer, &legacy_key));
+    let record = client.get_issuer_key(&issuer, &legacy_key).unwrap();
+    assert_eq!(record.valid_from, 0);
+    assert_eq!(record.valid_until, Some(1_000 + OVERLAP));
+}
+
+#[test]
+fn re_registering_an_issuer_preserves_its_key_history() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let old_key = mk(&env, 1);
+    let new_key = mk(&env, 2);
+    client.register_issuer(&issuer, &old_key, &vec![&env, symbol_short!("kyc")]);
+    client.rotate_issuer_key(&issuer, &new_key, &OVERLAP);
+
+    // A common admin operation: widening the issuer's credential types. This
+    // must not disturb the rotation history.
+    client.register_issuer(
+        &issuer,
+        &new_key,
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+    );
+
+    assert!(client.is_issuer_key_valid(&issuer, &old_key));
+    assert!(client.is_issuer_key_valid(&issuer, &new_key));
+    assert!(client.is_valid_issuer(&issuer, &symbol_short!("age")));
+    assert_eq!(client.get_issuer_keys(&issuer).len(), 2);
+}
+
+#[test]
+fn register_issuer_cannot_be_used_to_change_the_signing_key() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let old_key = mk(&env, 1);
+    let new_key = mk(&env, 2);
+    client.register_issuer(&issuer, &old_key, &vec![&env, symbol_short!("kyc")]);
+
+    // The legacy path has no overlap parameter, so allowing it to swap the key
+    // would reintroduce exactly the bug rotation support fixes.
+    let res = client.try_register_issuer(&issuer, &new_key, &vec![&env, symbol_short!("kyc")]);
+    assert!(res.is_err());
+    assert_eq!(client.get_issuer_pubkey(&issuer), old_key);
+}
+
+#[test]
+fn revoked_issuer_rejects_all_of_its_keys() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    let old_key = mk(&env, 1);
+    let new_key = mk(&env, 2);
+    client.register_issuer(&issuer, &old_key, &vec![&env, symbol_short!("kyc")]);
+    client.rotate_issuer_key(&issuer, &new_key, &OVERLAP);
+    client.revoke_issuer(&issuer);
+
+    assert!(!client.is_issuer_key_valid(&issuer, &old_key));
+    assert!(!client.is_issuer_key_valid(&issuer, &new_key));
+}
+
+#[test]
+fn key_history_is_bounded() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    client.register_issuer(&issuer, &mk(&env, 1), &vec![&env, symbol_short!("kyc")]);
+    client.rotate_issuer_key(&issuer, &mk(&env, 2), &OVERLAP);
+    client.rotate_issuer_key(&issuer, &mk(&env, 3), &OVERLAP);
+    client.rotate_issuer_key(&issuer, &mk(&env, 4), &OVERLAP);
+    assert_eq!(client.get_issuer_keys(&issuer).len(), 4);
+
+    // A fifth key would exceed MAX_KEYS_PER_ISSUER.
+    let res = client.try_rotate_issuer_key(&issuer, &mk(&env, 5), &OVERLAP);
+    assert!(res.is_err());
+    assert_eq!(client.get_issuer_keys(&issuer).len(), 4);
+}
+
+#[test]
+fn rotation_rejects_unusable_overlap_windows() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    client.register_issuer(&issuer, &mk(&env, 1), &vec![&env, symbol_short!("kyc")]);
+
+    // Zero-length window: use revoke_issuer_key instead.
+    let zero = client.try_rotate_issuer_key(&issuer, &mk(&env, 2), &0);
+    assert!(zero.is_err());
+
+    // Beyond MAX_OVERLAP_SECS.
+    let too_long = client.try_rotate_issuer_key(&issuer, &mk(&env, 2), &u64::MAX);
+    assert!(too_long.is_err());
+
+    // Rotating to the key already in use.
+    let noop = client.try_rotate_issuer_key(&issuer, &mk(&env, 1), &OVERLAP);
+    assert!(noop.is_err());
+
+    assert_eq!(client.get_issuer_pubkey(&issuer), mk(&env, 1));
+}
+
+#[test]
+fn revoking_an_untracked_key_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+
+    let issuer = Address::generate(&env);
+    client.register_issuer(&issuer, &mk(&env, 1), &vec![&env, symbol_short!("kyc")]);
+
+    let res = client.try_revoke_issuer_key(&issuer, &mk(&env, 9));
+    assert!(res.is_err());
+}
+
+#[test]
+fn rotation_requires_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+    let issuer = Address::generate(&env);
+    let key = mk(&env, 1);
+    client.register_issuer(&issuer, &key, &vec![&env, symbol_short!("kyc")]);
+
+    // Drop the blanket auth mock so the admin's authorization is unavailable.
+    let res = client
+        .mock_auths(&[])
+        .try_rotate_issuer_key(&issuer, &mk(&env, 2), &OVERLAP);
+    assert!(res.is_err());
+    // State is untouched: the old key is still current.
+    assert_eq!(client.get_issuer_pubkey(&issuer), key);
+}
+
+#[test]
+fn key_revocation_requires_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, client) = setup(&env);
+    let issuer = Address::generate(&env);
+    let key = mk(&env, 1);
+    client.register_issuer(&issuer, &key, &vec![&env, symbol_short!("kyc")]);
+
+    let res = client.mock_auths(&[]).try_revoke_issuer_key(&issuer, &key);
+    assert!(res.is_err());
+    assert!(client.is_issuer_key_valid(&issuer, &key));
+}
+
 // ── Metadata length-boundary tests (#340) ──────────────────────────────────
 
 /// Helper: generate a Soroban String of exactly `len` bytes.
@@ -401,12 +825,7 @@ fn metadata_name_over_limit_panics() {
     client.register_issuer(&issuer, &pubkey, &vec![&env, symbol_short!("kyc")]);
 
     // name = 65 bytes, one over the 64-byte limit.
-    client.set_issuer_metadata(
-        &issuer,
-        &Some(str_of_len(&env, 65)),
-        &None,
-        &None,
-    );
+    client.set_issuer_metadata(&issuer, &Some(str_of_len(&env, 65)), &None, &None);
 }
 
 #[test]
@@ -421,12 +840,7 @@ fn metadata_url_over_limit_panics() {
     client.register_issuer(&issuer, &pubkey, &vec![&env, symbol_short!("kyc")]);
 
     // url = 257 bytes, one over the 256-byte limit.
-    client.set_issuer_metadata(
-        &issuer,
-        &None,
-        &Some(str_of_len(&env, 257)),
-        &None,
-    );
+    client.set_issuer_metadata(&issuer, &None, &Some(str_of_len(&env, 257)), &None);
 }
 
 #[test]
@@ -441,10 +855,5 @@ fn metadata_logo_over_limit_panics() {
     client.register_issuer(&issuer, &pubkey, &vec![&env, symbol_short!("kyc")]);
 
     // logo = 257 bytes, one over the 256-byte limit.
-    client.set_issuer_metadata(
-        &issuer,
-        &None,
-        &None,
-        &Some(str_of_len(&env, 257)),
-    );
+    client.set_issuer_metadata(&issuer, &None, &None, &Some(str_of_len(&env, 257)));
 }

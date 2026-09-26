@@ -278,6 +278,18 @@ bench "issuer_registry::is_valid_issuer" "$ISSUER_REGISTRY_ID" is_valid_issuer \
 bench "issuer_registry::get_issuer_pubkey" "$ISSUER_REGISTRY_ID" get_issuer_pubkey \
   --issuer_id "$ADMIN"
 
+# ── is_issuer_key_valid (#544) ────────────────────────────────────────────────
+# Called by ProofRegistry on every submission, so its read cost is on the hot
+# path. Measures the common case: a registered, in-window key.
+bench "issuer_registry::is_issuer_key_valid" "$ISSUER_REGISTRY_ID" is_issuer_key_valid \
+  --issuer_id "$ADMIN" \
+  --pubkey "$DUMMY_PUBKEY_BENCH"
+
+# ── get_issuer_keys (#544) ────────────────────────────────────────────────────
+# Key-management UI read; returns the issuer's full rotation history.
+bench "issuer_registry::get_issuer_keys" "$ISSUER_REGISTRY_ID" get_issuer_keys \
+  --issuer_id "$ADMIN"
+
 # ── admin ─────────────────────────────────────────────────────────────────────
 bench "issuer_registry::admin" "$ISSUER_REGISTRY_ID" admin
 
@@ -285,6 +297,28 @@ bench "issuer_registry::admin" "$ISSUER_REGISTRY_ID" admin
 # Use a fresh address to avoid disrupting the main benchmarks
 bench "issuer_registry::revoke_issuer" "$ISSUER_REGISTRY_ID" revoke_issuer \
   --issuer_id "$ADMIN"
+
+# ── rotate_issuer_key / revoke_issuer_key (#544) ──────────────────────────────
+# Both are state-changing, so they run last, after every other issuer_registry
+# benchmark has finished with ADMIN's state.
+#
+# ADMIN's current key at this point is DUMMY_PUBKEY_BENCH (set by the
+# register_issuer benchmark above). Rotating to a *different* key is therefore
+# a well-formed rotation with a populated one-entry history, and revoking
+# DUMMY_PUBKEY_BENCH afterwards exercises the emergency path against a
+# tracked key.
+ROTATION_NEW_PUBKEY="0202020202020202020202020202020202020202020202020202020202020202\
+0202020202020202020202020202020202020202020202020202020202020202"
+
+# 90 days — the maximum permitted overlap window.
+bench "issuer_registry::rotate_issuer_key" "$ISSUER_REGISTRY_ID" rotate_issuer_key \
+  --issuer_id "$ADMIN" \
+  --new_pubkey "$ROTATION_NEW_PUBKEY" \
+  --overlap_secs 7776000
+
+bench "issuer_registry::revoke_issuer_key" "$ISSUER_REGISTRY_ID" revoke_issuer_key \
+  --issuer_id "$ADMIN" \
+  --pubkey "$DUMMY_PUBKEY_BENCH"
 
 sep
 echo "  credential_verifier"

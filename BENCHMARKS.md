@@ -84,6 +84,27 @@ proof verifier, which runs entirely via Soroban host-native functions (no extern
 | `get_issuer_pubkey`| ~180,000         | ~38,000     | 1            | 0             | ~200       | 0           | ~0.00018       | Persistent read; returns 64-byte BytesN            |
 | `admin`            | ~120,000         | ~30,000     | 1            | 0             | ~100       | 0           | ~0.00012       | Instance storage read                              |
 
+### Issuer key management — pending measurement (#544)
+
+`scripts/benchmark.sh` now also exercises the following, but no figures are
+recorded here yet. Run the script on a funded testnet account and fill these in
+before relying on the hot-path claim below.
+
+| Function             | CPU Instructions | Mem (bytes) | Read Entries | Write Entries | Read Bytes | Write Bytes | Fee (XLM est.) | Notes |
+| -------------------- | ---------------: | ----------: | -----------: | ------------: | ---------: | ----------: | -------------: | ----- |
+| `is_issuer_key_valid`| _pending_        | _pending_   | _pending_    | _pending_     | _pending_  | _pending_   | _pending_      | Persistent read; key-index scan (≤ 4 keys) |
+| `get_issuer_keys`    | _pending_        | _pending_   | _pending_    | _pending_     | _pending_  | _pending_   | _pending_      | Persistent read; returns the full rotation history |
+| `rotate_issuer_key`  | _pending_        | _pending_   | _pending_    | _pending_     | _pending_  | _pending_   | _pending_      | Admin auth + read-modify-write of two key records |
+| `revoke_issuer_key`  | _pending_        | _pending_   | _pending_    | _pending_     | _pending_  | _pending_   | _pending_      | Admin auth + read-modify-write of one key record |
+
+> **Note:** `is_issuer_key_valid` replaces the previous single
+> `get_issuer_pubkey` call on `ProofRegistry.submit_proof`, so it now runs on
+> every submission. The old path was a single `Issuer` struct read; the new one
+> additionally reads the issuer's key index and one record per tracked key
+> (capped at 4 by `MAX_KEYS_PER_ISSUER`). This needs re-measuring before
+> mainnet — the `submit_proof` headroom analysis in *Key findings* below was
+> taken against the old single-read path.
+
 ---
 
 ## credential_verifier
