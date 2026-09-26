@@ -29,6 +29,8 @@ jobs:
           node-version: 20
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
+        with:
+          version: 9
       - name: Lint commits in PR
         run: |
           npx --yes -p @commitlint/cli -p @commitlint/config-conventional commitlint \
@@ -81,6 +83,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
+        with:
+          version: 9
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -252,6 +256,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
+        with:
+          version: 9
 
       - name: Install frontend dependencies (for @noble/curves signing)
         working-directory: frontend
@@ -285,6 +291,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
+        with:
+          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -391,6 +399,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
+        with:
+          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -442,6 +452,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
+        with:
+          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v7
