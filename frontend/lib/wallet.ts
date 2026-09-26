@@ -13,16 +13,7 @@ import {
   WalletNetwork,
   allowAllModules,
   FREIGHTER_ID,
-  type ModuleInterface,
 } from "@creit.tech/stellar-wallets-kit";
-// Not re-exported from the package root: unlike the browser-extension modules
-// allowAllModules() already covers, WalletConnect needs a projectId before it
-// can be constructed, so the kit excludes it from "modules that just work".
-import {
-  WalletConnectModule,
-  WalletConnectAllowedMethods,
-  WALLET_CONNECT_ID,
-} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { NETWORK, NETWORK_PASSPHRASE } from "./stellar";
 
 const APP_NETWORK =
@@ -37,28 +28,50 @@ const APP_BASE_URL = process.env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? "https://st
 // isn't a hard error.
 const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 
-function walletConnectModule(): ModuleInterface | null {
-  if (!WALLETCONNECT_PROJECT_ID) return null;
-  return new WalletConnectModule({
-    projectId: WALLETCONNECT_PROJECT_ID,
-    name: "StellarCred",
-    description: "Privacy-preserving on-chain credentials for Stellar",
-    url: APP_BASE_URL,
-    icons: [`${APP_BASE_URL}/icon.svg`],
-    method: WalletConnectAllowedMethods.SIGN,
-    network: APP_NETWORK,
-  });
-}
+// The kit's public wallet id for its WalletConnect connector — used to
+// special-case its relay failures in toWalletError() below. It's a stable
+// literal in the kit, but the only place the kit exports it from is
+// modules/walletconnect.module, so importing it would drag the whole
+// WalletConnect stack into this chunk; define it here to match instead.
+const WALLET_CONNECT_ID = "wallet_connect";
 
+// ledger.module (Ledger's WebUSB/HID transport) and walletconnect.module (the
+// @walletconnect relay stack) are heavy and only useful when the user actually
+// picks those connectors, so they're lazy-loaded via dynamic import() inside
+// getKit() instead of statically imported at module scope — this file is part
+// of the root layout, which ships in the shared client bundle of every route.
+// Both aren't re-exported from the package root: unlike the browser-extension
+// modules allowAllModules() already covers, WalletConnect needs a projectId
+// before it can be constructed, so the kit excludes it from "modules that just
+// work".
 let kit: StellarWalletsKit | null = null;
 
-export function getKit(): StellarWalletsKit {
+export async function getKit(): Promise<StellarWalletsKit> {
   if (!kit) {
-    const wc = walletConnectModule();
+    // Resolve both connector modules in parallel on first use; the kit's own
+    // browser-extension modules still come from allowAllModules().
+    const [ledger, walletconnect] = await Promise.all([
+      import("@creit.tech/stellar-wallets-kit/modules/ledger.module"),
+      import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module"),
+    ]);
+    const wc = WALLETCONNECT_PROJECT_ID
+      ? new walletconnect.WalletConnectModule({
+          projectId: WALLETCONNECT_PROJECT_ID,
+          name: "StellarCred",
+          description: "Privacy-preserving on-chain credentials for Stellar",
+          url: APP_BASE_URL,
+          icons: [`${APP_BASE_URL}/icon.svg`],
+          method: walletconnect.WalletConnectAllowedMethods.SIGN,
+          network: APP_NETWORK,
+        })
+      : null;
+    const ledgerModule = new ledger.LedgerModule();
     kit = new StellarWalletsKit({
       network: APP_NETWORK,
       selectedWalletId: FREIGHTER_ID,
-      modules: wc ? [...allowAllModules(), wc] : allowAllModules(),
+      modules: wc
+        ? [...allowAllModules(), ledgerModule, wc]
+        : [...allowAllModules(), ledgerModule],
     });
   }
   return kit;
@@ -224,7 +237,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 // false-positive mismatch warning.
 export async function getNetworkOk(): Promise<boolean> {
   try {
-    const { networkPassphrase } = await getKit().getNetwork();
+    const { networkPassphrase } = await (await getKit()).getNetwork();
     return !networkPassphrase || networkPassphrase === NETWORK_PASSPHRASE;
   } catch {
     return true;
@@ -237,7 +250,7 @@ export interface Connection {
 }
 
 export async function connect(): Promise<Connection> {
-  const k = getKit();
+  const k = await getKit();
   const attempt = new Promise<Connection>((resolve, reject) => {
     k.openModal({
       onWalletSelected: async (option) => {
@@ -257,7 +270,7 @@ export async function connect(): Promise<Connection> {
 
 // Restore a previously-selected wallet (no modal) after a full page reload.
 export async function restore(walletId: string): Promise<string> {
-  const k = getKit();
+  const k = await getKit();
   k.setWallet(walletId);
   const { address } = await k.getAddress();
   return address;
@@ -265,7 +278,7 @@ export async function restore(walletId: string): Promise<string> {
 
 /** Sign a transaction XDR with the connected wallet; returns the signed XDR. */
 export async function signTx(xdr: string, address: string): Promise<string> {
-  const k = getKit();
+  const k = await getKit();
   const { signedTxXdr } = await k.signTransaction(xdr, {
     address,
     networkPassphrase: NETWORK_PASSPHRASE,
