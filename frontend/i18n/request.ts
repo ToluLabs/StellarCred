@@ -5,21 +5,21 @@
  */
 
 import { getRequestConfig } from 'next-intl/server';
-import { messages, locales, Locale } from '@/i18n.config';
+import { messages, locales, Locale, defaultLocale } from '@/i18n.config';
 
 export default getRequestConfig(async ({ locale }) => {
-  // Validate that the requested locale is supported
-  if (!locales.includes(locale as Locale)) {
-    throw new Error(`Invalid locale: ${locale}`);
-  }
+  // Fall back to defaultLocale if middleware did not supply one
+  const currentLocale =
+    locale && locales.includes(locale as Locale) ? (locale as Locale) : defaultLocale;
 
   // Dynamically import messages for the requested locale
-  const messageModule = messages[locale as Locale];
+  const messageModule = messages[currentLocale];
   if (!messageModule) {
-    throw new Error(`No messages found for locale: ${locale}`);
+    throw new Error(`No messages found for locale: ${currentLocale}`);
   }
 
   return {
+    locale: currentLocale,
     messages: await messageModule(),
     timeZone: 'UTC',
     now: new Date(),

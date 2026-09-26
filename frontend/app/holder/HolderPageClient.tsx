@@ -200,7 +200,6 @@ function CredCard({
                       >
                         {c.provedTxHash.slice(0, 6)}…<IconExternalLink size={10} />
                       </a>
-                    
                     </>
                   )}
                 </>
