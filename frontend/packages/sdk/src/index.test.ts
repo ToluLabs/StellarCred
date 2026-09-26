@@ -547,8 +547,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
   it("does NOT warn when NODE_ENV is 'production'", () => {
     (globalThis as Record<string, unknown>).window = {};
     process.env["STELLARCRED_REGISTRY_ID"] = "C_LEAKED_PROD";
-    const origNodeEnv = process.env["NODE_ENV"];
-    process.env["NODE_ENV"] = "production";
+    const envMut = process.env as Record<string, string | undefined>;
+    const origNodeEnv = envMut["NODE_ENV"];
+    envMut["NODE_ENV"] = "production";
 
     try {
       configure({ registryId: "C_LEAKED_PROD" });
@@ -558,7 +559,7 @@ describe("warnOnClientServerBoundaryViolation", () => {
       );
       expect(boundaryWarnings).toHaveLength(0);
     } finally {
-      process.env["NODE_ENV"] = origNodeEnv;
+      envMut["NODE_ENV"] = origNodeEnv;
     }
   });
 });
