@@ -10,6 +10,13 @@ import { ToastProvider, useToast } from "./Toast";
 import { TransferExportModal } from "./TransferExportModal";
 import { TransferImportModal } from "./TransferImportModal";
 
+// Mock wallet to prevent freighter-api ESM/CJS resolution issues in vitest
+vi.mock("@/lib/wallet", () => ({
+  signTx: vi.fn(),
+  getAddress: vi.fn(),
+  isConnected: vi.fn(),
+}));
+
 // Mock wallet context
 vi.mock("@/lib/wallet-context", () => ({
   useWallet: () => ({

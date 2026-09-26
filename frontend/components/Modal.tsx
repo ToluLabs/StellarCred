@@ -15,6 +15,8 @@ const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export interface ModalProps {
+  /** Optional HTML id prefix for ARIA attributes */
+  id?: string;
   /** Dialog title shown in the header */
   title: string;
   /** Called when the user dismisses the modal (Escape, backdrop click) */
@@ -28,6 +30,7 @@ export interface ModalProps {
 }
 
 export function Modal({
+  id,
   title,
   onClose,
   children,
@@ -114,7 +117,13 @@ export function Modal({
             marginBottom: "var(--spacing-lg, 1rem)",
           }}
         >
-          <span className="eyebrow">{title}</span>
+          <h2
+            id={titleId}
+            className="eyebrow"
+            style={{ margin: 0, fontSize: "inherit", fontWeight: "inherit" }}
+          >
+            {title}
+          </h2>
           <button
             className="btn btn-ghost btn-sm modal-close-btn"
             onClick={onClose}
