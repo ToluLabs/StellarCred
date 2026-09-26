@@ -30,6 +30,13 @@ export interface Config {
   rateLimitWindowMs: number;
   rateLimitMax: number;
   rateLimitEnabled: boolean;
+  /**
+   * When set, /claims, /stats, and /recent require the key as either:
+   *   Authorization: Bearer <key>   or   X-API-Key: <key>
+   * Absent or empty → public mode. Treated as optional so Partial<Config>
+   * exposes it in tests without requiring every caller to supply it.
+   */
+  apiKey?: string;
 }
 
 function required(name: string): string {

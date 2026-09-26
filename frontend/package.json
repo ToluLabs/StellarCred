@@ -15,7 +15,9 @@
     "test:theme": "node --import tsx --test lib/theme.test.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "size": "size-limit"
+    "size": "size-limit",
+    "check:i18n": "node scripts/check-i18n-parity.mjs",
+    "verify:audit-log": "node --import tsx --experimental-strip-types scripts/verify-audit-log.ts"
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",
