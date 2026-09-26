@@ -1585,29 +1585,125 @@ fn migrate_record_requires_admin_role() {
     assert!(res.is_err());
 }
 
+// ── Two-step admin transfer tests (#343) ────────────────────────────────────
+
 #[test]
-fn admin_transfer_moves_roles_to_new_admin() {
+fn propose_admin_by_non_admin_panics() {
     let env = Env::default();
     env.mock_all_auths();
     let h = deploy(&env);
     let new_admin = Address::generate(&env);
 
-    // Delegate the upgrader role to a third party before the transfer.
-    let upgrader = Address::generate(&env);
-    h.registry.grant_role(&symbol_short!("upgrader"), &upgrader);
+    let res = h.registry.mock_auths(&[]).try_propose_admin(&new_admin);
+    assert!(res.is_err());
+}
 
-    h.registry.set_admin(&new_admin);
+#[test]
+fn accept_admin_without_pending_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
 
-    // Root admin + every role the old root held move to the new admin.
+    let res = h.registry.try_accept_admin();
+    assert!(res.is_err());
+    // Admin unchanged.
+    assert_eq!(h.registry.admin(), h.admin);
+}
+
+#[test]
+fn propose_then_accept_transfers_admin_and_roles() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let new_admin = Address::generate(&env);
+
+    // No pending proposal initially.
+    assert_eq!(h.registry.pending_admin(), None);
+
+    h.registry.propose_admin(&new_admin);
+    assert_eq!(h.registry.pending_admin(), Some(new_admin.clone()));
+    // Still the old admin — nothing has moved yet.
+    assert_eq!(h.registry.admin(), h.admin);
+
+    h.registry.accept_admin();
+
+    // Now the transfer has taken effect.
     assert_eq!(h.registry.admin(), new_admin);
-    assert!(!h.registry.has_role(&symbol_short!("admin"), &h.admin));
+    assert_eq!(h.registry.pending_admin(), None);
+
+    // Every role the outgoing admin held moved to the new admin.
     assert!(h.registry.has_role(&symbol_short!("admin"), &new_admin));
-    assert!(!h.registry.has_role(&symbol_short!("pauser"), &h.admin));
+    assert!(h.registry.has_role(&symbol_short!("upgrader"), &new_admin));
     assert!(h.registry.has_role(&symbol_short!("pauser"), &new_admin));
 
-    // The delegated upgrader role is untouched by the transfer.
-    assert!(h.registry.has_role(&symbol_short!("upgrader"), &upgrader));
-    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &new_admin));
+    // …and the old admin no longer holds them.
+    assert!(!h.registry.has_role(&symbol_short!("admin"), &h.admin));
+    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &h.admin));
+    assert!(!h.registry.has_role(&symbol_short!("pauser"), &h.admin));
+}
+
+#[test]
+fn accept_by_wrong_address_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let new_admin = Address::generate(&env);
+    let wrong = Address::generate(&env);
+
+    h.registry.propose_admin(&new_admin);
+
+    let res = h
+        .registry
+        .mock_auths(&[MockAuth {
+            address: &wrong,
+            invoke: &MockAuthInvoke {
+                contract: &h.registry.address,
+                fn_name: "accept_admin",
+                args: ().into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_accept_admin();
+    assert!(res.is_err());
+    // Admin unchanged.
+    assert_eq!(h.registry.admin(), h.admin);
+}
+
+#[test]
+fn cancel_admin_proposal_clears_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let new_admin = Address::generate(&env);
+
+    h.registry.propose_admin(&new_admin);
+    assert_eq!(h.registry.pending_admin(), Some(new_admin.clone()));
+
+    h.registry.cancel_admin_proposal();
+    assert_eq!(h.registry.pending_admin(), None);
+
+    // Accept after cancel must fail.
+    let res = h.registry.try_accept_admin();
+    assert!(res.is_err());
+}
+
+#[test]
+fn propose_admin_overwrites_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let first = Address::generate(&env);
+    let second = Address::generate(&env);
+
+    h.registry.propose_admin(&first);
+    assert_eq!(h.registry.pending_admin(), Some(first.clone()));
+
+    // Second proposal overwrites the first — no cancel required.
+    h.registry.propose_admin(&second);
+    assert_eq!(h.registry.pending_admin(), Some(second.clone()));
+
+    h.registry.accept_admin();
+    assert_eq!(h.registry.admin(), second);
 }
 
 #[test]
