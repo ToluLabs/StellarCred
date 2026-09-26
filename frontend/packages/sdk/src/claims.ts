@@ -162,7 +162,7 @@ export class TimeoutError extends Error {
 }
 
 /** The credential types StellarCred supports. Matches the contract Symbols. */
-export const CLAIM_TYPES = ["kyc", "age", "income", "jurisdiction", "funds", "accreditation"] as const;
+export const CLAIM_TYPES = ["kyc", "age", "income", "jurisdiction", "funds", "accreditation", "composite"] as const;
 /**
  * Union type representing every supported StellarCred credential.
  *

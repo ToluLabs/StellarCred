@@ -22,6 +22,7 @@ import kycCircuit from "../../../public/circuits/kyc.json";
 import accreditationCircuit from "../../../public/circuits/accreditation.json";
 import employmentCircuit from "../../../public/circuits/employment.json";
 import aggregateCircuit from "../../../public/circuits/aggregate.json";
+import compositeCircuit from "../../../public/circuits/composite_proof.json";
 
 /**
  * Resolve the current date (UTC days since epoch) used as a public input
@@ -160,6 +161,27 @@ async function buildInputs(
         commitment,
         min_seniority: params.threshold ?? String(cred.seniority ?? "3"),
       };
+    
+    case "composite":
+      // The composite payload arrives as untyped JSON; validateWitnessCredential
+      // has already bounded it (lib/witness-input.ts), so each field is narrowed
+      // to the shape the composite circuit's ABI expects. Every field is an
+      // InputValue-compatible array (Field scalars, byte arrays, or arrays of
+      // arrays), matching the u64/Field/u8/u1 arrays in main.nr.
+      return {
+        values: cred.values as (string | number)[],
+        salts: cred.salts as string[],
+        sigs: cred.sigs as number[][],
+        paths: cred.paths as string[][],
+        indices: cred.indices as (string | number)[][],
+        commitments: cred.commitments as string[],
+        issuer_xs: cred.issuer_xs as number[][],
+        issuer_ys: cred.issuer_ys as number[][],
+        kinds: cred.kinds as (string | number)[],
+        thresholds: cred.thresholds as (string | number)[],
+        merkle_roots: cred.merkle_roots as string[],
+        ops: cred.ops as (string | number)[],
+      };
     case "aggregate":
       return {
         kyc_secret: String(cred.kyc_secret),
@@ -200,6 +222,9 @@ function circuitFor(type: string) {
       return employmentCircuit;
     case "aggregate":
       return aggregateCircuit;
+
+    case "composite":
+      return compositeCircuit;
     case "kyc":
     default:
       return kycCircuit;

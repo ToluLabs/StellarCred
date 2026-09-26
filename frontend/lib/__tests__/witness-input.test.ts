@@ -165,3 +165,26 @@ describe("validateWitnessCredential", () => {
     expect(err?.field).toBe("credential.sig");
   });
 });
+
+describe("composite bounds", () => {
+  it("rejects composite policies exceeding max terms", () => {
+    const cred = {
+      values: [1, 2, 3, 4, 5],
+      salts: [1, 2, 3, 4, 5],
+      ops: [0, 0, 0, 0]
+    };
+    expect(validateWitnessCredential("composite", cred)).toEqual({
+      field: "credential.values",
+      message: "max terms is 4",
+    });
+  });
+  
+  it("accepts valid bounds", () => {
+    const cred = {
+      values: [1, 2, 3, 4],
+      salts: [1, 2, 3, 4],
+      ops: [0, 0, 0]
+    };
+    expect(validateWitnessCredential("composite", cred)).toBeNull();
+  });
+});

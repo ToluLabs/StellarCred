@@ -80,7 +80,7 @@ export function useStellarCred(
 
     try {
       const typesToCheck: ClaimType[] =
-        options?.claims || ["kyc", "age", "jurisdiction", "income", "funds", "accreditation"];
+        options?.claims || ["kyc", "age", "jurisdiction", "income", "funds", "accreditation", "composite"];
 
       // One batched read shares a single client across all types; per-type
       // failures resolve to `false` inside `hasClaims`.

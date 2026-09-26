@@ -42,7 +42,7 @@ export interface Credential {
 }
 
 export const TYPE_META: Record<
-  CredentialType,
+  CredentialType | "composite",
   { title: string; claim: string; issuable: boolean; attribute?: string }
 > = {
   kyc: { title: "KYC Complete", claim: "identity verified", issuable: true },
@@ -81,6 +81,13 @@ export const TYPE_META: Record<
     claim: "employed, seniority ≥ 3",
     issuable: true,
     attribute: "Seniority (years)",
+  },
+  // Composite eligibility (#425) is derived by the holder from already-issued
+  // credentials, so it is never issued directly by an issuer.
+  composite: {
+    title: "Composite Eligibility",
+    claim: "eligibility policy satisfied",
+    issuable: false,
   },
 };
 

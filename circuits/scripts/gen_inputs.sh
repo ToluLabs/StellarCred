@@ -106,3 +106,87 @@ MERKLE_LINES=$(node "$SCRIPTS/merkle_tree.js" path $SM_VALUES --for $SM_MEMBER)
 echo "done. demo issuer public key:"
 node "$SCRIPTS/sign.js" --pubkey
 
+
+echo "composite_proof..."
+# Policy: (T0 AND T1) AND T2, encoded as ops = [0, 2, 0]:
+#   ops[0]=0 (AND)  -> r0 = T0 & T1
+#   ops[1]=2 (LEFT) -> r1 = T2 only; T3 is never referenced by r0/r1/final
+#   ops[2]=0 (AND)  -> final_res = r0 & r1
+# T0 = age >= 18 (kind 1), T1 = value in allowlist (kind 2), T2 = jurisdiction
+# eligibility proved as a second Merkle membership (kind 2). T2 must NOT be
+# kind 0 padding: main.nr's kind-dispatch sends kind 0 to the else branch,
+# forcing term_results[2] = false and making the final AND unsatisfiable.
+# T3 stays kind 0 (safe: eval_logic only reads term_results[3] when ops[1] is
+# AND(0), OR(1) or RIGHT(3)).
+C_AGE=$(commit 3650 12345)
+SM_VALUES="840 276 566 356"
+SM_MEMBER="840"
+SM_SALT="42"
+C_SM=$(commit $SM_MEMBER $SM_SALT)
+MERKLE_ROOT=$(node "$SCRIPTS/merkle_tree.js" root $SM_VALUES)
+MERKLE_LINES=$(node "$SCRIPTS/merkle_tree.js" path $SM_VALUES --for $SM_MEMBER | grep -v 'value =' | grep -v 'salt =' | grep -v 'commitment =')
+# merkle_tree.js prints TOML lines (`path = ["...", ...]`, `indices = ["0", ...]`).
+# Extract the bracketed values with sed here — a JS `.match()` inside the
+# double-quoted node -e string below would be interpreted as a bash parameter
+# expansion ("bad substitution"). Same extraction pattern as the commit() helper.
+SM_PATH=$(printf '%s\n' "$MERKLE_LINES" | sed -nE 's/^path = \[(.*)\]$/\1/p')
+SM_INDICES=$(printf '%s\n' "$MERKLE_LINES" | sed -nE 's/^indices = \[(.*)\]$/\1/p')
+# T2: jurisdiction eligibility (566 = Nigeria, leaf index 2) against the same
+# demo allowlist, mirroring jurisdiction_proof's fixture value (commit 566 77).
+JUR_MEMBER="566"
+JUR_SALT="77"
+C_JUR=$(commit $JUR_MEMBER $JUR_SALT)
+JUR_LINES=$(node "$SCRIPTS/merkle_tree.js" path $SM_VALUES --for $JUR_MEMBER)
+JUR_PATH=$(printf '%s\n' "$JUR_LINES" | sed -nE 's/^path = \[(.*)\]$/\1/p')
+JUR_INDICES=$(printf '%s\n' "$JUR_LINES" | sed -nE 's/^indices = \[(.*)\]$/\1/p')
+
+node -e "
+const fs = require('fs');
+const sign = require('$SCRIPTS/sign.js');
+const c_age = '$C_AGE';
+const c_sm = '$C_SM';
+const c_jur = '$C_JUR';
+const sig_age = sign.sign(BigInt(c_age));
+const sig_sm = sign.sign(BigInt(c_sm));
+const sig_jur = sign.sign(BigInt(c_jur));
+const arr = (u) => '[' + Array.from(u).join(', ') + ']';
+
+const values = ['3650', '$SM_MEMBER', '$JUR_MEMBER', '3650'];
+const salts = ['12345', '$SM_SALT', '$JUR_SALT', '12345'];
+const sigs = [arr(sig_age.sig), arr(sig_sm.sig), arr(sig_jur.sig), arr(sig_age.sig)];
+const commitments = ['\"'+c_age+'\"', '\"'+c_sm+'\"', '\"'+c_jur+'\"', '\"'+c_age+'\"'];
+const issuer_xs = [arr(sig_age.x), arr(sig_sm.x), arr(sig_jur.x), arr(sig_age.x)];
+const issuer_ys = [arr(sig_age.y), arr(sig_sm.y), arr(sig_jur.y), arr(sig_age.y)];
+
+const paths = [
+    Array(8).fill('0'),
+    [$SM_PATH],
+    [$JUR_PATH],
+    Array(8).fill('0')
+];
+const indices = [
+    Array(8).fill(0),
+    [$SM_INDICES],
+    [$JUR_INDICES],
+    Array(8).fill(0)
+];
+
+const kinds = [1, 2, 2, 0]; // T0=threshold(age), T1/T2=membership, T3=padding
+const thresholds = ['3650', '0', '0', '0']; // only T0's threshold is evaluated (kind 1)
+const merkle_roots = ['\"0\"', '\"$MERKLE_ROOT\"', '\"$MERKLE_ROOT\"', '\"0\"']; // same demo allowlist root for T1 and T2
+const ops = [0, 2, 0]; // (T0 AND T1) AND T2; ops[1]=LEFT drops T3
+
+console.log(\`values = [\${values.map(v => '\"'+v+'\"').join(', ')}]\`);
+console.log(\`salts = [\${salts.map(v => '\"'+v+'\"').join(', ')}]\`);
+console.log(\`sigs = [\${sigs.join(', ')}]\`);
+console.log(\`paths = [\${paths.map(p => '['+p.map(x => '\"'+x+'\"').join(', ')+']').join(', ')}]\`);
+console.log(\`indices = [\${indices.map(i => '['+i.map(x => '\"'+x+'\"').join(', ')+']').join(', ')}]\`);
+console.log(\`commitments = [\${commitments.join(', ')}]\`);
+console.log(\`issuer_xs = [\${issuer_xs.join(', ')}]\`);
+console.log(\`issuer_ys = [\${issuer_ys.join(', ')}]\`);
+console.log(\`kinds = [\${kinds.join(', ')}]\`);
+console.log(\`thresholds = [\${thresholds.map(v => '\"'+v+'\"').join(', ')}]\`);
+console.log(\`merkle_roots = [\${merkle_roots.join(', ')}]\`);
+console.log(\`ops = [\${ops.join(', ')}]\`);
+" > "$ROOT/composite_proof/Prover.toml"
+
