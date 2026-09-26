@@ -66,6 +66,112 @@ behavior: it returns `false` or an empty result by default, and throws
 | `STELLARCRED_NETWORK_PASSPHRASE` | `NEXT_PUBLIC_NETWORK_PASSPHRASE` |
 | `STELLARCRED_BASE_URL` | `NEXT_PUBLIC_STELLARCRED_BASE_URL` |
 
+## Trust boundary
+
+The SDK performs read-only calls against the on-chain ProofRegistry — no
+private key, no issuance. However, the `registryId` and `rpcUrl` config values
+still travel through `configure()`, and a common mistake is to pass values from
+server-only environment variables into code that is later bundled into the
+browser.
+
+### What is safe to expose client-side
+
+| Env var | Safe in browser? | Notes |
+|---|---|---|
+| `NEXT_PUBLIC_PROOF_REGISTRY_ID` | ✅ Yes | Contract ID is on-chain public data |
+| `NEXT_PUBLIC_RPC_URL` | ✅ Yes | Public Soroban RPC endpoint |
+| `NEXT_PUBLIC_NETWORK_PASSPHRASE` | ✅ Yes | Public constant |
+| `NEXT_PUBLIC_STELLARCRED_BASE_URL` | ✅ Yes | Redirect base URL |
+| `STELLARCRED_REGISTRY_ID` (bare) | ⚠️ Caution | Will warn if passed to configure() in a browser |
+| `ISSUER_PRIVATE_KEY` | 🚫 Never | Server-only signing key — must never reach a browser |
+
+In Next.js, variables prefixed `NEXT_PUBLIC_` are inlined into the client
+bundle at build time. Variables **without** that prefix are server-only and
+must never be forwarded to client code.
+
+### The SDK's development-mode guard
+
+When running in a browser (i.e. `window` is defined), the SDK checks whether
+any value passed to `configure()` — or auto-read from env vars at import time —
+matches a known server-only variable name (`STELLARCRED_*` without `NEXT_PUBLIC_`
+prefix, or `ISSUER_PRIVATE_KEY`). If it does, it emits a **one-time `console.warn`
+in development** (never in production):
+
+```
+[StellarCred] configure() was called in a browser with values that look like they
+came from server-only environment variables (registryId). Make sure you are not
+leaking private config into your client bundle.
+```
+
+This is a heuristic guard, not a cryptographic one. The warning fires in `NODE_ENV !== "production"` only. It fires at most once per page load to avoid spamming polling callers.
+
+### Why server-side re-verification is still required
+
+Even with a correct client configuration, **never grant access based solely on
+the result of a `hasClaim()` call that ran in a browser**:
+
+1. The return-URL params (`sc_verified`, `sc_wallet`, `sc_claims`) appended by
+   the StellarCred redirect flow are **untrusted hints** — they can be
+   hand-crafted by anyone. Always use them only for optimistic UI, then
+   re-verify server-side.
+2. A browser environment is under the user's control — a motivated user can
+   supply a modified `window.ethereum` / Stellar wallet shim, intercept fetches,
+   or supply a fake `hasClaim` return value via a proxy.
+
+The only trustless source of truth is the on-chain ProofRegistry itself. Call
+`hasClaim()` from a **server route handler** or **server action** where the
+wallet address comes from an authenticated session, not from query params or
+request bodies you have not validated.
+
+```ts
+// ✅ Safe — server action, address from authenticated session
+import StellarCred from "@stellarcred/sdk/server";
+
+export async function checkDepositEligibility(wallet: string) {
+  "use server";
+  const ok = await StellarCred.hasClaim(wallet, "kyc");
+  return ok;
+}
+
+// ⚠️ Optimistic-only — re-verify before acting on the result
+const hint = StellarCred.parseReturnParams(window.location.href);
+if (hint.verified) {
+  // Show "verifying…" UI — do NOT grant access yet.
+  // The real gate is the server action above.
+}
+```
+
+### Server-only entry point
+
+Import from `@stellarcred/sdk/server` when calling `hasClaim()` exclusively
+from server code. This entry point **throws at import time** when it detects
+a browser context (`window` is defined), providing a clear signal at the import
+site that the module has crossed the client/server boundary unintentionally:
+
+```ts
+// In a Next.js route handler (app/api/check/route.ts)
+import StellarCred from "@stellarcred/sdk/server";
+
+export async function GET(req: Request) {
+  const wallet = new URL(req.url).searchParams.get("wallet") ?? "";
+  const ok = await StellarCred.hasClaim(wallet, "kyc");
+  return Response.json({ ok });
+}
+```
+
+The `./server` export condition in `package.json` only maps `node` imports, so
+bundlers that respect package exports will refuse to bundle it into a browser
+chunk. The runtime check is defence-in-depth for older tooling that ignores
+export conditions:
+
+```
+Error: @stellarcred/sdk/server must only be used server-side. It is designed
+for Node.js route handlers, server actions, and edge workers where hasClaim()
+reads are performed before granting access.
+```
+
+For client-side use, continue to import from `@stellarcred/sdk`.
+
 ## API
 
 ### `hasClaim(wallet, claimType, opts?)`

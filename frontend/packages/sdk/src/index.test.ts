@@ -445,3 +445,148 @@ describe("verifyPreset", () => {
     expect(StellarCred.verifyPreset).toBe(verifyPreset);
   });
 });
+
+// ── Trust-boundary: warnServerConfig ──────────────────────────────────────────
+
+import {
+  isBrowser,
+  warnServerConfig,
+  _resetWarnServerConfig,
+} from "./index";
+
+describe("isBrowser", () => {
+  it("returns false in the test (Node.js) environment", () => {
+    expect(isBrowser()).toBe(false);
+  });
+
+  it("returns true when window is defined", () => {
+    const originalWindow = (globalThis as any).window;
+    (globalThis as any).window = {};
+    try {
+      expect(isBrowser()).toBe(true);
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as any).window;
+      } else {
+        (globalThis as any).window = originalWindow;
+      }
+    }
+  });
+});
+
+describe("warnServerConfig", () => {
+  beforeEach(() => {
+    _resetWarnServerConfig();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // Restore clean Node env (no window)
+    const g = globalThis as any;
+    if ("window" in g) delete g.window;
+  });
+
+  it("does not warn in a Node.js (non-browser) context", () => {
+    warnServerConfig({ registryId: "FAKE" });
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("does not warn in a browser context when no server-only env var matches", () => {
+    (globalThis as any).window = {};
+    // No matching env var in process.env for this arbitrary value
+    warnServerConfig({ registryId: "__definitely_not_an_env_value__" });
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("warns in a browser context when the value matches a server-only env var", () => {
+    (globalThis as any).window = {};
+    const originalEnv = process.env.NODE_ENV;
+    (process.env as any).NODE_ENV = "development";
+    // Plant a server-only env var whose value we pass to configure
+    (process.env as any).STELLARCRED_REGISTRY_ID = "C_SECRET_REGISTRY";
+    try {
+      warnServerConfig({ registryId: "C_SECRET_REGISTRY" });
+      expect(console.warn).toHaveBeenCalledTimes(1);
+      const msg: string = (console.warn as any).mock.calls[0][0];
+      expect(msg).toContain("[StellarCred]");
+      expect(msg).toContain("configure() was called in a browser");
+      expect(msg).toContain("registryId");
+    } finally {
+      (process.env as any).NODE_ENV = originalEnv;
+      delete (process.env as any).STELLARCRED_REGISTRY_ID;
+    }
+  });
+
+  it("only warns once even when called multiple times (debounced)", () => {
+    (globalThis as any).window = {};
+    (process.env as any).NODE_ENV = "development";
+    (process.env as any).STELLARCRED_REGISTRY_ID = "C_ONCE";
+    try {
+      warnServerConfig({ registryId: "C_ONCE" });
+      warnServerConfig({ registryId: "C_ONCE" });
+      warnServerConfig({ registryId: "C_ONCE" });
+      expect(console.warn).toHaveBeenCalledTimes(1);
+    } finally {
+      (process.env as any).NODE_ENV = "test";
+      delete (process.env as any).STELLARCRED_REGISTRY_ID;
+    }
+  });
+
+  it("does not warn in production even with a matching env var", () => {
+    (globalThis as any).window = {};
+    (process.env as any).NODE_ENV = "production";
+    (process.env as any).STELLARCRED_REGISTRY_ID = "C_PROD_REGISTRY";
+    try {
+      warnServerConfig({ registryId: "C_PROD_REGISTRY" });
+      expect(console.warn).not.toHaveBeenCalled();
+    } finally {
+      (process.env as any).NODE_ENV = "test";
+      delete (process.env as any).STELLARCRED_REGISTRY_ID;
+    }
+  });
+
+  it("resets after _resetWarnServerConfig so the next call can warn again", () => {
+    (globalThis as any).window = {};
+    (process.env as any).NODE_ENV = "development";
+    (process.env as any).STELLARCRED_REGISTRY_ID = "C_RESET_TEST";
+    try {
+      warnServerConfig({ registryId: "C_RESET_TEST" });
+      expect(console.warn).toHaveBeenCalledTimes(1);
+
+      _resetWarnServerConfig();
+      warnServerConfig({ registryId: "C_RESET_TEST" });
+      expect(console.warn).toHaveBeenCalledTimes(2);
+    } finally {
+      (process.env as any).NODE_ENV = "test";
+      delete (process.env as any).STELLARCRED_REGISTRY_ID;
+    }
+  });
+});
+
+// ── server.ts entry-point guard ───────────────────────────────────────────────
+
+describe("@stellarcred/sdk/server entry-point guard", () => {
+  afterEach(() => {
+    const g = globalThis as any;
+    if ("window" in g) delete g.window;
+  });
+
+  it("throws immediately when window is defined (browser context)", async () => {
+    (globalThis as any).window = {};
+    // Dynamic import so the module-level guard runs inside this test.
+    // vi.resetModules() ensures we get a fresh evaluation each time.
+    vi.resetModules();
+    await expect(import("./server")).rejects.toThrow(
+      "@stellarcred/sdk/server must only be used server-side",
+    );
+  });
+
+  it("resolves without throwing when window is not defined (Node.js context)", async () => {
+    // Make sure window is absent
+    const g = globalThis as any;
+    if ("window" in g) delete g.window;
+    vi.resetModules();
+    await expect(import("./server")).resolves.toBeDefined();
+  });
+});
