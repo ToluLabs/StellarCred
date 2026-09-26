@@ -32,6 +32,7 @@ import {
   TimeoutError,
   StellarCred,
   withRetry,
+  __resetBoundaryWarningForTesting,
 } from "./index";
 import { hasClaim as sharedHasClaim } from "./claims";
 
@@ -443,5 +444,121 @@ describe("verifyPreset", () => {
 
   it("is exported on the StellarCred namespace", () => {
     expect(StellarCred.verifyPreset).toBe(verifyPreset);
+  });
+});
+
+// ── Client/server boundary warning (Issue #535) ─────────────────────────────
+
+describe("warnOnClientServerBoundaryViolation", () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Reset the one-shot flag before every test so each case starts fresh.
+    __resetBoundaryWarningForTesting();
+    // Ensure no leaked env vars linger from a previous test.
+    delete (process.env as Record<string, string | undefined>)["STELLARCRED_REGISTRY_ID"];
+    delete (process.env as Record<string, string | undefined>)["PROOF_REGISTRY_ID"];
+    delete (process.env as Record<string, string | undefined>)["STELLARCRED_RPC_URL"];
+  });
+
+  afterEach(() => {
+    consoleWarnSpy.mockRestore();
+    __resetBoundaryWarningForTesting();
+    // Clean up any injected globals or env vars.
+    delete (globalThis as Record<string, unknown>).window;
+    delete (process.env as Record<string, string | undefined>)["STELLARCRED_REGISTRY_ID"];
+    delete (process.env as Record<string, string | undefined>)["PROOF_REGISTRY_ID"];
+    delete (process.env as Record<string, string | undefined>)["STELLARCRED_RPC_URL"];
+  });
+
+  it("does NOT warn in a non-browser (Node.js) context even with server-only env vars", () => {
+    // In vitest/Node, `window` is not defined — simulates a real Node.js environment.
+    // Ensure window is absent.
+    delete (globalThis as Record<string, unknown>).window;
+    process.env["STELLARCRED_REGISTRY_ID"] = "C_SERVER_REGISTRY";
+
+    configure({ registryId: "C_SERVER_REGISTRY" });
+
+    // No boundary warning should fire — we're in Node, not a browser.
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
+      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    );
+    expect(boundaryWarnings).toHaveLength(0);
+  });
+
+  it("warns in a browser context when a leaked STELLARCRED_* env var is visible in process.env", () => {
+    // Simulate browser context by setting window on globalThis.
+    (globalThis as Record<string, unknown>).window = {};
+    // Simulate a leaked server-only env var visible in process.env.
+    process.env["STELLARCRED_REGISTRY_ID"] = "C_LEAKED_REGISTRY";
+
+    configure({ registryId: "C_LEAKED_REGISTRY" });
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[StellarCred]"),
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("server-only environment variables"),
+    );
+  });
+
+  it("warns in a browser context when configure() is called with a PROOF_REGISTRY_ID server env value", () => {
+    (globalThis as Record<string, unknown>).window = {};
+    process.env["PROOF_REGISTRY_ID"] = "C_SERVER_ONLY_ID";
+
+    // Simulate the integrator mistake: using the server-only var value in configure().
+    configure({ registryId: process.env["PROOF_REGISTRY_ID"] });
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[StellarCred]"),
+    );
+  });
+
+  it("does NOT warn in a browser context when no suspicious env indicators are present", () => {
+    (globalThis as Record<string, unknown>).window = {};
+    // Ensure no leaked vars exist.
+    delete (process.env as Record<string, string | undefined>)["STELLARCRED_REGISTRY_ID"];
+    delete (process.env as Record<string, string | undefined>)["PROOF_REGISTRY_ID"];
+
+    // Use a fresh value not in process.env.
+    configure({ registryId: "C_FRESH_PUBLIC_REGISTRY_ID_NOT_IN_ENV" });
+
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
+      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    );
+    expect(boundaryWarnings).toHaveLength(0);
+  });
+
+  it("warns at most once per load even if configure() is called multiple times", () => {
+    (globalThis as Record<string, unknown>).window = {};
+    process.env["STELLARCRED_REGISTRY_ID"] = "C_LEAKED";
+
+    configure({ registryId: "C_LEAKED" });
+    configure({ registryId: "C_LEAKED" });
+    configure({ registryId: "C_LEAKED" });
+
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
+      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    );
+    expect(boundaryWarnings).toHaveLength(1);
+  });
+
+  it("does NOT warn when NODE_ENV is 'production'", () => {
+    (globalThis as Record<string, unknown>).window = {};
+    process.env["STELLARCRED_REGISTRY_ID"] = "C_LEAKED_PROD";
+    const origNodeEnv = process.env["NODE_ENV"];
+    process.env["NODE_ENV"] = "production";
+
+    try {
+      configure({ registryId: "C_LEAKED_PROD" });
+
+      const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
+        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+      );
+      expect(boundaryWarnings).toHaveLength(0);
+    } finally {
+      process.env["NODE_ENV"] = origNodeEnv;
+    }
   });
 });
