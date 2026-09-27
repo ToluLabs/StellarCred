@@ -17,6 +17,7 @@ import { ConfigBanner } from "@/components/ConfigBanner";
 import { issuanceConfigured } from "@/lib/config";
 import { truncateAddress, truncatePubkey } from "@/lib/format";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
+import { PrivacyIndicator } from "@/components/PrivacyIndicator";
 
 const TYPES = Object.entries(TYPE_META) as [
   CredentialType,
@@ -327,6 +328,17 @@ export default function IssuerPageClient() {
                 : "A fresh secret is generated and committed with Poseidon2 — the holder proves it without revealing it."}
             </span>
           </div>
+
+          {/* Privacy indicator (#533) — tells the issuer (and holder, in a real
+              deployment) which steps involve network calls and what is sent. */}
+          <PrivacyIndicator
+            variant={{
+              variant: "issue",
+              credentialType:
+                type === "kyc" ? "kyc" : type === "funds" ? "funds" : "other",
+            }}
+            style={{ marginTop: "1.25rem" }}
+          />
 
           <button
             className="btn btn-primary"

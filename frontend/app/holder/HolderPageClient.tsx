@@ -117,6 +117,7 @@ function daysRemaining(cred: Credential): number {
 import { useProofTimeline, addTimelineEvent } from "@/lib/useProofTimeline";
 import { Timeline } from "@/components/Timeline";
 import { IconHistory } from "@tabler/icons-react";
+import { PrivacyIndicator } from "@/components/PrivacyIndicator";
 
 // ── Credential expiry helpers ─────────────────────────────────────────────────
 
@@ -1155,6 +1156,13 @@ function ProofFlow({
           <h2 style={{ marginBottom: "0.25rem" }}>{cred.title}</h2>
           <span className="mono faint" style={{ fontSize: "0.8rem" }}>{cred.claim}</span>
         </div>
+
+        {/* Privacy indicator (#533) — shown before the step list so the holder
+            knows what happens locally vs what is sent, before anything starts. */}
+        <PrivacyIndicator
+          variant="prove"
+          style={{ marginBottom: "1.5rem" }}
+        />
 
         {/* step list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>

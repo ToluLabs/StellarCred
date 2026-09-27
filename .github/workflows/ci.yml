@@ -130,11 +130,14 @@ jobs:
         # a documented reason using #[allow(clippy::lint_name)] inline.
         run: cargo clippy --all-targets -- -D warnings
 
-  # ── Circuits: Noir compile + VK freshness check ────────────────────────────
+  # ── Circuits: Noir compile + VK freshness check + constraint tracking ───────
   # Runs in parallel with contracts, frontend, and indexer.
   circuits:
     name: Circuit compile
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # needed to post the constraint-count comment (#534)
     defaults:
       run:
         working-directory: circuits
@@ -269,6 +272,46 @@ jobs:
             echo "=== nargo test $dir ==="
             (cd "$dir" && nargo test)
           done
+
+      # ── Constraint count tracking (#534) ────────────────────────────────────
+      # Records ACIR opcode counts per circuit (the best instant proxy for
+      # proving time) and fails if any exceeds THRESHOLD_PCT% over baseline.
+      # The Markdown table is saved as a step output for PR comment posting.
+      - name: Check circuit constraint counts
+        id: constraint_check
+        shell: bash
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          bash ../scripts/check-constraint-counts.sh check 2>&1 | tee /tmp/constraint_table.txt
+          echo "table<<EOF" >> "$GITHUB_OUTPUT"
+          cat /tmp/constraint_table.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Post constraint count table as PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `${{ steps.constraint_check.outputs.table }}`;
+            if (!body || body.trim() === '') return;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const MARKER = "<!-- circuit-constraint-counts -->";
+            const existing = comments.find(c => c.body.includes(MARKER));
+            const fullBody = MARKER + "\n" + body;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body: fullBody,
+              });
+            }
 
   # ── Circuit fuzzing ─────────────────────────────────────────────────────────
   # Intentionally runs after circuits so it can reuse the compiled artifacts
