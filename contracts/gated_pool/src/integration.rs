@@ -184,7 +184,8 @@ fn four_contract_lifecycle_end_to_end() {
         w.issuer_registry.address
     );
     assert_eq!(w.pool.gate(), (symbol_short!("kyc"), None));
-    assert_eq!(w.registry.version(), 1_000_000);
+    // ProofRegistry 2.0.0: is_verified/check_claim gained max_age (see #390).
+    assert_eq!(w.registry.version(), 2_000_000);
 
     // 3. Register the issuer in IssuerRegistry → IssuerRegistered.
     w.issuer_registry
