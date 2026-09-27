@@ -386,6 +386,26 @@ export function assertValidClaimType(value: string): asserts value is ClaimType 
 export interface ClaimOptions {
   minThreshold?: number;
   trustedIssuers?: string[];
+  /**
+   * Require the proof to have been submitted on-chain (`verified_at`) no more
+   * than this many seconds ago — a freshness bound *you* choose per call,
+   * enforced on-chain by `check_claim`/`is_verified`'s `max_age` parameter.
+   *
+   * This is independent of the credential's `expiry`: `expiry` is set by the
+   * *issuer* at submission time (how long they vouch for the claim without
+   * re-proof), while `maxAgeSeconds` is set by *you*, the verifier, per call.
+   * A KYC claim proven two years ago but issued with a five-year `expiry`
+   * still satisfies `hasClaim` with no `maxAgeSeconds`, but fails
+   * `maxAgeSeconds: 30 * 24 * 60 * 60` (require a proof from the last 30
+   * days) — useful for risk-sensitive gates where a stale-but-unexpired
+   * credential isn't good enough. Omit for no freshness bound (unchanged
+   * default behaviour).
+   *
+   * @example
+   * // Require the KYC proof to have been submitted within the last 24 hours
+   * const ok = await hasClaim("G1ABC…", "kyc", { maxAgeSeconds: 86_400 });
+   */
+  maxAgeSeconds?: number;
   requestTimeoutMs?: number;
   throwOnError?: boolean;
   retryOptions?: RetryOptions;
@@ -400,6 +420,13 @@ export interface Claim {
 export interface BatchClaimOptions {
   minThresholds?: Partial<Record<ClaimType, number>>;
   trustedIssuers?: string[];
+  /**
+   * Require every proof in this batch to have been submitted no more than
+   * this many seconds ago. Same semantics as {@link ClaimOptions.maxAgeSeconds}
+   * — applied uniformly across every type in the batch (there is no per-type
+   * freshness bound, unlike `minThresholds`).
+   */
+  maxAgeSeconds?: number;
   requestTimeoutMs?: number;
   throwOnError?: boolean;
   retryOptions?: RetryOptions;
@@ -587,6 +614,7 @@ async function readIsVerified(
   throwOnError = false,
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
+  maxAgeSeconds?: number,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
   const client = await getClient(throwOnError);
   if (!client) return null;
@@ -600,6 +628,7 @@ async function readIsVerified(
               holder: wallet,
               credential_type: claimType,
               trusted_issuers: trustedIssuers,
+              max_age: maxAgeSeconds !== undefined ? BigInt(maxAgeSeconds) : undefined,
             }),
           retryOptions,
         ),
@@ -627,6 +656,7 @@ async function readCheckClaim(
   throwOnError = false,
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
+  maxAgeSeconds?: number,
 ): Promise<boolean> {
   const client = await getClient(throwOnError);
   if (!client) return false;
@@ -641,6 +671,7 @@ async function readCheckClaim(
               credential_type: claimType,
               min_threshold: BigInt(minThreshold),
               trusted_issuers: trustedIssuers,
+              max_age: maxAgeSeconds !== undefined ? BigInt(maxAgeSeconds) : undefined,
             }),
           retryOptions,
         ),
@@ -698,6 +729,7 @@ export async function hasClaim(
       throwOnError,
       opts.requestTimeoutMs,
       opts.retryOptions,
+      opts.maxAgeSeconds,
     );
   }
 
@@ -708,6 +740,7 @@ export async function hasClaim(
     throwOnError,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
+    opts?.maxAgeSeconds,
   );
   return !!r && r.valid;
 }
@@ -719,7 +752,10 @@ export async function hasClaim(
 export async function getClaim(
   wallet: string,
   claimType: string,
-  opts?: Pick<ClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+  opts?: Pick<
+    ClaimOptions,
+    "trustedIssuers" | "maxAgeSeconds" | "requestTimeoutMs" | "throwOnError" | "retryOptions"
+  >,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
   warnIfMissingRegistryIdOnce();
 
@@ -738,6 +774,7 @@ export async function getClaim(
     opts?.throwOnError === true,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
+    opts?.maxAgeSeconds,
   );
   return r && r.valid ? r : null;
 }
@@ -779,6 +816,7 @@ export async function hasClaims(
           opts?.throwOnError === true,
           opts?.requestTimeoutMs,
           opts?.retryOptions,
+          opts?.maxAgeSeconds,
         );
         return;
       }
@@ -789,6 +827,7 @@ export async function hasClaims(
         opts?.throwOnError === true,
         opts?.requestTimeoutMs,
         opts?.retryOptions,
+        opts?.maxAgeSeconds,
       );
       results[t] = !!r && r.valid;
     } catch (err) {
@@ -806,7 +845,10 @@ export async function hasClaims(
 export async function verifyPreset(
   wallet: string,
   claims: readonly PresetClaim[],
-  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+  opts?: Pick<
+    BatchClaimOptions,
+    "trustedIssuers" | "maxAgeSeconds" | "requestTimeoutMs" | "throwOnError" | "retryOptions"
+  >,
 ): Promise<PresetVerificationResult> {
   const types = claims.map((c) => c.type);
   const minThresholds: Partial<Record<ClaimType, number>> = {};
@@ -817,6 +859,7 @@ export async function verifyPreset(
   const results = await hasClaims(wallet, types, {
     minThresholds,
     trustedIssuers: opts?.trustedIssuers,
+    maxAgeSeconds: opts?.maxAgeSeconds,
     requestTimeoutMs: opts?.requestTimeoutMs,
     throwOnError: opts?.throwOnError,
     retryOptions: opts?.retryOptions,
@@ -831,7 +874,7 @@ export async function verifyPreset(
  */
 export async function getClaims(
   wallet: string,
-  opts?: Pick<ClaimOptions, "throwOnError" | "requestTimeoutMs" | "retryOptions">,
+  opts?: Pick<ClaimOptions, "throwOnError" | "requestTimeoutMs" | "retryOptions" | "maxAgeSeconds">,
 ): Promise<Claim[]> {
   warnIfMissingRegistryIdOnce();
   const throwOnError = opts?.throwOnError === true;
@@ -859,6 +902,7 @@ export async function getClaims(
         throwOnError,
         opts?.requestTimeoutMs,
         opts?.retryOptions,
+        opts?.maxAgeSeconds,
       );
       return r && r.valid ? { type: t, verifiedAt: r.verifiedAt, expiry: r.expiry } : null;
     } catch (err) {
@@ -885,6 +929,21 @@ export function buildVerifyUrl(opts: {
     threshold?: string;
     threshold_years?: string;
     restricted?: string | string[];
+    /**
+     * Maximum acceptable proof age, in seconds, as a decimal string — a hint
+     * that the verify flow should prompt for a fresh proof rather than reuse
+     * an existing submission older than this. Mirrors
+     * {@link ClaimOptions.maxAgeSeconds}. Like the rest of `claimParams`, this
+     * is carried in the URL as an untrusted hint (see
+     * {@link parseReturnParams}) — always enforce the real bound yourself via
+     * `maxAgeSeconds` in a server-side `hasClaim`/`check_claim` call after
+     * the redirect.
+     *
+     * @example
+     * // Hint that a proof more than a day old should be re-proven
+     * buildVerifyUrl({ returnUrl: "/vault", claim: "kyc", claimParams: { max_age: "86400" } })
+     */
+    max_age?: string;
   };
 }): string {
   const base = opts.baseUrl ?? _config.baseUrl;
@@ -915,6 +974,9 @@ export function buildVerifyUrl(opts: {
         ? opts.claimParams.restricted.join(",")
         : opts.claimParams.restricted;
       url.searchParams.set("param_restricted", restricted);
+    }
+    if (opts.claimParams.max_age) {
+      url.searchParams.set("param_max_age", opts.claimParams.max_age);
     }
   }
 
@@ -998,6 +1060,8 @@ export interface WatchClaimOptions {
   pollMs?: number;
   timeoutMs?: number;
   minThreshold?: number;
+  /** Require each polled proof to have been submitted this recently — see {@link ClaimOptions.maxAgeSeconds}. */
+  maxAgeSeconds?: number;
   requestTimeoutMs?: number;
 }
 
@@ -1025,6 +1089,7 @@ export function watchClaim(
   const pollMs = opts?.pollMs ?? 3000;
   const timeoutMs = opts?.timeoutMs ?? 120000;
   const minThreshold = opts?.minThreshold;
+  const maxAgeSeconds = opts?.maxAgeSeconds;
   const onChange = (opts as WatchClaimCallbackOptions)?.onChange;
 
   let intervalId: ReturnType<typeof setInterval>;
@@ -1046,6 +1111,7 @@ export function watchClaim(
       try {
         const verified = await hasClaim(wallet, claimType, {
           minThreshold,
+          maxAgeSeconds,
           requestTimeoutMs: opts?.requestTimeoutMs,
         });
         if (isStopped) return;
@@ -1070,6 +1136,7 @@ export function watchClaim(
         try {
           const verified = await hasClaim(wallet, claimType, {
             minThreshold,
+            maxAgeSeconds,
             requestTimeoutMs: opts?.requestTimeoutMs,
           });
           if (isStopped) return;

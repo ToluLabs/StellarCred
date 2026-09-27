@@ -23,6 +23,15 @@
 //! `submit_aggregate_proof` verifies a single aggregate proof covering N
 //! credential types (N=2 PoC: KYC + age) and stores all claims atomically.
 //!
+//! `is_verified` and `check_claim` both accept an optional `max_age` (in
+//! seconds), letting a risk-sensitive protocol require that a claim was
+//! *proven* recently — not just that it hasn't hit its issuer-set `expiry`.
+//! `expiry` and `max_age` are independently controlled: the issuer picks
+//! `expiry` at submission time (how long they vouch for the claim without
+//! re-proof); the verifying protocol picks `max_age` per call (how recently
+//! *it* requires proof submission to have happened). A claim can satisfy one
+//! and fail the other.
+//!
 //! Privileged actions are governed by role-based access control (RBAC): the
 //! constructor seeds the `admin`, `upgrader` and `pauser` roles with the
 //! deployer address, and each privileged function is guarded by the role it
@@ -50,7 +59,12 @@ use soroban_sdk::{
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
 // Increment MINOR on additive changes (new events, new query endpoints)
 // Increment PATCH on bug fixes with no ABI changes
-const CONTRACT_VERSION: u32 = 1_000_000; // 1.0.0 encoded as (major * 1000000) + (minor * 1000) + patch
+const CONTRACT_VERSION: u32 = 2_000_000; // 2.0.0 encoded as (major * 1000000) + (minor * 1000) + patch
+// Bumped from 1.0.0 → 2.0.0: `is_verified` and `check_claim` gained a new
+// trailing `max_age: Option<u64>` parameter (proof-freshness gating). Every
+// caller — including cross-contract callers like GatedPool's
+// `RegistryInterface` — must pass the extra argument (`None` to keep prior
+// behavior), so this is a breaking ABI change, not an additive one.
 
 // ── Data schema versioning ──────────────────────────────────────────────────────
 // ProofRecord schema versions: used for forward-compatible migrations.
@@ -739,22 +753,35 @@ impl ProofRegistry {
     ///
     /// Returns `(valid, verified_at, expiry)`:
     /// - `valid` is `true` only if the record exists, is not revoked, has not
-    ///   passed `expiry`, and (if `trusted_issuers` is provided) was issued by
-    ///   one of the addresses in that list.
+    ///   passed `expiry`, satisfies `max_age` (if provided), and (if
+    ///   `trusted_issuers` is provided) was issued by one of the addresses in
+    ///   that list.
     /// - `verified_at` / `expiry` are returned even when `valid` is `false`
-    ///   (e.g. an expired or untrusted-issuer record still reports its stored
-    ///   timestamps), so callers can distinguish "never submitted" (both `0`)
-    ///   from "submitted but no longer valid".
+    ///   (e.g. an expired, stale, or untrusted-issuer record still reports its
+    ///   stored timestamps), so callers can distinguish "never submitted"
+    ///   (both `0`) from "submitted but no longer valid".
     ///
     /// `trusted_issuers`:
     /// - `None` accepts a claim from any issuer registered at submission time.
     /// - `Some(list)` restricts acceptance to issuers in `list`; a record with
     ///   no stored issuer (e.g. an un-migrated legacy record) is rejected.
+    ///
+    /// `max_age`: an optional freshness bound, in seconds, on `now -
+    /// verified_at`. This is distinct from `expiry`: `expiry` is *issuer-set*
+    /// at submission time (how long the issuer vouches for the claim without
+    /// re-proof), while `max_age` is *verifier-set* per call (how recently
+    /// *this* caller requires the proof to have been submitted, regardless of
+    /// how long the issuer's own expiry window is). `None` applies no
+    /// freshness bound, matching prior behavior. See also #390, which
+    /// addresses recency of the credential's original *issuance* inside the
+    /// circuit itself; `max_age` here constrains recency of the on-chain
+    /// *proof submission* (`verified_at`), which the registry already stores.
     pub fn is_verified(
         env: Env,
         holder: Address,
         credential_type: Symbol,
         trusted_issuers: Option<Vec<Address>>,
+        max_age: Option<u64>,
     ) -> (bool, u64, u64) {
         match env
             .storage()
@@ -762,8 +789,14 @@ impl ProofRegistry {
             .get::<_, ProofRecord>(&DataKey::Proof(holder, credential_type))
         {
             Some(r) => {
+                let now = env.ledger().timestamp();
+                let fresh = match max_age {
+                    Some(max) => now.saturating_sub(r.verified_at) <= max,
+                    None => true,
+                };
                 let valid = !r.revoked
-                    && r.expiry > env.ledger().timestamp()
+                    && r.expiry > now
+                    && fresh
                     && Self::issuer_is_trusted(&trusted_issuers, &r.issuer);
                 (valid, r.verified_at, r.expiry)
             }
@@ -854,15 +887,33 @@ impl ProofRegistry {
         if !delegated {
             return (false, 0, 0);
         }
-        Self::is_verified(env, holder, credential_type, None)
+        // No freshness bound on the delegated view — a verifier's delegation
+        // scope doesn't currently include a freshness requirement; that
+        // remains a direct `check_claim`/`is_verified` caller concern.
+        Self::is_verified(env, holder, credential_type, None, None)
     }
 
+    /// Read-only claim check combining a threshold and issuer-trust
+    /// requirement with an optional freshness bound.
+    ///
+    /// `max_age`: an optional bound, in seconds, on `now - verified_at` —
+    /// e.g. `Some(86_400)` requires the claim to have been proven on-chain
+    /// within the last day. This is a *verifier-set* constraint, chosen by
+    /// the protocol calling `check_claim`, and is independent of `expiry`,
+    /// which is *issuer-set* at submission time. A claim can satisfy `expiry`
+    /// (the issuer still vouches for it) while failing `max_age` (this
+    /// particular caller wants a proof no older than N seconds) — e.g. a KYC
+    /// claim proven two years ago but issued with a five-year `expiry` still
+    /// passes `is_verified`/`check_claim` with `max_age: None`, but fails a
+    /// risk-sensitive gate that passes `max_age: Some(30 * 86_400)`. `None`
+    /// applies no freshness bound, matching prior behavior.
     pub fn check_claim(
         env: Env,
         holder: Address,
         credential_type: Symbol,
         min_threshold: Option<u64>,
         trusted_issuers: Option<Vec<Address>>,
+        max_age: Option<u64>,
     ) -> bool {
         match env
             .storage()
@@ -870,8 +921,14 @@ impl ProofRegistry {
             .get::<_, ProofRecord>(&DataKey::Proof(holder, credential_type))
         {
             Some(r) => {
-                if r.revoked || r.expiry <= env.ledger().timestamp() {
+                let now = env.ledger().timestamp();
+                if r.revoked || r.expiry <= now {
                     return false;
+                }
+                if let Some(max) = max_age {
+                    if now.saturating_sub(r.verified_at) > max {
+                        return false;
+                    }
                 }
                 if !Self::issuer_is_trusted(&trusted_issuers, &r.issuer) {
                     return false;

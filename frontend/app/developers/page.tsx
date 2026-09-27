@@ -337,21 +337,31 @@ if (!result.ok) {
           parameter — pass <span className="mono">None</span> to accept a proof
           from any registered issuer (unchanged default), or{" "}
           <span className="mono">Some(vec![...])</span> to restrict a claim to
-          specific issuers, e.g. accepting KYC only from Persona or Jumio.
+          specific issuers, e.g. accepting KYC only from Persona or Jumio —
+          and a further trailing <span className="mono">max_age</span> parameter:
+          pass <span className="mono">Some(seconds)</span> to require the proof
+          was <em>submitted</em> within that window, independent of its
+          issuer-set <span className="mono">expiry</span>.
         </p>
         <Code>{`// Binary claim (kyc, jurisdiction) — any registered issuer accepted
 let registry = ProofRegistryClient::new(&env, &registry_id);
-let (verified, _, _) = registry.is_verified(&holder, &symbol_short!("kyc"), &None);
+let (verified, _, _) = registry.is_verified(&holder, &symbol_short!("kyc"), &None, &None);
 require!(verified, Error::KycRequired);
 
 // Parameterised claim — enforce minimum threshold on-chain
-let eligible = registry.check_claim(&holder, &symbol_short!("funds"), &Some(50_000u64), &None);
+let eligible = registry.check_claim(&holder, &symbol_short!("funds"), &Some(50_000u64), &None, &None);
 require!(eligible, Error::InsufficientFunds);
 
 // Restrict which issuer(s) a claim must come from
 let trusted = vec![&env, persona_issuer.clone(), jumio_issuer.clone()];
-let kyc_ok = registry.check_claim(&holder, &symbol_short!("kyc"), &None, &Some(trusted));
-require!(kyc_ok, Error::KycRequired);`}</Code>
+let kyc_ok = registry.check_claim(&holder, &symbol_short!("kyc"), &None, &Some(trusted), &None);
+require!(kyc_ok, Error::KycRequired);
+
+// Risk-sensitive gate — require the proof itself no older than 30 days,
+// regardless of how far out its issuer-set expiry runs
+let thirty_days = 30 * 86_400;
+let fresh_kyc_ok = registry.check_claim(&holder, &symbol_short!("kyc"), &None, &None, &Some(thirty_days));
+require!(fresh_kyc_ok, Error::StaleKyc);`}</Code>
       </Section>
 
       <SDKPlayground />

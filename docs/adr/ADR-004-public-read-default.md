@@ -28,7 +28,7 @@ pub fn is_verified(env: Env, holder: Address, credential_type: Symbol, ...) -> (
 }
 ```
 
-Protocols that want to restrict which issuers they accept can pass a `trusted_issuers` filter to `is_verified` and `check_claim`, but this is a caller-supplied preference, not a registry-level gate.
+Protocols that want to restrict which issuers they accept can pass a `trusted_issuers` filter to `is_verified` and `check_claim`, but this is a caller-supplied preference, not a registry-level gate. The same is true of the optional `max_age` parameter (proof-freshness gating, see [ARCHITECTURE.md](../ARCHITECTURE.md#is_verified-vs-check_claim---expiry-vs-max_age)): it's a bound the calling protocol chooses per read, not something the registry enforces uniformly on every reader.
 
 ---
 

@@ -9,6 +9,12 @@
 //!
 //! Balances are tracked as a plain ledger here (no real token transfer) to keep
 //! the demo self-contained; swap in a token client for production.
+//!
+//! `RegistryInterface::check_claim` mirrors `ProofRegistry::check_claim`'s ABI
+//! exactly (currently including its `max_age` freshness parameter, added in
+//! ProofRegistry 2.0.0), since a cross-contract call fails at invocation, not
+//! compile time, if the argument list doesn't match the deployed contract's.
+//! This contract must be deployed against a ProofRegistry ≥ 2.0.0.
 
 use soroban_sdk::{
     contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
@@ -54,12 +60,19 @@ const CONTRACT_VERSION: u32 = 1_000_000; // 1.0.0 encoded as (major * 1000000) +
 /// exported wasm symbols.
 #[contractclient(name = "RegistryClient")]
 pub trait RegistryInterface {
+    // NOTE: this signature must track ProofRegistry::check_claim's ABI
+    // exactly, including the trailing `max_age: Option<u64>` (freshness
+    // gate) — a cross-contract call with a mismatched argument list fails at
+    // invocation, not at compile time. GatedPool doesn't currently expose a
+    // freshness requirement of its own, so `deposit` below always passes
+    // `None` (no freshness bound), matching its pre-existing behavior.
     fn check_claim(
         env: Env,
         holder: Address,
         credential_type: Symbol,
         min_threshold: Option<u64>,
         trusted_issuers: Option<Vec<Address>>,
+        max_age: Option<u64>,
     ) -> bool;
 }
 
@@ -124,6 +137,7 @@ impl GatedPool {
             &Self::required_type(&env),
             &Self::min_threshold(&env),
             &None,
+            &None, // no freshness requirement — see RegistryInterface note above
         );
         if !verified {
             panic_with_error!(&env, Error::NotKycVerified);

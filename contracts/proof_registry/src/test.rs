@@ -217,7 +217,7 @@ fn submit_then_verified() {
 
     let (valid, _at, expiry) = h
         .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None);
+        .is_verified(&holder, &symbol_short!("kyc"), &None, &None);
     assert!(valid);
     assert_eq!(expiry, 9999);
 }
@@ -263,14 +263,96 @@ fn expires_after_ledger_time_passes() {
     submit(&env, &h, &holder, 9999);
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 
     env.ledger().with_mut(|li| li.timestamp = 10000);
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
+            .0
+    );
+}
+
+#[test]
+fn max_age_rejects_a_stale_proof_but_accepts_a_fresh_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    // `verified_at` is the ledger's timestamp at submission time (0 here);
+    // `expiry` is far in the future, so only `max_age` is on trial below.
+    submit(&env, &h, &holder, 9999);
+
+    env.ledger().with_mut(|li| li.timestamp = 100);
+
+    // No freshness bound requested: still valid, exactly like before this
+    // parameter existed.
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
+            .0
+    );
+
+    // A proof that's 100s old fails a 50s freshness bound...
+    let (valid, verified_at, expiry) =
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &Some(50));
+    assert!(!valid);
+    // ...but `verified_at`/`expiry` are still reported, same convention as an
+    // expired, revoked, or untrusted-issuer record.
+    assert_eq!(verified_at, 0);
+    assert_eq!(expiry, 9999);
+
+    // ...and passes a 100s bound (inclusive boundary: now - verified_at == max_age).
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &Some(100))
+            .0
+    );
+
+    // `check_claim` enforces the same freshness bound.
+    assert!(!h.registry.check_claim(
+        &holder,
+        &symbol_short!("kyc"),
+        &None,
+        &None,
+        &Some(50)
+    ));
+    assert!(h.registry.check_claim(
+        &holder,
+        &symbol_short!("kyc"),
+        &None,
+        &None,
+        &Some(100)
+    ));
+}
+
+#[test]
+fn max_age_is_independent_of_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    // A long issuer-set expiry provides no protection against a short
+    // verifier-set max_age — the two are orthogonal constraints.
+    submit(&env, &h, &holder, 5 * 365 * 86_400);
+    env.ledger().with_mut(|li| li.timestamp = 30 * 86_400);
+
+    // Still valid overall: unexpired, and no freshness bound was requested.
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
+            .0
+    );
+    // But it fails a 7-day freshness requirement despite years of runway
+    // left on the issuer's own expiry.
+    assert!(
+        !h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &Some(7 * 86_400))
             .0
     );
 }
@@ -403,7 +485,7 @@ fn unverified_holder_returns_false() {
     let stranger = Address::generate(&env);
     assert!(
         !h.registry
-            .is_verified(&stranger, &symbol_short!("kyc"), &None)
+            .is_verified(&stranger, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -419,7 +501,7 @@ fn revoke_clears_proof() {
     h.registry.revoke_proof(&holder, &symbol_short!("kyc"));
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -435,7 +517,7 @@ fn issuer_revoke_invalidates_proof() {
     h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"));
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -477,7 +559,7 @@ fn issuer_revoke_rejects_different_trusted_issuer() {
     assert!(result.is_err());
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -563,17 +645,17 @@ fn batch_all_pass() {
     ];    h.registry.submit_proofs(&holder, &submissions);
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .is_verified(&holder, &symbol_short!("funds"), &None, &None)
             .0
     );
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("age"), &None)
+            .is_verified(&holder, &symbol_short!("age"), &None, &None)
             .0
     );
 }
@@ -606,7 +688,7 @@ fn batch_one_fail_reverts_all() {
     assert!(res.is_err());
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -697,16 +779,16 @@ fn aggregate_submits_real_proof_and_stores_claims() {
         &vec![&env, 9999u64, 9999u64],
     );    assert!(
         registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
     assert!(
         registry
-            .is_verified(&holder, &symbol_short!("age"), &None)
+            .is_verified(&holder, &symbol_short!("age"), &None, &None)
             .0
     );
-    assert!(registry.check_claim(&holder, &symbol_short!("age"), &Some(18), &None));
-    assert!(!registry.check_claim(&holder, &symbol_short!("age"), &Some(19), &None));
+    assert!(registry.check_claim(&holder, &symbol_short!("age"), &Some(18), &None, &None));
+    assert!(!registry.check_claim(&holder, &symbol_short!("age"), &Some(19), &None, &None));
 }
 
 #[test]
@@ -793,7 +875,7 @@ fn aggregate_rejects_past_expiry_in_any_slot() {
     assert!(res.is_err());
     assert!(
         !registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -837,7 +919,7 @@ fn aggregate_rejects_over_max_expiry_in_any_slot() {
     assert!(res.is_err());
     assert!(
         !registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -1160,7 +1242,7 @@ fn grant_then_verifier_can_check() {
     assert_eq!(expiry, 9999); // the underlying claim's own expiry, not the grant's
     let (_, expected_at, _) = h
         .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None);
+        .is_verified(&holder, &symbol_short!("kyc"), &None, &None);
     assert_eq!(verified_at, expected_at);
 }
 
@@ -1581,7 +1663,7 @@ fn pause_requires_pauser_role() {
         &None,
         &2000,
     );
-    assert!(h.registry.is_verified(&holder, &symbol_short!("kyc"), &None).0);
+    assert!(h.registry.is_verified(&holder, &symbol_short!("kyc"), &None, &None).0);
 }
 
 #[test]
@@ -1834,7 +1916,7 @@ fn credential_signed_with_a_retired_key_still_submits() {
     submit(&env, &h, &holder, ROT_T0 + 1000);
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
 }
@@ -1951,15 +2033,15 @@ fn batch_accepts_credentials_signed_with_retired_keys() {
     h.registry.submit_proofs(&holder, &submissions);
     assert!(h
         .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
+        .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
         .0);
     assert!(h
         .registry
-        .is_verified(&holder, &symbol_short!("funds"), &None)
+        .is_verified(&holder, &symbol_short!("funds"), &None, &None)
         .0);
     assert!(h
         .registry
-        .is_verified(&holder, &symbol_short!("age"), &None)
+        .is_verified(&holder, &symbol_short!("age"), &None, &None)
         .0);
 }
 
@@ -2004,10 +2086,10 @@ fn aggregate_accepts_a_credential_signed_with_a_retired_key() {
     );
 
     assert!(registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
+        .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
         .0);
     assert!(registry
-        .is_verified(&holder, &symbol_short!("age"), &None)
+        .is_verified(&holder, &symbol_short!("age"), &None, &None)
         .0);
 }
 
@@ -2098,7 +2180,7 @@ proptest! {
             None
         };
 
-        let result = client.check_claim(&holder, &cred, &min_threshold, &trusted);
+        let result = client.check_claim(&holder, &cred, &min_threshold, &trusted, &None);
 
         if filter_active {
             // With an active filter the proof is accepted only if its issuer
@@ -2134,7 +2216,7 @@ proptest! {
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
-        let result = client.check_claim(&holder, &cred, &Some(min_threshold), &None);
+        let result = client.check_claim(&holder, &cred, &Some(min_threshold), &None, &None);
 
         // The contract uses unwrap_or(0) for None thresholds.
         let effective_stored = stored_threshold.unwrap_or(0);
@@ -2159,7 +2241,7 @@ proptest! {
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
-        let result = client.check_claim(&holder, &cred, &Some(min_threshold), &None);
+        let result = client.check_claim(&holder, &cred, &Some(min_threshold), &None, &None);
 
         if min_threshold == 0 {
             prop_assert!(result, "0 >= 0 must be true");
@@ -2195,8 +2277,8 @@ proptest! {
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
-        let with_none = client.check_claim(&holder, &cred, &None, &None);
-        let with_zero = client.check_claim(&holder, &cred, &Some(0), &None);
+        let with_none = client.check_claim(&holder, &cred, &None, &None, &None);
+        let with_zero = client.check_claim(&holder, &cred, &Some(0), &None, &None);
 
         // None and Some(0) must agree for any validity state.
         prop_assert_eq!(with_none, with_zero);
@@ -2231,7 +2313,7 @@ proptest! {
         }
 
         // proof_issuer is NOT in trust_list, so check_claim must reject.
-        let result = client.check_claim(&holder, &cred, &None, &Some(trust_list));
+        let result = client.check_claim(&holder, &cred, &None, &Some(trust_list), &None);
         prop_assert!(!result, "proof from untrusted issuer must be rejected");
     }
 }
@@ -2281,7 +2363,7 @@ proptest! {
             None
         };
 
-        let result = client.check_claim(&holder, &cred, &min_threshold, &trusted);
+        let result = client.check_claim(&holder, &cred, &min_threshold, &trusted, &None);
         prop_assert!(
             !result,
             "revoked={}, expired={}, filter={}: proof must not be valid",
@@ -2291,7 +2373,7 @@ proptest! {
         );
 
         // is_verified must agree with check_claim on the same record.
-        let (valid, _, _) = client.is_verified(&holder, &cred, &trusted);
+        let (valid, _, _) = client.is_verified(&holder, &cred, &trusted, &None);
         prop_assert!(!valid, "is_verified must also return false for revoked/expired proofs");
     }
 
@@ -2338,12 +2420,12 @@ proptest! {
         // CRITICAL INVARIANT: the valid KYC proof must NOT have been stored.
         let (kyc_valid, _, _) = h
             .registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None);
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None);
         prop_assert!(!kyc_valid, "batch reverted: kyc proof must not be stored");
 
         let (funds_valid, _, _) = h
             .registry
-            .is_verified(&holder, &symbol_short!("funds"), &None);
+            .is_verified(&holder, &symbol_short!("funds"), &None, &None);
         prop_assert!(!funds_valid, "batch reverted: funds proof must not be stored");
     }
 
@@ -2365,7 +2447,7 @@ proptest! {
         // Verify valid before revocation.
         let (before, _, _) = h
             .registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None);
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None);
         prop_assert!(before, "proof should be valid before revocation");
 
         h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"));
@@ -2379,7 +2461,7 @@ proptest! {
 
         let (valid, _, _) = h
             .registry
-            .is_verified(&holder, &symbol_short!("kyc"), &trusted);
+            .is_verified(&holder, &symbol_short!("kyc"), &trusted, &None);
         prop_assert!(
             !valid,
             "is_verified: revoked proof must not be valid (filter={})",
@@ -2388,7 +2470,7 @@ proptest! {
 
         let claim = h
             .registry
-            .check_claim(&holder, &symbol_short!("kyc"), &threshold, &trusted);
+            .check_claim(&holder, &symbol_short!("kyc"), &threshold, &trusted, &None);
         prop_assert!(
             !claim,
             "check_claim: revoked proof must not be valid (threshold={:?}, filter={})",
@@ -2429,12 +2511,12 @@ proptest! {
 
         let (valid, _, _) = h
             .registry
-            .is_verified(&holder, &symbol_short!("kyc"), &trusted);
+            .is_verified(&holder, &symbol_short!("kyc"), &trusted, &None);
         prop_assert!(!valid, "is_verified: expired proof must not be valid");
 
         let claim = h
             .registry
-            .check_claim(&holder, &symbol_short!("kyc"), &threshold, &trusted);
+            .check_claim(&holder, &symbol_short!("kyc"), &threshold, &trusted, &None);
         prop_assert!(!claim, "check_claim: expired proof must not be valid");
 
         // get_record must still return the record (expiry data preserved for audit).
@@ -2488,12 +2570,12 @@ fn batch_duplicate_type_invariant_rejects_all_combinations() {
     // Verify nothing was stored from either failed batch.
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .is_verified(&holder, &symbol_short!("funds"), &None, &None)
             .0
     );
 }
@@ -2543,30 +2625,30 @@ fn single_revocation_does_not_affect_other_types() {
     // kyc must be revoked.
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
     assert!(!h
         .registry
-        .check_claim(&holder, &symbol_short!("kyc"), &None, &None));
+        .check_claim(&holder, &symbol_short!("kyc"), &None, &None, &None));
 
     // funds and age must remain valid.
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .is_verified(&holder, &symbol_short!("funds"), &None, &None)
             .0
     );
     assert!(h
         .registry
-        .check_claim(&holder, &symbol_short!("funds"), &None, &None));
+        .check_claim(&holder, &symbol_short!("funds"), &None, &None, &None));
     assert!(
         h.registry
-            .is_verified(&holder, &symbol_short!("age"), &None)
+            .is_verified(&holder, &symbol_short!("age"), &None, &None)
             .0
     );
     assert!(h
         .registry
-        .check_claim(&holder, &symbol_short!("age"), &None, &None));
+        .check_claim(&holder, &symbol_short!("age"), &None, &None, &None));
 }
 
 /// Invariant: batch expiry validation — if any submission has an invalid
@@ -2612,12 +2694,12 @@ fn batch_expiry_rejects_all_if_any_invalid() {
     // Neither proof must be stored.
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
             .0
     );
     assert!(
         !h.registry
-            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .is_verified(&holder, &symbol_short!("funds"), &None, &None)
             .0
     );
 }
@@ -2695,11 +2777,13 @@ fn successful_batch_preserves_issuer_and_threshold() {
         &symbol_short!("kyc"),
         &None,
         &Some(vec![&env, h.kyc_issuer.clone()]),
+        &None,
     ));
     assert!(!h.registry.check_claim(
         &holder,
         &symbol_short!("kyc"),
         &None,
         &Some(vec![&env, h.funds_issuer.clone()]), // wrong issuer
+        &None,
     ));
 }

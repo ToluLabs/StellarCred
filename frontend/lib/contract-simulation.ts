@@ -52,12 +52,18 @@ export interface VerificationStatus {
  * `trustedIssuers`, if provided, restricts which issuer's proof is accepted —
  * the stored proof's issuer must be one of these addresses. Omit to accept
  * any registered issuer (unchanged default behaviour).
+ *
+ * `maxAgeSeconds`, if provided, additionally requires the proof to have been
+ * submitted (`verified_at`) no more than this many seconds ago — a
+ * verifier-set freshness bound, independent of the issuer-set `expiry`. Omit
+ * to apply no freshness bound (unchanged default behaviour).
  */
 export async function checkClaim(
   holder: string,
   credentialType: string,
   minThreshold?: number,
   trustedIssuers?: string[],
+  maxAgeSeconds?: number,
 ): Promise<boolean> {
   if (!CONTRACTS.proofRegistry) return false;
 
@@ -85,6 +91,9 @@ export async function checkClaim(
     trustedIssuers !== undefined
       ? xdr.ScVal.scvVec(trustedIssuers.map((a) => Address.fromString(a).toScVal()))
       : nativeToScVal(null, { type: "void" }),
+    maxAgeSeconds !== undefined
+      ? nativeToScVal(BigInt(maxAgeSeconds), { type: "u64" })
+      : nativeToScVal(null, { type: "void" }),
   );
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -104,11 +113,16 @@ export async function checkClaim(
  *
  * `trustedIssuers`, if provided, restricts which issuer's proof is accepted —
  * see {@link checkClaim}. Omit to accept any registered issuer.
+ *
+ * `maxAgeSeconds`, if provided, additionally requires the proof to have been
+ * submitted no more than this many seconds ago — see {@link checkClaim} for
+ * how this differs from `expiry`. Omit to apply no freshness bound.
  */
 export async function isVerified(
   holder: string,
   credentialType: string,
   trustedIssuers?: string[],
+  maxAgeSeconds?: number,
 ): Promise<VerificationStatus> {
   const empty: VerificationStatus = { valid: false, verifiedAt: 0, expiry: 0 };
   if (!CONTRACTS.proofRegistry) return empty;
@@ -133,6 +147,9 @@ export async function isVerified(
     nativeToScVal(credentialType, { type: "symbol" }),
     trustedIssuers !== undefined
       ? xdr.ScVal.scvVec(trustedIssuers.map((a) => Address.fromString(a).toScVal()))
+      : nativeToScVal(null, { type: "void" }),
+    maxAgeSeconds !== undefined
+      ? nativeToScVal(BigInt(maxAgeSeconds), { type: "u64" })
       : nativeToScVal(null, { type: "void" }),
   );
   const tx = new TransactionBuilder(account, {

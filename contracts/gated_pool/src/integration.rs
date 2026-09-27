@@ -273,7 +273,7 @@ fn four_contract_lifecycle_end_to_end() {
 
     // 6. The proof created the expected claim (no event; observed on-chain).
     assert_eq!(
-        w.registry.is_verified(&holder, &symbol_short!("kyc"), &None),
+        w.registry.is_verified(&holder, &symbol_short!("kyc"), &None, &None),
         (true, T0, EXPIRY),
     );
     let record = w
@@ -333,7 +333,7 @@ fn four_contract_lifecycle_end_to_end() {
     );
     assert!(!w
         .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
+        .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
         .0);
     assert!(w
         .registry
@@ -376,7 +376,7 @@ fn four_contract_lifecycle_end_to_end() {
         .with_mut(|li| li.timestamp = EXPIRY + 1);
     assert!(!w
         .registry
-        .is_verified(&holder_b, &symbol_short!("kyc"), &None)
+        .is_verified(&holder_b, &symbol_short!("kyc"), &None, &None)
         .0);
     let res = w.pool.try_deposit(&holder_b, &10);
     assert_eq!(expect_err_code(res), Error::NotKycVerified as u32);
@@ -496,7 +496,7 @@ fn unregistered_vk_version_propagates_verifier_error() {
     );
     assert!(w
         .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
+        .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
         .0);
 }
 
@@ -558,7 +558,7 @@ fn deprecated_vk_version_propagates_verifier_error() {
     );
     assert!(w
         .registry
-        .is_verified(&holder_b, &symbol_short!("kyc"), &None)
+        .is_verified(&holder_b, &symbol_short!("kyc"), &None, &None)
         .0);
 
     // The rejected holder never gets past the pool's gate.
@@ -645,7 +645,7 @@ fn paused_registry_rejects_submissions_until_unpause() {
     );
     assert!(w
         .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
+        .is_verified(&holder, &symbol_short!("kyc"), &None, &None)
         .0);
     w.pool.deposit(&holder, &25);
     assert_eq!(w.pool.get_balance(&holder), 25);

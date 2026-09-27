@@ -30,7 +30,7 @@ reusable proofs instead of re-submitting personal data to every app.
   (`std::ecdsa_secp256k1`) inside the proof, and the contract binds that key to
   the registered issuer — a proof only passes if a *registered* issuer actually
   signed the credential.
-- **`is_verified` / `check_claim` are the on-chain primitives.** `is_verified` checks binary claims (kyc, jurisdiction); `check_claim(holder, type, min_threshold)` enforces numeric thresholds (age, income, funds) — a proof for ≥200k satisfies a ≥50k gate. One read, no API, no data handling.
+- **`is_verified` / `check_claim` are the on-chain primitives.** `is_verified` checks binary claims (kyc, jurisdiction); `check_claim(holder, type, min_threshold)` enforces numeric thresholds (age, income, funds) — a proof for ≥200k satisfies a ≥50k gate. One read, no API, no data handling. Both also accept an optional `max_age`, letting a risk-sensitive protocol require a proof submitted recently — not just one that hasn't hit its issuer-set `expiry`. See [ARCHITECTURE.md](docs/ARCHITECTURE.md#is_verified-vs-check_claim---expiry-vs-max_age) for the `expiry`-vs-`max_age` distinction.
 - **Multi-claim issuance.** One verification issues every requested credential
   (KYC, age, jurisdiction, …) in a single call.
 - **Drop-in integration.** The [`@stellarcred/sdk`](frontend/packages/sdk) gives

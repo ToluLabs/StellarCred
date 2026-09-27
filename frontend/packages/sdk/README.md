@@ -125,9 +125,19 @@ const incomeOk = await StellarCred.hasClaim(wallet, "income", {
 });
 ```
 
+Pass `maxAgeSeconds` to require the proof to have been *submitted* recently, not just that it hasn't hit its `expiry` yet. This is a different knob from `expiry`: **`expiry` is set by the issuer** at submission time (how long they vouch for the claim without re-proof), while **`maxAgeSeconds` is set by you**, the verifying protocol, per call. A KYC claim proven two years ago but issued with a five-year `expiry` still satisfies plain `hasClaim(wallet, "kyc")` — but fails a risk-sensitive gate that also passes `maxAgeSeconds`, because the proof itself is stale even though the issuer's window hasn't lapsed.
+
+```ts
+// Require the KYC proof to have been submitted within the last 30 days,
+// regardless of how far out its issuer-set expiry is
+const freshKycOk = await StellarCred.hasClaim(wallet, "kyc", {
+  maxAgeSeconds: 30 * 24 * 60 * 60,
+});
+```
+
 ### `getClaim(wallet, claimType, opts?)`
 
-Returns the full claim record with `verifiedAt` and `expiry` timestamps, or `null` if the wallet has no current proof of that type. Respects `trustedIssuers`.
+Returns the full claim record with `verifiedAt` and `expiry` timestamps, or `null` if the wallet has no current proof of that type. Respects `trustedIssuers` and `maxAgeSeconds`.
 
 ```ts
 const claim = await StellarCred.getClaim(wallet, "kyc");

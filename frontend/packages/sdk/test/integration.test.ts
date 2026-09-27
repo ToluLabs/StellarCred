@@ -204,6 +204,17 @@ describe("StellarCred SDK integration (testnet)", () => {
       expect(url).toContain("restricted=840%2C364");
     });
 
+    it("appends max_age as a freshness hint", () => {
+      const url = buildVerifyUrl({
+        returnUrl: "https://example.com/vault",
+        claim: "kyc",
+        claimParams: { max_age: "86400" },
+      });
+
+      expect(url).toContain("max_age=86400");
+      expect(url).toContain("claim=kyc");
+    });
+
     it("uses custom baseUrl when provided", () => {
       const url = buildVerifyUrl({
         returnUrl: "/dashboard",

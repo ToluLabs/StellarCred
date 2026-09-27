@@ -298,3 +298,18 @@ sequenceDiagram
         DApp->>User: Redirect to StellarCred
     end
 ```
+
+### `is_verified` vs `check_claim` — `expiry` vs `max_age`
+
+Both read functions accept the same two time-related knobs, and it's worth being precise about the difference:
+
+| | `expiry` | `max_age` |
+| --- | --- | --- |
+| Who sets it | The **issuer**, when the holder's proof is submitted (`submit_proof`) | The **verifying protocol**, per call to `is_verified`/`check_claim` |
+| What it bounds | How long the issuer is willing to vouch for the claim without a fresh proof | How recently *this caller* requires the proof to have been submitted (`verified_at`) |
+| Where it lives | Stored on the `ProofRecord` | Never stored — passed as a call argument, not persisted |
+| Default | Required at submission | `None` — no freshness bound, matching pre-`max_age` behaviour |
+
+They're independent: a claim can satisfy one and fail the other. A KYC proof submitted two years ago with a five-year `expiry` still reports `valid: true` from `is_verified(holder, "kyc")` with no `max_age` — the issuer's five-year window hasn't lapsed. But a risk-sensitive protocol that passes `max_age: 30 * 86_400` (require a proof from the last 30 days) gets `valid: false` for that same claim, because `now - verified_at` exceeds 30 days, even though `expiry` is nowhere close. Both `verified_at` and `expiry` are still returned by `is_verified` even when `max_age` fails the read — the same convention already used for an expired, revoked, or untrusted-issuer claim — so callers can inspect *why* a claim wasn't accepted rather than only getting a bare `false`.
+
+In the SDK, this is `ClaimOptions.maxAgeSeconds` (see `@stellarcred/sdk`'s `hasClaim`/`hasClaims`/`getClaims`/`watchClaim`), and `buildVerifyUrl`'s `claimParams.max_age` carries the same value as a hint to the verify flow (not enforcement — the real bound is still checked on-chain via `hasClaim`/`check_claim` after redirect).

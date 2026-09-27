@@ -198,7 +198,7 @@ fn withdraw_remains_available_after_kyc_expires() {
     env.ledger().with_mut(|li| li.timestamp = 3);
     assert!(
         !h.registry
-            .is_verified(&user, &symbol_short!("kyc"), &None)
+            .is_verified(&user, &symbol_short!("kyc"), &None, &None)
             .0
     );
 
@@ -218,7 +218,7 @@ fn withdraw_remains_available_after_kyc_is_revoked() {
     h.registry.revoke(&h.issuer, &user, &symbol_short!("kyc"));
     assert!(
         !h.registry
-            .is_verified(&user, &symbol_short!("kyc"), &None)
+            .is_verified(&user, &symbol_short!("kyc"), &None, &None)
             .0
     );
 
