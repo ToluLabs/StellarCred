@@ -147,3 +147,28 @@ The deployment runbook is responsible for ensuring this file is updated before
 a deployment is considered complete.
 
 Do not use `.env.example` as the authoritative source for deployed contract IDs.
+
+## Capability descriptor
+
+Every deployment also serves its live configuration as a machine-readable
+capability descriptor at `GET /api/capabilities` (issue #639): network,
+contract IDs with their **on-chain** `version()` values, supported credential
+types, a registered-issuer summary, the public indexer URL (when configured),
+whether sponsored submission is available, and the `@stellarcred/sdk` version
+range known to work. Integrators — and the SDK itself, via
+`StellarCred.bootstrap()` — use that single URL instead of copy-pasting
+contract IDs.
+
+The descriptor and this registry must agree: the descriptor reads contract
+versions from the chain, so after a deploy or upgrade the published record
+above has to be updated to match. Verify a deployment against its manifest
+(the machine-readable record written by `scripts/deploy.sh`):
+
+```sh
+node scripts/verify-capabilities.mjs \
+  --url https://<deployment-host> \
+  --manifest deployment-manifests/deployment-<timestamp>.json
+```
+
+The check fails on any network or contract-ID/-version mismatch between the
+live descriptor and the published record.

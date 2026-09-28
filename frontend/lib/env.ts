@@ -85,6 +85,14 @@ const envSchema = z
       emptyToUndefined,
       z.string().url().optional(),
     ),
+    // Public indexer URL — included in the /api/capabilities descriptor
+    // (issue #639) so integrators can discover the indexer. Only set this
+    // when the indexer is safe to expose publicly; INDEXER_URL above may
+    // point at a private URL and is never published.
+    NEXT_PUBLIC_INDEXER_URL: z.preprocess(
+      emptyToUndefined,
+      z.string().url().optional(),
+    ),
 
     // Server-only issuer signing key. Optional: absence runs the public demo
     // issuer key (logged loudly on every boot) instead of a real one.

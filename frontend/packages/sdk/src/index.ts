@@ -28,6 +28,7 @@
 //   const ok = await StellarCred.hasClaim(walletAddress, "kyc");
 
 export * from "./claims";
+export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
 export * from "./errors"; // Typed error taxonomy (#404)
@@ -62,6 +63,12 @@ import {
 import { RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError } from "./errors";
 
 import {
+  bootstrap,
+  fetchCapabilities,
+  validateCapabilitiesDescriptor,
+} from "./capabilities";
+
+import {
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,
@@ -71,6 +78,9 @@ import { subscribeClaims } from "./subscriptions";
 
 export const StellarCred = {
   configure,
+  bootstrap,
+  fetchCapabilities,
+  validateCapabilitiesDescriptor,
   healthCheck,
   isConfigured,
   hasClaim,
