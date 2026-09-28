@@ -698,3 +698,58 @@ describe("checkClaimStatus and getClaimRecord — failure state handling", () =>
     });
   });
 });
+
+
+describe("optional indexer read paths", () => {
+  const indexedClaim = {
+    id: 1,
+    wallet: WALLET,
+    credential_type: "kyc",
+    issuer: "GISSUER",
+    verified_at: 1_700_000_000,
+    expiry: Math.floor(Date.now() / 1000) + 3600,
+    ledger_sequence: 42,
+    threshold: null,
+    revoked: 0,
+  };
+
+  beforeEach(() => {
+    isVerified.mockReset();
+    checkClaim.mockReset();
+    configure({
+      registryId: "C_TEST_REGISTRY",
+      indexer: { url: "https://indexer.example" },
+      retries: 0,
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ wallet: WALLET, claims: [indexedClaim] }),
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the indexer only when indexer-cache is explicitly selected", async () => {
+    await expect(hasClaim(WALLET, "kyc", { readFrom: "indexer-cache" })).resolves.toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(isVerified).not.toHaveBeenCalled();
+  });
+
+  it("confirms an indexer-verified read against ProofRegistry on-chain", async () => {
+    isVerified.mockResolvedValue({ result: [true, 1_700_000_000n, 1_800_000_000n] });
+
+    await expect(hasClaim(WALLET, "kyc", { readFrom: "indexer-verify-against-chain" })).resolves.toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(isVerified).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns active indexed claims without making one RPC call per claim type", async () => {
+    await expect(getClaims(WALLET, { readFrom: "indexer-cache" })).resolves.toEqual([
+      { type: "kyc", verifiedAt: indexedClaim.verified_at, expiry: indexedClaim.expiry },
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(isVerified).not.toHaveBeenCalled();
+  });
+});

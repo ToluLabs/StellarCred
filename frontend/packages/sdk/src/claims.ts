@@ -10,6 +10,13 @@
 // the module graph acyclic.
 
 import { Client as ProofRegistryClient } from "../../proof-registry/src/index";
+import {
+  fetchIndexedClaims,
+  indexedClaimForType,
+  type IndexedClaim,
+  type IndexerConfig,
+  type IndexerReadSource,
+} from "./indexer";
 
 // ---------------------------------------------------------------------------
 // Runtime environment detection
@@ -166,9 +173,13 @@ export interface SDKConfig {
   baseDelayMs?: number;
   maxDelayMs?: number;
   jitter?: boolean;
+  /** Optional indexer. It is never used unless a read opts into an indexer source. */
+  indexer?: IndexerConfig;
 }
 
-const DEFAULT_CONFIG: Required<SDKConfig> = {
+type RuntimeConfig = Required<Omit<SDKConfig, "indexer">> & { indexer?: IndexerConfig };
+
+const DEFAULT_CONFIG: RuntimeConfig = {
   registryId: env("STELLARCRED_REGISTRY_ID", "NEXT_PUBLIC_PROOF_REGISTRY_ID"),
   rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || _preset.rpcUrl,
   networkPassphrase:
@@ -182,9 +193,10 @@ const DEFAULT_CONFIG: Required<SDKConfig> = {
   baseDelayMs: 500,
   maxDelayMs: 5000,
   jitter: true,
+  indexer: undefined,
 };
 
-let _config: Required<SDKConfig> = { ...DEFAULT_CONFIG };
+let _config: RuntimeConfig = { ...DEFAULT_CONFIG };
 
 /**
  * Override SDK defaults at runtime. Call this once at app startup before any
@@ -206,7 +218,7 @@ export function configure(opts: SDKConfig): void {
 /**
  * Read the current runtime configuration (read-only snapshot).
  */
-export function getConfig(): Readonly<Required<SDKConfig>> {
+export function getConfig(): Readonly<RuntimeConfig> {
   return { ..._config };
 }
 
@@ -389,6 +401,8 @@ export interface ClaimOptions {
   requestTimeoutMs?: number;
   throwOnError?: boolean;
   retryOptions?: RetryOptions;
+  /** Defaults to `chain`; indexer modes make the trust tradeoff explicit. */
+  readFrom?: "chain" | IndexerReadSource;
 }
 
 export interface Claim {
@@ -403,6 +417,8 @@ export interface BatchClaimOptions {
   requestTimeoutMs?: number;
   throwOnError?: boolean;
   retryOptions?: RetryOptions;
+  /** Defaults to `chain`; cache reads must not be the sole security check. */
+  readFrom?: "chain" | IndexerReadSource;
 }
 
 export interface PresetClaim {
@@ -729,6 +745,112 @@ async function readRecord(
 }
 
 
+function indexedToRecord(claim: IndexedClaim): ProofRecordDetails {
+  return {
+    verifiedAt: claim.verified_at,
+    expiry: claim.expiry,
+    revoked: claim.revoked !== 0,
+    issuer: claim.issuer || undefined,
+    threshold: claim.threshold ?? undefined,
+    // The indexer does not expose the contract's VK version.
+    vkVersion: 0,
+  };
+}
+
+async function readIndexedRecord(
+  wallet: string,
+  claimType: string,
+  throwOnError: boolean,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<ProofRecordDetails | null> {
+  if (!_config.indexer?.url) {
+    if (throwOnError) throw new ConfigError("Indexer reads require configure({ indexer: { url } })");
+    return null;
+  }
+  try {
+    const claims = await fetchIndexedClaims(_config.indexer, wallet, { requestTimeoutMs, retryOptions });
+    const claim = indexedClaimForType(claims, claimType);
+    return claim ? indexedToRecord(claim) : null;
+  } catch (err) {
+    if (throwOnError) throw new RpcError(`Indexer read failed for claim "${claimType}"`, { cause: err });
+    return null;
+  }
+}
+
+async function readIndexedClaimsForWallet(
+  wallet: string,
+  throwOnError: boolean,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<IndexedClaim[]> {
+  if (!_config.indexer?.url) {
+    if (throwOnError) throw new ConfigError("Indexer reads require configure({ indexer: { url } })");
+    return [];
+  }
+  try {
+    return await fetchIndexedClaims(_config.indexer, wallet, { requestTimeoutMs, retryOptions });
+  } catch (err) {
+    if (throwOnError) throw new RpcError("Indexer read failed for wallet claims", { cause: err });
+    return [];
+  }
+}
+
+async function readRecordFromSource(
+  wallet: string,
+  claimType: string,
+  source: "chain" | IndexerReadSource = "chain",
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<ProofRecordDetails | null> {
+  if (source === "indexer-cache") return readIndexedRecord(wallet, claimType, throwOnError, requestTimeoutMs, retryOptions);
+  if (source === "indexer-verify-against-chain") {
+    await readIndexedRecord(wallet, claimType, throwOnError, requestTimeoutMs, retryOptions);
+  }
+  return readRecord(wallet, claimType, throwOnError, requestTimeoutMs, retryOptions);
+}
+
+async function readIsVerifiedFromSource(
+  wallet: string,
+  claimType: string,
+  trustedIssuers: string[] | undefined,
+  source: "chain" | IndexerReadSource = "chain",
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
+  if (source === "chain") return readIsVerified(wallet, claimType, trustedIssuers, throwOnError, requestTimeoutMs, retryOptions);
+  const indexed = await readIndexedRecord(wallet, claimType, throwOnError, requestTimeoutMs, retryOptions);
+  if (source === "indexer-cache") {
+    if (!indexed) return null;
+    const valid = !indexed.revoked && indexed.expiry > Math.floor(Date.now() / 1000) &&
+      (!trustedIssuers?.length || (!!indexed.issuer && trustedIssuers.includes(indexed.issuer)));
+    return { valid, verifiedAt: indexed.verifiedAt, expiry: indexed.expiry };
+  }
+  return readIsVerified(wallet, claimType, trustedIssuers, throwOnError, requestTimeoutMs, retryOptions);
+}
+
+async function readCheckClaimFromSource(
+  wallet: string,
+  claimType: string,
+  minThreshold: number,
+  trustedIssuers: string[] | undefined,
+  source: "chain" | IndexerReadSource = "chain",
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<boolean> {
+  if (source === "chain") return readCheckClaim(wallet, claimType, minThreshold, trustedIssuers, throwOnError, requestTimeoutMs, retryOptions);
+  const indexed = await readIndexedRecord(wallet, claimType, throwOnError, requestTimeoutMs, retryOptions);
+  if (source === "indexer-cache") {
+    return !!indexed && !indexed.revoked && indexed.expiry > Math.floor(Date.now() / 1000) &&
+      (indexed.threshold ?? 0) >= minThreshold &&
+      (!trustedIssuers?.length || (!!indexed.issuer && trustedIssuers.includes(indexed.issuer)));
+  }
+  return readCheckClaim(wallet, claimType, minThreshold, trustedIssuers, throwOnError, requestTimeoutMs, retryOptions);
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -761,21 +883,23 @@ export async function hasClaim(
 
   if (opts?.minThreshold !== undefined) {
     validateThreshold(opts.minThreshold);
-    return readCheckClaim(
+    return readCheckClaimFromSource(
       normalizedWallet,
       claimType,
       opts.minThreshold,
       opts.trustedIssuers,
+      opts.readFrom,
       throwOnError,
       opts.requestTimeoutMs,
       opts.retryOptions,
     );
   }
 
-  const r = await readIsVerified(
+  const r = await readIsVerifiedFromSource(
     normalizedWallet,
     claimType,
     opts?.trustedIssuers,
+    opts?.readFrom,
     throwOnError,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
@@ -790,7 +914,7 @@ export async function hasClaim(
 export async function getClaim(
   wallet: string,
   claimType: string,
-  opts?: Pick<ClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+  opts?: Pick<ClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "readFrom">,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
   warnIfMissingRegistryIdOnce();
 
@@ -802,10 +926,11 @@ export async function getClaim(
     return null;
   }
 
-  const r = await readIsVerified(
+  const r = await readIsVerifiedFromSource(
     normalizedWallet,
     claimType,
     opts?.trustedIssuers,
+    opts?.readFrom,
     opts?.throwOnError === true,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
@@ -820,7 +945,7 @@ export async function getClaim(
 export async function getClaimRecord(
   wallet: string,
   claimType: string,
-  opts?: Pick<ClaimOptions, "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+  opts?: Pick<ClaimOptions, "requestTimeoutMs" | "throwOnError" | "retryOptions" | "readFrom">,
 ): Promise<ProofRecordDetails | null> {
   warnIfMissingRegistryIdOnce();
 
@@ -832,9 +957,10 @@ export async function getClaimRecord(
     return null;
   }
 
-  return readRecord(
+  return readRecordFromSource(
     normalizedWallet,
     claimType,
+    opts?.readFrom,
     opts?.throwOnError === true,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
@@ -882,9 +1008,10 @@ export async function checkClaimStatus(
     validateThreshold(opts.minThreshold);
   }
 
-  const record = await readRecord(
+  const record = await readRecordFromSource(
     normalizedWallet,
     claimType,
+    opts?.readFrom,
     throwOnError,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
@@ -978,21 +1105,23 @@ export async function hasClaims(
       const minThreshold = opts?.minThresholds?.[t];
       if (minThreshold !== undefined) {
         validateThreshold(minThreshold);
-        results[t] = await readCheckClaim(
+        results[t] = await readCheckClaimFromSource(
           normalizedWallet,
           t,
           minThreshold,
           opts?.trustedIssuers,
+          opts?.readFrom,
           opts?.throwOnError === true,
           opts?.requestTimeoutMs,
           opts?.retryOptions,
         );
         return;
       }
-      const r = await readIsVerified(
+      const r = await readIsVerifiedFromSource(
         normalizedWallet,
         t,
         opts?.trustedIssuers,
+        opts?.readFrom,
         opts?.throwOnError === true,
         opts?.requestTimeoutMs,
         opts?.retryOptions,
@@ -1013,7 +1142,7 @@ export async function hasClaims(
 export async function verifyPreset(
   wallet: string,
   claims: readonly PresetClaim[],
-  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "readFrom">,
 ): Promise<PresetVerificationResult> {
   const types = claims.map((c) => c.type);
   const minThresholds: Partial<Record<ClaimType, number>> = {};
@@ -1027,6 +1156,7 @@ export async function verifyPreset(
     requestTimeoutMs: opts?.requestTimeoutMs,
     throwOnError: opts?.throwOnError,
     retryOptions: opts?.retryOptions,
+    readFrom: opts?.readFrom,
   });
   const allValid = types.length > 0 && types.every((t) => results[t] === true);
   return { results, allValid };
@@ -1038,7 +1168,7 @@ export async function verifyPreset(
  */
 export async function getClaims(
   wallet: string,
-  opts?: Pick<ClaimOptions, "throwOnError" | "requestTimeoutMs" | "retryOptions">,
+  opts?: Pick<ClaimOptions, "throwOnError" | "requestTimeoutMs" | "retryOptions" | "readFrom">,
 ): Promise<Claim[]> {
   warnIfMissingRegistryIdOnce();
   const throwOnError = opts?.throwOnError === true;
@@ -1057,12 +1187,20 @@ export async function getClaims(
     return [];
   }
 
+  if (opts?.readFrom === "indexer-cache") {
+    const claims = await readIndexedClaimsForWallet(normalizedWallet, throwOnError, opts.requestTimeoutMs, opts.retryOptions);
+    return claims
+      .filter((claim) => !claim.revoked && claim.expiry > Math.floor(Date.now() / 1000))
+      .map((claim) => ({ type: claim.credential_type, verifiedAt: claim.verified_at, expiry: claim.expiry }));
+  }
+
   const results = await fanOut(CLAIM_TYPES, async (t) => {
     try {
-      const r = await readIsVerified(
+      const r = await readIsVerifiedFromSource(
         normalizedWallet,
         t,
         undefined,
+        opts?.readFrom,
         throwOnError,
         opts?.requestTimeoutMs,
         opts?.retryOptions,

@@ -5,10 +5,10 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, relative, basename } from "node:path";
+import { join, relative, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT_DIR = join(fileURLToPath(import.meta.url), "..", "..");
+const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT_NAME = basename(fileURLToPath(import.meta.url));
 
 const SYSTEM_ENV_VARS = new Set(["NODE_ENV", "NEXT_RUNTIME", "DEBUG"]);
@@ -27,8 +27,15 @@ function collectFiles(dir, extensions = new Set([".ts", ".tsx", ".js", ".mjs", "
     for (const entry of entries) {
       const fullPath = join(currentDir, entry.name);
       const relPath = relative(ROOT_DIR, fullPath).replace(/\\/g, "/");
+      // pnpm represents packages with symlinked directories. Do not treat a
+      // symlink to a directory whose name ends in .js/.ts as a source file.
+      if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
-        const shouldSkip = [...EXCLUDE_DIRS].some(e => relPath === e || relPath.startsWith(e + "/"));
+        const shouldSkip = [...EXCLUDE_DIRS].some(e =>
+          e.includes("/")
+            ? relPath === e || relPath.startsWith(e + "/")
+            : relPath.split("/").includes(e),
+        );
         if (!shouldSkip) walk(fullPath);
         continue;
       }

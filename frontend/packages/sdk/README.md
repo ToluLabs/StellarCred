@@ -61,6 +61,8 @@ StellarCred.configure({
   networkPassphrase: "Test SDF Network ; September 2015",
   baseUrl: "https://stellarcred.xyz",              // used by buildVerifyUrl
   requestTimeoutMs: 10000,                         // max time for each RPC read
+  // Optional. Never used unless a read explicitly sets readFrom.
+  indexer: { url: "https://indexer.example" },
 });
 ```
 
@@ -109,6 +111,38 @@ const ageOk   = await StellarCred.hasClaim(wallet, "age",    { minThreshold: 21 
 const incOk   = await StellarCred.hasClaim(wallet, "income", { minThreshold: 200000 });
 const fundsOk = await StellarCred.hasClaim(wallet, "funds",  { minThreshold: 50000 });
 ```
+
+#### Optional indexer fast path and trust modes
+
+The SDK reads the chain by default. An indexer is **off by default** and must be
+configured with an explicit URL and selected per read:
+
+```ts
+StellarCred.configure({
+  registryId: "C...",
+  indexer: { url: "https://indexer.example" },
+});
+
+// Fast, cache-backed public chain data. Do not use this as the sole basis for
+// an authorization, compliance, payment, or other security decision.
+const fast = await StellarCred.hasClaim(wallet, "kyc", {
+  readFrom: "indexer-cache",
+});
+
+// Fetch the indexer answer, then confirm the result against ProofRegistry.
+// Use this when you want an indexer-assisted read with an on-chain trust anchor.
+const anchored = await StellarCred.hasClaim(wallet, "kyc", {
+  readFrom: "indexer-verify-against-chain",
+});
+```
+
+`indexer-cache` is a cache of public chain data and may be stale, unavailable,
+or independently compromised. It is useful for fast UI reads and discovery,
+but **must not be the only check protecting a gate-critical action**. Use the
+default chain mode or `indexer-verify-against-chain` for security-sensitive checks; the
+latter always confirms the answer with `ProofRegistry` simulation. The same
+`readFrom` option is supported by `getClaim`, `getClaimRecord`,
+`checkClaimStatus`, `hasClaims`, `verifyPreset`, and `getClaims`.
 
 Pass `trustedIssuers` to restrict which issuer(s) a proof must come from — e.g. accept `kyc` only from Persona or Jumio, not a self-attested issuer. This is enforced on-chain by `ProofRegistry`; omit it (or leave it `undefined`) to accept a proof from any registered issuer, matching current behaviour. An empty array rejects every issuer.
 
@@ -676,4 +710,3 @@ The SDK follows [Semantic Versioning](https://semver.org/). Releases are fully a
    - Generates release notes from conventional commit messages.
    - Creates an official GitHub Release with release artifacts.
    - Publishes `@stellarcred/sdk` with public access to the npm registry using `NPM_TOKEN`.
-

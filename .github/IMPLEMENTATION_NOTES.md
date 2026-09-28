@@ -47,10 +47,6 @@ This document summarizes the implementation of dependency review and license che
   - Provides resolution steps for violations
   - FAQ section
 
-- **`.github/workflows/dependency-review.yml`** (new)
-  - Standalone workflow (for reference; actual job integrated in ci.yml)
-  - Can be used in other projects as a template
-
 - **`.github/IMPLEMENTATION_NOTES.md`** (this file)
   - Technical implementation details
   - Testing notes

@@ -147,6 +147,11 @@ npm run dev
 5. For frontend changes: run `pnpm tsc --noEmit` (zero errors required) and `pnpm build`.
 6. Open a pull request against `main` with a clear description of what changed and why.
 
+The complete GitHub Actions trigger and merge-gating policy is documented in
+[docs/CI_WORKFLOWS.md](docs/CI_WORKFLOWS.md). Check it before changing a
+workflow or adding a CI job so the ownership and required-check inventory
+stays accurate.
+
 ## Branch Cleanup
 
 - **After merging:** Head branches are deleted automatically when a pull request

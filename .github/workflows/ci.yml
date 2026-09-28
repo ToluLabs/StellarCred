@@ -65,6 +65,22 @@ jobs:
         run: |
           node ../.github/scripts/verify-npm-licenses.mjs
 
+  # ── Environment contract: checked as part of the required CI gate ──────────
+  # Keep this fast static check in the main workflow so a PR has one obvious
+  # place to look for merge-blocking repository configuration failures.
+  env-check:
+    name: Environment variable documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check environment variable documentation
+        working-directory: frontend
+        run: node scripts/check-env-sync.mjs
+
   commitlint:
     name: Lint commit messages
     runs-on: ubuntu-latest

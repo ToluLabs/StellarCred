@@ -23,6 +23,7 @@
 //   const ok = await StellarCred.hasClaim(walletAddress, "kyc");
 
 export * from "./claims";
+export type { IndexedClaim, IndexerConfig, IndexerReadSource } from "./indexer";
 export * from "./challenge";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
