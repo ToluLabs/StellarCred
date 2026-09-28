@@ -342,72 +342,104 @@ async function executeRequest(
       }
       const baseUrl =
         env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? req.nextUrl.origin;
-      if (!personaInquiryId) {
+      // Every Persona call in this block is wrapped so a provider failure
+      // cannot escape the handler. lib/persona.ts embeds Persona's raw error
+      // body in the thrown message, and Persona error bodies routinely echo
+      // the identity fields Persona holds — an unhandled throw would carry
+      // them into the framework's error output. The message is therefore
+      // dropped here: not logged, not sent to the error sink, not returned.
+      try {
+        if (!personaInquiryId) {
+          logger.info(
+            stripSensitiveFields({
+              event: "provider_call",
+              credentialType: "kyc",
+              issuerId,
+              walletAddress,
+              outcome: "inquiry_created",
+              requestId,
+            }),
+          );
+          const redirectUrl = returnUrl
+            ? `${baseUrl}/verify?return_url=${encodeURIComponent(returnUrl)}`
+            : `${baseUrl}/verify`;
+          const { url, id } = await createPersonaInquiry(templateId, redirectUrl, holder);
+          // Keep only the non-PII issuance context server-side so a webhook can
+          // complete an approval even when the holder never returns to the tab.
+          registerPendingInquiry(id, {
+            holder,
+            issuerId: issuerId ?? SIM_ACCOUNT,
+            issuerName,
+            expiry,
+            credentialTypes: credentialTypes as CredentialType[],
+            claimParams,
+          });
+          return sendResponse(
+            NextResponse.json(
+              { needsPersona: true, personaUrl: url, inquiryId: id },
+              { status: 202 },
+            ),
+          );
+        }
+        const kyc = await resolvePersonaKYC(personaInquiryId);
+        if (!kyc.ok) {
+          logger.info(
+            stripSensitiveFields({
+              event: "provider_call",
+              credentialType: "kyc",
+              issuerId,
+              walletAddress,
+              outcome: "verification_failed",
+              requestId,
+            }),
+          );
+          return sendResponse(
+            NextResponse.json(
+              { error: kyc.error ?? "Identity verification failed" },
+              { status: 403 },
+            ),
+          );
+        }
         logger.info(
           stripSensitiveFields({
             event: "provider_call",
             credentialType: "kyc",
             issuerId,
             walletAddress,
-            outcome: "inquiry_created",
+            outcome: "verified",
             requestId,
           }),
         );
-        const redirectUrl = returnUrl
-          ? `${baseUrl}/verify?return_url=${encodeURIComponent(returnUrl)}`
-          : `${baseUrl}/verify`;
-        const { url, id } = await createPersonaInquiry(templateId, redirectUrl, holder);
-        // Keep only the non-PII issuance context server-side so a webhook can
-        // complete an approval even when the holder never returns to the tab.
-        registerPendingInquiry(id, {
-          holder,
-          issuerId: issuerId ?? SIM_ACCOUNT,
-          issuerName,
-          expiry,
-          credentialTypes: credentialTypes as CredentialType[],
-          claimParams,
-        });
-        return sendResponse(
-          NextResponse.json(
-            { needsPersona: true, personaUrl: url, inquiryId: id },
-            { status: 202 },
-          ),
-        );
-      }
-      const kyc = await resolvePersonaKYC(personaInquiryId);
-      if (!kyc.ok) {
-        logger.info(
+        if (kyc.dob) attributes.date_of_birth = kyc.dob;
+        if (kyc.countryNumeric) attributes.country_code = kyc.countryNumeric;
+      } catch {
+        logger.error(
           stripSensitiveFields({
             event: "provider_call",
             credentialType: "kyc",
             issuerId,
             walletAddress,
-            outcome: "verification_failed",
+            outcome: "provider_unavailable",
             requestId,
           }),
         );
         return sendResponse(
           NextResponse.json(
-            { error: kyc.error ?? "Identity verification failed" },
-            { status: 403 },
+            {
+              error:
+                "Identity verification service is unavailable. Please try again.",
+            },
+            { status: 502 },
           ),
         );
       }
-      logger.info(
-        stripSensitiveFields({
-          event: "provider_call",
-          credentialType: "kyc",
-          issuerId,
-          walletAddress,
-          outcome: "verified",
-          requestId,
-        }),
-      );
-      if (kyc.dob) attributes.date_of_birth = kyc.dob;
-      if (kyc.countryNumeric) attributes.country_code = kyc.countryNumeric;
     }
   }
 
+  // Gate funds issuance on the Plaid balance attestation. Plaid is the source
+  // of truth — we overwrite any user-supplied balance with the verified
+  // aggregate (summed across every linked Plaid item). Only the aggregate is
+  // committed and signed; per-source account data never leaves this server.
   // ---------------------------------------------------------------------------
   // Balance attestation via Plaid
   // ---------------------------------------------------------------------------

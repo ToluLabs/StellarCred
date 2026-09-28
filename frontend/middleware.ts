@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { getCorsHeaders, isOriginAllowed } from "@/lib/cors";
 import { logger, stripSensitiveFields } from "@/lib/logger";
+import { plaidAccessTokens } from "@/lib/plaid";
 import { reportError } from "@/lib/error-reporting";
 import { locales, defaultLocale, type Locale } from "@/i18n.config";
 
@@ -65,7 +66,7 @@ export function middleware(request: NextRequest) {
 
   // Detect demo/mock mode signals
   const isDemoIssuer = !process.env.ISSUER_PRIVATE_KEY;
-  const isPlaidMock = !process.env.PLAID_ACCESS_TOKEN;
+  const isPlaidMock = plaidAccessTokens().length === 0;
   const isPersonaDemo = !process.env.PERSONA_API_KEY;
 
   if (request.method === "OPTIONS") {

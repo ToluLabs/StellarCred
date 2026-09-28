@@ -128,6 +128,67 @@ reducing into the field. The in-circuit `assert(salt != 0)` will not catch a
 regression to a narrow or predictable range; only an audit of the generator
 will.
 
+### Aggregate proof-of-funds (multi-source attestation)
+
+Real proof-of-funds spans multiple linked accounts - checking at one bank,
+savings at another. The issuer can therefore attest to the **sum** of the
+available depository balances across several linked Plaid items rather than a
+single account, and the holder still proves only `aggregate >= threshold`
+without revealing any component.
+
+Access tokens come from two environment variables: `PLAID_ACCESS_TOKEN`
+(single item) and `PLAID_ACCESS_TOKENS` (comma-separated list, up to 25 items
+total across both variables; duplicates are fetched once). The aggregation
+runs entirely inside the issuance server:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Holder as Holder
+    participant API as /api/issue
+    participant Plaid as Plaid (per linked item)
+
+    Holder->>API: POST /api/issue (credential_types: ["funds"])
+    par each linked item (parallel, per-item timeout)
+        API->>Plaid: /accounts/balance/get (access_token_i)
+        Plaid-->>API: item accounts + balances
+    end
+    API->>API: sum available depository balances = aggregate
+    API->>API: commitment = Poseidon2([aggregate, salt])
+    API->>API: sign(commitment) — the aggregate commitment
+    API-->>Holder: funds credential (value = aggregate, no source data)
+    Note over API,Holder: Per-item account data never leaves the API server
+```
+
+Key properties, and where they are enforced:
+
+- **The issuer signs the aggregate, not the components.** Only the summed
+  balance reaches `attributeToValue`, the Poseidon2 commitment, and the
+  secp256k1 signature. The existing `funds_proof` circuit is unchanged: it
+  proves `value >= threshold` over whatever the issuer attested, so the
+  components never need to enter the circuit, the witness, or the proof.
+- **Components stay private.** Account names and per-item balances are used
+  transiently inside the API route and then dropped. They are not written to
+  the credential returned to the browser, not stored in any database, not
+  written on-chain, and not logged - the structured logs carry only counts
+  (`itemCount`, `accountCount`) and per-item ordinals (`itemIndex`). The
+  audit log records the commitment (already a hash of the aggregate), never
+  the source data.
+- **Aggregation fails closed.** If *any* linked item errors - network
+  failure, timeout, expired `ITEM_LOGIN_REQUIRED` token, invalid JSON - no
+  balance is returned and no credential is issued. A partial sum would
+  understate the holder's funds and would not be the figure the issuer is
+  trusted to attest to, so it is never attested. This also means a holder
+  cannot selectively hide a linked item with a low (or negative) balance.
+- **Fan-out is bounded.** Each configured item costs one upstream Plaid call
+  per balance fetch, so the token list is capped at 25 items; a longer list
+  is rejected outright rather than truncated (truncation would silently
+  understate the aggregate).
+- **The aggregate fits the circuit's `u64`.** The `funds_proof` circuit
+  constrains `balance` to a u64 (~1.8 × 10^19) and the sum of at most 25
+  realistic balances is far below that bound, so aggregation cannot overflow
+  the circuit's range check.
+
 ## Proving and Verification Flow
 
 This sequence diagram shows how a holder generates a zero-knowledge proof locally and submits it to the ProofRegistry contract.

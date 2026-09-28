@@ -48,6 +48,29 @@ export interface Credential {
    * Absent on credentials minted before this field existed.
    */
   deployment?: DeploymentRef;
+  /**
+   * Last-checked status of this credential's issuer in IssuerRegistry (#626).
+   *
+   * - `"active"` — issuer is registered and trusted; credential is provable.
+   * - `"key_retired"` — issuer rotated to a new key; this credential's key
+   *   is still inside its validity window; proving still works.
+   * - `"key_revoked"` — issuer's signing key was emergency-revoked; new
+   *   proof submissions may fail with `IssuerKeyMismatch`.
+   * - `"issuer_revoked"` — issuer permanently removed from registry;
+   *   proof submission will fail with `IssuerNotTrusted`; the holder must
+   *   obtain a fresh credential from another issuer.
+   * - `"unknown"` — status could not be determined (offline / not configured).
+   *
+   * Absent when the status has never been checked (treated as "unknown" by UI).
+   * Updated in the background by `useIssuerStatus` when the wallet is
+   * connected; stored with the credential so the signal persists across sessions.
+   */
+  issuerStatus?: "active" | "key_retired" | "key_revoked" | "issuer_revoked" | "unknown";
+  /**
+   * Unix timestamp (seconds) when `issuerStatus` was last fetched from the
+   * chain. Used to avoid redundant re-checks on every page load.
+   */
+  issuerStatusCheckedAt?: number;
 }
 
 export const TYPE_META: Record<
@@ -77,7 +100,7 @@ export const TYPE_META: Record<
     title: "Proof of Funds",
     claim: "balance > $10,000",
     issuable: true,
-    attribute: "Account balance (USD)",
+    attribute: "Aggregate balance across linked accounts (USD)",
   },
   accreditation: {
     title: "Accredited Investor",

@@ -23,6 +23,48 @@ env:
   NODE_VERSION: "20"
 
 jobs:
+  # ── Dependency review: advisories, licenses, maintenance ──────────────────
+  # Runs early in the matrix to fail fast on dependency violations.
+  # Blocks PRs with new packages that have known advisories or denied licenses.
+  dependency-check:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Review npm dependency changes (GitHub Advisory DB)
+        uses: actions/dependency-review-action@v4
+        continue-on-error: true
+
+      - name: Setup Node for custom checks
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for new frontend runtime dependencies
+        run: |
+          node .github/scripts/check-runtime-deps.mjs
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+
+      - name: Verify allowed licenses in npm tree
+        working-directory: frontend
+        run: |
+          node ../.github/scripts/verify-npm-licenses.mjs
+
   commitlint:
     name: Lint commit messages
     runs-on: ubuntu-latest
@@ -432,6 +474,16 @@ jobs:
 
       - name: Test frontend SDK
         run: pnpm test
+
+      # Required privacy gate (issue #627). Runs the flow-level identity-leak
+      # test on its own so a new persistence path that reintroduces identity
+      # data — a log line, the audit file, the error-report sink, the
+      # idempotency cache, the persisted Persona context, or the response
+      # body — fails the build with an unambiguous step name instead of hiding
+      # inside a 554-test run. `pnpm test` above also covers it; this step
+      # exists to make the guarantee a first-class, greppable check.
+      - name: Identity data leak gate (#627)
+        run: pnpm exec vitest run app/api/issue/__tests__/identity-leakage.test.ts
 
       - name: Test theme helpers (node:test)
         run: pnpm test:theme

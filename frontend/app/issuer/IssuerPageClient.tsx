@@ -18,6 +18,8 @@ import { issuanceConfigured } from "@/lib/config";
 import { truncateAddress, truncatePubkey } from "@/lib/format";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
 import { PrivacyIndicator } from "@/components/PrivacyIndicator";
+import { CredentialTemplateGallery } from "@/components/CredentialTemplateGallery";
+import type { CredentialTemplate } from "@/lib/credential-templates";
 
 const TYPES = Object.entries(TYPE_META) as [
   CredentialType,
@@ -63,6 +65,7 @@ export default function IssuerPageClient() {
   const [type, setType] = useState<CredentialType>("kyc");
   const [attribute, setAttribute] = useState(DEFAULT_ATTR.kyc);
   const [expiry, setExpiry] = useState("90 days");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [issued, setIssued] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -120,8 +123,16 @@ export default function IssuerPageClient() {
   const needsAttr = !!meta.attribute;
 
   function onType(nextType: CredentialType) {
+    setSelectedTemplateId(null);
     setType(nextType);
     setAttribute(DEFAULT_ATTR[nextType]);
+  }
+
+  function onApplyTemplate(template: CredentialTemplate) {
+    setSelectedTemplateId(template.id);
+    setType(template.type);
+    setAttribute(template.defaultAttribute);
+    setExpiry(template.defaultExpiry);
   }
 
   async function onIssue() {
@@ -196,7 +207,27 @@ export default function IssuerPageClient() {
         In production this would be a separate authenticated app run by the
         institution — KYC provider, bank, employer — after verifying the holder
         off-chain. The holder would never see this interface.
+        <br />
+        <br />
+        <IconKey size={14} style={{ verticalAlign: "-2px", marginRight: "0.35rem" }} />
+        <span style={{ color: "var(--text)" }}>Becoming an issuer?</span>{" "}
+        <a
+          href="https://github.com/Psalmuel01/StellarCred/blob/main/docs/ISSUER_ONBOARDING.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--accent)", textDecoration: "underline" }}
+        >
+          Read the issuer onboarding guide
+        </a>{" "}
+        — registration, signing-key custody, what your signature attests to,
+        rotation and revocation.
       </div>
+
+      <CredentialTemplateGallery
+        selectedTemplateId={selectedTemplateId}
+        allowedTypes={selectedIssuer ? (selectedIssuer.credentialTypes as CredentialType[]) : undefined}
+        onSelectTemplate={onApplyTemplate}
+      />
 
       <div
         className="grid grid-2"

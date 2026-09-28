@@ -5,6 +5,7 @@ if (typeof window !== "undefined") {
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Credential, CredentialType, ClaimParams } from "@stellarcred/issuer";
+import { stripPiiKeys } from "./pii";
 
 // ---------------------------------------------------------------------------
 // Security & PII Protection
@@ -101,8 +102,17 @@ export function registerPendingInquiry(
   data: Omit<PendingInquiry, "inquiryId" | "createdAt">,
 ): void {
   evictExpired();
+  // This record survives (for the cache TTL) after the request that created it,
+  // and `claimParams` arrives straight from the client — so it is the one
+  // caller-supplied field here that can carry identity attributes. Strip it
+  // with the same denylist the browser-side resume blob uses, at every depth.
+  // Without this, POST /api/issue persists whatever the client sent in
+  // claimParams for 15 minutes (issue #627).
   pendingInquiries.set(inquiryId, {
     ...data,
+    ...(data.claimParams
+      ? { claimParams: stripPiiKeys(data.claimParams) }
+      : {}),
     inquiryId,
     createdAt: Date.now(),
   });

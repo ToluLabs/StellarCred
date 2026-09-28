@@ -10,6 +10,7 @@ import {
   checkLimit,
   getRateLimitStatus,
   rateLimitClear,
+  rateLimitCleanup,
   rateLimitSize,
 } from "./rate-limit";
 
@@ -88,5 +89,55 @@ describe("getRateLimitStatus", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bounded-memory regression (GitHub #536)
+//
+// The store is an in-process Map. Without a cap, a flood of distinct keys
+// grows it without bound until the process OOMs. These tests drive far more
+// distinct keys than the cap and assert the map stays bounded.
+// ---------------------------------------------------------------------------
+
+describe("bounded store (issue #536)", () => {
+  const ORIGINAL_MAX = process.env.RATE_LIMIT_MAX_BUCKETS;
+
+  afterEach(() => {
+    if (ORIGINAL_MAX === undefined) {
+      delete process.env.RATE_LIMIT_MAX_BUCKETS;
+    } else {
+      process.env.RATE_LIMIT_MAX_BUCKETS = ORIGINAL_MAX;
+    }
+    rateLimitClear();
+  });
+
+  it("stays at or below RATE_LIMIT_MAX_BUCKETS under sustained distinct-key load", () => {
+    const CAP = 500;
+    process.env.RATE_LIMIT_MAX_BUCKETS = String(CAP);
+    rateLimitClear();
+
+    for (let i = 0; i < CAP * 10; i++) {
+      checkLimit(`issue:ip:10.0.0.${i}`, 5, 60_000);
+    }
+    // evictIfNeeded amortises over EVICTION_INTERVAL_MS of wall-clock, which a
+    // synchronous loop cannot advance. Force the cap trim directly so the
+    // assertion exercises the same code path the hot path calls every 5s.
+    rateLimitCleanup();
+
+    expect(rateLimitSize()).toBeLessThanOrEqual(CAP);
+  });
+
+  it("rateLimitCleanup also enforces the cap", () => {
+    const CAP = 200;
+    process.env.RATE_LIMIT_MAX_BUCKETS = String(CAP);
+    rateLimitClear();
+
+    for (let i = 0; i < CAP * 5; i++) {
+      checkLimit(`witness:ip:10.1.0.${i}`, 5, 60_000);
+    }
+    rateLimitCleanup();
+
+    expect(rateLimitSize()).toBeLessThanOrEqual(CAP);
   });
 });

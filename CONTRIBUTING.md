@@ -109,6 +109,34 @@ Before proposing changes that touch the trust model, read the relevant ADR. Seve
 
 If you are proposing a change that touches any of the areas above, reference the relevant ADR in your PR description and explain how the change interacts with the decision recorded there.
 
+## Review routing
+
+Reviews are routed automatically by [`.github/CODEOWNERS`](.github/CODEOWNERS). Opening a PR requests review from the maintainers of every area the diff touches, so a change to `contracts/` never lands with the same scrutiny as a README typo.
+
+**Note the rule order.** When several patterns match the same file, the *last* matching rule wins. CODEOWNERS is written general-to-specific — broad catch-alls first, narrow overrides after. If you add a rule, put it *below* the broad rule it is meant to refine, or it will be silently overridden.
+
+| Area | What it decides | Review depth |
+|------|-----------------|--------------|
+| `contracts/`, `circuits/` | The trust anchor: which issuers are trusted, and what a proof can assert | **Highest.** Reasoned review against [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and the relevant ADR, not just the diff. |
+| `Cargo.toml`, `Cargo.lock` | Pins `soroban-sdk` and the git-sourced UltraHonk verifier at exact revisions | Highest — a version bump can change verifier behaviour or invalidate existing proofs. |
+| `fixtures/`, `circuits/scripts/` | The committed VKs, proofs, and public inputs the contract tests verify against | Highest — must be regenerated through the documented circuit build, never by hand. |
+| `frontend/app/api/`, `frontend/lib/issuer-signer.ts`, `frontend/lib/persona-webhook.ts` | Issuance, signing, and the KYC webhook. Reads `ISSUER_PRIVATE_KEY` | **High.** Check for `NEXT_PUBLIC_` leaking server-only vars, that `prehash: false` is preserved, and that webhook payloads stay redacted. |
+| `frontend/packages/issuer-registry/`, `frontend/packages/proof-registry/` | Client-facing view of the trust anchor | High, same as contracts. |
+| `frontend/packages/sdk/` | The published integrators' surface | Normal, but breaking changes need a version/migration note. |
+| `services/indexer/` | Reads chain state and republishes it to consumers | Normal, with extra attention to `auth.ts`, `cors.ts`, and `rate-limit.ts`. |
+| `.github/workflows/`, `.github/dependabot.yml`, `Makefile`, `deny.toml` | Runs with repo credentials; the release job publishes to npm | **High** — treat a workflow diff like a signing-path diff. |
+| `docs/adr/`, `SECURITY.md`, `docs/THREAT_MODEL.md`, `CONTRIBUTING.md`, `SUPPORT_POLICY.md` | Records the decisions and the review bar the rest of the routing relies on | High — reviewed alongside the CODEOWNERS rules themselves. |
+| Everything else (docs, UI, Docker, scripts) | — | Normal. |
+
+### Why the trust-anchor areas are treated differently
+
+- **Contracts** are the on-chain trust root. A change to `IssuerRegistry` or `ProofRegistry` can make an unauthorized issuer trusted, or accept a proof that should have been rejected — while still passing every test, because the test encodes the same mistaken assumption.
+- **Circuits** decide what a proof is *able* to assert. Removing a constraint or loosening a range check is a soundness break: the circuit still compiles, still proves, and still verifies on-chain while proving something untrue. See [ADR-001](docs/adr/ADR-001-in-circuit-signature-verification.md) and [ADR-005](docs/adr/ADR-005-ultrahonk-proving-system.md).
+- **Issuance and signing** hold the issuer signing key. A credential is only as trustworthy as the signature over it, and that signature is produced in this path.
+- **CI and supply-chain config** execute with repository credentials, and the release job can publish to npm.
+
+CODEOWNERS routes the *request*; it does not change branch protection. To make a trust-anchor approval genuinely blocking, require a review from these owners under **Settings → Branches → Branch protection rules** — a code owner request is a suggestion unless the branch rule enforces it.
+
 ## Security
 
 Please do **not** open a public issue for security vulnerabilities. See [SECURITY.md](SECURITY.md).

@@ -3,6 +3,8 @@ extern crate std;
 use super::*;
 use credential_verifier::{CredentialVerifier, CredentialVerifierClient};
 use issuer_registry::{IssuerRegistry, IssuerRegistryClient};
+use proptest::prelude::*;
+use proptest::test_runner::RngSeed;
 use soroban_sdk::{
     symbol_short,
     testutils::{
@@ -29,6 +31,18 @@ const AGE_PUBLIC_INPUTS: &[u8] = include_bytes!("../../../fixtures/age/public_in
 const AGGREGATE_VK: &[u8] = include_bytes!("../../../fixtures/aggregate/vk");
 const AGGREGATE_PROOF: &[u8] = include_bytes!("../../../fixtures/aggregate/proof");
 const AGGREGATE_PUBLIC_INPUTS: &[u8] = include_bytes!("../../../fixtures/aggregate/public_inputs");
+
+// Negative test fixtures (Issue #537) — same case directories as the
+// credential_verifier tests (fixtures/negative/<case>/{vk,proof,public_inputs}).
+const NEGATIVE_KYC_TRUNCATED_PROOF: &[u8] =
+    include_bytes!("../../../fixtures/negative/kyc_truncated_inputs/proof");
+const NEGATIVE_KYC_TRUNCATED_PUBLIC_INPUTS: &[u8] =
+    include_bytes!("../../../fixtures/negative/kyc_truncated_inputs/public_inputs");
+
+const NEGATIVE_KYC_WRONG_CIRCUIT_PROOF: &[u8] =
+    include_bytes!("../../../fixtures/negative/kyc_wrong_circuit/proof");
+const NEGATIVE_KYC_WRONG_CIRCUIT_PUBLIC_INPUTS: &[u8] =
+    include_bytes!("../../../fixtures/negative/kyc_wrong_circuit/public_inputs");
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -331,6 +345,50 @@ fn rejects_invalid_proof() {
         &symbol_short!("kyc"),
         &Bytes::from_slice(&env, &bad),
         &Bytes::from_slice(&env, PUBLIC_INPUTS),
+        &None,
+        &9999,
+    );
+    assert!(res.is_err());
+}
+
+/// Rejects a proof with truncated public_inputs (wrong count).
+/// The public_inputs are missing the last 32 bytes (issuer_y), so
+/// verification should fail due to malformed input.
+#[test]
+fn rejects_proof_with_truncated_public_inputs() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    let res = h.registry.try_submit_proof(
+        &holder,
+        &h.issuer,
+        &symbol_short!("kyc"),
+        &Bytes::from_slice(&env, NEGATIVE_KYC_TRUNCATED_PROOF),
+        &Bytes::from_slice(&env, NEGATIVE_KYC_TRUNCATED_PUBLIC_INPUTS),
+        &None,
+        &9999,
+    );
+    assert!(res.is_err());
+}
+
+/// Rejects a proof from a different circuit type verified against the wrong VK.
+/// An age_proof verified against a kyc VK should fail because the proof
+/// structure and public_inputs don't match the VK's expectations.
+#[test]
+fn rejects_proof_from_wrong_circuit_type() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    let res = h.registry.try_submit_proof(
+        &holder,
+        &h.issuer,
+        &symbol_short!("kyc"),
+        &Bytes::from_slice(&env, NEGATIVE_KYC_WRONG_CIRCUIT_PROOF),
+        &Bytes::from_slice(&env, NEGATIVE_KYC_WRONG_CIRCUIT_PUBLIC_INPUTS),
         &None,
         &9999,
     );
@@ -1583,29 +1641,125 @@ fn migrate_record_requires_admin_role() {
     assert!(res.is_err());
 }
 
+// ── Two-step admin transfer tests (#343) ────────────────────────────────────
+
 #[test]
-fn admin_transfer_moves_roles_to_new_admin() {
+fn propose_admin_by_non_admin_panics() {
     let env = Env::default();
     env.mock_all_auths();
     let h = deploy(&env);
     let new_admin = Address::generate(&env);
 
-    // Delegate the upgrader role to a third party before the transfer.
-    let upgrader = Address::generate(&env);
-    h.registry.grant_role(&symbol_short!("upgrader"), &upgrader);
+    let res = h.registry.mock_auths(&[]).try_propose_admin(&new_admin);
+    assert!(res.is_err());
+}
 
-    h.registry.set_admin(&new_admin);
+#[test]
+fn accept_admin_without_pending_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
 
-    // Root admin + every role the old root held move to the new admin.
+    let res = h.registry.try_accept_admin();
+    assert!(res.is_err());
+    // Admin unchanged.
+    assert_eq!(h.registry.admin(), h.admin);
+}
+
+#[test]
+fn propose_then_accept_transfers_admin_and_roles() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let new_admin = Address::generate(&env);
+
+    // No pending proposal initially.
+    assert_eq!(h.registry.pending_admin(), None);
+
+    h.registry.propose_admin(&new_admin);
+    assert_eq!(h.registry.pending_admin(), Some(new_admin.clone()));
+    // Still the old admin — nothing has moved yet.
+    assert_eq!(h.registry.admin(), h.admin);
+
+    h.registry.accept_admin();
+
+    // Now the transfer has taken effect.
     assert_eq!(h.registry.admin(), new_admin);
-    assert!(!h.registry.has_role(&symbol_short!("admin"), &h.admin));
+    assert_eq!(h.registry.pending_admin(), None);
+
+    // Every role the outgoing admin held moved to the new admin.
     assert!(h.registry.has_role(&symbol_short!("admin"), &new_admin));
-    assert!(!h.registry.has_role(&symbol_short!("pauser"), &h.admin));
+    assert!(h.registry.has_role(&symbol_short!("upgrader"), &new_admin));
     assert!(h.registry.has_role(&symbol_short!("pauser"), &new_admin));
 
-    // The delegated upgrader role is untouched by the transfer.
-    assert!(h.registry.has_role(&symbol_short!("upgrader"), &upgrader));
-    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &new_admin));
+    // …and the old admin no longer holds them.
+    assert!(!h.registry.has_role(&symbol_short!("admin"), &h.admin));
+    assert!(!h.registry.has_role(&symbol_short!("upgrader"), &h.admin));
+    assert!(!h.registry.has_role(&symbol_short!("pauser"), &h.admin));
+}
+
+#[test]
+fn accept_by_wrong_address_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let new_admin = Address::generate(&env);
+    let wrong = Address::generate(&env);
+
+    h.registry.propose_admin(&new_admin);
+
+    let res = h
+        .registry
+        .mock_auths(&[MockAuth {
+            address: &wrong,
+            invoke: &MockAuthInvoke {
+                contract: &h.registry.address,
+                fn_name: "accept_admin",
+                args: ().into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_accept_admin();
+    assert!(res.is_err());
+    // Admin unchanged.
+    assert_eq!(h.registry.admin(), h.admin);
+}
+
+#[test]
+fn cancel_admin_proposal_clears_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let new_admin = Address::generate(&env);
+
+    h.registry.propose_admin(&new_admin);
+    assert_eq!(h.registry.pending_admin(), Some(new_admin.clone()));
+
+    h.registry.cancel_admin_proposal();
+    assert_eq!(h.registry.pending_admin(), None);
+
+    // Accept after cancel must fail.
+    let res = h.registry.try_accept_admin();
+    assert!(res.is_err());
+}
+
+#[test]
+fn propose_admin_overwrites_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let first = Address::generate(&env);
+    let second = Address::generate(&env);
+
+    h.registry.propose_admin(&first);
+    assert_eq!(h.registry.pending_admin(), Some(first.clone()));
+
+    // Second proposal overwrites the first — no cancel required.
+    h.registry.propose_admin(&second);
+    assert_eq!(h.registry.pending_admin(), Some(second.clone()));
+
+    h.registry.accept_admin();
+    assert_eq!(h.registry.admin(), second);
 }
 
 #[test]
@@ -1631,6 +1785,7 @@ fn has_role_is_a_public_view() {
     assert!(h
         .registry
         .has_role(&Symbol::new(&env, "issuer_manager"), &delegate));
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1703,6 +1858,34 @@ fn credential_signed_with_a_retired_key_stops_submitting_after_the_window() {
 
     env.ledger().set_timestamp(ROT_T0 + ROT_WINDOW + 1);
     submit(&env, &h, &holder, ROT_T0 + ROT_WINDOW + 1000);
+}
+
+/// The window is inclusive: a credential signed by the retired key still
+/// submits on the final ledger of its validity window, and only stops one
+/// ledger later. ProofRegistry mirrors the `now <= valid_until` rule
+/// `IssuerRegistry::is_valid_issuer_key` documents.
+#[test]
+fn credential_signed_with_a_retired_key_submits_on_the_last_ledger_of_its_window() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(ROT_T0);
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    h.issuer_registry.rotate_issuer_key(
+        &h.issuer,
+        &replacement_key(&env, 9),
+        &(ROT_T0 + ROT_WINDOW),
+    );
+
+    // Boundary: exactly `old_key_valid_until`. The credential still verifies.
+    env.ledger().set_timestamp(ROT_T0 + ROT_WINDOW);
+    submit(&env, &h, &holder, ROT_T0 + ROT_WINDOW + 1000);
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
 }
 
 /// Emergency revocation ignores the validity window: a compromised key stops
@@ -1854,4 +2037,697 @@ fn aggregate_accepts_a_credential_signed_with_a_retired_key() {
     assert!(registry
         .is_verified(&holder, &symbol_short!("age"), &None)
         .0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Issue #417 — fuzz/invariant coverage for the security-critical read/write paths
+//
+// Fuzz: check_claim threshold boundaries and trusted_issuers combinations.
+// Invariants: a batch either fully applies or fully reverts; a revoked or
+// expired proof never reads valid.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Proptest config with a pinned RNG seed. The default seed is random, which makes
+/// a red CI run unreproducible; pinning it gives every run the same corpus, so a
+/// failure replays exactly and stays recorded in proptest-regressions/.
+fn prop_config(cases: u32) -> ProptestConfig {
+    ProptestConfig {
+        cases,
+        rng_seed: RngSeed::Fixed(417_417_417_417),
+        ..Default::default()
+    }
+}
+
+/// A registry deployed with unregistered (dummy) verifier and issuer-registry
+/// addresses. The read paths under test only touch storage, so no
+/// cross-contract call is ever reached.
+fn deploy_registry(env: &Env) -> (ProofRegistryClient<'static>, Address) {
+    env.mock_all_auths();
+    let admin = Address::generate(env);
+    let v_id = Address::generate(env);
+    let ir_id = Address::generate(env);
+    let pr_id = env.register(ProofRegistry, (admin, v_id, ir_id));
+    (ProofRegistryClient::new(env, &pr_id), pr_id)
+}
+
+fn set_proof_record(
+    env: &Env,
+    registry_id: &Address,
+    holder: &Address,
+    cred: &Symbol,
+    record: &ProofRecord,
+) {
+    env.as_contract(registry_id, || {
+        let key = DataKey::Proof(holder.clone(), cred.clone());
+        env.storage().persistent().set(&key, record);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, 17280, 17280 * 90);
+    });
+}
+
+proptest! {
+    #![proptest_config(prop_config(100))]
+
+    /// Fuzz: trusted_issuers combinations.
+    /// For any (valid, issuer_in_list, filter_active), check_claim must
+    /// correctly accept or reject based on the trusted_issuers filter.
+    #[test]
+    fn prop_check_claim_trusted_issuer_fuzz(
+        valid in any::<bool>(),
+        issuer_in_list in any::<bool>(),
+        filter_active in any::<bool>(),
+    ) {
+        let env = Env::default();
+        let (client, reg_id) = deploy_registry(&env);
+        let holder = Address::generate(&env);
+        let proof_issuer = Address::generate(&env);
+        let other_addr = Address::generate(&env);
+        let cred = symbol_short!("funds");
+
+        let record = ProofRecord {
+            verified_at: 100,
+            expiry: if valid { 1000 } else { env.ledger().timestamp() },
+            threshold: Some(200_000),
+            revoked: !valid,
+            issuer: Some(proof_issuer.clone()),
+            vk_version: 0,
+        };
+        set_proof_record(&env, &reg_id, &holder, &cred, &record);
+
+        let min_threshold = None::<u64>;
+        let trusted = if filter_active {
+            if issuer_in_list {
+                Some(vec![&env, proof_issuer, other_addr])
+            } else {
+                Some(vec![&env, other_addr])
+            }
+        } else {
+            None
+        };
+
+        let result = client.check_claim(&holder, &cred, &min_threshold, &trusted);
+
+        if filter_active {
+            // With an active filter the proof is accepted only if its issuer
+            // is in the list AND the proof is otherwise valid.
+            prop_assert_eq!(result, valid && issuer_in_list);
+        } else {
+            // With no filter (None) issuer membership is irrelevant —
+            // only proof validity matters.
+            prop_assert_eq!(result, valid);
+        }
+    }
+
+    /// Fuzz: threshold boundary comparison is correct for arbitrary values.
+    /// The >= comparison must hold for every combination of stored and required
+    /// threshold, including edge cases around 0, u64::MAX, and None.
+    #[test]
+    fn prop_check_claim_threshold_boundary_fuzz(
+        stored_threshold in prop::option::of(any::<u64>()),
+        min_threshold in any::<u64>(),
+    ) {
+        let env = Env::default();
+        let (client, reg_id) = deploy_registry(&env);
+        let holder = Address::generate(&env);
+        let cred = symbol_short!("kyc");
+
+        let record = ProofRecord {
+            verified_at: 100,
+            expiry: 1000,
+            threshold: stored_threshold,
+            revoked: false,
+            issuer: None,
+            vk_version: 0,
+        };
+        set_proof_record(&env, &reg_id, &holder, &cred, &record);
+
+        let result = client.check_claim(&holder, &cred, &Some(min_threshold), &None);
+
+        // The contract uses unwrap_or(0) for None thresholds.
+        let effective_stored = stored_threshold.unwrap_or(0);
+        prop_assert_eq!(result, effective_stored >= min_threshold);
+    }
+
+    /// Fuzz: a stored threshold of 0 only satisfies a requirement of 0.
+    #[test]
+    fn prop_check_claim_zero_threshold_fuzz(min_threshold in 0u64..=10_000) {
+        let env = Env::default();
+        let (client, reg_id) = deploy_registry(&env);
+        let holder = Address::generate(&env);
+        let cred = symbol_short!("kyc");
+
+        let record = ProofRecord {
+            verified_at: 100,
+            expiry: 1000,
+            threshold: Some(0),
+            revoked: false,
+            issuer: None,
+            vk_version: 0,
+        };
+        set_proof_record(&env, &reg_id, &holder, &cred, &record);
+
+        let result = client.check_claim(&holder, &cred, &Some(min_threshold), &None);
+
+        if min_threshold == 0 {
+            prop_assert!(result, "0 >= 0 must be true");
+        } else {
+            prop_assert!(!result, "0 >= {} must be false", min_threshold);
+        }
+    }
+
+    /// Fuzz: min_threshold=None is equivalent to a requirement of 0.
+    #[test]
+    fn prop_check_claim_none_vs_zero_threshold_fuzz(
+        valid in any::<bool>(),
+        expired in any::<bool>(),
+    ) {
+        let env = Env::default();
+        let (client, reg_id) = deploy_registry(&env);
+        let holder = Address::generate(&env);
+        let cred = symbol_short!("kyc");
+
+        let expiry = if expired {
+            env.ledger().timestamp()
+        } else {
+            1000
+        };
+
+        let record = ProofRecord {
+            verified_at: 100,
+            expiry,
+            threshold: None, // kyc has no numeric threshold
+            revoked: !valid,
+            issuer: None,
+            vk_version: 0,
+        };
+        set_proof_record(&env, &reg_id, &holder, &cred, &record);
+
+        let with_none = client.check_claim(&holder, &cred, &None, &None);
+        let with_zero = client.check_claim(&holder, &cred, &Some(0), &None);
+
+        // None and Some(0) must agree for any validity state.
+        prop_assert_eq!(with_none, with_zero);
+        // Both must reflect overall proof validity.
+        prop_assert_eq!(with_none, valid && !expired);
+    }
+
+    /// Fuzz: an issuer absent from the trusted list is always rejected, no
+    /// matter how many other addresses the list carries.
+    #[test]
+    fn prop_check_claim_untrusted_issuer_fuzz(extra_count in 0..=3usize) {
+        let env = Env::default();
+        let (client, reg_id) = deploy_registry(&env);
+        let holder = Address::generate(&env);
+        let proof_issuer = Address::generate(&env);
+        let cred = symbol_short!("funds");
+
+        let record = ProofRecord {
+            verified_at: 100,
+            expiry: 1000,
+            threshold: Some(200_000),
+            revoked: false,
+            issuer: Some(proof_issuer),
+            vk_version: 0,
+        };
+        set_proof_record(&env, &reg_id, &holder, &cred, &record);
+
+        // Build a trusted list that explicitly excludes the proof's issuer.
+        let mut trust_list: Vec<Address> = Vec::new(&env);
+        for _ in 0..extra_count {
+            trust_list.push_back(Address::generate(&env));
+        }
+
+        // proof_issuer is NOT in trust_list, so check_claim must reject.
+        let result = client.check_claim(&holder, &cred, &None, &Some(trust_list));
+        prop_assert!(!result, "proof from untrusted issuer must be rejected");
+    }
+}
+
+proptest! {
+    #![proptest_config(prop_config(50))]
+
+    /// Invariant: a revoked or expired proof never reads valid, under any
+    /// combination of threshold and trusted_issuers filter, on both read paths.
+    #[test]
+    fn prop_revoked_expired_never_valid_fuzz(
+        revoked in any::<bool>(),
+        expired in any::<bool>(),
+        stored_threshold in prop::option::of(0u64..=500_000u64),
+        min_threshold in prop::option::of(0u64..=500_000u64),
+        use_filter in any::<bool>(),
+    ) {
+        if !revoked && !expired {
+            return Ok(());
+        }
+
+        let env = Env::default();
+        let (client, reg_id) = deploy_registry(&env);
+        let holder = Address::generate(&env);
+        let proof_issuer = Address::generate(&env);
+        let cred = symbol_short!("funds");
+
+        let expiry = if expired {
+            env.ledger().timestamp()
+        } else {
+            env.ledger().timestamp() + 10_000
+        };
+
+        let record = ProofRecord {
+            verified_at: 100,
+            expiry,
+            threshold: stored_threshold,
+            revoked,
+            issuer: Some(proof_issuer.clone()),
+            vk_version: 0,
+        };
+        set_proof_record(&env, &reg_id, &holder, &cred, &record);
+
+        let trusted = if use_filter {
+            Some(vec![&env, proof_issuer])
+        } else {
+            None
+        };
+
+        let result = client.check_claim(&holder, &cred, &min_threshold, &trusted);
+        prop_assert!(
+            !result,
+            "revoked={}, expired={}, filter={}: proof must not be valid",
+            revoked,
+            expired,
+            use_filter
+        );
+
+        // is_verified must agree with check_claim on the same record.
+        let (valid, _, _) = client.is_verified(&holder, &cred, &trusted);
+        prop_assert!(!valid, "is_verified must also return false for revoked/expired proofs");
+    }
+
+    /// Invariant: a batch either fully applies or fully reverts.
+    /// If the second proof in a 2-proof batch is invalid (bad proof bytes),
+    /// then NEITHER proof should be stored after the batch reverts.
+    #[test]
+    fn prop_batch_atomicity_all_or_nothing(
+        corrupt_offset in 0..32usize,
+        xor_byte in 1u8..=255u8,
+    ) {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.cost_estimate().budget().reset_unlimited();
+        let h = deploy_multi(&env);
+        let holder = Address::generate(&env);
+
+        let mut bad_proof = PROOF.to_vec();
+        bad_proof[corrupt_offset] ^= xor_byte;
+
+        let submissions = vec![
+            &env,
+            ProofSubmission {
+                credential_type: symbol_short!("kyc"),
+                proof: Bytes::from_slice(&env, PROOF),
+                public_inputs: u8_slice_to_vec_u32(&env, PUBLIC_INPUTS),
+                issuer_id: h.kyc_issuer.clone(),
+                expiry: 9999,
+                vk_version: None,
+            },
+            ProofSubmission {
+                credential_type: symbol_short!("funds"),
+                proof: Bytes::from_slice(&env, &bad_proof),
+                public_inputs: u8_slice_to_vec_u32(&env, FUNDS_PUBLIC_INPUTS),
+                issuer_id: h.funds_issuer.clone(),
+                expiry: 9999,
+                vk_version: None,
+            },
+        ];
+
+        let res = h.registry.try_submit_proofs(&holder, &submissions);
+        prop_assert!(res.is_err(), "batch with bad proof must fail");
+
+        // CRITICAL INVARIANT: the valid KYC proof must NOT have been stored.
+        let (kyc_valid, _, _) = h
+            .registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None);
+        prop_assert!(!kyc_valid, "batch reverted: kyc proof must not be stored");
+
+        let (funds_valid, _, _) = h
+            .registry
+            .is_verified(&holder, &symbol_short!("funds"), &None);
+        prop_assert!(!funds_valid, "batch reverted: funds proof must not be stored");
+    }
+
+    /// Invariant: a revoked proof never reads valid.
+    /// After revocation, both is_verified and check_claim must return
+    /// false regardless of trusted_issuers or threshold parameters.
+    #[test]
+    fn prop_invariant_revoked_never_valid(
+        use_issuer_filter in any::<bool>(),
+        use_threshold in any::<bool>(),
+    ) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let h = deploy(&env);
+        let holder = Address::generate(&env);
+
+        submit(&env, &h, &holder, 5000);
+
+        // Verify valid before revocation.
+        let (before, _, _) = h
+            .registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None);
+        prop_assert!(before, "proof should be valid before revocation");
+
+        h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"));
+
+        let trusted = if use_issuer_filter {
+            Some(vec![&env, h.issuer.clone()])
+        } else {
+            None
+        };
+        let threshold = if use_threshold { Some(0) } else { None };
+
+        let (valid, _, _) = h
+            .registry
+            .is_verified(&holder, &symbol_short!("kyc"), &trusted);
+        prop_assert!(
+            !valid,
+            "is_verified: revoked proof must not be valid (filter={})",
+            use_issuer_filter
+        );
+
+        let claim = h
+            .registry
+            .check_claim(&holder, &symbol_short!("kyc"), &threshold, &trusted);
+        prop_assert!(
+            !claim,
+            "check_claim: revoked proof must not be valid (threshold={:?}, filter={})",
+            threshold,
+            use_issuer_filter
+        );
+
+        // get_record must still return the record for audit.
+        let record = h.registry.get_record(&holder, &symbol_short!("kyc"));
+        prop_assert!(record.is_some(), "revoked record must still be readable for audit");
+        prop_assert!(record.unwrap().revoked, "record must be marked revoked");
+    }
+
+    /// Invariant: an expired proof never reads valid.
+    /// After advancing the ledger past expiry, is_verified and check_claim
+    /// must return false regardless of other parameters.
+    #[test]
+    fn prop_invariant_expired_never_valid(
+        use_issuer_filter in any::<bool>(),
+        use_threshold in any::<bool>(),
+    ) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let h = deploy(&env);
+        let holder = Address::generate(&env);
+
+        submit(&env, &h, &holder, 100);
+
+        // Advance time past expiry.
+        env.ledger().with_mut(|li| li.timestamp = 101);
+
+        let trusted = if use_issuer_filter {
+            Some(vec![&env, h.issuer.clone()])
+        } else {
+            None
+        };
+        let threshold = if use_threshold { Some(0) } else { None };
+
+        let (valid, _, _) = h
+            .registry
+            .is_verified(&holder, &symbol_short!("kyc"), &trusted);
+        prop_assert!(!valid, "is_verified: expired proof must not be valid");
+
+        let claim = h
+            .registry
+            .check_claim(&holder, &symbol_short!("kyc"), &threshold, &trusted);
+        prop_assert!(!claim, "check_claim: expired proof must not be valid");
+
+        // get_record must still return the record (expiry data preserved for audit).
+        let record = h.registry.get_record(&holder, &symbol_short!("kyc"));
+        prop_assert!(record.is_some(), "expired record must still be readable for audit");
+        prop_assert_eq!(record.unwrap().expiry, 100);
+    }
+}
+
+/// Invariant: a batch with a duplicate credential_type is rejected whichever
+/// type is duplicated, and nothing is stored.
+#[test]
+fn batch_duplicate_type_invariant_rejects_all_combinations() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    let h = deploy_multi(&env);
+    let holder = Address::generate(&env);
+
+    let kyc_sub = ProofSubmission {
+        credential_type: symbol_short!("kyc"),
+        proof: Bytes::from_slice(&env, PROOF),
+        public_inputs: u8_slice_to_vec_u32(&env, PUBLIC_INPUTS),
+        issuer_id: h.kyc_issuer.clone(),
+        expiry: 9999,
+        vk_version: None,
+    };
+    let funds_sub = ProofSubmission {
+        credential_type: symbol_short!("funds"),
+        proof: Bytes::from_slice(&env, FUNDS_PROOF),
+        public_inputs: u8_slice_to_vec_u32(&env, FUNDS_PUBLIC_INPUTS),
+        issuer_id: h.funds_issuer.clone(),
+        expiry: 9999,
+        vk_version: None,
+    };
+
+    // kyc, kyc, funds — duplicate kyc.
+    let batch1 = vec![&env, kyc_sub.clone(), kyc_sub.clone(), funds_sub.clone()];
+    assert!(
+        h.registry.try_submit_proofs(&holder, &batch1).is_err(),
+        "batch with duplicate kyc must fail"
+    );
+
+    // funds, kyc, funds — duplicate funds.
+    let batch2 = vec![&env, funds_sub.clone(), kyc_sub.clone(), funds_sub];
+    assert!(
+        h.registry.try_submit_proofs(&holder, &batch2).is_err(),
+        "batch with duplicate funds must fail"
+    );
+
+    // Verify nothing was stored from either failed batch.
+    assert!(
+        !h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
+    assert!(
+        !h.registry
+            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .0
+    );
+}
+
+/// Invariant: revoking one credential type leaves every other type intact.
+#[test]
+fn single_revocation_does_not_affect_other_types() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    let h = deploy_multi(&env);
+    let holder = Address::generate(&env);
+
+    let submissions = vec![
+        &env,
+        ProofSubmission {
+            credential_type: symbol_short!("kyc"),
+            proof: Bytes::from_slice(&env, PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, PUBLIC_INPUTS),
+            issuer_id: h.kyc_issuer.clone(),
+            expiry: 9999,
+            vk_version: None,
+        },
+        ProofSubmission {
+            credential_type: symbol_short!("funds"),
+            proof: Bytes::from_slice(&env, FUNDS_PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, FUNDS_PUBLIC_INPUTS),
+            issuer_id: h.funds_issuer.clone(),
+            expiry: 9999,
+            vk_version: None,
+        },
+        ProofSubmission {
+            credential_type: symbol_short!("age"),
+            proof: Bytes::from_slice(&env, AGE_PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, AGE_PUBLIC_INPUTS),
+            issuer_id: h.age_issuer.clone(),
+            expiry: 9999,
+            vk_version: None,
+        },
+    ];
+    h.registry.submit_proofs(&holder, &submissions);
+
+    // Revoke only kyc.
+    h.registry
+        .revoke(&h.kyc_issuer, &holder, &symbol_short!("kyc"));
+
+    // kyc must be revoked.
+    assert!(
+        !h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
+    assert!(!h
+        .registry
+        .check_claim(&holder, &symbol_short!("kyc"), &None, &None));
+
+    // funds and age must remain valid.
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .0
+    );
+    assert!(h
+        .registry
+        .check_claim(&holder, &symbol_short!("funds"), &None, &None));
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("age"), &None)
+            .0
+    );
+    assert!(h
+        .registry
+        .check_claim(&holder, &symbol_short!("age"), &None, &None));
+}
+
+/// Invariant: batch expiry validation — if any submission has an invalid
+/// expiry the whole batch reverts and no proofs are stored.
+#[test]
+fn batch_expiry_rejects_all_if_any_invalid() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    let h = deploy_multi(&env);
+    let holder = Address::generate(&env);
+
+    // Set ledger time to 5000.
+    env.ledger().with_mut(|li| li.timestamp = 5000);
+
+    let submissions = vec![
+        &env,
+        // Valid submission with expiry in the future.
+        ProofSubmission {
+            credential_type: symbol_short!("kyc"),
+            proof: Bytes::from_slice(&env, PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, PUBLIC_INPUTS),
+            issuer_id: h.kyc_issuer.clone(),
+            expiry: 9999,
+            vk_version: None,
+        },
+        // Invalid submission: expiry in the past.
+        ProofSubmission {
+            credential_type: symbol_short!("funds"),
+            proof: Bytes::from_slice(&env, FUNDS_PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, FUNDS_PUBLIC_INPUTS),
+            issuer_id: h.funds_issuer.clone(),
+            expiry: 4999, // before current timestamp 5000
+            vk_version: None,
+        },
+    ];
+
+    assert!(
+        h.registry.try_submit_proofs(&holder, &submissions).is_err(),
+        "batch with past expiry must fail"
+    );
+
+    // Neither proof must be stored.
+    assert!(
+        !h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
+    assert!(
+        !h.registry
+            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .0
+    );
+}
+
+/// Invariant: a successful batch stores every credential with its own issuer
+/// and threshold, and the trusted_issuers filter discriminates between them.
+#[test]
+fn successful_batch_preserves_issuer_and_threshold() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    let h = deploy_multi(&env);
+    let holder = Address::generate(&env);
+
+    let submissions = vec![
+        &env,
+        ProofSubmission {
+            credential_type: symbol_short!("kyc"),
+            proof: Bytes::from_slice(&env, PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, PUBLIC_INPUTS),
+            issuer_id: h.kyc_issuer.clone(),
+            expiry: 9999,
+            vk_version: None,
+        },
+        ProofSubmission {
+            credential_type: symbol_short!("funds"),
+            proof: Bytes::from_slice(&env, FUNDS_PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, FUNDS_PUBLIC_INPUTS),
+            issuer_id: h.funds_issuer.clone(),
+            expiry: 9999,
+            vk_version: None,
+        },
+        ProofSubmission {
+            credential_type: symbol_short!("age"),
+            proof: Bytes::from_slice(&env, AGE_PROOF),
+            public_inputs: u8_slice_to_vec_u32(&env, AGE_PUBLIC_INPUTS),
+            issuer_id: h.age_issuer.clone(),
+            expiry: 9999,
+            vk_version: None,
+        },
+    ];
+    h.registry.submit_proofs(&holder, &submissions);
+
+    // Verify each credential type has the correct issuer and threshold.
+    let kyc_record = h
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .unwrap();
+    assert_eq!(kyc_record.issuer, Some(h.kyc_issuer.clone()));
+    assert_eq!(kyc_record.threshold, None); // kyc has no threshold
+    assert!(!kyc_record.revoked);
+    assert_eq!(kyc_record.expiry, 9999);
+
+    let funds_record = h
+        .registry
+        .get_record(&holder, &symbol_short!("funds"))
+        .unwrap();
+    assert_eq!(funds_record.issuer, Some(h.funds_issuer.clone()));
+    assert_eq!(funds_record.threshold, Some(200_000)); // funds threshold from public inputs
+    assert!(!funds_record.revoked);
+    assert_eq!(funds_record.expiry, 9999);
+
+    let age_record = h
+        .registry
+        .get_record(&holder, &symbol_short!("age"))
+        .unwrap();
+    assert_eq!(age_record.issuer, Some(h.age_issuer.clone()));
+    assert_eq!(age_record.threshold, Some(18)); // age threshold from public inputs
+    assert!(!age_record.revoked);
+    assert_eq!(age_record.expiry, 9999);
+
+    // Trusted issuer filters must work correctly.
+    assert!(h.registry.check_claim(
+        &holder,
+        &symbol_short!("kyc"),
+        &None,
+        &Some(vec![&env, h.kyc_issuer.clone()]),
+    ));
+    assert!(!h.registry.check_claim(
+        &holder,
+        &symbol_short!("kyc"),
+        &None,
+        &Some(vec![&env, h.funds_issuer.clone()]), // wrong issuer
+    ));
 }

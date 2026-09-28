@@ -19,6 +19,21 @@ import type { AggregateInput, ProverCircuit } from "./proof";
  */
 export type ProofStage = "witness" | "circuit" | "proof";
 
+/**
+ * Detailed progress information for each proving stage, including elapsed time
+ * and expected duration based on telemetry baselines.
+ */
+export interface ProofStageProgress {
+  /** Current stage being executed. */
+  stage: ProofStage;
+  /** Wall-clock time elapsed for this stage in milliseconds. */
+  elapsedMs: number;
+  /** Expected duration for this stage based on telemetry baselines (ms). */
+  expectedMs: number;
+  /** Human-readable label for this stage. */
+  label: string;
+}
+
 /** Which circuit to run, plus the private inputs it needs. */
 export interface ProofJobRequest {
   /** Circuit id: a credential type, or `"aggregate"` for the multi-credential circuit. */
@@ -54,6 +69,8 @@ export type ProofWorkerEvent =
     }
   /** A proving stage began. */
   | { event: "progress"; jobId: number; stage: ProofStage }
+  /** Detailed progress with timing information for the current stage. */
+  | { event: "stageProgress"; jobId: number; progress: ProofStageProgress }
   /** The proof finished. `proof`/`publicInputs` arrive as transferred buffers. */
   | { event: "result"; jobId: number; proof: Uint8Array; publicInputs: Uint8Array }
   /** The job failed. `name`/`message` let the client rebuild a faithful Error. */

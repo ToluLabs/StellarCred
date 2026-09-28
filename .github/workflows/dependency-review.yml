@@ -1,0 +1,51 @@
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [main]
+
+# Least-privilege: only read access to contents; dependency-review action
+# has built-in security model where it only reviews the PR diff.
+permissions:
+  contents: read
+
+jobs:
+  # ── npm dependency review ───────────────────────────────────────────────────
+  # Flags newly introduced npm packages with known advisories, checks licenses,
+  # and surfaces frontend runtime dependency additions specifically.
+  dependency-review:
+    name: Dependency review (advisories & licenses)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Review npm dependency changes
+        uses: actions/dependency-review-action@v4
+        continue-on-error: true
+
+      - name: Setup Node for custom checks
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for new frontend runtime dependencies
+        run: |
+          node .github/scripts/check-runtime-deps.mjs
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+
+      - name: Verify allowed licenses in npm tree
+        working-directory: frontend
+        run: |
+          node ../.github/scripts/verify-npm-licenses.mjs

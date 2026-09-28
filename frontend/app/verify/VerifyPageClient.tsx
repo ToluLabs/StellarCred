@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   IconArrowRight,
@@ -8,13 +8,22 @@ import {
   IconCheck,
   IconBuildingBank,
   IconQrcode,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { saveCredential, TYPE_META, type Credential } from "@/lib/credential";
 import type { CredentialType } from "@/lib/stellar";
 import { useToast } from "@/components/Toast";
-import { validateVerifyParams } from "@/lib/verifyParams";
+import { Badge } from "@/components/Badge";
+import { parseTrustedIssuersParam, validateVerifyParams } from "@/lib/verifyParams";
+import {
+  eligibleIssuers,
+  isProtocolAccepted,
+  pickDefaultIssuer,
+} from "@/lib/issuer-choice";
+import type { RegisteredIssuer } from "@/lib/issuer-registry";
+import { truncateAddress } from "@/lib/format";
 import { QrScanner } from "@/components/QrScanner";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { issuanceConfigured } from "@/lib/config";
@@ -74,6 +83,16 @@ function VerifyInner() {
     claimParam && VALID_CLAIMS.includes(claimParam) ? claimParam : null;
   const locked = !!requiredClaim;
 
+  // A protocol can also restrict *who* is allowed to issue the credential it
+  // asks for (#620). No `trusted_issuers` on the link = its gate accepts any
+  // registered issuer.
+  const trustedIssuersParam = searchParams.get("trusted_issuers");
+  const parsedTrustedIssuers = parseTrustedIssuersParam(trustedIssuersParam);
+  const trustedIssuers = parsedTrustedIssuers.ok
+    ? parsedTrustedIssuers.issuers
+    : [];
+  const trustedIssuerGate = trustedIssuers.length > 0 ? trustedIssuers : undefined;
+
   // Validate all query params up-front; block the flow on any invalid value.
   const paramValidation = validateVerifyParams({
     returnUrl,
@@ -81,6 +100,7 @@ function VerifyInner() {
     thresholdYears: searchParams.get("threshold_years"),
     threshold: searchParams.get("threshold"),
     restricted: searchParams.get("restricted"),
+    trustedIssuers: trustedIssuersParam,
     currentOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
   });
 
@@ -106,6 +126,7 @@ function VerifyInner() {
     requiredClaim ?? TYPES[0]?.[0] ?? null,
   );
   const radioRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const issuerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [attributes, setAttributes] = useState<Record<string, string>>({
     date_of_birth: "1995-06-15",
     income: "250000",
@@ -124,6 +145,7 @@ function VerifyInner() {
     paramValidation.thresholdYearsError,
     paramValidation.thresholdError,
     paramValidation.restrictedError,
+    paramValidation.trustedIssuersError,
   ].filter(Boolean) as string[];
   const [done, setDone] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -132,6 +154,53 @@ function VerifyInner() {
   const [jurisdictionMode, setJurisdictionMode] = useState<string>(
     claimParamsFromUrl.mode ?? "0",
   );
+
+  // #620 — several registered issuers can attest the same claim type, so let
+  // the holder pick which one issues to them.
+  const [issuers, setIssuers] = useState<RegisteredIssuer[]>([]);
+  const [selectedIssuerId, setSelectedIssuerId] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/issuers")
+      .then((res) => (res.ok ? res.json() : { issuers: [] }))
+      .then((data: { issuers?: RegisteredIssuer[] }) => {
+        if (!cancelled) setIssuers(data.issuers ?? []);
+      })
+      // Registry unreadable (no IssuerRegistry id, RPC down): keep the old
+      // behaviour and fall back to the demo issuer below.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const issuersForType = useMemo(
+    () => eligibleIssuers(issuers, selected),
+    [issuers, selected],
+  );
+
+  const selectedIssuer = useMemo(
+    () =>
+      issuersForType.find((issuer) => issuer.id === selectedIssuerId) ?? null,
+    [issuersForType, selectedIssuerId],
+  );
+
+  // Default to an issuer the protocol accepts; re-default whenever the
+  // eligible set no longer contains the current pick (claim type switched,
+  // registry loaded late).
+  useEffect(() => {
+    if (issuersForType.some((issuer) => issuer.id === selectedIssuerId)) return;
+    setSelectedIssuerId(pickDefaultIssuer(issuersForType, trustedIssuerGate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issuersForType, trustedIssuerGate]);
+
+  const issuerAccepted = selectedIssuer
+    ? isProtocolAccepted(selectedIssuer.id, trustedIssuerGate)
+    : true;
+  const anyAccepted =
+    trustedIssuerGate === undefined ||
+    issuersForType.some((issuer) => isProtocolAccepted(issuer.id, trustedIssuerGate));
 
   // A protocol can display this scanned code instead of a clickable link
   // (e.g. on a kiosk or a screen the phone doesn't have a direct link to) —
@@ -228,6 +297,7 @@ function VerifyInner() {
   const [plaidAccounts, setPlaidAccounts] = useState<
     { name: string; available: number }[]
   >([]);
+  const [plaidSources, setPlaidSources] = useState<number | null>(null);
   const [plaidMock, setPlaidMock] = useState(false);
 
   const fundsSelected = selected === "funds";
@@ -239,6 +309,7 @@ function VerifyInner() {
       .then(
         (d: {
           balance?: number;
+          sources?: number;
           accounts?: { name: string; available: number }[];
           mock?: boolean;
           error?: string;
@@ -246,6 +317,7 @@ function VerifyInner() {
           if (d.balance !== undefined) {
             setPlaidBalance(d.balance);
             setPlaidAccounts(d.accounts ?? []);
+            setPlaidSources(d.sources ?? null);
             setPlaidMock(!!d.mock);
           }
         },
@@ -432,7 +504,11 @@ function VerifyInner() {
     setError("");
     const requestId = getOrCreateRequestId();
     try {
-      if (!DEMO_ISSUER_ID) {
+      // The holder's pick when a registered issuer covers this claim type;
+      // otherwise the demo issuer configured for this deployment.
+      const issuerId = selectedIssuer?.id ?? DEMO_ISSUER_ID;
+      const issuerName = selectedIssuer?.name ?? "StellarCred Authority";
+      if (!issuerId) {
         throw new Error(
           "NEXT_PUBLIC_ISSUER_ADDRESS is not set — cannot issue credentials",
         );
@@ -440,8 +516,8 @@ function VerifyInner() {
       const payload = {
         credential_types: [selected],
         holder: address,
-        issuerId: DEMO_ISSUER_ID,
-        issuerName: "StellarCred Authority",
+        issuerId,
+        issuerName,
         expiry,
         attributes,
         claimParams: {
@@ -843,7 +919,9 @@ function VerifyInner() {
                                   <IconBuildingBank size={12} stroke={1.6} />
                                   {plaidMock
                                     ? "Mock balance"
-                                    : "Verified balance (Plaid)"}
+                                    : plaidSources && plaidSources > 1
+                                      ? `Aggregate balance — ${plaidSources} linked sources`
+                                      : "Verified balance (Plaid)"}
                                 </span>
                                 <span
                                   style={{
@@ -860,9 +938,9 @@ function VerifyInner() {
                                   className="stack"
                                   style={{ gap: "0.2rem" }}
                                 >
-                                  {plaidAccounts.map((a) => (
+                                  {plaidAccounts.map((a, i) => (
                                     <div
-                                      key={a.name}
+                                      key={`${a.name}-${i}`}
                                       className="between"
                                       style={{ fontSize: "0.72rem" }}
                                     >
@@ -913,8 +991,10 @@ function VerifyInner() {
                                   margin: "0.35rem 0 0",
                                 }}
                               >
-                                Your exact balance is never stored or revealed
-                                on-chain — only this threshold is public.
+                                Balances from all linked accounts are summed
+                                before attestation. The aggregate — not any
+                                individual account — is committed, and only
+                                this threshold is ever public.
                               </p>
                             </div>
                           )}
@@ -986,6 +1066,190 @@ function VerifyInner() {
                 })}
               </div>
 
+              {issuersForType.length > 0 && (
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <label className="field-label" id="issuer-choice-label">
+                    Issuing authority
+                  </label>
+                  <p
+                    className="faint"
+                    style={{ fontSize: "0.8125rem", margin: "0.35rem 0 0.6rem" }}
+                  >
+                    {issuersForType.length}{" "}
+                    {issuersForType.length === 1
+                      ? "registered issuer can"
+                      : "registered issuers can"}{" "}
+                    attest this claim.
+                    {trustedIssuerGate
+                      ? " Only the ones marked accepted satisfy this protocol."
+                      : " Pick which one issues to you."}
+                  </p>
+                  <div
+                    className="stack"
+                    role="radiogroup"
+                    aria-labelledby="issuer-choice-label"
+                    style={{ gap: "0.5rem" }}
+                  >
+                    {issuersForType.map((issuer, i) => {
+                      const on = issuer.id === selectedIssuerId;
+                      const accepted = isProtocolAccepted(
+                        issuer.id,
+                        trustedIssuerGate,
+                      );
+                      const detail = [
+                        truncateAddress(issuer.id),
+                        issuer.metadata?.url,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      const focus = (index: number) => {
+                        const next =
+                          issuersForType[
+                            (index + issuersForType.length) % issuersForType.length
+                          ];
+                        setSelectedIssuerId(next.id);
+                        issuerRefs.current[next.id]?.focus();
+                      };
+                      return (
+                        <div
+                          key={issuer.id}
+                          ref={(el) => {
+                            issuerRefs.current[issuer.id] = el;
+                          }}
+                          role="radio"
+                          aria-checked={on}
+                          aria-label={
+                            accepted
+                              ? issuer.name
+                              : `${issuer.name} (not accepted by this protocol)`
+                          }
+                          tabIndex={on ? 0 : -1}
+                          onClick={() => setSelectedIssuerId(issuer.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedIssuerId(issuer.id);
+                            } else if (
+                              e.key === "ArrowDown" ||
+                              e.key === "ArrowRight"
+                            ) {
+                              e.preventDefault();
+                              focus(i + 1);
+                            } else if (
+                              e.key === "ArrowUp" ||
+                              e.key === "ArrowLeft"
+                            ) {
+                              e.preventDefault();
+                              focus(i - 1);
+                            }
+                          }}
+                          style={{
+                            padding: "0.75rem 0.9rem",
+                            borderRadius: "var(--radius)",
+                            border: `1px solid ${
+                              on ? "rgba(62,207,142,0.4)" : "var(--border)"
+                            }`,
+                            background: on
+                              ? "rgba(62,207,142,0.05)"
+                              : "transparent",
+                            cursor: "pointer",
+                            transition:
+                              "border-color 0.2s var(--ease), background 0.2s var(--ease)",
+                          }}
+                        >
+                          <div
+                            className="between"
+                            style={{ alignItems: "center", gap: "0.75rem" }}
+                          >
+                            <span
+                              className="row"
+                              style={{ gap: "0.6rem", minWidth: 0 }}
+                            >
+                              <span
+                                style={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: "50%",
+                                  display: "grid",
+                                  placeItems: "center",
+                                  border: `2px solid ${
+                                    on ? "var(--accent)" : "var(--border)"
+                                  }`,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {on && (
+                                  <span
+                                    style={{
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: "50%",
+                                      background: "var(--accent)",
+                                    }}
+                                  />
+                                )}
+                              </span>
+                              <span style={{ minWidth: 0 }}>
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontWeight: 500,
+                                    fontSize: "0.9rem",
+                                  }}
+                                >
+                                  {issuer.name}
+                                </span>
+                                <span
+                                  className="mono faint"
+                                  style={{
+                                    display: "block",
+                                    fontSize: "0.72rem",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {detail}
+                                </span>
+                              </span>
+                            </span>
+                            {trustedIssuerGate &&
+                              (accepted ? (
+                                <Badge variant="verified" dot={false}>
+                                  <span
+                                    className="row"
+                                    style={{ gap: "0.3rem" }}
+                                  >
+                                    <IconShieldCheck size={13} />
+                                    Accepted by protocol
+                                  </span>
+                                </Badge>
+                              ) : (
+                                <Badge variant="denied" dot={false}>
+                                  Not accepted
+                                </Badge>
+                              ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {!anyAccepted && (
+                    <p
+                      style={{
+                        marginTop: "0.6rem",
+                        fontSize: "0.8125rem",
+                        color: "var(--danger)",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      None of the issuers registered for this claim is accepted
+                      by {requestingDomain || "this protocol"} — its gate will
+                      reject the proof whichever issuer you pick.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div style={{ marginBottom: "1.5rem" }}>
                 <label className="field-label" htmlFor="validity-period">Validity period</label>
                 <select
@@ -1019,6 +1283,27 @@ function VerifyInner() {
                   {address.slice(0, 6)}…{address.slice(-4)}
                 </span>
               </div>
+
+              {selectedIssuer && !issuerAccepted && (
+                <div
+                  style={{
+                    marginBottom: "1.25rem",
+                    padding: "0.7rem 0.9rem",
+                    borderRadius: "var(--radius)",
+                    background: "rgba(240, 96, 77, 0.08)",
+                    border: "1px solid rgba(240, 96, 77, 0.25)",
+                    color: "var(--danger)",
+                    fontSize: "0.8125rem",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <strong>{selectedIssuer.name}</strong> is not on{" "}
+                  {requestingDomain || "this protocol"}&apos;s trusted-issuer
+                  list. The credential will still be issued, but the protocol
+                  will reject a proof from it — pick an issuer marked
+                  &ldquo;Accepted by protocol&rdquo; to pass its gate.
+                </div>
+              )}
 
               <button
                 className="btn btn-primary"

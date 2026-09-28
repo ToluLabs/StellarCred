@@ -72,7 +72,7 @@ import express, {
   NextFunction,
   RequestHandler,
 } from "express";
-import type { Db, ClaimRow } from "./db";
+import type { Db, ClaimRow, SubmissionStatus } from "./db";
 import type { Ingester } from "./ingester";
 import type { Config } from "./config";
 import { parseCorsOrigins } from "./config";
@@ -570,6 +570,33 @@ export function buildApp(db: Db, ingester: Ingester, config?: Partial<Config>): 
       );
 
       res.status(201).json({ id, status: "pending" });
+    })
+  );
+
+  // ── PATCH /apps/:id/status ───────────────────────────────────────────────
+  // Update submission review status (approved | rejected | pending).
+  app.patch(
+    "/apps/:id/status",
+    guard,
+    asyncHandler(async (req, res) => {
+      const id = parseInt(req.params["id"], 10);
+      if (isNaN(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const { status } = req.body ?? {};
+      if (status !== "approved" && status !== "rejected" && status !== "pending") {
+        res.status(400).json({ error: "status must be one of: approved, rejected, pending" });
+        return;
+      }
+      const existing = await db.getAppSubmission(id);
+      if (!existing) {
+        res.status(404).json({ error: "app not found" });
+        return;
+      }
+      await db.updateSubmissionStatus(id, status as SubmissionStatus);
+      const updated = await db.getAppSubmission(id);
+      res.json({ app: updated });
     })
   );
 

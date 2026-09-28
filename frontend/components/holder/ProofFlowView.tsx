@@ -22,11 +22,8 @@ import { useProofFlow, type SubmitFn } from "@/lib/hooks/useProofFlow";
 import { credTtlSecs } from "@/lib/proof-helpers";
 import type { Credential } from "@/lib/credential";
 import { ProofStep } from "./ProofStep";
-import { ProofProgress, ProvingBar, AnimatedDots, toHex } from "./ProgressWidgets";
-
-const ESTIMATES: Record<string, { range: string; expected: number; max: number }> = {
-  default: { range: "~10–20 seconds", expected: 15, max: 20 },
-};
+import { AnimatedDots, toHex } from "./ProgressWidgets";
+import { ProofStageList } from "./ProofStageList";
 
 export function ProofFlowView({
   cred,
@@ -48,7 +45,7 @@ export function ProofFlowView({
   const submitButtonRef = useRef<HTMLButtonElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
-  const { stage, proof, txHash, error, errorPhase, fee, elapsed, onSubmit, doSignAndSubmit, onRetrySubmit, cancel } = useProofFlow(cred, submitFn);
+  const { stage, proof, txHash, error, errorPhase, fee, stageProgress, onSubmit, doSignAndSubmit, onRetrySubmit, cancel } = useProofFlow(cred, submitFn);
 
   // User-initiated cancel: aborts the proof inside the prover worker and
   // returns to the list.
@@ -115,7 +112,7 @@ export function ProofFlowView({
           <ProofStep
             icon={<IconCpu size={14} stroke={1.8} />}
             title="Generate zero-knowledge proof"
-            subtitle={`Estimated time: ${ESTIMATES.default.range}`}
+            subtitle="Estimated time: ~10–20 seconds"
             state={
               isGenerating ? "active" :
               proofDone ? "done" : "idle"
@@ -123,29 +120,7 @@ export function ProofFlowView({
             detail={
               isGenerating ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.65rem" }}>
-                  <ProvingBar progress={Math.min((elapsed / ESTIMATES.default.expected) * 80, 80)} />
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                      {elapsed > ESTIMATES.default.max * 1.5 ? "Taking a bit longer than usual…" :
-                       stage === "witness" ? "Generating witness…" :
-                       elapsed < 2 ? "Loading circuit…" : "Proving…"}
-                    </span>
-                    <span className="mono" style={{ fontSize: "0.72rem", color: "var(--faint)" }}>
-                      {elapsed} s elapsed
-                    </span>
-                  </div>
-                  <div style={{ margin: "0.5rem 0" }}>
-                    <ProofProgress steps={[
-                      {
-                        label: "Load circuit WASM",
-                        status: stage === "circuit" ? "active" : (stage === "proof" || proofDone) ? "done" : "pending",
-                      },
-                      {
-                        label: "Generate ultraplonk proof",
-                        status: stage === "proof" ? "active" : proofDone ? "done" : "pending",
-                      },
-                    ]} />
-                  </div>
+                  <ProofStageList stage={stage} stageProgress={stageProgress} />
                   <span style={{ fontSize: "0.72rem", color: "var(--faint)" }}>
                     First run loads the WASM prover (~5–15 s). Proving runs off
                     the main thread, so this page stays responsive.

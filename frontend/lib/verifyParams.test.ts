@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { parseVerifyParams } from "./verifyParams";
+import {
+  parseTrustedIssuersParam,
+  parseVerifyParams,
+  validateVerifyParams,
+} from "./verifyParams";
+
+const GOOD_ISSUER = `G${"A".repeat(55)}`;
+const OTHER_ISSUER = `G${"B".repeat(55)}`;
 
 describe("parseVerifyParams", () => {
   it("treats a plain /verify visit as self-service (no validation, no lock)", () => {
@@ -106,5 +113,51 @@ describe("parseVerifyParams", () => {
     expect(r.ok).toBe(true);
     expect(r.claimParams?.threshold).toBeUndefined();
     expect(r.claimParams).toEqual({});
+  });
+});
+
+describe("parseTrustedIssuersParam", () => {
+  it("treats an absent or blank param as no gate", () => {
+    expect(parseTrustedIssuersParam(null)).toEqual({ ok: true, issuers: [] });
+    expect(parseTrustedIssuersParam("   ")).toEqual({ ok: true, issuers: [] });
+  });
+
+  it("accepts a comma-separated list of account addresses, deduped", () => {
+    const r = parseTrustedIssuersParam(
+      `${GOOD_ISSUER},${OTHER_ISSUER},${GOOD_ISSUER}`,
+    );
+    expect(r).toEqual({ ok: true, issuers: [GOOD_ISSUER, OTHER_ISSUER] });
+  });
+
+  it("rejects entries that are not Stellar account addresses", () => {
+    const r = parseTrustedIssuersParam(`${GOOD_ISSUER},bad-issuer`);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/bad-issuer/);
+  });
+});
+
+describe("validateVerifyParams trusted_issuers", () => {
+  const base = {
+    returnUrl: "/callback",
+    claim: "age",
+    thresholdYears: "21",
+    threshold: null,
+    restricted: null,
+  };
+
+  it("passes when the gate is absent or well-formed", () => {
+    expect(validateVerifyParams(base).trustedIssuersError).toBeNull();
+    expect(
+      validateVerifyParams({
+        ...base,
+        trustedIssuers: GOOD_ISSUER,
+      }).trustedIssuersError,
+    ).toBeNull();
+  });
+
+  it("reports a malformed gate as a link error", () => {
+    const r = validateVerifyParams({ ...base, trustedIssuers: "javascript:alert(1)" });
+    expect(r.trustedIssuersError).toMatch(/trusted_issuers/);
+    expect(r.hasErrors).toBe(true);
   });
 });

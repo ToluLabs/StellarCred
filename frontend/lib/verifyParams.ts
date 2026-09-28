@@ -151,6 +151,40 @@ export function validateRestrictedList(
   return { ok: true, codes: entries };
 }
 
+/** Stellar account addresses, as registered on IssuerRegistry. */
+const G_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+
+/**
+ * Parse the `trusted_issuers` query param — the comma-separated Stellar
+ * addresses a protocol's gate will accept proofs from.
+ *
+ * An absent or empty param means the link sets no gate, matching the
+ * contract-side `trusted_issuers: None` default (any registered issuer).
+ *
+ * @returns `{ ok: true, issuers }` (deduped; empty when no gate) or
+ * `{ ok: false, error }` naming the malformed entries.
+ */
+export function parseTrustedIssuersParam(
+  raw: string | null | undefined
+): { ok: true; issuers: string[] } | { ok: false; error: string } {
+  const entries = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const invalid = entries.filter((e) => !G_ADDRESS_RE.test(e));
+  if (invalid.length > 0) {
+    return {
+      ok: false,
+      error: `Invalid trusted_issuers: entries must be Stellar account addresses (G…). Invalid: ${invalid
+        .slice(0, 5)
+        .join(", ")}.`,
+    };
+  }
+
+  return { ok: true, issuers: [...new Set(entries)] };
+}
+
 /** Collect all param validation errors for the /verify page in one call. */
 export function validateVerifyParams(params: {
   returnUrl: string | null;
@@ -158,6 +192,7 @@ export function validateVerifyParams(params: {
   thresholdYears: string | null;
   threshold: string | null;
   restricted: string | null;
+  trustedIssuers?: string | null;
   currentOrigin?: string;
 }): {
   returnUrlError: string | null;
@@ -165,6 +200,7 @@ export function validateVerifyParams(params: {
   thresholdYearsError: string | null;
   thresholdError: string | null;
   restrictedError: string | null;
+  trustedIssuersError: string | null;
   hasErrors: boolean;
 } {
   const returnUrlResult = validateReturnUrl(
@@ -189,11 +225,13 @@ export function validateVerifyParams(params: {
   });
 
   const rResult = validateRestrictedList(params.restricted);
+  const tiResult = parseTrustedIssuersParam(params.trustedIssuers ?? null);
 
   const returnUrlError = returnUrlResult.ok ? null : returnUrlResult.error;
   const thresholdYearsError = tyResult.ok ? null : (tyResult as { ok: false; error: string }).error;
   const thresholdError = tResult.ok ? null : (tResult as { ok: false; error: string }).error;
   const restrictedError = rResult.ok ? null : rResult.error;
+  const trustedIssuersError = tiResult.ok ? null : tiResult.error;
 
   return {
     returnUrlError,
@@ -201,7 +239,15 @@ export function validateVerifyParams(params: {
     thresholdYearsError,
     thresholdError,
     restrictedError,
-    hasErrors: !!(returnUrlError ?? claimError ?? thresholdYearsError ?? thresholdError ?? restrictedError),
+    trustedIssuersError,
+    hasErrors: !!(
+      returnUrlError ||
+      claimError ||
+      thresholdYearsError ||
+      thresholdError ||
+      restrictedError ||
+      trustedIssuersError
+    ),
   };
 }
 

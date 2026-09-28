@@ -641,8 +641,8 @@ export default function DocsPageClient() {
               type="funds"
               title="Proof of Funds"
               claim="balance > $10,000"
-              attribute="Account balance from Plaid (verified by bank, never stored)"
-              private="Exact balance figure"
+              attribute="Aggregate balance across linked Plaid accounts (verified by bank, never stored)"
+              private="Exact balance of each account"
             />
             <CredRow
               type="accreditation"

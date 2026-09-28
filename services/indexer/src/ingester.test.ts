@@ -95,14 +95,14 @@ describe("Ingester finality lag", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -143,14 +143,14 @@ describe("Ingester finality lag", () => {
     expect(processed).toBe(1);
 
     // Check DB: only GALICE should be indexed
-    const aliceClaims = db.claimsByWallet("GALICE");
+    const aliceClaims = await db.claimsByWallet("GALICE");
     expect(aliceClaims).toHaveLength(1);
 
-    const bobClaims = db.claimsByWallet("GBOB");
+    const bobClaims = await db.claimsByWallet("GBOB");
     expect(bobClaims).toHaveLength(0);
 
     // Cursor should be at 90 (the last finalized event), not 96
-    const cursor = db.getLastLedger();
+    const cursor = await db.getLastLedger();
     expect(cursor).toBe(90);
   });
 
@@ -175,14 +175,14 @@ describe("Ingester reorg detection", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -190,10 +190,10 @@ describe("Ingester reorg detection", () => {
 
   it("detects reorg when cursor > head and rolls back", async () => {
     // Simulate: we ingested up to ledger 50, but network reorged to 40.
-    db.setLastLedger(50);
+    await db.setLastLedger(50);
 
     // Insert a claim at ledger 50 (now orphaned)
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GORPHAN",
       credential_type: "kyc",
       issuer: "G",
@@ -233,7 +233,7 @@ describe("Ingester reorg detection", () => {
     const processed = await ingester.tick();
 
     // The orphaned claim at ledger 50 should be deleted
-    const orphanClaims = db.claimsByWallet("GORPHAN");
+    const orphanClaims = await db.claimsByWallet("GORPHAN");
     expect(orphanClaims).toHaveLength(0);
 
     // The new event at ledger 42 (below ceiling 34... wait, head=40, lag=6, ceiling=34)
@@ -244,7 +244,7 @@ describe("Ingester reorg detection", () => {
     expect(processed).toBeGreaterThanOrEqual(0);
 
     // Cursor should be reset to the reorg point (40)
-    const cursor = db.getLastLedger();
+    const cursor = await db.getLastLedger();
     expect(cursor).toBeLessThanOrEqual(40);
   });
 });
@@ -253,14 +253,14 @@ describe("Ingester reconcile", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -268,24 +268,24 @@ describe("Ingester reconcile", () => {
 
   it("reconcile deletes claims after reorg point and re-indexes", async () => {
     // Insert claims at various ledgers
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GA1", credential_type: "kyc", issuer: "G",
       verified_at: 1000, expiry: 9999999, ledger_sequence: 10,
       threshold: null, revoked: 0,
     });
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GA2", credential_type: "kyc", issuer: "G",
       verified_at: 2000, expiry: 9999999, ledger_sequence: 20,
       threshold: null, revoked: 0,
     });
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GA3", credential_type: "kyc", issuer: "G",
       verified_at: 3000, expiry: 9999999, ledger_sequence: 30,
       threshold: null, revoked: 0,
     });
 
     // Reorg point is 15: claims at ledger 20 and 30 should be deleted
-    db.setLastLedger(30);
+    await db.setLastLedger(30);
 
     // Mock Horizon to return events in the reorged range (up to ceiling)
     fetchMock.mockImplementation(async (url: string) => {
@@ -317,11 +317,11 @@ describe("Ingester reconcile", () => {
     const processed = await ingester.reconcile(15);
 
     // GA1 (ledger 10, below the reorg point) should still exist
-    const a1 = db.claimsByWallet("GA1");
+    const a1 = await db.claimsByWallet("GA1");
     expect(a1).toHaveLength(1);
 
     // GA3 (ledger 30, above the reorg point) is deleted by the rollback…
-    const a3 = db.claimsByWallet("GA3");
+    const a3 = await db.claimsByWallet("GA3");
     expect(a3).toHaveLength(0);
 
     // …while GA2 (ledger 20, above the reorg point) is re-indexed from the
@@ -333,7 +333,7 @@ describe("Ingester reconcile", () => {
 
     // Cursor advances to the highest ledger re-indexed (25), not the reorg
     // point — reconcile deletes and then re-ingests.
-    const cursor = db.getLastLedger();
+    const cursor = await db.getLastLedger();
     expect(cursor).toBe(25);
   });
 });
@@ -342,14 +342,14 @@ describe("Ingester finalize lag with HEAD_LEDGER override", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -383,7 +383,7 @@ describe("Ingester finalize lag with HEAD_LEDGER override", () => {
     const processed = await ingester.tick();
     expect(processed).toBe(1);
 
-    const claims = db.claimsByWallet("GALICE");
+    const claims = await db.claimsByWallet("GALICE");
     expect(claims).toHaveLength(1);
   });
 });

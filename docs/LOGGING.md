@@ -50,6 +50,19 @@ The logging middleware detects and logs when the app is running in demo or mock 
 
 These signals help operators distinguish between production and demo deployments in logs.
 
+### Plaid Multi-Item Aggregation
+
+When proof-of-funds aggregates balances across several linked Plaid items, the
+balance flow logs only counts and ordinals — never account names, balances, or
+access tokens:
+
+- **itemIndex**: which configured item (ordinal in the token list) a Plaid
+  call relates to
+- **itemCount** / **accountCount**: how many items were aggregated / how many
+  depository accounts they contain
+- **plaidMock**: now `true` when *neither* `PLAID_ACCESS_TOKEN` nor
+  `PLAID_ACCESS_TOKENS` is set (returning mock balance)
+
 ---
 
 ## Optional Error Reporting

@@ -118,6 +118,7 @@ import { useProofTimeline, addTimelineEvent } from "@/lib/useProofTimeline";
 import { Timeline } from "@/components/Timeline";
 import { IconHistory } from "@tabler/icons-react";
 import { PrivacyIndicator } from "@/components/PrivacyIndicator";
+import { useIssuerStatus } from "@/lib/hooks/useIssuerStatus";
 
 // ── Credential expiry helpers ─────────────────────────────────────────────────
 
@@ -224,6 +225,12 @@ function CredCard({
         {/* right: badges + button + trash */}
         <div className="card-actions">
           {isPreview && <Badge variant="pending">Preview</Badge>}
+          {(c.issuerStatus === "issuer_revoked") && (
+            <Badge variant="denied" dot>Issuer revoked</Badge>
+          )}
+          {(c.issuerStatus === "key_revoked") && (
+            <Badge variant="denied" dot>Issuer key revoked</Badge>
+          )}
           <Badge variant="verified" dot={false}>Held</Badge>
           {status === "proved" && !isExpiringSoon(c) && (
             <Badge variant="verified" dot={false}>On-chain</Badge>
@@ -307,6 +314,27 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Skeleton card (shown while credentials are loading from localStorage) ─────
+
+function SkeletonCard() {
+  return (
+    <div className="card" style={{ padding: "1rem 1.25rem" }} aria-hidden="true">
+      <div className="between" style={{ alignItems: "center", gap: "0.75rem" }}>
+        {/* left: title + meta lines */}
+        <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+          <div className="skeleton" style={{ height: "0.9rem", width: "45%", borderRadius: "var(--radius-xs)" }} />
+          <div className="skeleton" style={{ height: "0.75rem", width: "65%", borderRadius: "var(--radius-xs)" }} />
+        </div>
+        {/* right: badge + button placeholders */}
+        <div className="card-actions" style={{ gap: "0.4rem" }}>
+          <div className="skeleton" style={{ height: "1.375rem", width: "3.5rem", borderRadius: "999px" }} />
+          <div className="skeleton" style={{ height: "1.875rem", width: "6.5rem", borderRadius: "var(--radius-sm)" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Holder page ───────────────────────────────────────────────────────────────
 
 type PageView =
@@ -321,13 +349,14 @@ function HolderInner() {
   const searchParams = useSearchParams();
   const toast = useToast();
   const [creds, setCreds] = useState<Credential[]>([]);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<PageView>({ kind: "list" });
   const [importing, setImporting] = useState(false);
   const [detailCred, setDetailCred] = useState<Credential | null>(null);
   const [transferCred, setTransferCred] = useState<Credential | null>(null);
   const [importPayload, setImportPayload] = useState<string | null>(null);
 
-  useEffect(() => { loadCredentials().then(setCreds); }, []);
+  useEffect(() => { loadCredentials().then((c) => { setCreds(c); setLoading(false); }); }, []);
 
   // Cross-tab sync: listen for storage events from other tabs
   useEffect(() => {
@@ -385,6 +414,22 @@ function HolderInner() {
   // to avoid paying wasm-init cost for types the user has no credential for.
   const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
   useWarmProver(unprovedTypes, Boolean(address));
+
+  // ── Issuer status checks (#626) ────────────────────────────────────────────
+  // Run in the background once the wallet is connected. On each check the
+  // hook writes `issuerStatus` back to the stored credential and calls
+  // loadCredentials() so the UI re-renders with the updated status.
+  useIssuerStatus(
+    isPreview ? [] : creds,
+    address || null,
+    () => { loadCredentials().then(setCreds); },
+  );
+
+  // Credentials whose issuer is no longer active — shown in a dedicated
+  // section at the top so the holder sees the signal before trying to prove.
+  const issuerGoneCreds = displayCreds.filter(
+    (c) => c.issuerStatus === "issuer_revoked" || c.issuerStatus === "key_revoked",
+  );
 
   // ── Batch selection ────────────────────────────────────────────────────────
   // The holder picks which unproved credentials go into one transaction. Both
@@ -533,8 +578,61 @@ function HolderInner() {
       ) : (
         <div className="stack reveal" style={{ gap: "1.5rem" }}>
 
+          {/* ── Issuer Gone Banner (#626) ── */}
+          {issuerGoneCreds.length > 0 && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="card"
+              style={{
+                padding: "0.85rem 1.15rem",
+                backgroundColor: "rgba(240,96,77,0.08)",
+                borderColor: "rgba(240,96,77,0.35)",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "0.75rem",
+              }}
+            >
+              <IconAlertTriangle
+                size={18}
+                style={{ color: "var(--danger)", flexShrink: 0, marginTop: 2 }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--danger)" }}>
+                  {issuerGoneCreds.length === 1
+                    ? "1 credential cannot be proved — issuer unavailable"
+                    : `${issuerGoneCreds.length} credentials cannot be proved — issuers unavailable`}
+                </div>
+                <p style={{ margin: "0.35rem 0 0", fontSize: "0.8rem", color: "var(--muted)", lineHeight: 1.5 }}>
+                  {issuerGoneCreds.some((c) => c.issuerStatus === "issuer_revoked")
+                    ? "One or more issuers have been permanently removed from the registry. Proof submission will fail with \u201cIssuerNotTrusted\u201d."
+                    : "One or more issuer signing keys have been emergency-revoked. Proof submission may fail."}
+                  {" "}Obtain a fresh credential from a different trusted issuer.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Issuer Gone credentials ── */}
+          {issuerGoneCreds.length > 0 && (
+            <div className="stack" style={{ gap: "0.6rem" }}>
+              <SectionLabel>Issuer gone · credential affected</SectionLabel>
+              {issuerGoneCreds.map((c) => (
+                <CredCard
+                  key={c.commitment}
+                  c={c}
+                  address={address}
+                  onProve={() => setView({ kind: "single", cred: c })}
+                  onRemove={() => removeCredential(c.commitment).then(setCreds)}
+                  onInspect={() => setDetailCred(c)}
+                  isPreview={isPreview}
+                />
+              ))}
+            </div>
+          )}
+
           {/* ── Expiry Warning Banner ── */}
-          {(expiringSoon.length > 0 || expired.length > 0) && (
+          {!loading && (expiringSoon.length > 0 || expired.length > 0) && (
             <div
               role="status"
               aria-live="polite"
@@ -567,8 +665,17 @@ function HolderInner() {
             </div>
           )}
 
+          {/* ── Skeleton cards (while credentials are being read) ── */}
+          {loading && (
+            <div className="stack" style={{ gap: "0.6rem" }} aria-label="Loading credentials" aria-busy="true">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          )}
+
           {/* ── Empty state ── */}
-          {creds.length === 0 && !importing && (
+          {!loading && creds.length === 0 && !importing && (
             <div
               className="card"
               style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
@@ -763,13 +870,13 @@ function HolderInner() {
             </div>
           )}
 
-          {!address && creds.length > 0 && (
+          {!loading && !address && creds.length > 0 && (
             <p className="faint" style={{ fontSize: "0.8125rem" }}>
               Connect a wallet to generate and submit proofs.
             </p>
           )}
 
-          {importing ? (
+          {!loading && (importing ? (
             <ImportPanel
               onImport={async (c) => {
                 setCreds(await saveCredential(c));
@@ -809,7 +916,7 @@ function HolderInner() {
                 </Link>
               </p>
             </div>
-          )}
+          ))}
         </div>
       )}
 
@@ -1140,12 +1247,41 @@ function ProofFlow({
   const proofDone = stage === "generated" || stage === "submitting" || stage === "confirmed";
   const submitDone = stage === "confirmed";
 
+  // Warn the holder if the issuer has been revoked before they attempt to prove.
+  const issuerGone =
+    cred.issuerStatus === "issuer_revoked" || cred.issuerStatus === "key_revoked";
+
   return (
     <div className="reveal" style={{ maxWidth: 520, margin: "0 auto" }}>
       <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginBottom: "1.5rem" }}>
         <IconArrowLeft size={14} />
         All credentials
       </button>
+
+      {issuerGone && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: "1rem",
+            padding: "0.9rem 1.1rem",
+            borderRadius: "var(--radius)",
+            border: "1px solid rgba(240,96,77,0.35)",
+            background: "rgba(240,96,77,0.07)",
+          }}
+        >
+          <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+            <IconAlertTriangle size={15} />
+            {cred.issuerStatus === "issuer_revoked"
+              ? "Issuer has been removed"
+              : "Issuer signing key revoked"}
+          </div>
+          <p style={{ margin: "0.45rem 0 0", fontSize: "0.82rem", color: "var(--muted)", lineHeight: 1.5 }}>
+            {cred.issuerStatus === "issuer_revoked"
+              ? `${cred.issuer} has been permanently removed from the registry. Proof submission will fail. Obtain a new credential from a different trusted issuer.`
+              : `${cred.issuer} has had its signing key emergency-revoked. Your proof submission may fail with a key mismatch. Contact your issuer or obtain a new credential.`}
+          </p>
+        </div>
+      )}
 
       <div className="card" style={{ padding: "1.75rem" }}>
         {/* credential header */}

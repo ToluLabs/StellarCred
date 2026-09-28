@@ -15,6 +15,7 @@
     "test:theme": "node --import tsx --test lib/theme.test.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
+        "first-load": "pnpm dlx @lhci/cli@0.14.0 autorun --config=.lighthouserc.json && node scripts/assert-no-prover-on-critical-path.mjs",
     "size": "size-limit",
     "check:i18n": "node scripts/check-i18n-parity.mjs",
     "verify:audit-log": "node --import tsx --experimental-strip-types scripts/verify-audit-log.ts"
@@ -43,7 +44,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
     "@next/bundle-analyzer": "^14.2.35",
-    "@playwright/test": "^1.62.0",
+        "@playwright/test": "^1.62.0",
     "@size-limit/file": "^13.0.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",

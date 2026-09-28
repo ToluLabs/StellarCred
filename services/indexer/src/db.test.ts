@@ -6,10 +6,11 @@
  *   - SQLite   (better-sqlite3; the default dev / single-instance driver)
  *   - Postgres (pg pool; the production multi-instance driver)
  *
- * The two drivers use different SQL dialects (INSERT OR IGNORE vs
- * ON CONFLICT, INTEGER vs BIGINT), which is exactly where they silently
- * diverge — so these tests exercise migrations, upserts, revokes, and cursor
- * updates against both.
+ * Both legs drive the one shared query layer (`db-shared.ts`); only the
+ * `SqlDialect` adapter differs, so this suite is written once and registered
+ * per backend. The remaining dialect differences (INSERT OR IGNORE vs ON
+ * CONFLICT, INTEGER vs BIGINT) are covered by `db-dialect.test.ts`, which
+ * needs no live server.
  *
  * The Postgres leg runs in CI via the `postgres` service container in
  * `.github/workflows/ci.yml`. Locally it is gated on `TEST_POSTGRES_URL`

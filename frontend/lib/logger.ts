@@ -64,6 +64,11 @@ export const SAFE_FIELDS = [
   "timestamp",
   "auditIndex",
   "auditHash",
+  // Plaid multi-item aggregation: ordinals and counts only — never account
+  // names, balances, or token identifiers.
+  "itemIndex",
+  "itemCount",
+  "accountCount",
 ];
 
 export function stripSensitiveFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
