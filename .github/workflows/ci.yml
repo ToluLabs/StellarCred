@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
 
       - name: Review npm dependency changes (GitHub Advisory DB)
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         continue-on-error: true
 
       - name: Setup Node for custom checks
