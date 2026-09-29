@@ -15,7 +15,56 @@ on:
 permissions:
   contents: read
 
+# ── Shared tool versions (single source of truth) ──────────────────────────
+# Update these three values to upgrade the entire pipeline in one place.
+env:
+  NOIR_VERSION: "1.0.0-beta.9"
+  BB_VERSION: "0.87.0"
+  NODE_VERSION: "20"
+
 jobs:
+  # ── Dependency review: advisories, licenses, maintenance ──────────────────
+  # Runs early in the matrix to fail fast on dependency violations.
+  # Blocks PRs with new packages that have known advisories or denied licenses.
+  dependency-check:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Review npm dependency changes (GitHub Advisory DB)
+        uses: actions/dependency-review-action@v4
+        continue-on-error: true
+
+      - name: Setup Node for custom checks
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for new frontend runtime dependencies
+        run: |
+          node .github/scripts/check-runtime-deps.mjs
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+
+      - name: Verify allowed licenses in npm tree
+        working-directory: frontend
+        run: |
+          node ../.github/scripts/verify-npm-licenses.mjs
+
   commitlint:
     name: Lint commit messages
     runs-on: ubuntu-latest
@@ -26,7 +75,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
@@ -38,6 +87,25 @@ jobs:
             --to ${{ github.event.pull_request.head.sha }} \
             --verbose
 
+  # ── Docs: contract API reference drift check (issue #525) ─────────────────
+  # Cheap source-vs-docs gate: fails when a ProofRegistry entrypoint is added,
+  # removed or renamed without the matching update to docs/PROOF_REGISTRY_API.md,
+  # or when a documented section goes stale / loses its Audience, Auth or Panics
+  # line. Runs before the heavyweight jobs so doc drift fails fast.
+  api-reference:
+    name: Contract API reference drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check API reference against contract source
+        run: node .github/scripts/check-api-reference.mjs
+
+  # ── Contracts: Rust / WASM / Clippy ────────────────────────────────────────
+  # Runs in parallel with circuits, frontend, and indexer.
   contracts:
     name: Contract tests & build
     runs-on: ubuntu-latest
@@ -53,33 +121,45 @@ jobs:
           targets: wasm32v1-none
           components: clippy
 
-      - name: Cache cargo
-        uses: actions/cache@v6
+      - name: Cache cargo registry + build products
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-
-
-      - name: Update Cargo.lock
-        run: cargo update --aggressive
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
 
       - name: Install Noir
+        uses: actions/cache@v4
+        id: cache-noir
+        with:
+          path: ~/.nargo
+          key: nargo-${{ runner.os }}-${{ env.NOIR_VERSION }}
+      - if: steps.cache-noir.outputs.cache-hit != 'true'
+        name: Download Noir toolchain
         shell: bash
         run: |
-          curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
+          curl -sSfL https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
           export PATH="$HOME/.nargo/bin:$PATH"
-          noirup -v 1.0.0-beta.9
+          noirup -v ${{ env.NOIR_VERSION }}
 
       - name: Install Barretenberg
+        uses: actions/cache@v4
+        id: cache-bb
+        with:
+          path: ~/.bb
+          key: bb-${{ runner.os }}-${{ env.BB_VERSION }}
+      - if: steps.cache-bb.outputs.cache-hit != 'true'
+        name: Download Barretenberg toolchain
         shell: bash
         run: |
-          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          curl -sSfL https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
           export PATH="$HOME/.bb:$PATH"
           source "$HOME/.bashrc" 2>/dev/null || true
-          bbup -v 0.87.0
+          bbup -v ${{ env.BB_VERSION }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -107,8 +187,13 @@ jobs:
         # Blocking — clippy warnings are treated as errors for all contract
         # crates. Any new lint must either be fixed or explicitly allowed with
         # a documented reason using #[allow(clippy::lint_name)] inline.
-        run: cargo clippy --all-targets -- -D warnings
+        # --workspace so the host-only test harness (contracts/test_support) is
+        # linted too; a bare build skips it, since only the deployable contracts
+        # are default workspace members.
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # ── Circuits: Noir compile + VK freshness check ────────────────────────────
+  # Runs in parallel with contracts, frontend, and indexer.
   circuits:
     name: Circuit compile
     runs-on: ubuntu-latest
@@ -118,19 +203,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Noir toolchain
-        run: |
-          curl -L https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
-          export PATH="$HOME/.nargo/bin:$PATH"
-          noirup -v 1.0.0-beta.9
-
-      - name: Install Barretenberg
+      - name: Restore / install Noir toolchain
+        uses: actions/cache@v4
+        id: cache-noir-circuits
+        with:
+          path: ~/.nargo
+          key: nargo-${{ runner.os }}-${{ env.NOIR_VERSION }}
+      - if: steps.cache-noir-circuits.outputs.cache-hit != 'true'
+        name: Download Noir toolchain
         shell: bash
         run: |
-          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          curl -sSfL https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
+          export PATH="$HOME/.nargo/bin:$PATH"
+          noirup -v ${{ env.NOIR_VERSION }}
+
+      - name: Restore / install Barretenberg toolchain
+        uses: actions/cache@v4
+        id: cache-bb-circuits
+        with:
+          path: ~/.bb
+          key: bb-${{ runner.os }}-${{ env.BB_VERSION }}
+      - if: steps.cache-bb-circuits.outputs.cache-hit != 'true'
+        name: Download Barretenberg toolchain
+        shell: bash
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
           export PATH="$HOME/.bb:$PATH"
           source "$HOME/.bashrc" 2>/dev/null || true
-          bbup -v 0.87.0
+          bbup -v ${{ env.BB_VERSION }}
 
       - name: Compile circuits
         run: |
@@ -148,10 +248,6 @@ jobs:
       - name: Check staged artifacts are current
         run: |
           export PATH="$HOME/.nargo/bin:$HOME/.bb:$PATH"
-
-          # Install bb at pinned version
-          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
-          bbup -v 0.87.0
 
           type_of() {
             case "$1" in
@@ -236,6 +332,9 @@ jobs:
             (cd "$dir" && nargo test)
           done
 
+  # ── Circuit fuzzing ─────────────────────────────────────────────────────────
+  # Intentionally runs after circuits so it can reuse the compiled artifacts
+  # if we ever share them via cache. Noir toolchain is restored from cache.
   circuit-fuzz:
     name: Property-based circuit fuzzing
     runs-on: ubuntu-latest
@@ -243,16 +342,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Noir toolchain
+      - name: Restore Noir toolchain (from circuits job cache)
+        uses: actions/cache@v4
+        id: cache-noir-fuzz
+        with:
+          path: ~/.nargo
+          key: nargo-${{ runner.os }}-${{ env.NOIR_VERSION }}
+      - if: steps.cache-noir-fuzz.outputs.cache-hit != 'true'
+        name: Download Noir toolchain (cache miss fallback)
+        shell: bash
         run: |
-          curl -L https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
+          curl -sSfL https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
           export PATH="$HOME/.nargo/bin:$PATH"
-          noirup -v 1.0.0-beta.9
+          noirup -v ${{ env.NOIR_VERSION }}
 
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -277,6 +384,10 @@ jobs:
           export PATH="$HOME/.nargo/bin:$PATH"
           node circuits/scripts/fuzz_circuits.js --iterations 10
 
+  # ── Frontend: typecheck, lint, test, build (once) ──────────────────────────
+  # Runs in parallel with contracts, circuits, and indexer.
+  # Builds the frontend once and uploads the .next output as an artifact so
+  # the a11y job can download it directly instead of rebuilding from scratch.
   frontend:
     name: Frontend typecheck & build
     runs-on: ubuntu-latest
@@ -297,7 +408,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -314,6 +425,7 @@ jobs:
         run: pnpm exec tsc --noEmit
 
       - name: Build
+        id: build
         run: pnpm build
         env:
           # Dummy values so the build doesn't error on missing env vars
@@ -325,8 +437,30 @@ jobs:
           NEXT_PUBLIC_STELLAR_NETWORK: testnet
           NEXT_PUBLIC_RPC_URL: https://soroban-testnet.stellar.org
 
+      # Upload the compiled .next output so downstream jobs (a11y, size budget)
+      # can consume it without rebuilding. Retention is short — this is a
+      # transient CI artifact, not a release artifact.
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-${{ github.sha }}
+          path: |
+            frontend/.next
+            frontend/public
+          retention-days: 1
+
       - name: Test frontend SDK
         run: pnpm test
+
+      # Required privacy gate (issue #627). Runs the flow-level identity-leak
+      # test on its own so a new persistence path that reintroduces identity
+      # data — a log line, the audit file, the error-report sink, the
+      # idempotency cache, the persisted Persona context, or the response
+      # body — fails the build with an unambiguous step name instead of hiding
+      # inside a 554-test run. `pnpm test` above also covers it; this step
+      # exists to make the guarantee a first-class, greppable check.
+      - name: Identity data leak gate (#627)
+        run: pnpm exec vitest run app/api/issue/__tests__/identity-leakage.test.ts
 
       - name: Test theme helpers (node:test)
         run: pnpm test:theme
@@ -334,6 +468,23 @@ jobs:
       - name: Run issuer tests (incl. cross-boundary circuit test)
         run: pnpm --filter @stellarcred/issuer test
 
+      - name: Build SDK distribution
+        working-directory: frontend/packages/sdk
+        run: npx --yes -p tsup -p typescript@5 tsup src/index.ts src/server.ts --format cjs,esm --dts --clean
+
+      - name: Typecheck SDK
+        working-directory: frontend/packages/sdk
+        run: pnpm typecheck
+
+      - name: Test canonical integration example
+        working-directory: examples/canonical-integration
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+  # ── Indexer: SQLite + Postgres test matrix ─────────────────────────────────
+  # Runs in parallel with contracts, circuits, and frontend.
   indexer:
     # The indexer's DB layer supports BOTH SQLite and Postgres, so the same
     # test matrix must run against both backends or one silently rots. This job
@@ -365,7 +516,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: services/indexer/package-lock.json
 
@@ -384,6 +535,7 @@ jobs:
           # Point the Postgres leg of the DB matrix at the service container.
           TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
 
+  # ── SDK integration tests ───────────────────────────────────────────────────
   sdk-integration:
     name: SDK integration tests (testnet)
     runs-on: ubuntu-latest
@@ -405,7 +557,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -428,10 +580,14 @@ jobs:
           STELLARCRED_REGISTRY_ID: ${{ vars.STELLARCRED_REGISTRY_ID }}
           STELLARCRED_RPC_URL: ${{ vars.STELLARCRED_RPC_URL || 'https://soroban-testnet.stellar.org' }}
 
+  # ── Accessibility (axe-core) ────────────────────────────────────────────────
+  # Downloads the pre-built frontend artifact from the `frontend` job instead
+  # of rebuilding — this is the key change for issue #548.
   a11y:
     name: Accessibility (axe-core)
     if: false # Skip a11y checks until pre-existing violations are fixed
     runs-on: ubuntu-latest
+    needs: frontend
     permissions:
       contents: read
       pull-requests: write
@@ -439,7 +595,7 @@ jobs:
       run:
         working-directory: frontend
     env:
-      # Dummy values so the build doesn't error on missing env vars
+      # Dummy values required by Next.js at runtime (not at build time here)
       NEXT_PUBLIC_PROOF_REGISTRY_ID: C000000000000000000000000000000000000000000000000000000000000001
       NEXT_PUBLIC_ISSUER_REGISTRY_ID: C000000000000000000000000000000000000000000000000000000000000002
       NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID: C000000000000000000000000000000000000000000000000000000000000003
@@ -468,17 +624,14 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Build
-        run: pnpm build
-        env:
-          # Dummy values so the build doesn't error on missing env vars
-          NEXT_PUBLIC_PROOF_REGISTRY_ID: C000000000000000000000000000000000000000000000000000000000000001
-          NEXT_PUBLIC_ISSUER_REGISTRY_ID: C000000000000000000000000000000000000000000000000000000000000002
-          NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID: C000000000000000000000000000000000000000000000000000000000000003
-          NEXT_PUBLIC_GATED_POOL_ID: C000000000000000000000000000000000000000000000000000000000000004
-          NEXT_PUBLIC_ISSUER_ADDRESS: GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF
-          NEXT_PUBLIC_STELLAR_NETWORK: testnet
-          NEXT_PUBLIC_RPC_URL: https://soroban-testnet.stellar.org
+      # Download the build artifact produced by the `frontend` job instead of
+      # rebuilding. The artifact is scoped to the current SHA so it is always
+      # the exact output from the frontend job above.
+      - name: Download frontend build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build-${{ github.sha }}
+          path: frontend
 
       - name: Run axe-core accessibility checks
         run: pnpm test:e2e

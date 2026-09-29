@@ -24,6 +24,8 @@
  * - Server restart naturally clears all entries.
  */
 
+import { getSharedStore, checkMultiInstanceStoreWarning } from "./shared-store";
+
 export interface CachedResponse {
   status: number;
   body: string; // JSON-stringified response body
@@ -72,10 +74,35 @@ export function isValidIdempotencyKey(key: string): boolean {
 const store = new Map<string, CachedResponse>();
 
 /**
+ * Hard cap on stored responses. The lazy every-100-sets cleanup only drops
+ * entries whose TTL has already elapsed; a flood of distinct in-TTL keys
+ * would therefore grow the map without bound. This cap closes that gap.
+ */
+function maxEntries(): number {
+  const env = process.env.IDEMPOTENCY_MAX_ENTRIES;
+  if (env) {
+    const parsed = parseInt(env, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 10_000;
+}
+
+function enforceCap(): void {
+  const cap = maxEntries();
+  if (store.size <= cap) return;
+  let removed = store.size - cap;
+  for (const key of store.keys()) {
+    store.delete(key);
+    if (--removed <= 0) break;
+  }
+}
+
+/**
  * Retrieve a cached response by idempotency key.
  * Returns `null` if the key is not found, invalid, or the entry has expired.
  */
 export function idempotencyGet(key: string): CachedResponse | null {
+  checkMultiInstanceStoreWarning();
   if (!isValidIdempotencyKey(key)) return null;
 
   const entry = store.get(key);
@@ -90,6 +117,34 @@ export function idempotencyGet(key: string): CachedResponse | null {
 }
 
 /**
+ * Retrieve a cached response by idempotency key asynchronously from the shared store.
+ * If configured with Upstash Redis / Vercel KV, queries the distributed store.
+ */
+export async function idempotencyGetAsync(key: string): Promise<CachedResponse | null> {
+  checkMultiInstanceStoreWarning();
+  if (!isValidIdempotencyKey(key)) return null;
+
+  const local = idempotencyGet(key);
+  if (local) return local;
+
+  const sharedStore = getSharedStore();
+
+  try {
+    const raw = await sharedStore.get(`idem:${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedResponse;
+    if (Date.now() - parsed.createdAt > ttlMs()) {
+      await sharedStore.del(`idem:${key}`).catch(() => null);
+      return null;
+    }
+    store.set(key, parsed);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Store a response under an idempotency key with the current timestamp.
  * Invalid keys (empty, oversized, control chars) are silently ignored.
  */
@@ -98,8 +153,33 @@ export function idempotencySet(key: string, response: CachedResponse): void {
 
   store.set(key, response);
 
+  const sharedStore = getSharedStore();
+  const ttlSec = Math.ceil(ttlMs() / 1000);
+  sharedStore.set(`idem:${key}`, JSON.stringify(response), ttlSec).catch(() => null);
+
   // Lazy cleanup: purge all expired entries every 100 new keys to avoid
   // unbounded growth. Skip on the very first set (size 0 would also match).
+  if (store.size >= 100 && store.size % 100 === 0) {
+    idempotencyCleanup();
+  }
+  enforceCap();
+}
+
+/**
+ * Store a response under an idempotency key with the current timestamp asynchronously.
+ */
+export async function idempotencySetAsync(
+  key: string,
+  response: CachedResponse,
+): Promise<void> {
+  if (!isValidIdempotencyKey(key)) return;
+
+  store.set(key, response);
+
+  const sharedStore = getSharedStore();
+  const ttlSec = Math.ceil(ttlMs() / 1000);
+  await sharedStore.set(`idem:${key}`, JSON.stringify(response), ttlSec).catch(() => null);
+
   if (store.size >= 100 && store.size % 100 === 0) {
     idempotencyCleanup();
   }
@@ -128,6 +208,7 @@ export function idempotencyCleanup(): void {
 export function idempotencyClear(): void {
   store.clear();
   inFlight.clear();
+  getSharedStore().clear?.();
 }
 
 /**

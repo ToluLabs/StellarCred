@@ -17,6 +17,10 @@ import { ConfigBanner } from "@/components/ConfigBanner";
 import { issuanceConfigured } from "@/lib/config";
 import { truncateAddress, truncatePubkey } from "@/lib/format";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
+import { CredentialTemplateGallery } from "@/components/CredentialTemplateGallery";
+import type { CredentialTemplate } from "@/lib/credential-templates";
+import { CredentialPreview } from "@/components/CredentialPreview";
+import { buildClaimLabel, type CredentialPreviewData } from "@/lib/credential-preview";
 
 const TYPES = Object.entries(TYPE_META) as [
   CredentialType,
@@ -62,9 +66,12 @@ export default function IssuerPageClient() {
   const [type, setType] = useState<CredentialType>("kyc");
   const [attribute, setAttribute] = useState(DEFAULT_ATTR.kyc);
   const [expiry, setExpiry] = useState("90 days");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [issued, setIssued] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** When non-null the preview card is shown instead of the form. */
+  const [preview, setPreview] = useState<CredentialPreviewData | null>(null);
 
   const selectedIssuer = useMemo(
     () => issuers.find((issuer) => issuer.id === selectedIssuerId) ?? null,
@@ -119,11 +126,41 @@ export default function IssuerPageClient() {
   const needsAttr = !!meta.attribute;
 
   function onType(nextType: CredentialType) {
+    setSelectedTemplateId(null);
     setType(nextType);
     setAttribute(DEFAULT_ATTR[nextType]);
   }
 
-  async function onIssue() {
+  function onApplyTemplate(template: CredentialTemplate) {
+    setSelectedTemplateId(template.id);
+    setType(template.type);
+    setAttribute(template.defaultAttribute);
+    setExpiry(template.defaultExpiry);
+  }
+
+  // ── Step 1: show preview ──────────────────────────────────────────────────
+  // Called when the issuer clicks "Sign & issue". Instead of firing the API
+  // call immediately, we show a CredentialPreview so the issuer can verify
+  // every field before the irrevocable signature.
+  function onReview() {
+    if (!selectedIssuer) return;
+    setError("");
+    setPreview({
+      issuerName: selectedIssuer.name,
+      issuerId: selectedIssuer.id,
+      type,
+      title: meta.title,
+      claimLabel: buildClaimLabel(type),
+      attributeLabel: meta.attribute ?? null,
+      attributeValue: needsAttr ? attribute : null,
+      holder,
+      expiry,
+    });
+  }
+
+  // ── Step 2: sign & issue ──────────────────────────────────────────────────
+  // Called when the issuer confirms the preview. Fires the POST /api/issue.
+  async function onConfirmIssue() {
     if (!selectedIssuer) return;
     setBusy(true);
     setError("");
@@ -134,8 +171,7 @@ export default function IssuerPageClient() {
       else if (type === "funds") attributes.balance = attribute;
       else if (type === "accreditation") attributes.net_worth = attribute;
       else if (type === "jurisdiction") attributes.country_code = attribute;
-      // employment: the value is the binary status tag (set server-side to "1"),
-      // the user-supplied attribute is the holder's seniority in years.
+      else if (type === "employment") attributes.seniority = attribute;
 
       const res = await fetch("/api/issue", {
         method: "POST",
@@ -154,8 +190,10 @@ export default function IssuerPageClient() {
       const cred = credentials[0];
       await saveCredential(cred);
       setIssued(JSON.stringify(cred, null, 2));
+      setPreview(null);
     } catch (e) {
       setError((e as Error).message);
+      setPreview(null);
     } finally {
       setBusy(false);
     }
@@ -177,6 +215,19 @@ export default function IssuerPageClient() {
           demo issuer address and IssuerRegistry, so say so up front. */}
       <ConfigBanner requireIssuance />
 
+      {/* ── Preview step ── Show instead of the form when the issuer has
+          clicked "Sign & issue" but not yet confirmed. */}
+      {preview && (
+        <CredentialPreview
+          data={preview}
+          onConfirm={onConfirmIssue}
+          onBack={() => setPreview(null)}
+          busy={busy}
+        />
+      )}
+
+      {!preview && (
+        <>
       <div
         style={{
           marginBottom: "1.75rem",
@@ -195,7 +246,27 @@ export default function IssuerPageClient() {
         In production this would be a separate authenticated app run by the
         institution — KYC provider, bank, employer — after verifying the holder
         off-chain. The holder would never see this interface.
+        <br />
+        <br />
+        <IconKey size={14} style={{ verticalAlign: "-2px", marginRight: "0.35rem" }} />
+        <span style={{ color: "var(--text)" }}>Becoming an issuer?</span>{" "}
+        <a
+          href="https://github.com/Psalmuel01/StellarCred/blob/main/docs/ISSUER_ONBOARDING.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--accent)", textDecoration: "underline" }}
+        >
+          Read the issuer onboarding guide
+        </a>{" "}
+        — registration, signing-key custody, what your signature attests to,
+        rotation and revocation.
       </div>
+
+      <CredentialTemplateGallery
+        selectedTemplateId={selectedTemplateId}
+        allowedTypes={selectedIssuer ? (selectedIssuer.credentialTypes as CredentialType[]) : undefined}
+        onSelectTemplate={onApplyTemplate}
+      />
 
       <div
         className="grid grid-2"
@@ -346,7 +417,7 @@ export default function IssuerPageClient() {
                 ? undefined
                 : "App not configured — NEXT_PUBLIC_ISSUER_ADDRESS / IssuerRegistry missing"
             }
-            onClick={onIssue}
+            onClick={onReview}
           >
             {busy ? (
               <>
@@ -355,7 +426,7 @@ export default function IssuerPageClient() {
               </>
             ) : (
               <>
-                Sign &amp; issue
+                Review credential
                 <IconArrowRight size={15} />
               </>
             )}
@@ -419,6 +490,8 @@ export default function IssuerPageClient() {
           )}
         </div>
       </div>
+        </>
+      )}
     </>
   );
 }

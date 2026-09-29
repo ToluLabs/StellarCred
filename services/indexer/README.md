@@ -2,7 +2,7 @@
 
 An event ingestion and query service for StellarCred's on-chain Soroban contracts.
 
-The indexer continuously polls Soroban contract events emitted by `ProofRegistry` (and other registry contracts), ingests them into a local database (SQLite or PostgreSQL), and exposes a lightweight read-only HTTP API for client applications, wallets, and community explorers.
+The indexer continuously polls Soroban contract events emitted by `ProofRegistry` (and other registry contracts), ingests them into a local database (SQLite or PostgreSQL), and exposes a lightweight HTTP API for client applications, wallets, and community explorers. Read endpoints are public by default; authenticated app review and webhook subscription management are write operations.
 
 ---
 
@@ -12,6 +12,7 @@ The indexer continuously polls Soroban contract events emitted by `ProofRegistry
 - **Pluggable Database Storage**: Supports SQLite (for local development and single-instance deployments) and PostgreSQL (for production multi-instance deployments).
 - **CORS Policy**: Configurable origin allowlisting (`CORS_ORIGIN` / `CORS_ALLOWED_ORIGINS`) with secure default-deny in production.
 - **Per-IP Rate Limiting**: Built-in fixed-window rate limiting responding with HTTP `429 Too Many Requests` and `Retry-After` headers.
+- **Claim Lifecycle Webhooks**: Authenticated wallet/claim-type subscriptions receive signed revocation and expiry notifications with durable retry state.
 - **Zero Identity Exposure**: Ingests and stores only public on-chain commitments and verification metadata. No user identity fields are stored or processed.
 
 ---
@@ -47,7 +48,8 @@ To prevent scraping and denial-of-service, all HTTP endpoints are protected by p
 
 ## HTTP API Endpoints
 
-All responses are JSON. Only `GET` and `OPTIONS` methods are supported (no write endpoints).
+Responses are JSON unless noted otherwise. Read endpoints are public by default;
+administrative writes and webhook subscription management require `API_KEY`.
 
 ### 1. `GET /health`
 Returns the operational health of the indexer and the last processed ledger sequence.
@@ -130,6 +132,8 @@ the first page; a `null` `nextCursor` means there are no more claims. `limit`
 | `RATE_LIMIT_WINDOW_SECONDS` | Rate limit window duration | `60` |
 | `RATE_LIMIT_MAX` | Max requests per IP per window | `120` |
 | `RATE_LIMIT_ENABLED` | Enable or disable rate limiting (`true`/`false`) | `true` |
+| `WEBHOOK_SIGNING_SECRET` | HMAC-SHA256 secret for lifecycle webhook delivery (minimum 32 characters) | — |
+| `API_KEY` | Required to manage webhook subscriptions; also gates protected read endpoints | — |
 
 ---
 
@@ -193,6 +197,85 @@ Because the two engines use different SQL dialects (`INSERT OR IGNORE` vs
 `ON CONFLICT`, `INTEGER` vs `BIGINT`), the matrix is exactly where silent
 cross-backend divergences surface (e.g. Postgres returning `BIGINT` columns as
 strings) — running it on both is how we keep either backend from rotting.
+
+---
+
+## Protocol claim lifecycle webhooks
+
+Protocols with ongoing access should **gate each request using the live
+`hasClaim`/on-chain check, then reconcile their existing access state when a
+revocation or expiry notification arrives**. Neither is sufficient alone:
+request-time checks prevent stale grants at the next request, while webhook
+notifications let a protocol proactively close sessions, positions, or
+subscriptions that are already active.
+
+The indexer queues notifications for one exact `(wallet, claimType)` pair.
+Issuer revocations are detected from indexed ProofRegistry events; expiry is
+detected by the regular indexer poll once `expiry <= now`. Delivery is
+asynchronous and eventual, with a delay bounded by the configured polling
+interval, finality lag, and delivery retries. The upgraded ProofRegistry also
+emits an event for holder self-revocation; deployments on older contract
+versions must upgrade before those revocations can generate notifications.
+The normal request-time on-chain check remains necessary.
+
+Set both `API_KEY` and a random `WEBHOOK_SIGNING_SECRET` of at least 32
+characters before registering subscriptions. The API key protects subscription
+management. The webhook secret signs deliveries and is never returned by the
+API; configure the same secret in the receiver's secret manager and never
+expose it in a browser/client. Subscription URLs must use HTTPS and resolve
+only to public IP addresses.
+
+### Manage subscriptions
+
+All routes below require `Authorization: Bearer <API_KEY>` or `X-API-Key`.
+Subscriptions are specific to one wallet and claim type; create one per pair
+the protocol relies on.
+
+```http
+POST /webhooks/subscriptions
+Content-Type: application/json
+
+{
+  "url": "https://protocol.example/stellarcred/events",
+  "wallet": "G...",
+  "claimType": "kyc"
+}
+```
+
+The response is `{ "id": 12, "wallet": "G...", "claimType": "kyc" }`.
+Repeated registration of the same URL/wallet/type is idempotent. List with
+`GET /webhooks/subscriptions?wallet=G...`, inspect recent attempts with
+`GET /webhooks/subscriptions/:id/deliveries`, and remove a subscription with
+`DELETE /webhooks/subscriptions/:id`. Removing a subscription does not cancel
+deliveries already queued for it.
+
+### Event payload and signature
+
+The indexer sends `claim.revoked` or `claim.expired` JSON payloads:
+
+```json
+{
+  "eventId": "revoked:...",
+  "type": "claim.revoked",
+  "wallet": "G...",
+  "claimType": "kyc",
+  "expiry": 1755000000,
+  "ledgerSequence": 1234560,
+  "occurredAt": 1724000000,
+  "reasonCode": "issuer_revoked"
+}
+```
+
+For expiry, `type` is `claim.expired`, `occurredAt` is the credential expiry,
+and `reasonCode` is `credential_expired`. Delivery includes
+`X-StellarCred-Timestamp` (Unix seconds) and
+`X-StellarCred-Signature: sha256=<hex>`. Verify it as HMAC-SHA256 over
+`<timestamp>.<raw request body>` with `WEBHOOK_SIGNING_SECRET`, compare
+signatures in constant time, and reject stale timestamps. Use `eventId` for
+idempotency: successful delivery is at-least-once, not exactly-once.
+Unsuccessful attempts retry with exponential backoff (5 seconds, doubling up
+to one hour) for at most eight attempts. Inspect delivery history and reconcile
+from the chain if retries are exhausted.
 
 ---
 

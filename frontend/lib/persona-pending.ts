@@ -8,28 +8,14 @@
 // values (DOB, country, names, ID numbers) are re-derived server-side from
 // Persona on resume (app/api/issue/route.ts), never carried through here.
 
-export const PERSONA_PENDING_KEY = "sc_persona_pending";
+import { PII_KEYS, stripPiiKeys as stripPii } from "./pii";
 
-/**
- * Keys that must never appear anywhere inside the serialized blob — neither
- * top-level nor nested. `attributes` is banned wholesale: every value it can
- * carry (date_of_birth, income, net_worth, country_code, seniority,
- * balance) is an identity attribute.
- */
-export const PII_KEYS = [
-  "attributes",
-  "attribute",
-  "first_name",
-  "last_name",
-  "id_number",
-  "date_of_birth",
-  "birthdate",
-  "country_code",
-  "income",
-  "net_worth",
-  "seniority",
-  "balance",
-] as const;
+// Re-exported so existing importers of the browser-side module keep working;
+// the list itself now lives in lib/pii.ts so the server-side pending-inquiry
+// context (lib/persona-webhook.ts) enforces exactly the same denylist.
+export { PII_KEYS };
+
+export const PERSONA_PENDING_KEY = "sc_persona_pending";
 
 /** Exactly what resuming issuance needs — and nothing more. */
 export interface PersonaPendingPayload {
@@ -40,23 +26,6 @@ export interface PersonaPendingPayload {
   expiry?: string;
   /** Thresholds/modes from protocol query params. Non-PII by construction. */
   claimParams?: Record<string, unknown>;
-}
-
-/**
- * Recursively remove any banned key from an arbitrary value. Protocol
- * claimParams arrive from URL query strings, so they can carry unexpected
- * keys — anything matching a banned key is dropped rather than persisted.
- */
-function stripPii(value: unknown): unknown {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-  const out: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value)) {
-    if ((PII_KEYS as readonly string[]).includes(key)) continue;
-    out[key] = stripPii(child);
-  }
-  return out;
 }
 
 /**

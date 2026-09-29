@@ -202,29 +202,27 @@ async function isIssuerTrusted(
 }
 ```
 
-### Pattern 4: Monitor for Revocations
+### Pattern 4: Gate at request time and reconcile on lifecycle webhooks
 
-Check if previously verified credentials are still valid:
+For ongoing access, do both:
 
-```typescript
-async function monitorCredentialStatus(holder: string, credentialType: string) {
-  const registry = new ProofRegistry(registryId, rpc);
+1. Check `hasClaim`/`check_claim` against the current chain state when a
+   protected request is made. Webhooks are asynchronous and can be delayed.
+2. Subscribe the exact wallet and claim type to the indexer's lifecycle webhook
+   endpoint. On `claim.revoked` or `claim.expired`, reconcile existing sessions,
+   memberships, or positions. This closes access that would otherwise remain
+   open without another user request.
 
-  // Poll every 10 seconds for 1 minute
-  for (let i = 0; i < 6; i++) {
-    const verified = await registry.check_claim(holder, credentialType);
+Neither check alone is sufficient: request-time gating does not notify a
+protocol about already granted access, while notification-only enforcement
+can miss requests during delivery delays or outages.
 
-    if (!verified) {
-      console.warn(`Credential revoked: ${credentialType}`);
-      return { revoked: true, checksAt: new Date() };
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
-  }
-
-  return { revoked: false, checksAt: new Date() };
-}
-```
+See the indexer's [protocol lifecycle webhook guide](../../../services/indexer/README.md#protocol-claim-lifecycle-webhooks)
+for authenticated subscription management, payloads, signature verification,
+expiry semantics, retry behavior, and limitations. Holder self-revocation
+notifications require a ProofRegistry deployment with the new lifecycle event;
+request-time checks are still required to cover notification delays and older
+deployments.
 
 ---
 
@@ -556,14 +554,57 @@ class CredentialVerifier {
   // Get latest VK version for credential type
   get_latest_version(credential_type: Symbol): Promise<u32>
 
-  // Get contract version (SDK 0.2.0+)
+// Get contract version (SDK 0.2.0+)
   version(): Promise<u32>
 }
 ```
 
 ---
 
+## Server-Side Verification & Spoofing Prevention (`verifyWalletClaim`)
+
+### ⚠️ Security Warning: Wallet Address Spoofing
+
+When building a backend service or API gateway, **never** rely solely on an untrusted wallet address provided in client requests (e.g. headers or request body) even if you call `hasClaim(address)`. On-chain proofs and addresses are publicly visible, meaning an unauthenticated attacker could simply supply another person's verified wallet address to gain unauthorized access.
+
+### Recommended Secure Pattern
+
+Use `createWalletChallenge` on your server to produce a short-lived, replay-protected challenge, have the user sign it with their Stellar wallet, and then call `verifyWalletClaim`.
+
+```typescript
+import { createWalletChallenge, verifyWalletClaim } from "@stellarcred/sdk";
+
+// 1. In your challenge generation endpoint (e.g. GET /api/challenge):
+const challenge = createWalletChallenge({
+  domain: "myprotocol.org",
+  statement: "Authenticate to access trading dashboard",
+  ttlMs: 5 * 60 * 1000,
+});
+
+// 2. In your verification endpoint (e.g. POST /api/login):
+const result = await verifyWalletClaim({
+  wallet: req.body.wallet,
+  challenge: req.body.challenge,
+  signature: req.body.signature,
+  claim: "kyc",
+});
+
+if (!result.ok) {
+  // result.error explains why (invalid signature, challenge expired/replayed, or no on-chain claim)
+  return res.status(403).json({ error: result.error });
+}
+
+// Access granted: caller proved wallet control AND satisfies credential requirements
+```
+
+### Canonical Integration Example
+
+A runnable reference application implementing this entire pattern from start to finish is located in the repository at [`examples/canonical-integration`](../../examples/canonical-integration). It provides a working backend with challenge replay protection, session token management, route gating, and failure-state evaluation against Soroban testnet.
+
+---
+
 ## Support
+
 
 For issues or questions:
 
@@ -593,4 +634,3 @@ For issues or questions:
 - Support EventContractUpgraded
 - Migration endpoints
 - Event subscriptions
-

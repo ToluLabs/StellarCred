@@ -4,6 +4,9 @@
 
 This document defines compatibility between StellarCred components across versions. Use this matrix when upgrading to ensure all components work together correctly.
 
+For support windows, deprecation timelines, and the VK pruning rule, see
+[SUPPORT_POLICY.md](SUPPORT_POLICY.md).
+
 **Key Principles:**
 - MAJOR version changes indicate breaking ABI changes
 - MINOR version changes are backward compatible (new features)
@@ -173,24 +176,33 @@ npm install @stellarcred/sdk@0.2.0
 
 ## Component Maturity & Support
 
+For the authoritative support windows for each component, see
+[SUPPORT_POLICY.md](SUPPORT_POLICY.md). The table below reflects the current
+stability status of each component.
+
 | Component | Stability | Update Frequency | Support Window |
 |-----------|-----------|------------------|---|
-| credential_verifier | Production | Ad-hoc (when circuits change) | 12 months |
-| proof_registry | Production | Ad-hoc (when schema changes) | 12 months |
-| issuer_registry | Production | Ad-hoc (issuer management) | 12 months |
+| credential_verifier | Production | Ad-hoc (when circuits change) | See SUPPORT_POLICY.md |
+| proof_registry | Production | Ad-hoc (when schema changes) | See SUPPORT_POLICY.md |
+| issuer_registry | Production | Ad-hoc (issuer management) | See SUPPORT_POLICY.md |
 | gated_pool | Demo | Actively developed | N/A |
-| App (StellarCred) | Beta | Monthly releases | 6 months |
-| SDK | Beta | Quarterly releases | 6 months |
+| App (StellarCred) | Beta | Monthly releases | See SUPPORT_POLICY.md |
+| SDK | Beta | Quarterly releases | See SUPPORT_POLICY.md |
 
 ---
 
 ## Deprecation Policy
 
+The full deprecation procedure — including support windows, the VK pruning
+rule, and per-artifact timelines — is documented in
+[SUPPORT_POLICY.md](SUPPORT_POLICY.md). The summary below covers the typical
+three-phase lifecycle; refer to that document for binding timelines.
+
 ### Gradual Deprecation (Recommended)
 
-1. **Announce** (1 month): Deprecation notice in release notes
-2. **Deprecate** (1 month): Issue warnings but still function
-3. **Remove** (1 month): Remove functionality entirely
+1. **Announce** (before any code change): Deprecation notice in release notes and on-chain event
+2. **Deprecated** (old version still works): Warnings issued; support window begins
+3. **Removed** (after support window expires): Functionality removed
 
 Example: Deprecating old VK versions
 

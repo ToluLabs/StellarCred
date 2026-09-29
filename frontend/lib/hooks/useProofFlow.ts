@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 
-import { proveOffMainThread } from "../proof-client";
+import { proveOffMainThread, type ProofStageProgress } from "../proof-client";
 import { withTimeout, ProofTimeoutError, DEFAULT_PROOF_TIMEOUT_MS } from "../proof-timeout";
 import {
   submitProof as defaultSubmitProof,
@@ -28,10 +28,15 @@ import {
 } from "../contracts";
 import { credTtlSecs } from "../proof-helpers";
 import { useProofTimeline } from "../useProofTimeline";
+import { probeRpcHealth, type RpcIssue } from "../rpc-health";
 import { useToast } from "@/components/Toast";
 
 export type Stage =
   | "idle"
+  /** Reachability check before the expensive proving step (Issue #634). */
+  | "networkCheck"
+  /** Degraded mode: the RPC is unreachable, so proving is deferred. */
+  | "blocked"
   | "witness"
   | "circuit"
   | "proof"
@@ -42,7 +47,9 @@ export type Stage =
   | "confirmed"
   | "error";
 
-export type ErrorPhase = "proving" | "preflight" | "submitting" | "timeout" | null;
+export type ErrorPhase = "proving" | "preflight" | "submitting" | "timeout" | "network" | null;
+
+export { type ProofStageProgress };
 
 /** Custom submission function signature — injected by the page for sponsored mode. */
 export type SubmitFn = (params: {
@@ -67,9 +74,13 @@ export function useProofFlow(
   /** Estimated on-chain fee reported by the preflight simulation. */
   const [fee, setFee] = useState<FeeEstimate | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  /** Why proving was deferred, when the RPC endpoint is unreachable. */
+  const [rpcIssue, setRpcIssue] = useState<RpcIssue | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** The in-flight job's controller — aborting it cancels the work in the worker. */
   const abortRef = useRef<AbortController | null>(null);
+  /** Current stage progress with detailed timing information. */
+  const [stageProgress, setStageProgress] = useState<ProofStageProgress | null>(null);
   const toast = useToast();
   const { addEvent } = useProofTimeline(cred);
 
@@ -105,10 +116,101 @@ export function useProofFlow(
   }, []);
 
   // ── Proof generation ───────────────────────────────────────────────────────
-  // Fires automatically when `cred` changes (single dependency). Witness
-  // generation and UltraHonk proving both run in the dedicated prover worker;
-  // only progress messages come back, so the UI thread stays free to repaint
-  // the progress bar and accept a cancel click.
+  // Witness generation and UltraHonk proving both run in the dedicated prover
+  // worker; only progress messages come back, so the UI thread stays free to
+  // repaint the progress bar and accept a cancel click.
+  //
+  // Degraded mode (Issue #634): proving is the expensive step, so it does not
+  // start while the RPC endpoint is unreachable — a proof produced now would
+  // only fail at preflight. The flow parks in `blocked`, tells the holder the
+  // network (not their credential) is the problem, and offers an explicit
+  // override in case they know the node came back.
+  const runProving = useCallback(
+    (controller: AbortController) => {
+      const { signal } = controller;
+      if (!cred) return;
+
+      setRpcIssue(null);
+      // The worker's first non-witness progress message also restarts the
+      // elapsed clock, matching the previous flow's per-stage timing.
+      let provingStarted = false;
+
+      toast.info(`Generating proof for ${cred.title}…`);
+
+      (async () => {
+        try {
+          setStage("witness");
+          startElapsedTimer(Date.now());
+
+          // withTimeout keeps the deadline on this side of the boundary: when it
+          // fires it aborts the signal, which cancels the worker's job, and the
+          // rejection is surfaced as ProofTimeoutError.
+          const result = await withTimeout(
+            (sig) =>
+              proveOffMainThread(
+                {
+                  credentialType: cred.type,
+                  credential: cred as unknown as Record<string, unknown>,
+                },
+                {
+                  signal: sig,
+                  onProgress: (workerStage) => {
+                    if (sig.aborted) return;
+                    if (workerStage !== "witness" && !provingStarted) {
+                      provingStarted = true;
+                      startElapsedTimer(Date.now());
+                    }
+                    setStage(workerStage);
+                  },
+                  onStageProgress: (progress) => {
+                    if (sig.aborted) return;
+                    setStageProgress(progress);
+                  },
+                },
+              ),
+            { signal, timeoutMs: DEFAULT_PROOF_TIMEOUT_MS },
+          );
+          if (signal.aborted) return;
+
+          setProof(result);
+          setStage("generated");
+          setStageProgress(null);
+          addEvent("generated");
+          toast.success(`Proof generated for ${cred.title}`);
+        } catch (e) {
+          if (signal.aborted) return;
+          // ProofTimeoutError gets a distinct user-visible message — half the
+          // point is that stalled provers fail visibly, not as a generic error.
+          if (e instanceof ProofTimeoutError) {
+            setError({
+              code: null,
+              friendly:
+                "Proof generation timed out. The prover took too long — this can happen on slow devices or with large circuits. Please try again.",
+              raw: e.message,
+            });
+            setErrorPhase("timeout");
+            setStage("error");
+            setStageProgress(null);
+            toast.error("Proof timed out — please try again.");
+            return;
+          }
+          const parsed = parseContractError((e as Error).message);
+          setError(parsed);
+          setErrorPhase("proving");
+          setStage("error");
+          setStageProgress(null);
+          toast.error(`Proof generation failed: ${parsed.friendly}`);
+        } finally {
+          // Always clean up: the timer. The abort controller stays referenced by
+          // cancel() until the next run replaces it.
+          stopElapsedTimer();
+        }
+      })();
+    },
+    [cred, addEvent, toast, startElapsedTimer, stopElapsedTimer],
+  );
+
+  // Fires when `cred` changes: reset, confirm the network, then prove.
   useEffect(() => {
     if (!cred) return;
 
@@ -116,80 +218,30 @@ export function useProofFlow(
     abortRef.current = controller;
     const { signal } = controller;
 
-    setStage("witness");
+    setStage("networkCheck");
     setProof(null);
     setTxHash("");
     setError(null);
     setErrorPhase(null);
     setFee(null);
+    setRpcIssue(null);
+    setStageProgress(null);
 
-    // The worker's first non-witness progress message also restarts the
-    // elapsed clock, matching the previous flow's per-stage timing.
-    let provingStarted = false;
-
-    toast.info(`Generating proof for ${cred.title}…`);
-
-    (async () => {
-      try {
-        setStage("witness");
-        startElapsedTimer(Date.now());
-
-        // withTimeout keeps the deadline on this side of the boundary: when it
-        // fires it aborts the signal, which cancels the worker's job, and the
-        // rejection is surfaced as ProofTimeoutError.
-        const result = await withTimeout(
-          (sig) =>
-            proveOffMainThread(
-              {
-                credentialType: cred.type,
-                credential: cred as unknown as Record<string, unknown>,
-              },
-              {
-                signal: sig,
-                onProgress: (workerStage) => {
-                  if (sig.aborted) return;
-                  if (workerStage !== "witness" && !provingStarted) {
-                    provingStarted = true;
-                    startElapsedTimer(Date.now());
-                  }
-                  setStage(workerStage);
-                },
-              },
-            ),
-          { signal, timeoutMs: DEFAULT_PROOF_TIMEOUT_MS },
-        );
-        if (signal.aborted) return;
-
-        setProof(result);
-        setStage("generated");
-        addEvent("generated");
-        toast.success(`Proof generated for ${cred.title}`);
-      } catch (e) {
-        if (signal.aborted) return;
-        // ProofTimeoutError gets a distinct user-visible message — half the
-        // point is that stalled provers fail visibly, not as a generic error.
-        if (e instanceof ProofTimeoutError) {
-          setError({
-            code: null,
-            friendly:
-              "Proof generation timed out. The prover took too long — this can happen on slow devices or with large circuits. Please try again.",
-            raw: e.message,
-          });
-          setErrorPhase("timeout");
-          setStage("error");
-          toast.error("Proof timed out — please try again.");
-          return;
-        }
-        const parsed = parseContractError((e as Error).message);
-        setError(parsed);
-        setErrorPhase("proving");
-        setStage("error");
-        toast.error(`Proof generation failed: ${parsed.friendly}`);
-      } finally {
-        // Always clean up: the timer. The abort controller stays referenced by
-        // cancel() until the next run replaces it.
-        stopElapsedTimer();
+    void (async () => {
+      const issue = await probeRpcHealth();
+      if (signal.aborted) return;
+      if (issue) {
+        setRpcIssue(issue);
+        setError({
+          code: null,
+          friendly: `${issue.message} Proof generation was deferred: the proof would cost you the proving step and then fail at submission.`,
+          raw: issue.message,
+        });
+        setErrorPhase("network");
+        setStage("blocked");
+        return;
       }
+      runProving(controller);
     })();
 
     return () => {
@@ -198,8 +250,26 @@ export function useProofFlow(
       controller.abort();
       abortRef.current = null;
       stopElapsedTimer();
+      setStageProgress(null);
     };
-  }, [cred]); // eslint-disable-line react-hooks/exhaustive-deps -- cred is the sole trigger; addEvent/toast are stable refs
+  }, [cred, runProving, stopElapsedTimer]);
+
+  /** Prove anyway, without re-checking the network. */
+  const proceedAnyway = useCallback(() => {
+    const controller = abortRef.current ?? new AbortController();
+    abortRef.current = controller;
+    runProving(controller);
+  }, [runProving]);
+
+  /** Re-check the network from the blocked stage and prove if it recovered. */
+  const retryNetworkCheck = useCallback(async () => {
+    const issue = await probeRpcHealth();
+    if (issue) {
+      setRpcIssue(issue);
+      return;
+    }
+    proceedAnyway();
+  }, [proceedAnyway]);
 
   // ── Preflight simulation ─────────────────────────────────────────────────
   // Runs a Soroban preflight so a doomed submission is caught before the
@@ -311,6 +381,7 @@ export function useProofFlow(
     setErrorPhase(null);
     setFee(null);
     setElapsed(0);
+    setRpcIssue(null);
   }, []);
 
   return {
@@ -321,6 +392,13 @@ export function useProofFlow(
     errorPhase,
     fee,
     elapsed,
+    stageProgress,
+    /** Set while the network is unreachable and proving is deferred. */
+    rpcIssue,
+    /** True while the pre-proving reachability check is in flight. */
+    checkingNetwork: stage === "networkCheck",
+    proceedAnyway,
+    retryNetworkCheck,
     onSubmit,
     onPreflight,
     doSignAndSubmit,

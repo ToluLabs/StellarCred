@@ -17,7 +17,7 @@ const EXCLUDE_DIRS = new Set(["node_modules", ".next", "dist", "build", "coverag
 const EXCLUDE_FILE_PATTERNS = [/\.test\.(ts|tsx|js|mjs|jsx)$/, /\.spec\.(ts|tsx|js|mjs|jsx)$/];
 
 function stripComments(line) {
-  return line.replace(/(^|[^:])\/\/.*$/g, '$1');
+  return line.replace(/\r?$/, "").replace(/(^|[^:])\/\/.*$/g, '$1');
 }
 
 function collectFiles(dir, extensions = new Set([".ts", ".tsx", ".js", ".mjs", ".jsx"])) {

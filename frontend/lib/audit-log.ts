@@ -6,27 +6,6 @@
  * timestamp, and the request id. Each entry's hash covers the previous entry's
  * hash, so the chain is tamper-evident: altering any historical entry — or its
  * position — breaks every subsequent hash, which a verifier can detect.
- *
- * PII policy — entries intentionally contain ONLY:
- *   - commitment  (hash of [value, salt]; reveals nothing about the holder)
- *   - issuer      (the issuer's registered id / address)
- *   - timestamp   (unix seconds)
- *   - requestId   (opaque correlation id)
- *
- * first_name / last_name / id_number / wallet address / attribute values are
- * never written. The line parser additionally rejects any unknown key, so a
- * tampered file that tries to smuggle identity fields in is refused by the
- * verifier instead of silently accepted.
- *
- * ## Persistence
- *
- * The in-memory store follows the same in-process pattern as lib/rate-limit.ts
- * and lib/idempotency.ts. `auditLogBootstrap()` loads an existing log file on
- * startup (so the chain continues across restarts instead of restarting at
- * index 0), and `auditLogPersist()` rewrites the whole file after each append.
- * A multi-replica deployment would need the chain stored in shared storage —
- * see the note in lib/idempotency.ts; this module is correct for a single
- * long-lived instance.
  */
 
 import { createHash } from "crypto";
@@ -39,45 +18,23 @@ export const HASH_BYTES = 32;
 export const HASH_HEX_LENGTH = HASH_BYTES * 2;
 
 /**
- * `prevHash` of the first (genesis) entry — 64 zero hex characters. There is
- * no previous entry to point at, so the chain roots itself in this constant.
+ * `prevHash` of the first (genesis) entry — 64 zero hex characters.
  */
 export const GENESIS_PREV_HASH = "0".repeat(HASH_HEX_LENGTH);
 
-/**
- * The non-identity fields an issuance contributes to the audit log. Only these
- * keys are ever serialized; the type intentionally has no holder / attribute /
- * name fields, so identity data cannot be appended by construction.
- */
 export interface AuditLogFields {
-  /** Unix seconds at which the commitment was signed. */
   timestamp: number;
-  /** Opaque request correlation id (see lib/logger.ts resolveRequestId). */
   requestId: string;
-  /** The issuer's registered id / address. */
   issuer: string;
-  /** The signed Poseidon2 commitment (hex). */
   commitment: string;
 }
 
-/**
- * One fully-formed audit log entry: the PII-free fields plus the chaining
- * metadata (`index`, `prevHash`) and this entry's own digest (`hash`).
- */
 export interface AuditLogEntry extends AuditLogFields {
-  /** Position in the chain, starting at 0 for the genesis entry. */
   index: number;
-  /** Hash of the previous entry in the chain (GENESIS_PREV_HASH for entry 0). */
   prevHash: string;
-  /** SHA-256 over this entry's fields plus prevHash. */
   hash: string;
 }
 
-/**
- * Canonically serialize the fields that make up an entry's digest.
- * JSON.stringify of a fixed-order array is unambiguous (no separator
- * collision) and deterministic across platforms.
- */
 export function canonicalEntryFields(
   fields: AuditLogFields,
   prevHash: string,
@@ -91,12 +48,6 @@ export function canonicalEntryFields(
   ]);
 }
 
-/**
- * Compute the SHA-256 digest for an entry given its PII-free fields and the
- * hash it chains from. `index` is intentionally NOT part of the digest — it is
- * derived from position, so the verifier treats a re-ordered entry as broken
- * chaining rather than trusting a stored index.
- */
 export function hashAuditEntry(
   fields: AuditLogFields,
   prevHash: string,
@@ -106,16 +57,10 @@ export function hashAuditEntry(
     .digest("hex");
 }
 
-/** Expected `prevHash` for the next entry given the current head of `chain`. */
 export function expectedPrevHash(chain: AuditLogEntry[]): string {
   return chain.length === 0 ? GENESIS_PREV_HASH : chain[chain.length - 1].hash;
 }
 
-/**
- * Append a PII-free issuance event to `chain`, deriving index, prevHash, and
- * hash. The caller-supplied chain is mutated and the new entry returned so
- * pure use is possible (e.g. the verify CLI over file-loaded entries).
- */
 export function appendAuditEntry(
   chain: AuditLogEntry[],
   fields: AuditLogFields,
@@ -133,20 +78,9 @@ export function appendAuditEntry(
 
 export interface AuditVerifyResult {
   valid: boolean;
-  /** Human-readable problems, in chain order. Empty when `valid` is true. */
   errors: string[];
 }
 
-/**
- * Verify the integrity of a hash-chained log.
- *
- * Detects:
- *   - a corrupted entry hash (its recomputed digest differs),
- *   - a broken link (an entry whose prevHash does not match the previous
- *     entry's hash),
- *   - a wrong index (an entry inserted, deleted, or re-ordered),
- *   - a chain that does not root at the genesis prev-hash.
- */
 export function verifyAuditChain(chain: AuditLogEntry[]): AuditVerifyResult {
   const errors: string[] = [];
   let prevHash = GENESIS_PREV_HASH;
@@ -182,8 +116,58 @@ export function verifyAuditChain(chain: AuditLogEntry[]): AuditVerifyResult {
 }
 
 // ---------------------------------------------------------------------------
-// In-memory store (single-instance pattern — see module docs)
+// Pluggable Audit Sink Architecture (Issue #549)
 // ---------------------------------------------------------------------------
+
+export interface AuditSink {
+  read(): Promise<AuditLogEntry[]>;
+  write(entries: AuditLogEntry[]): Promise<void>;
+  validateStartup(): Promise<void>;
+}
+
+export class FileAuditSink implements AuditSink {
+  private filePath: string;
+
+  constructor(filePath?: string) {
+    this.filePath =
+      filePath ??
+      process.env.AUDIT_LOG_PATH ??
+      path.join(process.cwd(), ".data", "audit-log.jsonl");
+  }
+
+  async read(): Promise<AuditLogEntry[]> {
+    try {
+      const text = await fs.readFile(this.filePath, "utf8");
+      return parseAuditLogLines(text);
+    } catch {
+      return [];
+    }
+  }
+
+  async write(entries: AuditLogEntry[]): Promise<void> {
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    await fs.writeFile(this.filePath, auditLogToJSONLines(entries), "utf8");
+  }
+
+  async validateStartup(): Promise<void> {
+    try {
+      const dir = path.dirname(this.filePath);
+      await fs.mkdir(dir, { recursive: true });
+      const testFile = path.join(dir, `.probe-${Date.now()}`);
+      await fs.writeFile(testFile, "", "utf8");
+      await fs.unlink(testFile);
+    } catch (err) {
+      throw new Error(
+        `Audit sink misconfigured or read-only: failed to write to audit log path "${this.filePath}". ` +
+          `Serverless environments require a persistent, writable audit sink or mounted volume. Root cause: ${err}`,
+      );
+    }
+  }
+}
+
+function getActiveSink(): AuditSink {
+  return new FileAuditSink();
+}
 
 const ALLOWED_ENTRY_KEYS = [
   "index",
@@ -195,11 +179,6 @@ const ALLOWED_ENTRY_KEYS = [
   "hash",
 ];
 
-/**
- * Reject any serialized entry carrying a key outside the PII-free allowlist
- * (e.g. a tampered `first_name` / `last_name` / `id_number` field smuggled
- * into the file). Throws on the first disallowed key.
- */
 export function assertPiiFreeEntry(entry: Record<string, unknown>): void {
   for (const key of Object.keys(entry)) {
     if (!ALLOWED_ENTRY_KEYS.includes(key)) {
@@ -212,12 +191,8 @@ export function assertPiiFreeEntry(entry: Record<string, unknown>): void {
 
 let chain: AuditLogEntry[] = [];
 let bootstrapPromise: Promise<void> | null = null;
+let activeSink: AuditSink = getActiveSink();
 
-/**
- * Default audit log file location. `AUDIT_LOG_PATH` overrides it; otherwise
- * `.data/audit-log.jsonl` under the process working directory (the frontend
- * dir when run via `pnpm dev` / `next build`).
- */
 export function auditLogFilePath(): string {
   return (
     process.env.AUDIT_LOG_PATH ??
@@ -225,75 +200,52 @@ export function auditLogFilePath(): string {
   );
 }
 
-/**
- * Load an existing log file into the in-memory store so the chain continues
- * across restarts instead of restarting at index 0. Runs once per process;
- * a missing/unreadable file is treated as an empty chain.
- */
 export async function auditLogBootstrap(filePath?: string): Promise<void> {
+  if (filePath) {
+    activeSink = new FileAuditSink(filePath);
+  }
   if (bootstrapPromise) return bootstrapPromise;
+  
   bootstrapPromise = (async () => {
+    await activeSink.validateStartup();
     try {
-      chain = await readAuditLogFile(filePath ?? auditLogFilePath());
+      chain = await activeSink.read();
     } catch {
-      // No file yet (first boot) or unreadable — start a fresh chain.
       chain = [];
     }
   })();
   return bootstrapPromise;
 }
 
-/**
- * Append a PII-free issuance event to the in-memory chain. The chain must be
- * bootstrapped first (the /api/issue route does this before appending).
- */
 export function auditLogAppend(fields: AuditLogFields): AuditLogEntry {
   return appendAuditEntry(chain, fields);
 }
 
-/** Snapshot of the current chain (defensive copy — callers may not mutate it). */
 export function auditLogEntries(): AuditLogEntry[] {
   return chain.slice();
 }
 
-/** Verify the current in-memory chain. */
 export function auditLogVerify(): AuditVerifyResult {
   return verifyAuditChain(chain);
 }
 
-/** Replace the in-memory chain wholesale (used by bootstrap and tests). */
 export function auditLogSeed(entries: AuditLogEntry[]): void {
   chain = entries.slice();
 }
 
-/** Clear the in-memory chain. Only for tests. */
 export function auditLogClear(): void {
   chain = [];
   bootstrapPromise = null;
 }
 
-/** Number of entries currently in the in-memory chain. Only for tests. */
 export function auditLogSize(): number {
   return chain.length;
 }
 
-// ---------------------------------------------------------------------------
-// File persistence (JSON-lines; one entry per line)
-// ---------------------------------------------------------------------------
-
-/**
- * Serialize entries as JSON-lines. Each entry is one line so the file is
- * append-oriented and stays parseable even if a write is interrupted.
- */
 export function auditLogToJSONLines(entries: AuditLogEntry[]): string {
   return entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
 }
 
-/**
- * Parse a JSON-lines log file body back into entries, rejecting any line that
- * (a) is not valid JSON, (b) carries a disallowed identity field, or (c) has
- * a missing/mistyped required field.
- */
 export function parseAuditLogLines(text: string): AuditLogEntry[] {
   const entries: AuditLogEntry[] = [];
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
@@ -334,21 +286,14 @@ export function parseAuditLogLines(text: string): AuditLogEntry[] {
   return entries;
 }
 
-/** Read and parse the log file at `filePath` (default: auditLogFilePath()). */
 export async function readAuditLogFile(
   filePath?: string,
 ): Promise<AuditLogEntry[]> {
-  const target = filePath ?? auditLogFilePath();
-  const text = await fs.readFile(target, "utf8");
-  return parseAuditLogLines(text);
+  const sink = filePath ? new FileAuditSink(filePath) : activeSink;
+  return sink.read();
 }
 
-/**
- * Persist the current in-memory chain to `filePath` (default:
- * auditLogFilePath()) as JSON-lines. Creates the parent directory as needed.
- */
 export async function auditLogPersist(filePath?: string): Promise<void> {
-  const target = filePath ?? auditLogFilePath();
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.writeFile(target, auditLogToJSONLines(chain), "utf8");
+  const sink = filePath ? new FileAuditSink(filePath) : activeSink;
+  await sink.write(chain);
 }

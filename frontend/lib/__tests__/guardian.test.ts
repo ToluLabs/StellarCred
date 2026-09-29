@@ -54,6 +54,8 @@ describe("lib/guardian.ts - Guardian Recovery Setup & Restoration", () => {
     });
 
     expect(setup.shares).toHaveLength(3);
+    expect(setup.backup.version).toBe(2);
+    expect(setup.backup.kdf).toBe("RAW");
     expect(setup.backup.threshold).toBe(2);
     expect(setup.backup.totalShares).toBe(3);
     expect(setup.backup.credentialCount).toBe(2);
@@ -204,6 +206,29 @@ describe("lib/guardian.ts - Guardian Recovery Setup & Restoration", () => {
     await expect(
       recoverCredentialsFromShares(setup.backup, [setup.shares[0], corruptedShare]),
     ).rejects.toThrow(GuardianRecoveryError);
+  });
+
+  it("recovers a pre-#547 version-1 guardian backup (no kdf marker)", async () => {
+    const setup = await createGuardianRecoverySetup(SAMPLE_CREDENTIALS, {
+      totalShares: 3,
+      threshold: 2,
+    });
+
+    // Re-write the current backup in the historical version-1 shape.
+    const legacyBackup = { ...setup.backup, version: 1 } as unknown as
+      typeof setup.backup;
+    delete (legacyBackup as { kdf?: unknown }).kdf;
+
+    const recovered = await recoverCredentialsFromShares(legacyBackup, [
+      setup.shares[0],
+      setup.shares[1],
+    ]);
+    expect(recovered).toEqual(SAMPLE_CREDENTIALS);
+
+    // parseGuardianBackup accepts the legacy version too.
+    const parsed = parseGuardianBackup(JSON.stringify(legacyBackup));
+    expect(parsed.version).toBe(1);
+    expect(parsed.recoveryId).toBe(setup.backup.recoveryId);
   });
 });
 

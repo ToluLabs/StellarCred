@@ -1,15 +1,14 @@
 name: Reproducible Build
 
-# Verifies that the contract WASM artifacts are byte-identical when built
-# independently twice from the same source using the pinned toolchain.
+# Determinism check for the StellarCred contract WASM artifacts.
 #
-# Each run performs a full `cargo build` inside the container — the image
-# supplies only the compiler and pre-fetched dependencies, not pre-compiled
-# WASM. This means a non-reproducible build (timestamp embedding, ASLR in
-# codegen, non-deterministic symbol ordering) will produce different hashes
-# and the job will fail.
+# Two independent builds run inside the pinned reproducible-build container
+# so the canonical build environment is identical for both comparisons.
+# Each build starts from a fresh CARGO_TARGET_DIR (/tmp/target inside the
+# container) so there is no shared incremental state between runs.
 #
-# Artifacts and a SHA-256 manifest are uploaded for independent inspection.
+# A pass demonstrates that independent executions of the canonical build
+# environment produce byte-identical WASM artifacts.
 
 on:
   push:
@@ -31,100 +30,125 @@ on:
       - 'docker/Dockerfile.reproducible'
       - '.github/workflows/reproducible-build.yml'
 
-# ── Security: least-privilege permissions ──────────────────────────────────
-# contents:read – checkout source for Docker build. No secrets are used;
-# this workflow only compiles and compares WASM hashes.
 permissions:
   contents: read
 
 jobs:
   reproducible-build:
-    name: Build twice, compare hashes
+    name: Build twice (container), compare hashes
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v7
 
-      # ── Build the reproducible Docker image ──────────────────────────────
-      # The image installs the compiler and pre-fetches all Cargo deps but
-      # does NOT run cargo build — compilation happens at container run time
-      # so each run is a genuinely independent build.
+      # ── Build the Docker image ────────────────────────────────────────────
+      # --no-cache ensures we always compile from the current commit's source,
+      # not a cached layer that may have baked in older contract source code.
       - name: Build Docker image
         run: |
           docker build \
+            --no-cache \
             -f docker/Dockerfile.reproducible \
             -t stellarcred-build:ci \
             .
 
-      # ── First independent build ───────────────────────────────────────────
-      - name: Build WASM (run 1)
+      # ── Container build 1 ─────────────────────────────────────────────────
+      # Mount the live workspace as /workspace (overrides the baked-in source)
+      # so both runs compile the identical current checkout.
+      # CARGO_TARGET_DIR is set to /tmp/target inside the container so each
+      # run starts from a fully clean build directory with no shared state.
+      - name: Build WASM (container run 1)
         run: |
           mkdir -p build-1
+          cat > /tmp/container-build.sh << 'SCRIPT'
+          set -e
+          export CARGO_TARGET_DIR=/tmp/target
+          rm -rf "$CARGO_TARGET_DIR"
+          cargo build --release --target wasm32v1-none --locked --offline
+          cp "$CARGO_TARGET_DIR/wasm32v1-none/release/credential_verifier.wasm" \
+             "$CARGO_TARGET_DIR/wasm32v1-none/release/issuer_registry.wasm" \
+             "$CARGO_TARGET_DIR/wasm32v1-none/release/proof_registry.wasm" \
+             "$CARGO_TARGET_DIR/wasm32v1-none/release/gated_pool.wasm" \
+             /out/
+          SCRIPT
+          chmod +x /tmp/container-build.sh
           docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
             -v "${{ github.workspace }}/build-1:/out" \
-            --env SOURCE_DATE_EPOCH=0 \
+            -v "/tmp/container-build.sh:/container-build.sh:ro" \
+            -e SOURCE_DATE_EPOCH=0 \
+            -e "RUSTFLAGS=--remap-path-prefix=/workspace=/workspace --remap-path-prefix=/usr/local/cargo=/usr/local/cargo --remap-path-prefix=/usr/local/rustup=/usr/local/rustup" \
             stellarcred-build:ci \
-            sh -c "
-              cargo build \
-                --release \
-                --target wasm32v1-none \
-                --locked \
-                --offline \
-              && cp target/wasm32v1-none/release/credential_verifier.wasm \
-                     target/wasm32v1-none/release/issuer_registry.wasm \
-                     target/wasm32v1-none/release/proof_registry.wasm \
-                     target/wasm32v1-none/release/gated_pool.wasm \
-                  /out/
-            "
+            sh /container-build.sh
 
-      - name: Hash run-1 artifacts
+      - name: Hash container run-1 artifacts
         run: |
-          echo "=== Run 1 SHA-256 hashes ==="
+          echo "=== Container run 1 SHA-256 hashes ==="
           sha256sum build-1/*.wasm | tee build-1/sha256sums.txt
 
-      # ── Second independent build (fresh container, no shared writable state)
-      - name: Build WASM (run 2)
+      # ── Container build 2 ─────────────────────────────────────────────────
+      # Reuses the same bind-mounted build script. CARGO_TARGET_DIR=/tmp/target
+      # is rm -rf'd at the start of the script so this run is fully independent
+      # of run 1 with no shared incremental state.
+      - name: Build WASM (container run 2)
         run: |
           mkdir -p build-2
           docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
             -v "${{ github.workspace }}/build-2:/out" \
-            --env SOURCE_DATE_EPOCH=0 \
+            -v "/tmp/container-build.sh:/container-build.sh:ro" \
+            -e SOURCE_DATE_EPOCH=0 \
+            -e "RUSTFLAGS=--remap-path-prefix=/workspace=/workspace --remap-path-prefix=/usr/local/cargo=/usr/local/cargo --remap-path-prefix=/usr/local/rustup=/usr/local/rustup" \
             stellarcred-build:ci \
-            sh -c "
-              cargo build \
-                --release \
-                --target wasm32v1-none \
-                --locked \
-                --offline \
-              && cp target/wasm32v1-none/release/credential_verifier.wasm \
-                     target/wasm32v1-none/release/issuer_registry.wasm \
-                     target/wasm32v1-none/release/proof_registry.wasm \
-                     target/wasm32v1-none/release/gated_pool.wasm \
-                  /out/
-            "
+            sh /container-build.sh
 
-      - name: Hash run-2 artifacts
+      - name: Hash container run-2 artifacts
         run: |
-          echo "=== Run 2 SHA-256 hashes ==="
+          echo "=== Container run 2 SHA-256 hashes ==="
           sha256sum build-2/*.wasm | tee build-2/sha256sums.txt
 
-      # ── Compare — a real non-reproducible build will fail here ────────────
-      - name: Compare hashes (must be identical)
+      # ── Reproducibility check ─────────────────────────────────────────────
+      - name: Verify reproducible container builds
         run: |
-          echo "Comparing run-1 vs run-2..."
-          if diff <(awk '{print $1}' build-1/sha256sums.txt | sort) \
-                  <(awk '{print $1}' build-2/sha256sums.txt | sort); then
-            echo "✓ All WASM artifacts are byte-identical across two independent builds."
+          echo "=== Reproducibility verification ==="
+
+          echo "--- Container build 1 ---"
+          cat build-1/sha256sums.txt
+
+          echo "--- Container build 2 ---"
+          cat build-2/sha256sums.txt
+
+          if diff \
+               <(awk '{print $1}' build-1/sha256sums.txt | sort) \
+               <(awk '{print $1}' build-2/sha256sums.txt | sort); then
+            echo "✓ Reproducibility check passed."
+            echo "✓ Independent container builds produced identical WASM."
           else
-            echo "✗ Hash mismatch — build is NOT reproducible."
-            echo "--- Run 1 hashes ---"
+            echo "✗ Reproducibility check FAILED."
+            echo ""
+            echo "--- Build 1 ---"
             cat build-1/sha256sums.txt
-            echo "--- Run 2 hashes ---"
+            echo ""
+            echo "--- Build 2 ---"
             cat build-2/sha256sums.txt
             exit 1
           fi
 
-      # ── Upload artifacts for independent inspection ───────────────────────
+      # ── Canonical hash manifest ───────────────────────────────────────────
+      - name: Produce canonical hash manifest
+        run: |
+          {
+            echo "# StellarCred WASM SHA-256 hashes"
+            echo "# Commit:    ${{ github.sha }}"
+            echo "# Ref:       ${{ github.ref }}"
+            echo "# Workflow:  ${{ github.run_id }}"
+            echo "# Toolchain: $(docker run --rm stellarcred-build:ci rustc --version)"
+            echo "# Verified:  2x independent container builds (byte-identical)"
+            echo "#"
+            awk '{print $1, $2}' build-1/sha256sums.txt
+          } > canonical-hashes.txt
+          cat canonical-hashes.txt
+
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -132,9 +156,9 @@ jobs:
           path: build-1/*.wasm
           retention-days: 30
 
-      - name: Upload SHA-256 manifest
+      - name: Upload canonical hash manifest
         uses: actions/upload-artifact@v7
         with:
-          name: wasm-sha256-${{ github.sha }}
-          path: build-1/sha256sums.txt
+          name: wasm-hashes-${{ github.sha }}
+          path: canonical-hashes.txt
           retention-days: 90

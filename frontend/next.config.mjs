@@ -17,6 +17,9 @@ const processPath = require.resolve("process/browser");
 const nextConfig = {
   reactStrictMode: true,
 
+  // Disable Google Fonts optimization to avoid network errors during build
+  optimizeFonts: false,
+
   // The /api/issue route runs Noir server-side to compute the Poseidon
   // commitment. Keep these out of the server bundle so Node require()s them
   // from node_modules and resolves their CJS/"nodejs" entry points, which read

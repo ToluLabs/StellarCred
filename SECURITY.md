@@ -36,6 +36,9 @@ Areas of particular interest:
 - Identity fields from KYC providers are used only to derive credential values and are never stored or logged after the API call completes.
 
 See the full threat model and reviewer checklist in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+For the boundaries of the privacy guarantee — what the system does not hide, recover, or
+guarantee, and what each party observes — see
+[docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
 ## Pre-Mainnet Security Checklist
 

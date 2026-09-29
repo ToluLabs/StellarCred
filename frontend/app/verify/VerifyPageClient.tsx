@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   IconArrowRight,
@@ -8,13 +8,24 @@ import {
   IconCheck,
   IconBuildingBank,
   IconQrcode,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { saveCredential, TYPE_META, type Credential } from "@/lib/credential";
 import type { CredentialType } from "@/lib/stellar";
 import { useToast } from "@/components/Toast";
-import { validateVerifyParams } from "@/lib/verifyParams";
+import { Badge } from "@/components/Badge";
+import { parseTrustedIssuersParam, validateVerifyParams, parseVerifyParams, type VerifyError } from "@/lib/verifyParams";
+import { consumeVerifyNonce, isVerifyNonceConsumed } from "@/lib/verify-nonce";
+import VerifyLinkError from "./VerifyLinkError";
+import {
+  eligibleIssuers,
+  isProtocolAccepted,
+  pickDefaultIssuer,
+} from "@/lib/issuer-choice";
+import type { RegisteredIssuer } from "@/lib/issuer-registry";
+import { truncateAddress } from "@/lib/format";
 import { QrScanner } from "@/components/QrScanner";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { issuanceConfigured } from "@/lib/config";
@@ -42,8 +53,8 @@ const DEMO_ISSUER_ID = process.env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "";
 const VALID_CLAIMS = TYPES.map(([k]) => k);
 
 // One id per verify session, sent as `x-request-id` on every /api/issue and
-// /api/plaid-balance call so server logs for a single issuance — including
-// across the Persona redirect round-trip — can be correlated together.
+// /api/plaid-balance call so server logs for a single issuance â€” including
+// across the Persona redirect round-trip â€” can be correlated together.
 function getOrCreateRequestId(): string {
   if (typeof window === "undefined") return "";
   const KEY = "sc_request_id";
@@ -61,11 +72,51 @@ function VerifyInner() {
   const router = useRouter();
   const { address } = useWallet();
   const searchParams = useSearchParams();
+
+  // Structured parse of every /verify query param — the single source of
+  // truth for whether this link is usable. Expired / malformed / consumed
+  // links are rejected here, before any form is rendered.
+  const parsedLink = useMemo(
+    () =>
+      parseVerifyParams({
+        return_url: searchParams.get("return_url"),
+        claim: searchParams.get("claim"),
+        threshold_years: searchParams.get("threshold_years"),
+        threshold: searchParams.get("threshold"),
+        min_threshold: searchParams.get("min_threshold"),
+        restricted: searchParams.get("restricted"),
+        inquiry_id: searchParams.get("inquiry-id"),
+        exp: searchParams.get("exp"),
+        jti: searchParams.get("jti"),
+      }),
+    [searchParams],
+  );
+
+  const [linkError, setLinkError] = useState<VerifyError | null>(
+    parsedLink.ok ? null : parsedLink.error ?? null,
+  );
+
+  useEffect(() => {
+    if (!parsedLink.ok) {
+      setLinkError(parsedLink.error ?? null);
+      return;
+    }
+    if (parsedLink.jti && isVerifyNonceConsumed(parsedLink.jti)) {
+      setLinkError({
+        code: "consumed_link",
+        title: "This verification link has already been used",
+        detail:
+          "Each single-use verification link can only be opened once. Ask the service that sent you here for a fresh link.",
+      });
+    } else {
+      setLinkError(null);
+    }
+  }, [parsedLink]);
   const toast = useToast();
 
   // When a protocol redirects here it can specify where to send the user back
   // (return_url) and exactly which claim it requires (claim). A required claim
-  // locks the selector — the user can't pick something the protocol didn't ask
+  // locks the selector â€” the user can't pick something the protocol didn't ask
   // for.
   const returnUrl = searchParams.get("return_url");
   const personaInquiryId = searchParams.get("inquiry-id");
@@ -74,6 +125,16 @@ function VerifyInner() {
     claimParam && VALID_CLAIMS.includes(claimParam) ? claimParam : null;
   const locked = !!requiredClaim;
 
+  // A protocol can also restrict *who* is allowed to issue the credential it
+  // asks for (#620). No `trusted_issuers` on the link = its gate accepts any
+  // registered issuer.
+  const trustedIssuersParam = searchParams.get("trusted_issuers");
+  const parsedTrustedIssuers = parseTrustedIssuersParam(trustedIssuersParam);
+  const trustedIssuers = parsedTrustedIssuers.ok
+    ? parsedTrustedIssuers.issuers
+    : [];
+  const trustedIssuerGate = trustedIssuers.length > 0 ? trustedIssuers : undefined;
+
   // Validate all query params up-front; block the flow on any invalid value.
   const paramValidation = validateVerifyParams({
     returnUrl,
@@ -81,6 +142,7 @@ function VerifyInner() {
     thresholdYears: searchParams.get("threshold_years"),
     threshold: searchParams.get("threshold"),
     restricted: searchParams.get("restricted"),
+    trustedIssuers: trustedIssuersParam,
     currentOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
   });
 
@@ -106,6 +168,7 @@ function VerifyInner() {
     requiredClaim ?? TYPES[0]?.[0] ?? null,
   );
   const radioRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const issuerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [attributes, setAttributes] = useState<Record<string, string>>({
     date_of_birth: "1995-06-15",
     income: "250000",
@@ -124,6 +187,7 @@ function VerifyInner() {
     paramValidation.thresholdYearsError,
     paramValidation.thresholdError,
     paramValidation.restrictedError,
+    paramValidation.trustedIssuersError,
   ].filter(Boolean) as string[];
   const [done, setDone] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -133,8 +197,55 @@ function VerifyInner() {
     claimParamsFromUrl.mode ?? "0",
   );
 
+  // #620 â€” several registered issuers can attest the same claim type, so let
+  // the holder pick which one issues to them.
+  const [issuers, setIssuers] = useState<RegisteredIssuer[]>([]);
+  const [selectedIssuerId, setSelectedIssuerId] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/issuers")
+      .then((res) => (res.ok ? res.json() : { issuers: [] }))
+      .then((data: { issuers?: RegisteredIssuer[] }) => {
+        if (!cancelled) setIssuers(data.issuers ?? []);
+      })
+      // Registry unreadable (no IssuerRegistry id, RPC down): keep the old
+      // behaviour and fall back to the demo issuer below.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const issuersForType = useMemo(
+    () => eligibleIssuers(issuers, selected),
+    [issuers, selected],
+  );
+
+  const selectedIssuer = useMemo(
+    () =>
+      issuersForType.find((issuer) => issuer.id === selectedIssuerId) ?? null,
+    [issuersForType, selectedIssuerId],
+  );
+
+  // Default to an issuer the protocol accepts; re-default whenever the
+  // eligible set no longer contains the current pick (claim type switched,
+  // registry loaded late).
+  useEffect(() => {
+    if (issuersForType.some((issuer) => issuer.id === selectedIssuerId)) return;
+    setSelectedIssuerId(pickDefaultIssuer(issuersForType, trustedIssuerGate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issuersForType, trustedIssuerGate]);
+
+  const issuerAccepted = selectedIssuer
+    ? isProtocolAccepted(selectedIssuer.id, trustedIssuerGate)
+    : true;
+  const anyAccepted =
+    trustedIssuerGate === undefined ||
+    issuersForType.some((issuer) => isProtocolAccepted(issuer.id, trustedIssuerGate));
+
   // A protocol can display this scanned code instead of a clickable link
-  // (e.g. on a kiosk or a screen the phone doesn't have a direct link to) —
+  // (e.g. on a kiosk or a screen the phone doesn't have a direct link to) â€”
   // it's the exact same /verify?return_url=...&claim=... URL buildVerifyUrl
   // produces, so scanning it just navigates there like clicking the link would.
   function onScanRequest(text: string) {
@@ -146,7 +257,7 @@ function VerifyInner() {
       toast.error("That QR code isn't a valid StellarCred verify request.");
       return;
     }
-    // A real verify request always has return_url — reject anything else
+    // A real verify request always has return_url â€” reject anything else
     // outright rather than treating an arbitrary scanned URL as trustworthy.
     if (dest.pathname !== "/verify" || !dest.searchParams.has("return_url")) {
       toast.error("That QR code isn't a valid StellarCred verify request.");
@@ -154,7 +265,7 @@ function VerifyInner() {
     }
     if (dest.origin === window.location.origin) {
       // The scanned URL itself is same-origin, but its embedded return_url
-      // is where the wallet address ends up after issuance — a QR can stay
+      // is where the wallet address ends up after issuance â€” a QR can stay
       // on stellarcred.xyz throughout and still smuggle in a cross-origin
       // return_url, so that param needs the same confirmation the top-level
       // origin check gets below.
@@ -181,7 +292,7 @@ function VerifyInner() {
     } else if (dest.protocol === "https:") {
       // Leaving the app entirely on a scanned code's say-so is exactly the
       // shape of an open-redirect/phishing risk (a malicious QR could point
-      // anywhere) — confirm the destination with the user first instead of
+      // anywhere) â€” confirm the destination with the user first instead of
       // silently redirecting.
       if (!window.confirm(`This code will take you to ${dest.hostname} to continue verification there. Continue?`)) {
         return;
@@ -228,6 +339,7 @@ function VerifyInner() {
   const [plaidAccounts, setPlaidAccounts] = useState<
     { name: string; available: number }[]
   >([]);
+  const [plaidSources, setPlaidSources] = useState<number | null>(null);
   const [plaidMock, setPlaidMock] = useState(false);
 
   const fundsSelected = selected === "funds";
@@ -239,6 +351,7 @@ function VerifyInner() {
       .then(
         (d: {
           balance?: number;
+          sources?: number;
           accounts?: { name: string; available: number }[];
           mock?: boolean;
           error?: string;
@@ -246,6 +359,7 @@ function VerifyInner() {
           if (d.balance !== undefined) {
             setPlaidBalance(d.balance);
             setPlaidAccounts(d.accounts ?? []);
+            setPlaidSources(d.sources ?? null);
             setPlaidMock(!!d.mock);
           }
         },
@@ -254,60 +368,129 @@ function VerifyInner() {
   }, [fundsSelected]);
 
   // Guarantee cleanup on abandonment: if the user comes back from Persona
-  // without an inquiry-id (cancelled mid-flow) — or never left — any lingering
+  // without an inquiry-id (cancelled mid-flow) â€” or never left â€” any lingering
   // sc_persona_pending blob is wiped on mount. loadPersonaPending() clears on
   // read for the success/failure paths below.
   useEffect(() => {
     clearStalePersonaPending(Boolean(personaInquiryId));
   }, [personaInquiryId]);
 
-  // When Persona redirects back to /verify?inquiry-id=XXX, resume the pending
-  // issue request that was stored in sessionStorage before the redirect.
+  // When Persona redirects back to /verify?inquiry-id=XXX, poll for async
+  // issuance completion via /api/persona/result, falling back to /api/issue.
   useEffect(() => {
     if (!personaInquiryId || !address) return;
     // Read-and-clear: the blob is removed before the resumed call is made,
     // so it's gone whether the issue succeeds or fails.
     const pending = loadPersonaPending();
-    if (!pending) return;
     setBusy(true);
     setError("");
     const requestId = getOrCreateRequestId();
-    fetch("/api/issue", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-request-id": requestId },
-      body: JSON.stringify({ ...pending, persona_inquiry_id: personaInquiryId }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const d = (await res.json().catch(() => null)) as {
+
+    let cancelled = false;
+    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    const maxPollAttempts = 15; // up to 30 seconds of polling
+
+    const handleSuccess = async (
+      credentials: import("@/lib/credential").Credential[],
+    ) => {
+      await Promise.all(credentials.map((c) => saveCredential(c)));
+      justIssuedClaims.current = credentials
+        .map((c) => c.type)
+        .filter((t) => VALID_CLAIMS.includes(t as CredentialType));
+
+      setDone(true);
+      toast.success(
+        credentials.length > 1
+          ? "Credentials issued successfully"
+          : "Credential issued successfully",
+      );
+      setTimeout(redirectAfterIssue, 1500);
+    };
+
+    const pollResult = async () => {
+      if (cancelled) return;
+      attempts++;
+      try {
+        const res = await fetch(
+          `/api/persona/result?inquiry_id=${encodeURIComponent(personaInquiryId)}`,
+        );
+        if (res.ok) {
+          const data = (await res.json().catch(() => null)) as {
+            ready?: boolean;
+            status?: string;
+            credentials?: import("@/lib/credential").Credential[];
             error?: string;
           } | null;
-          throw new Error(
-            d?.error ?? "Issuing failed after identity verification",
-          );
-        }
-        return res.json() as Promise<{
-          credentials: import("@/lib/credential").Credential[];
-        }>;
-      })
-      .then(async ({ credentials }) => {
-        await Promise.all(credentials.map((c) => saveCredential(c)));
-        justIssuedClaims.current = credentials.map((c) => c.type).filter((t) => VALID_CLAIMS.includes(t as CredentialType));
 
-        setDone(true);
-        toast.success(
-          credentials.length > 1
-            ? "Credentials issued successfully"
-            : "Credential issued successfully",
-        );
-        setTimeout(redirectAfterIssue, 1500);
-      })
-      .catch((e) => {
+          if (
+            data?.ready &&
+            Array.isArray(data.credentials) &&
+            data.credentials.length > 0
+          ) {
+            await handleSuccess(data.credentials);
+            if (!cancelled) setBusy(false);
+            return;
+          }
+          if (data?.status === "failed") {
+            throw new Error(data.error ?? "Identity verification failed");
+          }
+        }
+      } catch (e) {
+        if (cancelled) return;
         const message = (e as Error).message;
         setError(`${message} (ref: ${requestId})`);
         toast.error(`Credential issuance failed: ${message}`);
-      })
-      .finally(() => setBusy(false));
+        setBusy(false);
+        return;
+      }
+
+      // If pending and still within attempts limit, schedule next poll
+      if (attempts < maxPollAttempts) {
+        pollTimeout = setTimeout(pollResult, 2000);
+      } else {
+        // Fallback to synchronous /api/issue if async webhook hasn't fulfilled
+        try {
+          const res = await fetch("/api/issue", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-request-id": requestId,
+            },
+            body: JSON.stringify({
+              ...pending,
+              persona_inquiry_id: personaInquiryId,
+            }),
+          });
+          if (!res.ok) {
+            const d = (await res.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(
+              d?.error ?? "Issuing failed after identity verification",
+            );
+          }
+          const { credentials } = (await res.json()) as {
+            credentials: import("@/lib/credential").Credential[];
+          };
+          await handleSuccess(credentials);
+        } catch (e) {
+          if (cancelled) return;
+          const message = (e as Error).message;
+          setError(`${message} (ref: ${requestId})`);
+          toast.error(`Credential issuance failed: ${message}`);
+        } finally {
+          if (!cancelled) setBusy(false);
+        }
+      }
+    };
+
+    pollResult();
+
+    return () => {
+      cancelled = true;
+      if (pollTimeout) clearTimeout(pollTimeout);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaInquiryId, address]);
 
@@ -317,6 +500,9 @@ function VerifyInner() {
 
   // Where the user is sent after a successful issue.
   function redirectAfterIssue() {
+    if (parsedLink.ok && parsedLink.jti) {
+      consumeVerifyNonce(parsedLink.jti, parsedLink.exp ?? 0);
+    }
     if (returnUrl && !urlError && address) {
       let dest;
       try {
@@ -345,7 +531,7 @@ function VerifyInner() {
         if (dest.origin === window.location.origin) {
           router.push(dest.pathname + dest.search);
         } else {
-          // Never router.push an external URL — do a real browser navigation.
+          // Never router.push an external URL â€” do a real browser navigation.
           window.location.href = dest.toString();
         }
       } catch {
@@ -363,16 +549,20 @@ function VerifyInner() {
     setError("");
     const requestId = getOrCreateRequestId();
     try {
-      if (!DEMO_ISSUER_ID) {
+      // The holder's pick when a registered issuer covers this claim type;
+      // otherwise the demo issuer configured for this deployment.
+      const issuerId = selectedIssuer?.id ?? DEMO_ISSUER_ID;
+      const issuerName = selectedIssuer?.name ?? "StellarCred Authority";
+      if (!issuerId) {
         throw new Error(
-          "NEXT_PUBLIC_ISSUER_ADDRESS is not set — cannot issue credentials",
+          "NEXT_PUBLIC_ISSUER_ADDRESS is not set â€” cannot issue credentials",
         );
       }
       const payload = {
         credential_types: [selected],
         holder: address,
-        issuerId: DEMO_ISSUER_ID,
-        issuerName: "StellarCred Authority",
+        issuerId,
+        issuerName,
         expiry,
         attributes,
         claimParams: {
@@ -388,7 +578,7 @@ function VerifyInner() {
           returnUrl: returnUrl ?? undefined,
         }),
       });
-      // 202 means Persona identity verification is required — redirect user.
+      // 202 means Persona identity verification is required â€” redirect user.
       if (res.status === 202) {
         const { personaUrl } = (await res.json()) as { personaUrl: string };
         // Stash only what resuming issuance needs. savePersonaPending
@@ -404,7 +594,7 @@ function VerifyInner() {
           claimParams: { ...payload.claimParams },
         });
         window.location.href = personaUrl;
-        return; // don't clear busy — page is navigating away
+        return; // don't clear busy â€” page is navigating away
       }
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
@@ -445,10 +635,13 @@ function VerifyInner() {
         <WalletButton />
       </div>
 
-      {/* Same shared check as /api/ready — surfaces misconfiguration before
+      {/* Same shared check as /api/ready â€” surfaces misconfiguration before
           the user fills anything in, instead of failing mid-issue. */}
       <ConfigBanner requireIssuance />
 
+      {linkError ? (
+        <VerifyLinkError error={linkError} onBack={() => router.push("/")} />
+      ) : (
       <div style={{ maxWidth: 520, margin: "0 auto" }}>
         {!locked && (
           <div style={{ textAlign: "right", marginBottom: "0.75rem" }}>
@@ -508,8 +701,8 @@ function VerifyInner() {
                 style={{ fontSize: "0.85rem", marginTop: "0.3rem" }}
               >
                 {requestingDomain && !urlError
-                  ? `Returning to ${requestingDomain}…`
-                  : "Credential saved — redirecting to your wallet…"}
+                  ? `Returning to ${requestingDomain}â€¦`
+                  : "Credential saved â€” redirecting to your walletâ€¦"}
               </div>
             </div>
           ) : (
@@ -658,15 +851,15 @@ function VerifyInner() {
                             ? `balance > $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
                             : key === "age" &&
                                 claimParamsFromUrl.threshold_years
-                              ? `age ≥ ${claimParamsFromUrl.threshold_years}`
+                              ? `age â‰¥ ${claimParamsFromUrl.threshold_years}`
                               : key === "income" && claimParamsFromUrl.threshold
                                 ? `income > $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
                                 : key === "accreditation" &&
                                     claimParamsFromUrl.threshold
-                                  ? `net worth ≥ $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
+                                  ? `net worth â‰¥ $${Number(claimParamsFromUrl.threshold).toLocaleString("en-US")}`
                                   : key === "employment" &&
                                       claimParamsFromUrl.threshold
-                                    ? `seniority ≥ ${claimParamsFromUrl.threshold} yrs`
+                                    ? `seniority â‰¥ ${claimParamsFromUrl.threshold} yrs`
                                     : m.claim}
                         </span>
                       </div>
@@ -744,7 +937,7 @@ function VerifyInner() {
                               }}
                             >
                               <IconLoader2 size={12} className="spin" />
-                              Reading balance from Plaid…
+                              Reading balance from Plaidâ€¦
                             </p>
                           ) : (
                             <div
@@ -774,7 +967,9 @@ function VerifyInner() {
                                   <IconBuildingBank size={12} stroke={1.6} />
                                   {plaidMock
                                     ? "Mock balance"
-                                    : "Verified balance (Plaid)"}
+                                    : plaidSources && plaidSources > 1
+                                      ? `Aggregate balance â€” ${plaidSources} linked sources`
+                                      : "Verified balance (Plaid)"}
                                 </span>
                                 <span
                                   style={{
@@ -791,9 +986,9 @@ function VerifyInner() {
                                   className="stack"
                                   style={{ gap: "0.2rem" }}
                                 >
-                                  {plaidAccounts.map((a) => (
+                                  {plaidAccounts.map((a, i) => (
                                     <div
-                                      key={a.name}
+                                      key={`${a.name}-${i}`}
                                       className="between"
                                       style={{ fontSize: "0.72rem" }}
                                     >
@@ -831,7 +1026,7 @@ function VerifyInner() {
                                     color: "var(--accent)",
                                   }}
                                 >
-                                  balance ≥ $
+                                  balance â‰¥ $
                                   {Number(
                                     claimParamsFromUrl.threshold ?? "10000",
                                   ).toLocaleString("en-US")}
@@ -844,8 +1039,10 @@ function VerifyInner() {
                                   margin: "0.35rem 0 0",
                                 }}
                               >
-                                Your exact balance is never stored or revealed
-                                on-chain — only this threshold is public.
+                                Balances from all linked accounts are summed
+                                before attestation. The aggregate â€” not any
+                                individual account â€” is committed, and only
+                                this threshold is ever public.
                               </p>
                             </div>
                           )}
@@ -891,8 +1088,8 @@ function VerifyInner() {
                           </select>
                           <p className="faint" style={{ fontSize: "0.72rem", margin: "0.35rem 0 0" }}>
                             {jurisdictionMode === "0"
-                              ? "Proves your country is NOT in the restricted list — your country is never revealed on-chain."
-                              : "Proves your country IS in the allowed list — your country is never revealed on-chain."}
+                              ? "Proves your country is NOT in the restricted list â€” your country is never revealed on-chain."
+                              : "Proves your country IS in the allowed list â€” your country is never revealed on-chain."}
                           </p>
                         </div>
                       )}
@@ -916,6 +1113,190 @@ function VerifyInner() {
                   );
                 })}
               </div>
+
+              {issuersForType.length > 0 && (
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <label className="field-label" id="issuer-choice-label">
+                    Issuing authority
+                  </label>
+                  <p
+                    className="faint"
+                    style={{ fontSize: "0.8125rem", margin: "0.35rem 0 0.6rem" }}
+                  >
+                    {issuersForType.length}{" "}
+                    {issuersForType.length === 1
+                      ? "registered issuer can"
+                      : "registered issuers can"}{" "}
+                    attest this claim.
+                    {trustedIssuerGate
+                      ? " Only the ones marked accepted satisfy this protocol."
+                      : " Pick which one issues to you."}
+                  </p>
+                  <div
+                    className="stack"
+                    role="radiogroup"
+                    aria-labelledby="issuer-choice-label"
+                    style={{ gap: "0.5rem" }}
+                  >
+                    {issuersForType.map((issuer, i) => {
+                      const on = issuer.id === selectedIssuerId;
+                      const accepted = isProtocolAccepted(
+                        issuer.id,
+                        trustedIssuerGate,
+                      );
+                      const detail = [
+                        truncateAddress(issuer.id),
+                        issuer.metadata?.url,
+                      ]
+                        .filter(Boolean)
+                        .join(" Â· ");
+                      const focus = (index: number) => {
+                        const next =
+                          issuersForType[
+                            (index + issuersForType.length) % issuersForType.length
+                          ];
+                        setSelectedIssuerId(next.id);
+                        issuerRefs.current[next.id]?.focus();
+                      };
+                      return (
+                        <div
+                          key={issuer.id}
+                          ref={(el) => {
+                            issuerRefs.current[issuer.id] = el;
+                          }}
+                          role="radio"
+                          aria-checked={on}
+                          aria-label={
+                            accepted
+                              ? issuer.name
+                              : `${issuer.name} (not accepted by this protocol)`
+                          }
+                          tabIndex={on ? 0 : -1}
+                          onClick={() => setSelectedIssuerId(issuer.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedIssuerId(issuer.id);
+                            } else if (
+                              e.key === "ArrowDown" ||
+                              e.key === "ArrowRight"
+                            ) {
+                              e.preventDefault();
+                              focus(i + 1);
+                            } else if (
+                              e.key === "ArrowUp" ||
+                              e.key === "ArrowLeft"
+                            ) {
+                              e.preventDefault();
+                              focus(i - 1);
+                            }
+                          }}
+                          style={{
+                            padding: "0.75rem 0.9rem",
+                            borderRadius: "var(--radius)",
+                            border: `1px solid ${
+                              on ? "rgba(62,207,142,0.4)" : "var(--border)"
+                            }`,
+                            background: on
+                              ? "rgba(62,207,142,0.05)"
+                              : "transparent",
+                            cursor: "pointer",
+                            transition:
+                              "border-color 0.2s var(--ease), background 0.2s var(--ease)",
+                          }}
+                        >
+                          <div
+                            className="between"
+                            style={{ alignItems: "center", gap: "0.75rem" }}
+                          >
+                            <span
+                              className="row"
+                              style={{ gap: "0.6rem", minWidth: 0 }}
+                            >
+                              <span
+                                style={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: "50%",
+                                  display: "grid",
+                                  placeItems: "center",
+                                  border: `2px solid ${
+                                    on ? "var(--accent)" : "var(--border)"
+                                  }`,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {on && (
+                                  <span
+                                    style={{
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: "50%",
+                                      background: "var(--accent)",
+                                    }}
+                                  />
+                                )}
+                              </span>
+                              <span style={{ minWidth: 0 }}>
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontWeight: 500,
+                                    fontSize: "0.9rem",
+                                  }}
+                                >
+                                  {issuer.name}
+                                </span>
+                                <span
+                                  className="mono faint"
+                                  style={{
+                                    display: "block",
+                                    fontSize: "0.72rem",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {detail}
+                                </span>
+                              </span>
+                            </span>
+                            {trustedIssuerGate &&
+                              (accepted ? (
+                                <Badge variant="verified" dot={false}>
+                                  <span
+                                    className="row"
+                                    style={{ gap: "0.3rem" }}
+                                  >
+                                    <IconShieldCheck size={13} />
+                                    Accepted by protocol
+                                  </span>
+                                </Badge>
+                              ) : (
+                                <Badge variant="denied" dot={false}>
+                                  Not accepted
+                                </Badge>
+                              ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {!anyAccepted && (
+                    <p
+                      style={{
+                        marginTop: "0.6rem",
+                        fontSize: "0.8125rem",
+                        color: "var(--danger)",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      None of the issuers registered for this claim is accepted
+                      by {requestingDomain || "this protocol"} â€” its gate will
+                      reject the proof whichever issuer you pick.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div style={{ marginBottom: "1.5rem" }}>
                 <label className="field-label" htmlFor="validity-period">Validity period</label>
@@ -947,9 +1328,30 @@ function VerifyInner() {
                   className="mono"
                   style={{ fontSize: "0.8125rem", color: "var(--muted)" }}
                 >
-                  {address.slice(0, 6)}…{address.slice(-4)}
+                  {address.slice(0, 6)}â€¦{address.slice(-4)}
                 </span>
               </div>
+
+              {selectedIssuer && !issuerAccepted && (
+                <div
+                  style={{
+                    marginBottom: "1.25rem",
+                    padding: "0.7rem 0.9rem",
+                    borderRadius: "var(--radius)",
+                    background: "rgba(240, 96, 77, 0.08)",
+                    border: "1px solid rgba(240, 96, 77, 0.25)",
+                    color: "var(--danger)",
+                    fontSize: "0.8125rem",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <strong>{selectedIssuer.name}</strong> is not on{" "}
+                  {requestingDomain || "this protocol"}&apos;s trusted-issuer
+                  list. The credential will still be issued, but the protocol
+                  will reject a proof from it â€” pick an issuer marked
+                  &ldquo;Accepted by protocol&rdquo; to pass its gate.
+                </div>
+              )}
 
               <button
                 className="btn btn-primary"
@@ -966,7 +1368,7 @@ function VerifyInner() {
                 title={
                   issuanceConfigured()
                     ? undefined
-                    : "App not configured — NEXT_PUBLIC_ISSUER_ADDRESS / IssuerRegistry missing"
+                    : "App not configured â€” NEXT_PUBLIC_ISSUER_ADDRESS / IssuerRegistry missing"
                 }
                 onClick={onRequest}
               >
@@ -974,8 +1376,8 @@ function VerifyInner() {
                   <>
                     <IconLoader2 size={15} className="spin" />
                     {selected === "kyc"
-                      ? "Redirecting to verification…"
-                      : "Creating credential…"}
+                      ? "Redirecting to verificationâ€¦"
+                      : "Creating credentialâ€¦"}
                   </>
                 ) : (
                   <>
@@ -1006,12 +1408,13 @@ function VerifyInner() {
                 }}
               >
                 Each claim is committed with Poseidon2 and stays private. You
-                prove a statement about it — never the underlying value.
+                prove a statement about it â€” never the underlying value.
               </p>
             </>
           )}
         </div>
       </div>
+      )}
     </>
   );
 }

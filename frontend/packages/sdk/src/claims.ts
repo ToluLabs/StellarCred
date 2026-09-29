@@ -1,11 +1,140 @@
-// @stellarcred/sdk — shared claim-checking core
+// @stellarcred/sdk â€” shared claim-checking core
 //
-// Internal module holding the claim-checking machinery (config, low-level
-// ProofRegistry reads, and the public `hasClaim` / `hasClaims` / `getClaims` /
-// `watchClaim` functions plus their helper types). `index.ts`, `core.ts`, and
-// `react.ts` all import from here, so nothing in this module imports back from
-// those files — keeping the module graph acyclic (core/react no longer depend
-// on index.ts, which re-exports them).
+// Authoritative module holding the complete claim-checking machinery:
+// config, low-level ProofRegistry reads, and the public functions
+// (`hasClaim`, `hasClaims`, `getClaim`, `getClaims`, `verifyPreset`, `watchClaim`)
+// plus all associated types and error classes.
+//
+// `index.ts`, `core.ts`, `react.ts`, `server.ts`, and `challenge.ts` all import
+// from here, so nothing in this module imports back from those files â€” keeping
+// the module graph acyclic.
+
+import { Client as ProofRegistryClient } from "../../proof-registry/src/index";
+import {
+  IndexerError,
+  evaluateClaimRow,
+  fetchWalletClaims,
+  findClaimRow,
+  type IndexerClaimRow,
+} from "./indexer";
+
+export { IndexerError };
+export type { IndexerClaimRow };
+
+// ---------------------------------------------------------------------------
+// Runtime environment detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the SDK is running in a browser (or browser-like) context.
+ * Used only for development-mode boundary warnings â€” never throws.
+ */
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
+
+/**
+ * Returns true when the current process is running in development mode.
+ * Recognises the conventional NODE_ENV values used by Next.js, Vite, CRA,
+ * and bare Node.js scripts. Always returns false when `process` is undefined
+ * (e.g. a plain browser bundle without an env shim).
+ */
+function isDev(): boolean {
+  if (typeof process === "undefined") return false;
+  const nodeEnv = (process.env as Record<string, string | undefined>).NODE_ENV;
+  return nodeEnv !== "production";
+}
+
+/**
+ * Fires a one-time `console.warn` when `configure()` is called from a browser
+ * context with values that look like they came from server-only environment
+ * variables (i.e. variables that are never injected into browser bundles by
+ * Next.js / Vite / CRA because they lack the `NEXT_PUBLIC_` / `VITE_` prefix).
+ */
+let _warnedBoundaryViolation = false;
+
+/**
+ * @internal â€” test-only hook to reset the one-shot boundary violation flag
+ * between test cases. Not part of the public API.
+ */
+export function __resetBoundaryWarningForTesting(): void {
+  _warnedBoundaryViolation = false;
+}
+
+function warnOnClientServerBoundaryViolation(opts: {
+  registryId?: string;
+  rpcUrl?: string;
+}): void {  if (!isBrowser()) return;
+  if (!isDev()) return;
+  if (_warnedBoundaryViolation) return;
+
+  const proc =
+    typeof process !== "undefined"
+      ? (process.env as Record<string, string | undefined>)
+      : {};
+
+  const leakedServerVar =
+    !!proc["STELLARCRED_REGISTRY_ID"] ||
+    !!proc["STELLARCRED_RPC_URL"] ||
+    !!proc["STELLARCRED_NETWORK_PASSPHRASE"] ||
+    !!proc["STELLARCRED_BASE_URL"] ||
+    !!proc["STELLARCRED_NETWORK"];
+
+  const serverEnvRegistryId =
+    proc["STELLARCRED_REGISTRY_ID"] ?? proc["PROOF_REGISTRY_ID"];
+  const serverEnvRpcUrl = proc["STELLARCRED_RPC_URL"];
+  const configMatchesServerVar =
+    (opts.registryId !== undefined &&
+      opts.registryId !== "" &&
+      opts.registryId === serverEnvRegistryId) ||
+    (opts.rpcUrl !== undefined &&
+      opts.rpcUrl !== "" &&
+      opts.rpcUrl === serverEnvRpcUrl);
+
+  if (!leakedServerVar && !configMatchesServerVar) return;
+
+  _warnedBoundaryViolation = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[StellarCred] configure() was called in a browser context with values that " +
+      "appear to come from server-only environment variables (e.g. STELLARCRED_REGISTRY_ID " +
+      "or PROOF_REGISTRY_ID without the NEXT_PUBLIC_ prefix).\n\n" +
+      "The ProofRegistry contract ID and RPC URL are read-only infrastructure config " +
+      "that is safe to expose to the client â€” but they must reach the browser through " +
+      "public env vars (NEXT_PUBLIC_PROOF_REGISTRY_ID / NEXT_PUBLIC_RPC_URL in Next.js, " +
+      "VITE_* in Vite) rather than server-only names.\n\n" +
+      "If you are verifying claims server-side (recommended for access control), " +
+      "import from '@stellarcred/sdk/server' instead â€” the intent is explicit at " +
+      "the import site and this warning will not fire.\n\n" +
+      "See the SDK README Â§Trust boundary for details. " +
+      "This warning only appears in development mode.",
+  );
+}
+
+let _warnedIndexerKeyInBrowser = false;
+
+/**
+ * An indexer API key is a secret, unlike `registryId`/`rpcUrl` which are
+ * read-only infrastructure config that is safe to publish. Shipping it to a
+ * browser hands it to every visitor, so warn loudly rather than treating it as
+ * another boundary-var mixup.
+ */
+function warnOnIndexerKeyInBrowser(indexerApiKey?: string): void {
+  if (!isBrowser() || !isDev() || _warnedIndexerKeyInBrowser) return;
+  if (!indexerApiKey) return;
+
+  _warnedIndexerKeyInBrowser = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[StellarCred] configure() was called in a browser context with an " +
+      "`indexerApiKey`. That key is a secret and is now exposed to every visitor " +
+      "of this site.\n\n" +
+      "Read claims from the browser without a key (leave `indexerApiKey` unset), " +
+      "or proxy indexer reads through your own backend and keep the key " +
+      "server-side. Note also that the indexer's CORS policy does not allow the " +
+      "X-API-Key header from a browser.\n\nThis warning only appears in development mode.",
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Runtime configuration
@@ -21,12 +150,13 @@ function env(key: string, nextPublicKey?: string): string {
   );
 }
 
-// Single network selector (Issue #408): STELLARCRED_NETWORK /
-// NEXT_PUBLIC_STELLAR_NETWORK (testnet | mainnet | futurenet) picks a
-// coherent preset for RPC URL and network passphrase. Explicit overrides win.
-type StellarNetwork = "testnet" | "mainnet" | "futurenet";
+// Single network selector (Issue #408)
+export type StellarNetwork = "testnet" | "mainnet" | "futurenet";
 
-const NETWORK_PRESETS: Record<StellarNetwork, { rpcUrl: string; networkPassphrase: string }> = {
+export const NETWORK_PRESETS: Record<
+  StellarNetwork,
+  { rpcUrl: string; networkPassphrase: string }
+> = {
   testnet: {
     rpcUrl: "https://soroban-testnet.stellar.org",
     networkPassphrase: "Test SDF Network ; September 2015",
@@ -48,51 +178,131 @@ function parseNetwork(raw: string | undefined): StellarNetwork {
   return "testnet";
 }
 
-const _preset = NETWORK_PRESETS[parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))];
+const _preset =
+  NETWORK_PRESETS[
+    parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))
+  ];
 
-let _config = {
-  registryId: env("STELLARCRED_REGISTRY_ID", "NEXT_PUBLIC_PROOF_REGISTRY_ID"),
-  rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || _preset.rpcUrl,
-  networkPassphrase:
-    env("STELLARCRED_NETWORK_PASSPHRASE", "NEXT_PUBLIC_NETWORK_PASSPHRASE") ||
-    _preset.networkPassphrase,
-  baseUrl: env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") || "https://stellarcred.xyz",
-  requestTimeoutMs: 10_000,
-};
+export interface RetryOptions {
+  retries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  jitter?: boolean;
+}
 
 /**
- * Override SDK defaults at runtime. Call this once at app startup before any
- * `hasClaim` / `getClaims` calls. Each key is optional — omitted keys keep
- * their env-var-derived or default values.
+ * Where a claim read is sourced from. Defaults to `"chain"`.
+ *
+ * - `"chain"` — simulate against ProofRegistry. Trust-minimised: the only
+ *   thing you trust is the contract. This is the default and the only mode
+ *   that should gate access on its own.
+ * - `"indexer"` — read from an operator-run indexer over HTTP. Much faster,
+ *   but the indexer is an **off-chain cache of public chain data**. It can be
+ *   stale, lagging, or wrong, and you are trusting whoever runs it. Never use
+ *   this as the sole basis for a security decision.
+ * - `"indexer-verified"` — read from the indexer, then confirm the answer
+ *   against the chain and return the chain's result. Costs a chain read, so it
+ *   is not faster than `"chain"`; its value is that a disagreement between the
+ *   two is surfaced, which tells an operator their indexer has drifted.
  */
-export function configure(opts: {
+export type ClaimSource = "chain" | "indexer" | "indexer-verified";
+
+export interface SDKConfig {
   registryId?: string;
   rpcUrl?: string;
   networkPassphrase?: string;
   baseUrl?: string;
   requestTimeoutMs?: number;
-}): void {
+  retries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  jitter?: boolean;
+  /**
+   * Base URL of a StellarCred indexer, e.g. `https://indexer.example.com`.
+   * Required before any read can use `source: "indexer"` or
+   * `source: "indexer-verified"`; without it those reads fail soft exactly as
+   * an unconfigured `registryId` does for chain reads.
+   */
+  indexerUrl?: string;
+  /**
+   * API key for indexers that gate `/claims` behind one. This is a secret —
+   * there is deliberately no `NEXT_PUBLIC_` fallback for it, and configuring
+   * it from a browser context warns in development.
+   */
+  indexerApiKey?: string;
+  /**
+   * How long indexer results for a wallet are reused, in milliseconds. Exists
+   * so a `getClaims`/`hasClaims` fan-out over N credential types issues one
+   * HTTP request instead of N. Set to `0` to disable. Only ever affects
+   * `source: "indexer"` and `source: "indexer-verified"` reads — chain reads
+   * are never cached.
+   */
+  indexerCacheMs?: number;
+}
+
+const DEFAULT_CONFIG: Required<SDKConfig> = {
+  registryId: env("STELLARCRED_REGISTRY_ID", "NEXT_PUBLIC_PROOF_REGISTRY_ID"),
+  rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || _preset.rpcUrl,
+  networkPassphrase:
+    env("STELLARCRED_NETWORK_PASSPHRASE", "NEXT_PUBLIC_NETWORK_PASSPHRASE") ||
+    _preset.networkPassphrase,
+  baseUrl:
+    env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") ||
+    "https://stellarcred.xyz",
+  requestTimeoutMs: 10_000,
+  retries: 3,
+  baseDelayMs: 500,
+  maxDelayMs: 5000,
+  jitter: true,
+  indexerUrl: env("STELLARCRED_INDEXER_URL", "NEXT_PUBLIC_INDEXER_URL"),
+  indexerApiKey: env("STELLARCRED_INDEXER_API_KEY"),
+  indexerCacheMs: 2000,
+};
+
+let _config: Required<SDKConfig> = { ...DEFAULT_CONFIG };
+
+/**
+ * Override SDK defaults at runtime. Call this once at app startup before any
+ * `hasClaim` / `getClaims` calls. Each key is optional â€” omitted keys keep
+ * their env-var-derived or default values.
+ */
+export function configure(opts: SDKConfig): void {
+  warnOnClientServerBoundaryViolation({
+    registryId: opts.registryId,
+    rpcUrl: opts.rpcUrl,
+  });
+  warnOnIndexerKeyInBrowser(opts.indexerApiKey);
   _config = { ..._config, ...opts };
-  // The cached client is bound to the old config — drop it so the next read
+  // The cached client is bound to the old config â€” drop it so the next read
   // rebuilds against the new one.
   _client = null;
   _clientKey = "";
+  // Cached rows may have come from the previous indexerUrl/apiKey.
+  clearIndexerCache();
+}
+
+/**
+ * Read the current runtime configuration (read-only snapshot).
+ */
+export function getConfig(): Readonly<Required<SDKConfig>> {
+  return { ..._config };
+}
+
+/**
+ * Reset config back to initial env defaults.
+ */
+export function resetConfig(): void {
+  _config = { ...DEFAULT_CONFIG };
+  _client = null;
+  _clientKey = "";
+  _warnedMissingRegistryId = false;
+  _warnedBoundaryViolation = false;
+  _warnedIndexerKeyInBrowser = false;
+  clearIndexerCache();
 }
 
 /**
  * Reports which required configuration is present, without throwing.
- *
- * `registryId` is read from `STELLARCRED_REGISTRY_ID` / `NEXT_PUBLIC_PROOF_REGISTRY_ID`
- * (or {@link configure}) — if it is missing, every {@link hasClaim} /
- * {@link getClaims} call silently returns `false` / `[]` (via `getClient`
- * returning `null`) instead of throwing, so a misconfigured integration can
- * ship a gate that always denies access with no visible error. Call
- * `healthCheck()` (e.g. at app startup, or from a debug route) to diagnose
- * this before it surfaces as "nothing works."
- *
- * @example
- * const health = StellarCred.healthCheck();
- * if (!health.configured) console.error("StellarCred misconfigured:", health.missing);
  */
 export function healthCheck(): {
   configured: boolean;
@@ -118,31 +328,27 @@ export function healthCheck(): {
 }
 
 /**
- * Alias for `healthCheck().configured` — a quick boolean check for call
- * sites that don't need the detailed breakdown.
+ * Alias for `healthCheck().configured` â€” a quick boolean check.
  */
 export function isConfigured(): boolean {
   return healthCheck().configured;
 }
 
-// One-time (per missing-config state) dev warning — never logs in production
-// builds, and never logs more than once for the same misconfiguration so it
-// doesn't spam a polling caller like `watchClaim`.
 let _warnedMissingRegistryId = false;
 function warnIfMissingRegistryIdOnce(): void {
   if (_config.registryId) {
-    _warnedMissingRegistryId = false; // config fixed at runtime — allow re-warning if it regresses
+    _warnedMissingRegistryId = false;
     return;
   }
   if (_warnedMissingRegistryId) return;
-  const isDev =
+  const isDevMode =
     typeof process !== "undefined" &&
     (process.env as Record<string, string | undefined>)?.NODE_ENV !== "production";
-  if (!isDev) return;
+  if (!isDevMode) return;
   _warnedMissingRegistryId = true;
   // eslint-disable-next-line no-console
   console.warn(
-    "[StellarCred] hasClaim()/getClaims() called with no `registryId` configured. " +
+    "[StellarCred] hasClaim()/getClaim()/getClaims() called with no `registryId` configured. " +
       "Every check will silently return false/[] until you set STELLARCRED_REGISTRY_ID " +
       "(or NEXT_PUBLIC_PROOF_REGISTRY_ID) or call StellarCred.configure({ registryId }). " +
       "Call StellarCred.healthCheck() to diagnose. This warning only logs in development.",
@@ -161,65 +367,173 @@ export class TimeoutError extends Error {
   }
 }
 
-/** The credential types StellarCred supports. Matches the contract Symbols. */
-export const CLAIM_TYPES = ["kyc", "age", "income", "jurisdiction", "funds", "accreditation"] as const;
 /**
- * Union type representing every supported StellarCred credential.
- *
- * @example
- * ```ts
- * const claim: ClaimType = "kyc";
- * ```
+ * Error thrown when the SDK is missing required configuration (e.g. no
+ * `registryId`). Only surfaces when `{ throwOnError: true }` is passed.
  */
-export type ClaimType = (typeof CLAIM_TYPES)[number];
+export class ConfigError extends Error {
+  constructor(message = "StellarCred is not configured: missing registryId") {
+    super(message);
+    this.name = "ConfigError";
+  }
+}
 
 /**
- * Options accepted by {@link hasClaim} and {@link getClaims}.
- *
- * Currently only threshold-based claims use this; binary claims (e.g. `kyc`)
- * ignore the option. The on-chain `check_claim` enforces that the stored
- * threshold is at least `minThreshold`, so a proof generated with a higher
- * threshold always satisfies a lower `minThreshold`.
+ * Error thrown when a wallet address is empty or is not a valid Stellar
+ * Ed25519 public key.
  */
+export class InvalidAddressError extends Error {
+  constructor(message = "Invalid Stellar address") {
+    super(message);
+    this.name = "InvalidAddressError";
+  }
+}
+
+/**
+ * Error thrown when an unrecognized claim type is requested.
+ */
+export class InvalidClaimTypeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidClaimTypeError";
+  }
+}
+
+/**
+ * Error thrown when an issuer address is invalid.
+ */
+export class InvalidIssuerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidIssuerError";
+  }
+}
+
+/**
+ * Error thrown when a threshold value is negative or invalid.
+ */
+export class InvalidThresholdError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidThresholdError";
+  }
+}
+
+/**
+ * Error thrown when an RPC / contract-simulation call fails.
+ */
+export class RpcError extends Error {
+  cause?: unknown;
+  constructor(
+    message = "StellarCred RPC call failed",
+    options?: { cause?: unknown } | unknown,
+  ) {
+    super(message);
+    this.name = "RpcError";
+    if (options && typeof options === "object" && "cause" in (options as any)) {
+      this.cause = (options as any).cause;
+    } else if (options !== undefined) {
+      this.cause = options;
+    }
+  }
+}
+
+/** The credential types StellarCred supports. Matches the contract Symbols. */
+export const CLAIM_TYPES = [
+  "kyc",
+  "age",
+  "income",
+  "jurisdiction",
+  "funds",
+  "accreditation",
+] as const;
+
+export type ClaimType = (typeof CLAIM_TYPES)[number];
+
+export function isValidClaimType(value: string): value is ClaimType {
+  return (CLAIM_TYPES as readonly string[]).includes(value);
+}
+
+export function assertValidClaimType(value: string): asserts value is ClaimType {
+  if (!isValidClaimType(value)) {
+    throw new InvalidClaimTypeError(
+      `Invalid claim type: "${value}". Expected one of: ${CLAIM_TYPES.join(", ")}`,
+    );
+  }
+}
+
+/** Options accepted by hasClaim. */
 export interface ClaimOptions {
-  /**
-   * Minimum acceptable threshold for parameterised claims:
-   *   - `age`         → minimum age in years
-   *   - `income`      → minimum annual income (whole units)
-   *   - `funds`       → minimum liquid balance (whole units)
-   *   - `accreditation` → minimum net-worth / income requirement (whole units)
-   * Ignored for binary claims (`kyc`, `jurisdiction`).
-   */
   minThreshold?: number;
-  /**
-   * Restrict which issuer(s) a proof must come from — e.g. accept `kyc` only
-   * from Persona or Jumio, not a self-attested issuer. Pass the issuers'
-   * Stellar addresses. Omit (or leave `undefined`) to accept a proof from any
-   * registered issuer, matching the on-chain `check_claim`/`is_verified`
-   * `trusted_issuers: None` default. An empty array rejects every issuer.
-   */
   trustedIssuers?: string[];
-  /**
-   * Maximum time in milliseconds allowed for this read. Defaults to the value
-   * passed to {@link configure}, or 10 seconds.
-   */
   requestTimeoutMs?: number;
+  throwOnError?: boolean;
+  retryOptions?: RetryOptions;
+  /**
+   * Where to read from. Defaults to `"chain"`.
+   *
+   * ⚠️ `"indexer"` reads come from an operator-run off-chain cache, not from
+   * ProofRegistry. They are faster but can be stale or wrong, and **must not be
+   * the sole basis for a security decision** — gate-critical checks should use
+   * `"chain"`, or `"indexer-verified"` to keep the chain as the authority.
+   * Requires `indexerUrl` to be configured. See {@link ClaimSource}.
+   */
+  source?: ClaimSource;
 }
 
 export interface Claim {
-  /** Credential type — one of CLAIM_TYPES. */
   type: string;
-  /** Unix timestamp (seconds) when the proof was submitted on-chain. */
   verifiedAt: number;
-  /** Unix timestamp (seconds) when the on-chain record expires. */
   expiry: number;
 }
+
+export interface BatchClaimOptions {
+  minThresholds?: Partial<Record<ClaimType, number>>;
+  trustedIssuers?: string[];
+  requestTimeoutMs?: number;
+  throwOnError?: boolean;
+  retryOptions?: RetryOptions;
+  /** See the warning on {@link ClaimOptions.source}. */
+  source?: ClaimSource;
+}
+
+export interface PresetClaim {
+  type: ClaimType;
+  minThreshold?: number;
+}
+
+export interface PresetVerificationResult {
+  results: Partial<Record<ClaimType, boolean>>;
+  allValid: boolean;
+}
+
+export type CredentialFailureReason =
+  | "not_verified"
+  | "expired"
+  | "revoked"
+  | "wrong_issuer"
+  | "unmet_threshold";
+
+export interface ProofRecordDetails {
+  verifiedAt: number;
+  expiry: number;
+  revoked: boolean;
+  issuer?: string;
+  threshold?: number;
+  vkVersion: number;
+}
+
+export interface CredentialStatusResult {
+  valid: boolean;
+  status: "verified" | CredentialFailureReason;
+  record?: ProofRecordDetails | null;
+  error?: string;
+}
+
 
 // ---------------------------------------------------------------------------
 // Low-level read: ProofRegistry.is_verified via simulation
 // ---------------------------------------------------------------------------
-
-import { Client as ProofRegistryClient } from "../../proof-registry/src/index";
 
 type StellarSDK = typeof import("@stellar/stellar-sdk");
 let _sdk: Promise<StellarSDK> | null = null;
@@ -228,15 +542,60 @@ function getSdk(): Promise<StellarSDK> {
   return _sdk;
 }
 
-// The client is stateless per config, so one instance is shared across every
-// read. Cached as a promise so a fan-out of concurrent reads (see `fanOut`)
-// awaits a single construction instead of racing to build N clients.
+export async function normalizeAndValidateWallet(wallet: string): Promise<string> {
+  const normalized = wallet.trim();
+
+  if (!normalized) {
+    throw new InvalidAddressError("Invalid Stellar address: address is empty");
+  }
+
+  const { StrKey } = await getSdk();
+
+  if (!StrKey.isValidEd25519PublicKey(normalized)) {
+    throw new InvalidAddressError("Invalid Stellar address");
+  }
+
+  return normalized;
+}
+
+export async function validateIssuer(issuer: string): Promise<string> {
+  const normalized = issuer.trim();
+  if (!normalized) {
+    throw new InvalidIssuerError("Invalid issuer address: address is empty");
+  }
+  const { StrKey } = await getSdk();
+  if (!StrKey.isValidEd25519PublicKey(normalized)) {
+    throw new InvalidIssuerError(`Invalid issuer address: "${normalized}"`);
+  }
+  return normalized;
+}
+
+export function validateThreshold(minThreshold: number | undefined): void {
+  if (minThreshold === undefined) return;
+  if (!Number.isInteger(minThreshold) || minThreshold < 0) {
+    throw new InvalidThresholdError(
+      `Invalid minThreshold: ${minThreshold}. Threshold must be a non-negative integer.`,
+    );
+  }
+}
+
 let _client: Promise<ProofRegistryClient> | null = null;
 let _clientKey = "";
 
-async function getClient(): Promise<ProofRegistryClient | null> {
+export function resetClientForTesting(): void {
+  _client = null;
+  _clientKey = "";
+  _sdk = null;
+}
+
+async function getClient(throwOnError = false): Promise<ProofRegistryClient | null> {
   const { registryId, rpcUrl, networkPassphrase } = _config;
-  if (!registryId) return null;
+  if (!registryId) {
+    if (throwOnError) {
+      throw new ConfigError("StellarCred is not configured: missing registryId");
+    }
+    return null;
+  }
 
   const key = `${registryId}|${rpcUrl}|${networkPassphrase}`;
   if (_client && _clientKey === key) return _client;
@@ -251,10 +610,7 @@ async function getClient(): Promise<ProofRegistryClient | null> {
         allowHttp: rpcUrl.startsWith("http://"),
       }),
   );
-  // Don't cache a failed SDK import — the next read should retry. `_sdk` holds
-  // the import promise itself, so it has to be cleared too: leaving a rejected
-  // promise there would make every later `getClient()` fail on the same
-  // rejection instead of re-attempting the import.
+
   _client.catch(() => {
     _sdk = null;
     _client = null;
@@ -263,18 +619,39 @@ async function getClient(): Promise<ProofRegistryClient | null> {
   return _client;
 }
 
-/**
- * Runs `fn` over `items` concurrently after priming the shared client, so a
- * multi-claim read builds one `ProofRegistryClient` rather than one per item.
- */
 async function fanOut<T, R>(
   items: readonly T[],
   fn: (item: T) => Promise<R>,
+  warmChain = true,
 ): Promise<R[]> {
-  // Priming is an optimisation only — if it fails, each read falls back to its
-  // own `getClient()` call and its own error handling.
-  await getClient().catch(() => null);
+  // Indexer-only reads never touch ProofRegistry, so skip building a client
+  // they would not use.
+  if (warmChain) await getClient().catch(() => null);
   return Promise.all(items.map(fn));
+}
+
+function isRetryable(error: any): boolean {
+  if (
+    error instanceof ConfigError ||
+    error instanceof InvalidAddressError ||
+    error instanceof InvalidClaimTypeError ||
+    error instanceof InvalidIssuerError ||
+    error instanceof InvalidThresholdError
+  ) {
+    return false;
+  }
+  if (error && typeof error.message === "string") {
+    const msg = error.message.toLowerCase();
+    if (
+      msg.includes("invalid argument") ||
+      msg.includes("bad request") ||
+      msg.includes("not found") ||
+      msg.includes("parse error")
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 class ReadTimeoutError extends Error {
@@ -295,31 +672,270 @@ function withRequestTimeout<T>(operation: () => Promise<T>, timeoutMs: number): 
   );
 }
 
+export async function withRetry<T>(
+  operation: () => Promise<T>,
+  opts?: RetryOptions,
+): Promise<T> {
+  const retries = opts?.retries ?? _config.retries;
+  const baseDelayMs = opts?.baseDelayMs ?? _config.baseDelayMs;
+  const maxDelayMs = opts?.maxDelayMs ?? _config.maxDelayMs;
+  const jitter = opts?.jitter ?? _config.jitter;
+
+  let attempt = 0;
+  while (true) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      if (attempt >= retries || !isRetryable(error)) {
+        throw error;
+      }
+      attempt++;
+      let delay = Math.min(baseDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
+      if (jitter) {
+        delay = delay / 2 + Math.random() * (delay / 2);
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Low-level read: optional indexer fast path (#613)
+//
+// Everything below is opt-in. `source: "chain"` (the default) never reaches
+// this code, so the trust-minimised path is byte-for-byte what it was before.
+// ---------------------------------------------------------------------------
+
+interface IndexerCacheEntry {
+  fetchedAt: number;
+  rows: Promise<IndexerClaimRow[]>;
+}
+
+/**
+ * Short-lived per-wallet memo of indexer rows. A `getClaims`/`hasClaims`
+ * fan-out asks for N credential types but the indexer returns them all in one
+ * response, so without this a single `getClaims` call would issue six
+ * identical HTTP requests. Chain reads never touch this cache.
+ */
+const _indexerCache = new Map<string, IndexerCacheEntry>();
+
+export function clearIndexerCache(): void {
+  _indexerCache.clear();
+}
+
+/**
+ * @internal — test-only hook mirroring {@link resetClientForTesting}.
+ */
+export function resetIndexerForTesting(): void {
+  clearIndexerCache();
+  _warnedMissingIndexerUrl = false;
+  _warnedIndexerDrift = false;
+}
+
+let _warnedMissingIndexerUrl = false;
+function warnIfMissingIndexerUrlOnce(): void {
+  if (_config.indexerUrl) {
+    _warnedMissingIndexerUrl = false;
+    return;
+  }
+  if (_warnedMissingIndexerUrl || !isDev()) return;
+  _warnedMissingIndexerUrl = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[StellarCred] A claim read used `source: \"indexer\"` or \"indexer-verified\" " +
+      "but no `indexerUrl` is configured, so it fell back to returning " +
+      "false/null. Set STELLARCRED_INDEXER_URL (or NEXT_PUBLIC_INDEXER_URL) or call " +
+      "StellarCred.configure({ indexerUrl }). This warning only logs in development.",
+  );
+}
+
+let _warnedIndexerDrift = false;
+/**
+ * Fires when `source: "indexer-verified"` finds the indexer and the chain
+ * disagree. Surfacing this is the entire point of the mode, so unlike the
+ * configuration warnings it is NOT gated on development mode — an operator
+ * whose indexer has drifted needs to see it in production. Still rate-limited
+ * to once per process.
+ */
+function warnOnIndexerDrift(
+  claimType: string,
+  indexerValid: boolean | null,
+  chainValid: boolean | null,
+): void {
+  if (indexerValid === null || chainValid === null) return;
+  if (indexerValid === chainValid) return;
+  if (_warnedIndexerDrift) return;
+  _warnedIndexerDrift = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[StellarCred] Indexer disagreed with the chain for claim "${claimType}": ` +
+      `indexer said ${indexerValid}, ProofRegistry said ${chainValid}. The chain ` +
+      "result was used. This usually means the indexer is lagging or stale — " +
+      "check its /health endpoint for ledger lag. This warning logs once per process.",
+  );
+}
+
+async function readIndexerRows(
+  wallet: string,
+  throwOnError: boolean,
+  requestTimeoutMs: number,
+  retryOptions?: RetryOptions,
+): Promise<IndexerClaimRow[] | null> {
+  const { indexerUrl, indexerApiKey, indexerCacheMs } = _config;
+
+  if (!indexerUrl) {
+    if (throwOnError) {
+      throw new ConfigError(
+        "StellarCred is not configured for indexer reads: missing indexerUrl",
+      );
+    }
+    warnIfMissingIndexerUrlOnce();
+    return null;
+  }
+
+  const key = `${indexerUrl}|${wallet}`;
+  const cached = _indexerCache.get(key);
+  let pending: Promise<IndexerClaimRow[]>;
+
+  if (cached && Date.now() - cached.fetchedAt < indexerCacheMs) {
+    pending = cached.rows;
+  } else {
+    pending = withRequestTimeout(
+      () =>
+        withRetry(
+          () =>
+            fetchWalletClaims(wallet, {
+              indexerUrl,
+              apiKey: indexerApiKey,
+            }),
+          retryOptions,
+        ),
+      requestTimeoutMs,
+    ).catch((err) => {
+      // Never let a rejected promise linger in the cache and poison later reads.
+      _indexerCache.delete(key);
+      throw err;
+    });
+    if (indexerCacheMs > 0) {
+      _indexerCache.set(key, { fetchedAt: Date.now(), rows: pending });
+    }
+  }
+
+  try {
+    return await pending;
+  } catch (err) {
+    if (throwOnError) {
+      if (err instanceof ConfigError) throw err;
+      if (err instanceof IndexerError) throw err;
+      throw new IndexerError(`Indexer read failed for wallet "${wallet}"`, {
+        cause: err,
+      });
+    }
+    return null;
+  }
+}
+
+async function readIsVerifiedFromIndexer(
+  wallet: string,
+  claimType: string,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
+  const rows = await readIndexerRows(
+    wallet,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  if (!rows) return null;
+
+  const row = findClaimRow(rows, claimType);
+  // Mirrors the contract's `(false, 0, 0)` for "never submitted" so callers can
+  // still distinguish that from "submitted but no longer valid".
+  if (!row) return { valid: false, verifiedAt: 0, expiry: 0 };
+
+  return {
+    valid: evaluateClaimRow(row, {
+      trustedIssuers,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    }),
+    verifiedAt: row.verified_at,
+    expiry: row.expiry,
+  };
+}
+
+async function readCheckClaimFromIndexer(
+  wallet: string,
+  claimType: string,
+  minThreshold: number,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<boolean> {
+  const rows = await readIndexerRows(
+    wallet,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  if (!rows) return false;
+
+  const row = findClaimRow(rows, claimType);
+  if (!row) return false;
+
+  return evaluateClaimRow(row, {
+    trustedIssuers,
+    minThreshold,
+    nowSeconds: Math.floor(Date.now() / 1000),
+  });
+}
+
 async function readIsVerified(
   wallet: string,
   claimType: string,
   trustedIssuers?: string[],
+  throwOnError = false,
   requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+  source: ClaimSource = "chain",
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
-  const client = await getClient();
-  if (!client) return null;
-
-  try {
-    const { result } = await withRequestTimeout(
-      () =>
-        client.is_verified({
-          holder: wallet,
-          credential_type: claimType,
-          trusted_issuers: trustedIssuers,
-        }),
+  if (source === "chain") {
+    return readIsVerifiedFromChain(
+      wallet,
+      claimType,
+      trustedIssuers,
+      throwOnError,
       requestTimeoutMs,
+      retryOptions,
     );
-    if (!result) return null;
-    const [valid, verifiedAt, expiry] = result;
-    return { valid, verifiedAt: Number(verifiedAt), expiry: Number(expiry) };
-  } catch {
-    return null;
   }
+
+  const fromIndexer = await readIsVerifiedFromIndexer(
+    wallet,
+    claimType,
+    trustedIssuers,
+    // A failed indexer read must not abort an indexer-verified read: the chain
+    // is authoritative anyway, so only surface errors for pure "indexer".
+    source === "indexer" ? throwOnError : false,
+    requestTimeoutMs,
+    retryOptions,
+  );
+
+  if (source === "indexer") return fromIndexer;
+
+  const fromChain = await readIsVerifiedFromChain(
+    wallet,
+    claimType,
+    trustedIssuers,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  warnOnIndexerDrift(claimType, fromIndexer?.valid ?? null, fromChain?.valid ?? null);
+  return fromChain;
 }
 
 async function readCheckClaim(
@@ -327,27 +943,172 @@ async function readCheckClaim(
   claimType: string,
   minThreshold: number,
   trustedIssuers?: string[],
+  throwOnError = false,
   requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+  source: ClaimSource = "chain",
 ): Promise<boolean> {
-  const client = await getClient();
+  if (source === "chain") {
+    return readCheckClaimFromChain(
+      wallet,
+      claimType,
+      minThreshold,
+      trustedIssuers,
+      throwOnError,
+      requestTimeoutMs,
+      retryOptions,
+    );
+  }
+
+  const fromIndexer = await readCheckClaimFromIndexer(
+    wallet,
+    claimType,
+    minThreshold,
+    trustedIssuers,
+    source === "indexer" ? throwOnError : false,
+    requestTimeoutMs,
+    retryOptions,
+  );
+
+  if (source === "indexer") return fromIndexer;
+
+  const fromChain = await readCheckClaimFromChain(
+    wallet,
+    claimType,
+    minThreshold,
+    trustedIssuers,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  warnOnIndexerDrift(claimType, fromIndexer, fromChain);
+  return fromChain;
+}
+
+async function readIsVerifiedFromChain(
+  wallet: string,
+  claimType: string,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
+  const client = await getClient(throwOnError);
+  if (!client) return null;
+
+  try {
+    const { result } = await withRequestTimeout(
+      () =>
+        withRetry(
+          () =>
+            client.is_verified({
+              holder: wallet,
+              credential_type: claimType,
+              trusted_issuers: trustedIssuers,
+            }),
+          retryOptions,
+        ),
+      requestTimeoutMs,
+    );
+    if (!result) return null;
+    const [valid, verifiedAt, expiry] = result;
+    return { valid, verifiedAt: Number(verifiedAt), expiry: Number(expiry) };
+  } catch (err) {
+    if (throwOnError) {
+      if (err instanceof ConfigError) throw err;
+      throw new RpcError(`is_verified RPC failed for claim "${claimType}"`, {
+        cause: err,
+      });
+    }
+    return null;
+  }
+}
+
+async function readCheckClaimFromChain(
+  wallet: string,
+  claimType: string,
+  minThreshold: number,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<boolean> {
+  const client = await getClient(throwOnError);
   if (!client) return false;
 
   try {
     const { result } = await withRequestTimeout(
       () =>
-        client.check_claim({
-          holder: wallet,
-          credential_type: claimType,
-          min_threshold: BigInt(minThreshold),
-          trusted_issuers: trustedIssuers,
-        }),
+        withRetry(
+          () =>
+            client.check_claim({
+              holder: wallet,
+              credential_type: claimType,
+              min_threshold: BigInt(minThreshold),
+              trusted_issuers: trustedIssuers,
+            }),
+          retryOptions,
+        ),
       requestTimeoutMs,
     );
     return result ?? false;
-  } catch {
+  } catch (err) {
+    if (throwOnError) {
+      if (err instanceof ConfigError) throw err;
+      throw new RpcError(`check_claim RPC failed for claim "${claimType}"`, {
+        cause: err,
+      });
+    }
     return false;
   }
 }
+
+async function readRecord(
+  wallet: string,
+  claimType: string,
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<ProofRecordDetails | null> {
+  const client = await getClient(throwOnError);
+  if (!client) return null;
+
+  try {
+    const { result } = await withRequestTimeout(
+      () =>
+        withRetry(
+          () =>
+            client.get_record({
+              holder: wallet,
+              credential_type: claimType,
+            }),
+          retryOptions,
+        ),
+      requestTimeoutMs,
+    );
+    if (!result) return null;
+    return {
+      verifiedAt: Number(result.verified_at),
+      expiry: Number(result.expiry),
+      revoked: Boolean(result.revoked),
+      issuer: result.issuer ? String(result.issuer) : undefined,
+      threshold:
+        result.threshold !== undefined && result.threshold !== null
+          ? Number(result.threshold)
+          : undefined,
+      vkVersion: Number(result.vk_version),
+    };
+  } catch (err) {
+    if (throwOnError) {
+      if (err instanceof ConfigError) throw err;
+      throw new RpcError(`get_record RPC failed for claim "${claimType}"`, {
+        cause: err,
+      });
+    }
+    return null;
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -356,275 +1117,504 @@ async function readCheckClaim(
 /**
  * Returns `true` if `wallet` has a currently-valid, unexpired proof of
  * `claimType` in the StellarCred ProofRegistry.
- *
- * For parameterised claim types (age, income, funds), pass `minThreshold` to
- * enforce that the proof was generated with at least that threshold — e.g. a
- * proof for "balance ≥ 200,000" satisfies `minThreshold: 50000`, but a proof
- * for "balance ≥ 10,000" does not. The check is performed on-chain and is
- * fully trustless.
- *
- * @example
- * // Binary claim — no threshold needed
- * const ok = await hasClaim("G1ABC…", "kyc");
- *
- * @example
- * // Funds gate — require balance ≥ $50,000
- * const ok = await hasClaim("G1ABC…", "funds", { minThreshold: 50000 });
- *
- * @example
- * // Age gate — require age ≥ 21
- * const ok = await hasClaim("G1ABC…", "age", { minThreshold: 21 });
- *
- * @example
- * // Only accept KYC from specific issuers, e.g. Persona or Jumio
- * const ok = await hasClaim("G1ABC…", "kyc", {
- *   trustedIssuers: ["G...PERSONA_ISSUER", "G...JUMIO_ISSUER"],
- * });
  */
 export async function hasClaim(
   wallet: string,
   claimType: string,
   opts?: ClaimOptions,
 ): Promise<boolean> {
-  warnIfMissingRegistryIdOnce();
+  // An indexer-only read does not touch ProofRegistry, so a missing registryId
+  // is not a problem worth warning about.
+  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
+  const throwOnError = opts?.throwOnError === true;
+
+  let normalizedWallet: string;
+  try {
+    normalizedWallet = await normalizeAndValidateWallet(wallet);
+  } catch (err) {
+    if (err instanceof InvalidAddressError) {
+      if (throwOnError) throw err;
+      return false;
+    }
+    if (throwOnError) {
+      throw new RpcError("Failed to validate Stellar address", { cause: err });
+    }
+    return false;
+  }
+
   if (opts?.minThreshold !== undefined) {
+    validateThreshold(opts.minThreshold);
     return readCheckClaim(
-      wallet,
+      normalizedWallet,
       claimType,
       opts.minThreshold,
       opts.trustedIssuers,
+      throwOnError,
       opts.requestTimeoutMs,
+      opts.retryOptions,
+      opts.source,
     );
   }
-  const r = await readIsVerified(wallet, claimType, opts?.trustedIssuers, opts?.requestTimeoutMs);
+
+  const r = await readIsVerified(
+    normalizedWallet,
+    claimType,
+    opts?.trustedIssuers,
+    throwOnError,
+    opts?.requestTimeoutMs,
+    opts?.retryOptions,
+    opts?.source,
+  );
   return !!r && r.valid;
 }
 
 /**
- * Options accepted by {@link hasClaims}.
- *
- * Mirrors {@link ClaimOptions}, except the threshold is per claim type so one
- * batched call can gate on several parameterised claims at once.
+ * Returns the full claim record (valid, verifiedAt, expiry) for a wallet and
+ * credential type, or `null` if the wallet has no current proof of that type.
  */
-export interface BatchClaimOptions {
-  /**
-   * Per-type minimum thresholds, e.g. `{ age: 21, funds: 50000 }`. A type with
-   * no entry here is checked as a binary claim (`is_verified`), exactly as
-   * {@link hasClaim} does when `minThreshold` is omitted.
-   */
-  minThresholds?: Partial<Record<ClaimType, number>>;
-  /**
-   * Restrict which issuer(s) every proof in this batch must come from. Same
-   * semantics as {@link ClaimOptions.trustedIssuers} — omit to accept any
-   * registered issuer, pass an empty array to reject every issuer.
-   */
-  trustedIssuers?: string[];
-  /** Maximum time in milliseconds allowed for each read. */
-  requestTimeoutMs?: number;
+export async function getClaim(
+  wallet: string,
+  claimType: string,
+  opts?: Pick<ClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
+): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
+  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
+
+  let normalizedWallet: string;
+  try {
+    normalizedWallet = await normalizeAndValidateWallet(wallet);
+  } catch (err) {
+    if (opts?.throwOnError && err instanceof InvalidAddressError) throw err;
+    return null;
+  }
+
+  const r = await readIsVerified(
+    normalizedWallet,
+    claimType,
+    opts?.trustedIssuers,
+    opts?.throwOnError === true,
+    opts?.requestTimeoutMs,
+    opts?.retryOptions,
+    opts?.source,
+  );
+  return r && r.valid ? r : null;
 }
 
 /**
- * Batched form of {@link hasClaim}: checks several claim types for one wallet
- * in a single fan-out that shares one `ProofRegistryClient`, instead of the
- * caller issuing N independent `hasClaim` calls.
- *
- * Each type resolves independently — a read that fails (RPC error, missing
- * config) resolves to `false` for that type rather than rejecting the whole
- * batch. Duplicate types in `types` are read once and appear once in the
- * result. The returned record contains a key for every requested type.
- *
- * @param wallet Stellar address to check.
- * @param types Claim types to read.
- * @param opts Per-type thresholds and issuer restrictions.
- *
- * @example
- * // Gate on three claims at once
- * const claims = await hasClaims("G1ABC…", ["kyc", "age", "funds"], {
- *   minThresholds: { age: 21, funds: 50000 },
- * });
- * if (claims.kyc && claims.age) grantAccess();
+ * Returns the raw stored ProofRecord details (verifiedAt, expiry, revoked, issuer,
+ * threshold, vkVersion) from ProofRegistry, or null if no record exists.
+ */
+export async function getClaimRecord(
+  wallet: string,
+  claimType: string,
+  opts?: Pick<ClaimOptions, "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+): Promise<ProofRecordDetails | null> {
+  warnIfMissingRegistryIdOnce();
+
+  let normalizedWallet: string;
+  try {
+    normalizedWallet = await normalizeAndValidateWallet(wallet);
+  } catch (err) {
+    if (opts?.throwOnError && err instanceof InvalidAddressError) throw err;
+    return null;
+  }
+
+  return readRecord(
+    normalizedWallet,
+    claimType,
+    opts?.throwOnError === true,
+    opts?.requestTimeoutMs,
+    opts?.retryOptions,
+  );
+}
+
+/**
+ * Inspects a wallet's credential claim on-chain and returns a detailed status result,
+ * evaluating failure states: "not_verified", "expired", "revoked", "wrong_issuer",
+ * "unmet_threshold", or "verified".
+ */
+export async function checkClaimStatus(
+  wallet: string,
+  claimType: string,
+  opts?: ClaimOptions,
+): Promise<CredentialStatusResult> {
+  warnIfMissingRegistryIdOnce();
+  const throwOnError = opts?.throwOnError === true;
+
+  let normalizedWallet: string;
+  try {
+    normalizedWallet = await normalizeAndValidateWallet(wallet);
+  } catch (err) {
+    if (err instanceof InvalidAddressError) {
+      if (throwOnError) throw err;
+      return {
+        valid: false,
+        status: "not_verified",
+        record: null,
+        error: "Invalid Stellar address",
+      };
+    }
+    if (throwOnError) {
+      throw new RpcError("Failed to validate Stellar address", { cause: err });
+    }
+    return {
+      valid: false,
+      status: "not_verified",
+      record: null,
+      error: "Failed to validate Stellar address",
+    };
+  }
+
+  if (opts?.minThreshold !== undefined) {
+    validateThreshold(opts.minThreshold);
+  }
+
+  const record = await readRecord(
+    normalizedWallet,
+    claimType,
+    throwOnError,
+    opts?.requestTimeoutMs,
+    opts?.retryOptions,
+  );
+
+  if (!record) {
+    return {
+      valid: false,
+      status: "not_verified",
+      record: null,
+      error: `Wallet has no on-chain proof for "${claimType}".`,
+    };
+  }
+
+  if (record.revoked) {
+    return {
+      valid: false,
+      status: "revoked",
+      record,
+      error: `Credential "${claimType}" was revoked by issuer.`,
+    };
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (record.expiry <= nowSeconds) {
+    return {
+      valid: false,
+      status: "expired",
+      record,
+      error: `Credential "${claimType}" expired at ${new Date(record.expiry * 1000).toISOString()}.`,
+    };
+  }
+
+  if (opts?.trustedIssuers && opts.trustedIssuers.length > 0) {
+    if (!record.issuer || !opts.trustedIssuers.includes(record.issuer)) {
+      return {
+        valid: false,
+        status: "wrong_issuer",
+        record,
+        error: `Credential issuer "${record.issuer ?? "unknown"}" is not in trusted issuers list.`,
+      };
+    }
+  }
+
+  if (opts?.minThreshold !== undefined) {
+    const proventhreshold = record.threshold ?? 0;
+    if (proventhreshold < opts.minThreshold) {
+      return {
+        valid: false,
+        status: "unmet_threshold",
+        record,
+        error: `Proven threshold (${proventhreshold}) is less than required minimum (${opts.minThreshold}).`,
+      };
+    }
+  }
+
+  return {
+    valid: true,
+    status: "verified",
+    record,
+  };
+}
+
+
+/**
+ * Batched form of {@link hasClaim}: checks several claim types for one wallet.
  */
 export async function hasClaims(
   wallet: string,
   types: readonly ClaimType[],
   opts?: BatchClaimOptions,
 ): Promise<Partial<Record<ClaimType, boolean>>> {
-  warnIfMissingRegistryIdOnce();
+  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
 
   const unique = Array.from(new Set(types));
   const results: Partial<Record<ClaimType, boolean>> = {};
 
-  await fanOut(unique, async (t) => {
-    try {
-      const minThreshold = opts?.minThresholds?.[t];
-      if (minThreshold !== undefined) {
-        results[t] = await readCheckClaim(
-          wallet,
-          t,
-          minThreshold,
-          opts?.trustedIssuers,
-          opts?.requestTimeoutMs,
-        );
-        return;
-      }
-      const r = await readIsVerified(wallet, t, opts?.trustedIssuers, opts?.requestTimeoutMs);
-      results[t] = !!r && r.valid;
-    } catch {
-      results[t] = false;
+  let normalizedWallet: string;
+  try {
+    normalizedWallet = await normalizeAndValidateWallet(wallet);
+  } catch (err) {
+    if (opts?.throwOnError && err instanceof InvalidAddressError) throw err;
+    for (const type of unique) {
+      results[type] = false;
     }
-  });
+    return results;
+  }
+
+  await fanOut(
+    unique,
+    async (t) => {
+      try {
+        const minThreshold = opts?.minThresholds?.[t];
+        if (minThreshold !== undefined) {
+          validateThreshold(minThreshold);
+          results[t] = await readCheckClaim(
+            normalizedWallet,
+            t,
+            minThreshold,
+            opts?.trustedIssuers,
+            opts?.throwOnError === true,
+            opts?.requestTimeoutMs,
+            opts?.retryOptions,
+            opts?.source,
+          );
+          return;
+        }
+        const r = await readIsVerified(
+          normalizedWallet,
+          t,
+          opts?.trustedIssuers,
+          opts?.throwOnError === true,
+          opts?.requestTimeoutMs,
+          opts?.retryOptions,
+          opts?.source,
+        );
+        results[t] = !!r && r.valid;
+      } catch (err) {
+        if (opts?.throwOnError) throw err;
+        results[t] = false;
+      }
+    },
+    opts?.source !== "indexer",
+  );
 
   return results;
 }
 
 /**
- * Returns every active claim a wallet has proven, across all known credential
- * types. Useful for profile pages and protocol dashboards.
- *
- * Uses the same batched fan-out as {@link hasClaims}, so all types are read
- * through one shared client.
+ * Verifies every claim in a selective-disclosure preset.
  */
-export async function getClaims(
+export async function verifyPreset(
   wallet: string,
-  opts?: Pick<ClaimOptions, "requestTimeoutMs">,
-): Promise<Claim[]> {
-  warnIfMissingRegistryIdOnce();
-  const results = await fanOut(CLAIM_TYPES, async (t) => {
-    // Same isolation as `hasClaims`: `readIsVerified` swallows read errors, but
-    // its own `getClient()` await can still reject (a failed SDK import), which
-    // would otherwise reject the whole fan-out instead of dropping one type.
-    try {
-      const r = await readIsVerified(wallet, t, undefined, opts?.requestTimeoutMs);
-      return r && r.valid ? { type: t, verifiedAt: r.verifiedAt, expiry: r.expiry } : null;
-    } catch {
-      return null;
-    }
+  claims: readonly PresetClaim[],
+  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
+): Promise<PresetVerificationResult> {
+  const types = claims.map((c) => c.type);
+  const minThresholds: Partial<Record<ClaimType, number>> = {};
+  for (const c of claims) {
+    if (c.minThreshold !== undefined) minThresholds[c.type] = c.minThreshold;
+  }
+
+  const results = await hasClaims(wallet, types, {
+    minThresholds,
+    trustedIssuers: opts?.trustedIssuers,
+    requestTimeoutMs: opts?.requestTimeoutMs,
+    throwOnError: opts?.throwOnError,
+    retryOptions: opts?.retryOptions,
+    source: opts?.source,
   });
-  return results.filter((x): x is NonNullable<typeof x> => x !== null);
+  const allValid = types.length > 0 && types.every((t) => results[t] === true);
+  return { results, allValid };
 }
 
 /**
- * Build a StellarCred verification URL to redirect users to. After the user
- * verifies, StellarCred sends them back to `returnUrl` with `sc_verified=true`,
- * `sc_wallet=<address>`, and `sc_claims=<comma-separated-types>` appended as
- * query params. `sc_claims` contains only the claim types issued in the current
- * session (not all-time claims).
- *
- * Pass `claimParams` to customize thresholds for parameterised claims:
- *
- * @example
- * // Require age ≥ 21
- * buildVerifyUrl({ returnUrl: "/deposit", claim: "age", claimParams: { threshold_years: "21" } })
- *
- * @example
- * // Require balance > $50,000
- * buildVerifyUrl({ returnUrl: "/vault", claim: "funds", claimParams: { threshold: "50000" } })
- *
- * @example
- * // Restrict specific countries
- * buildVerifyUrl({ returnUrl: "/app", claim: "jurisdiction", claimParams: { restricted: ["840","364"] } })
+ * Returns every active claim a wallet has proven across all known credential
+ * types.
  */
-export function buildVerifyUrl(options: {
-  returnUrl: string;
-  claim: string;
-  /** Override the StellarCred base URL (defaults to config or https://stellarcred.xyz). */
-  baseUrl?: string;
-  claimParams?: {
-    /** For "age" claims: minimum age in years (default "18"). */
-    threshold_years?: string;
-    /** For "income" / "funds" claims: minimum value in whole units (default varies). */
-    threshold?: string;
-    /** For "jurisdiction" claims: ISO 3166-1 numeric codes to block (default []). */
-    restricted?: string | string[];
-  };
-  /**
-   * Opaque CSRF-style correlation token (e.g. a per-session nonce). Embedded
-   * into `returnUrl` as `sc_state` and round-tripped back on the redirect —
-   * use it to confirm the return matches a session *you* started. This is a
-   * correlation aid only, not a substitute for the on-chain `hasClaim` check:
-   * see {@link parseReturnParams} for the full trust model.
-   */
-  state?: string;
-}): string {
-  const base = options.baseUrl ?? _config.baseUrl;
-  const url = new URL("/verify", base);
+export async function getClaims(
+  wallet: string,
+  opts?: Pick<ClaimOptions, "throwOnError" | "requestTimeoutMs" | "retryOptions" | "source">,
+): Promise<Claim[]> {
+  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
+  const throwOnError = opts?.throwOnError === true;
 
-  let returnUrl = options.returnUrl;
-  if (options.state !== undefined) {
-    // Merge into returnUrl's own query string so it round-trips through the
-    // verify flow untouched, with no server-side change required — the verify
-    // page forwards return_url's existing query params as-is.
-    const returnUrlBase =
-      typeof window !== "undefined" ? window.location.origin : (base ?? "https://stellarcred.xyz");
-    const returnUrlObj = returnUrl.startsWith("/")
-      ? new URL(returnUrl, returnUrlBase)
-      : new URL(returnUrl);
-    returnUrlObj.searchParams.set("sc_state", options.state);
-    returnUrl = returnUrl.startsWith("/") ? returnUrlObj.pathname + returnUrlObj.search : returnUrlObj.toString();
+  let normalizedWallet: string;
+  try {
+    normalizedWallet = await normalizeAndValidateWallet(wallet);
+  } catch (err) {
+    if (err instanceof InvalidAddressError) {
+      if (throwOnError) throw err;
+      return [];
+    }
+    if (throwOnError) {
+      throw new RpcError("Failed to validate Stellar address", { cause: err });
+    }
+    return [];
   }
 
-  url.searchParams.set("return_url", returnUrl);
-  url.searchParams.set("claim", options.claim);
-  if (options.claimParams) {
-    const { threshold_years, threshold, restricted } = options.claimParams;
-    if (threshold_years) url.searchParams.set("threshold_years", threshold_years);
-    if (threshold) url.searchParams.set("threshold", threshold);
-    if (restricted) {
-      url.searchParams.set("restricted", Array.isArray(restricted) ? restricted.join(",") : restricted);
+  const results = await fanOut(
+    CLAIM_TYPES,
+    async (t) => {
+      try {
+        const r = await readIsVerified(
+          normalizedWallet,
+          t,
+          undefined,
+          throwOnError,
+          opts?.requestTimeoutMs,
+          opts?.retryOptions,
+          opts?.source,
+        );
+        return r && r.valid ? { type: t, verifiedAt: r.verifiedAt, expiry: r.expiry } : null;
+      } catch (err) {
+        if (throwOnError) throw err;
+        return null;
+      }
+    },
+    opts?.source !== "indexer",
+  );
+
+  return results.filter((x): x is NonNullable<typeof x> => x !== null);
+}
+
+// ---------------------------------------------------------------------------
+// URL builders & helpers
+// ---------------------------------------------------------------------------
+
+export function buildVerifyUrl(opts: {
+  returnUrl: string;
+  claim?: ClaimType;
+  claims?: ClaimType[];
+  wallet?: string;
+  state?: string;
+  baseUrl?: string;
+  expiresInMinutes?: number;
+  /**
+   * When true, generate a URL-safe single-use token id (`jti`) and embed it
+   * in the link. The verify page consumes it on first successful use and
+   * rejects subsequent visits in the same browser session.
+   */
+  singleUse?: boolean;
+  claimParams?: {
+    threshold?: string;
+    threshold_years?: string;
+    restricted?: string | string[];
+  };
+}): string {
+  const base = opts.baseUrl ?? _config.baseUrl;
+  const url = new URL("/verify", base);
+  url.searchParams.set("return_url", opts.returnUrl);
+
+  if (opts.claim) {
+    url.searchParams.set("claim", opts.claim);
+  }
+  if (opts.claims && opts.claims.length > 0) {
+    url.searchParams.set("claims", opts.claims.join(","));
+  }
+  if (opts.wallet) {
+    url.searchParams.set("wallet", opts.wallet);
+  }
+  if (opts.state) {
+    url.searchParams.set("state", opts.state);
+  }
+  if (opts.claimParams) {
+    if (opts.claimParams.threshold) {
+      url.searchParams.set("param_threshold", opts.claimParams.threshold);
     }
+    if (opts.claimParams.threshold_years) {
+      url.searchParams.set("param_threshold_years", opts.claimParams.threshold_years);
+    }
+    if (opts.claimParams.restricted) {
+      const restricted = Array.isArray(opts.claimParams.restricted)
+        ? opts.claimParams.restricted.join(",")
+        : opts.claimParams.restricted;
+      url.searchParams.set("param_restricted", restricted);
+    }
+  }
+
+  if (opts.expiresInMinutes !== undefined) {
+    if (
+      !Number.isFinite(opts.expiresInMinutes) ||
+      opts.expiresInMinutes <= 0
+    ) {
+      throw new Error("expiresInMinutes must be a positive number");
+    }
+    const exp =
+      Math.floor(Date.now() / 1000) + Math.floor(opts.expiresInMinutes * 60);
+    url.searchParams.set("exp", String(exp));
+  }
+
+  if (opts.singleUse) {
+    let jti: string;
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      jti = crypto.randomUUID().replace(/-/g, "");
+    } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      jti = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    } else {
+      throw new Error(
+        "singleUse requires a crypto implementation with randomUUID or getRandomValues",
+      );
+    }
+    url.searchParams.set("jti", jti);
+  }
+
+  return url.toString();
+}
+
+export function buildIssuerUrl(opts: {
+  returnUrl: string;
+  claim?: ClaimType;
+  wallet?: string;
+  baseUrl?: string;
+}): string {
+  const base = opts.baseUrl ?? _config.baseUrl;
+  const url = new URL("/issuer", base);
+  url.searchParams.set("return_url", opts.returnUrl);
+  if (opts.claim) url.searchParams.set("claim", opts.claim);
+  if (opts.wallet) url.searchParams.set("wallet", opts.wallet);
+  return url.toString();
+}
+
+export function buildBadgeUrl(options: {
+  wallet: string;
+  claim: string;
+  theme?: "dark" | "light" | "auto";
+  compact?: boolean;
+  baseUrl?: string;
+}): string {
+  const base = options.baseUrl ?? _config.baseUrl;
+  const url = new URL("/badge", base);
+  url.searchParams.set("wallet", options.wallet);
+  url.searchParams.set("claim", options.claim);
+  if (options.theme && options.theme !== "auto") {
+    url.searchParams.set("theme", options.theme);
+  }
+  if (options.compact) {
+    url.searchParams.set("compact", "1");
   }
   return url.toString();
 }
 
-// ---------------------------------------------------------------------------
-// Return-URL params — untrusted hints only (Issue #213)
-// ---------------------------------------------------------------------------
+export function buildBadgeEmbedCode(options: {
+  wallet: string;
+  claim: string;
+  theme?: "dark" | "light" | "auto";
+  compact?: boolean;
+  baseUrl?: string;
+}): string {
+  const src = buildBadgeUrl(options);
+  const width = options.compact ? "180" : "260";
+  const height = options.compact ? "36" : "54";
+  return `<iframe src="${src}" width="${width}" height="${height}" frameborder="0" scrolling="no" style="border:none;overflow:hidden;border-radius:8px;" title="StellarCred Verification Badge"></iframe>`;
+}
 
-/**
- * The query params StellarCred appends to `returnUrl` after the verify flow
- * completes: `sc_verified=true`, `sc_wallet=<address>`, and an optional
- * `sc_claims=<comma-separated-types>` (only the claim types issued in the
- * current session — see {@link buildVerifyUrl}). `sc_state` round-trips
- * whatever correlation token was passed to `buildVerifyUrl`'s `state` option.
- *
- * **These are untrusted hints, not a proof.** Nothing binds this redirect to
- * a specific session — a URL shaped exactly like this one can be
- * hand-crafted by anyone and pasted into a browser; StellarCred does not
- * sign or otherwise authenticate this redirect. `sc_state`, if you set one,
- * only tells you the redirect correlates with a session *you* started — it
- * does not tell you the claims are real. The one thing that IS trustless is
- * the on-chain ProofRegistry itself: **always call {@link hasClaim} (server
- * side, for the real wallet address you intend to gate) before granting
- * access**, using these params only to decide which wallet/claim to check
- * and to render optimistic UI while that check is in flight.
- *
- * @example
- * const hint = parseReturnParams(window.location.href);
- * if (hint.verified && hint.wallet) {
- *   // Optimistic UI only — the real gate is the server-side check below.
- *   const reallyVerified = await hasClaim(hint.wallet, "kyc");
- * }
- */
 export interface UntrustedReturnParams {
-  /** `true` if `sc_verified=true` was present. Untrusted — see interface doc. */
   verified: boolean;
-  /** The wallet address the redirect claims verified. Untrusted — re-check with `hasClaim`. */
   wallet: string | null;
-  /** Claim types the redirect claims were just issued. Untrusted — re-check with `hasClaim`. */
   claims: string[];
-  /** The `state` token passed to `buildVerifyUrl`, if any — for session correlation only. */
   state: string | null;
 }
 
-/**
- * Extracts `sc_verified` / `sc_wallet` / `sc_claims` / `sc_state` from a
- * return-URL, typed as {@link UntrustedReturnParams} to make the trust model
- * explicit at the call site. See that type's TSDoc for why these values MUST
- * be re-verified with {@link hasClaim} before granting access.
- *
- * Accepts a full URL string, a relative URL (`pathname?search`), or a
- * `URLSearchParams`/`URL` instance directly.
- */
 export function parseReturnParams(url: string | URL | URLSearchParams): UntrustedReturnParams {
   const params =
     url instanceof URLSearchParams
@@ -640,43 +1630,33 @@ export function parseReturnParams(url: string | URL | URLSearchParams): Untruste
   };
 }
 
-/**
- * Options for `watchClaim`.
- */
+// ---------------------------------------------------------------------------
+// Watch claim polling
+// ---------------------------------------------------------------------------
+
 export interface WatchClaimOptions {
-  /** How often to poll in milliseconds (default: 3000) */
   pollMs?: number;
-  /** How long to wait before timing out in milliseconds (default: 120000) */
   timeoutMs?: number;
-  /** For parameterised claims (e.g. age, funds), minimum threshold to require */
   minThreshold?: number;
-  /** Maximum time in milliseconds allowed for each poll read. */
   requestTimeoutMs?: number;
+  /**
+   * See the warning on {@link ClaimOptions.source}. Note that a lagging indexer
+   * can delay detection of a freshly-submitted claim, so a poll that ends in
+   * {@link TimeoutError} may reflect indexer lag rather than a missing claim.
+   */
+  source?: ClaimSource;
 }
 
 export interface WatchClaimCallbackOptions extends WatchClaimOptions {
-  /** Callback fired whenever the verification status changes from false to true or vice-versa */
   onChange: (verified: boolean) => void;
 }
 
-/**
- * Polls for a claim to become verified.
- *
- * In Promise form (without `onChange`), it resolves `true` when the claim is verified,
- * or rejects with `TimeoutError` after `timeoutMs`.
- */
 export function watchClaim(
   wallet: string,
   claimType: string,
   opts?: WatchClaimOptions,
 ): Promise<boolean>;
 
-/**
- * Polls for a claim to become verified.
- *
- * In Callback form (with `onChange`), it fires the callback whenever the status changes
- * (e.g. from false to true). Returns a `stop` function to cancel polling.
- */
 export function watchClaim(
   wallet: string,
   claimType: string,
@@ -691,13 +1671,13 @@ export function watchClaim(
   const pollMs = opts?.pollMs ?? 3000;
   const timeoutMs = opts?.timeoutMs ?? 120000;
   const minThreshold = opts?.minThreshold;
+  const source = opts?.source;
   const onChange = (opts as WatchClaimCallbackOptions)?.onChange;
 
   let intervalId: ReturnType<typeof setInterval>;
   let timeoutId: ReturnType<typeof setTimeout>;
   let isStopped = false;
   let lastState = false;
-  // Ensure we don't have overlapping polls if `hasClaim` is slow
   let isPolling = false;
 
   const stop = () => {
@@ -714,6 +1694,7 @@ export function watchClaim(
         const verified = await hasClaim(wallet, claimType, {
           minThreshold,
           requestTimeoutMs: opts?.requestTimeoutMs,
+          source,
         });
         if (isStopped) return;
         if (verified !== lastState) {
@@ -727,7 +1708,7 @@ export function watchClaim(
 
     intervalId = setInterval(poll, pollMs);
     timeoutId = setTimeout(stop, timeoutMs);
-    poll(); // Initial check
+    poll();
     return stop;
   } else {
     return new Promise((resolve, reject) => {
@@ -738,6 +1719,7 @@ export function watchClaim(
           const verified = await hasClaim(wallet, claimType, {
             minThreshold,
             requestTimeoutMs: opts?.requestTimeoutMs,
+            source,
           });
           if (isStopped) return;
           if (verified) {
@@ -754,7 +1736,7 @@ export function watchClaim(
         stop();
         reject(new TimeoutError());
       }, timeoutMs);
-      poll(); // Initial check
+      poll();
     });
   }
 }

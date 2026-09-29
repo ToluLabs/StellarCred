@@ -11,7 +11,7 @@
  * proving happens on the worker.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 import { proofSubmissionConfigured } from "../config";
 import { proveOffMainThread } from "../proof-client";
@@ -25,6 +25,7 @@ import {
 } from "../contracts";
 import { credTtlSecs } from "../proof-helpers";
 import { addTimelineEvent } from "../useProofTimeline";
+import { probeRpcHealth, type RpcIssue } from "../rpc-health";
 import { useToast } from "@/components/Toast";
 
 export type CredProofState =
@@ -34,7 +35,13 @@ export type CredProofState =
   | { status: "ready"; proof: { proof: Uint8Array; publicInputs: Uint8Array } }
   | { status: "error"; message: string };
 
-export type BatchStage = "generating" | "submitting" | "confirmed" | "error";
+export type BatchStage =
+  | "generating"
+  /** Degraded mode: the RPC is unreachable, so proving was deferred (#634). */
+  | "blocked"
+  | "submitting"
+  | "confirmed"
+  | "error";
 
 export function useBatchProofFlow(
   creds: Credential[],
@@ -59,6 +66,8 @@ export function useBatchProofFlow(
   const onProvedRef = useRef(onProved);
   /** The in-flight batch's controller — aborting it cancels the worker's job. */
   const abortRef = useRef<AbortController | null>(null);
+  /** Set while the batch is deferred because the RPC endpoint is down. */
+  const [rpcIssue, setRpcIssue] = useState<RpcIssue | null>(null);
   useEffect(() => { credsRef.current = creds; }, [creds]);
   useEffect(() => { holderRef.current = holder; }, [holder]);
   useEffect(() => { onProvedRef.current = onProved; }, [onProved]);
@@ -70,18 +79,20 @@ export function useBatchProofFlow(
   };
 
   // ── Sequential proof generation ────────────────────────────────────────────
-  // Runs once on mount. Each credential is proved in sequence to avoid
-  // overloading the worker; every heavy step happens inside it.
-  useEffect(() => {
-    const controller = new AbortController();
-    abortRef.current = controller;
+  // Each credential is proved in sequence to avoid overloading the worker;
+  // every heavy step happens inside it.
+  const runGeneration = useCallback(
+    (controller: AbortController) => {
     const { signal } = controller;
-    toast.info(`Generating ${creds.length} proofs…`);
+    // Read the batch from the ref so a parent re-render that rebuilds the
+    // `creds` array cannot restart (and abort) a batch already in flight.
+    const batch = credsRef.current;
+    toast.info(`Generating ${batch.length} proofs…`);
 
     (async () => {
-      for (let i = 0; i < creds.length; i++) {
+      for (let i = 0; i < batch.length; i++) {
         if (signal.aborted) return;
-        const cred = creds[i];
+        const cred = batch[i];
 
         setCredStates((prev) => {
           const next = [...prev];
@@ -149,6 +160,34 @@ export function useBatchProofFlow(
         addTimelineEvent(cred.commitment, "generated");
       }
     })();
+    },
+    [toast],
+  );
+
+  // Runs once on mount — but only after the network answers. A batch spends
+  // N × ~15 s of proving; doing that during an outage just to fail at
+  // preflight is the expensive mistake #634 asks us to avoid.
+  useEffect(() => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
+    void (async () => {
+      const issue = await probeRpcHealth();
+      if (signal.aborted) return;
+      if (issue) {
+        setRpcIssue(issue);
+        setBatchError({
+          code: null,
+          friendly: `${issue.message} Proof generation was deferred: the batch would only fail at submission.`,
+          raw: issue.message,
+        });
+        setBatchStage("blocked");
+        return;
+      }
+      setBatchStage("generating");
+      runGeneration(controller);
+    })();
 
     return () => {
       // Cancels whatever proof is in flight inside the worker, not just this
@@ -156,8 +195,27 @@ export function useBatchProofFlow(
       controller.abort();
       abortRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [runGeneration, toast]);
+
+  /** Prove the batch anyway, without re-checking the network. */
+  const proceedAnyway = useCallback(() => {
+    const controller = abortRef.current ?? new AbortController();
+    abortRef.current = controller;
+    setRpcIssue(null);
+    setBatchError(null);
+    setBatchStage("generating");
+    runGeneration(controller);
+  }, [runGeneration]);
+
+  /** Re-check the network from the blocked state and prove if it recovered. */
+  const retryNetworkCheck = useCallback(async () => {
+    const issue = await probeRpcHealth();
+    if (issue) {
+      setRpcIssue(issue);
+      return;
+    }
+    proceedAnyway();
+  }, [proceedAnyway]);
 
   // ── Auto-submit when all proofs are ready ──────────────────────────────────
   // Fires once when every credential has status "ready" and the wallet is on
@@ -230,6 +288,10 @@ export function useBatchProofFlow(
     batchError,
     batchFee,
     blockedByNetwork,
+    /** Set while the batch is deferred because the RPC endpoint is down. */
+    rpcIssue,
+    proceedAnyway,
+    retryNetworkCheck,
     cancel,
   };
 }

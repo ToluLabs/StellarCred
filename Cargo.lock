@@ -343,6 +343,7 @@ name = "credential_verifier"
 version = "1.0.0"
 dependencies = [
  "soroban-sdk",
+ "test_support",
  "ultrahonk_soroban_verifier",
 ]
 
@@ -744,6 +745,7 @@ dependencies = [
  "proof_registry",
  "proptest",
  "soroban-sdk",
+ "test_support",
 ]
 
 [[package]]
@@ -939,6 +941,7 @@ version = "1.0.0"
 dependencies = [
  "proptest",
  "soroban-sdk",
+ "test_support",
 ]
 
 [[package]]
@@ -1165,6 +1168,7 @@ dependencies = [
  "issuer_registry",
  "proptest",
  "soroban-sdk",
+ "test_support",
 ]
 
 [[package]]
@@ -1831,6 +1835,17 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "test_support"
+version = "1.0.0"
+dependencies = [
+ "credential_verifier",
+ "gated_pool",
+ "issuer_registry",
+ "proof_registry",
+ "soroban-sdk",
 ]
 
 [[package]]

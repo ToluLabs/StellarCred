@@ -33,6 +33,10 @@ stellar contract build >/dev/null
 ADMIN="$(stellar keys address "$SOURCE")"
 echo "Admin / deployer: $ADMIN"
 
+# Record the exact source commit so verifiers can git-checkout the same tree.
+SOURCE_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo 'unknown')"
+echo "Source commit: $SOURCE_COMMIT"
+
 # Function to compute and record WASM hash
 compute_wasm_hash() {
   local name="$1"
@@ -145,9 +149,11 @@ echo "Generating TypeScript bindings..."
 # Create deployment manifest JSON
 cat > "$MANIFEST_FILE" <<MANIFEST_JSON
 {
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"),
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "network": "$NETWORK",
   "admin": "$ADMIN",
+  "source_commit": "$SOURCE_COMMIT",
+  "verify_command": "git checkout $SOURCE_COMMIT && docker build -f docker/Dockerfile.reproducible -t sc . && docker run --rm -v \$(pwd)/out:/out --env SOURCE_DATE_EPOCH=0 sc sh -c 'cargo build --release --target wasm32v1-none --locked --offline && cp target/wasm32v1-none/release/*.wasm /out/' && sha256sum out/*.wasm",
   "contracts": {
     "issuer_registry": {
       "id": "$ISSUER_REGISTRY_ID",
@@ -169,6 +175,12 @@ cat > "$MANIFEST_FILE" <<MANIFEST_JSON
       "version": "$GATED_POOL_VERSION",
       "wasm_hash": "$GATED_POOL_HASH"
     }
+  },
+  "sha256sums": {
+    "issuer_registry": "$ISSUER_REGISTRY_HASH",
+    "credential_verifier": "$CREDENTIAL_VERIFIER_HASH",
+    "proof_registry": "$PROOF_REGISTRY_HASH",
+    "gated_pool": "$GATED_POOL_HASH"
   }
 }
 MANIFEST_JSON
@@ -197,11 +209,21 @@ Contract Versions:
   proof_registry:       v$PROOF_REGISTRY_VERSION
   gated_pool:           v$GATED_POOL_VERSION
 
-To verify WASM hash integrity after deployment:
-  sha256sum $WASM_DIR/issuer_registry.wasm
-  sha256sum $WASM_DIR/credential_verifier.wasm
-  sha256sum $WASM_DIR/proof_registry.wasm
-  sha256sum $WASM_DIR/gated_pool.wasm
+Source commit: $SOURCE_COMMIT
+Deployment manifest: $MANIFEST_FILE
 
-Compare with hashes in: $MANIFEST_FILE
+To independently verify the deployed WASM matches this source commit:
+  git checkout $SOURCE_COMMIT
+  docker build -f docker/Dockerfile.reproducible -t sc .
+  mkdir -p out
+  docker run --rm -v \$(pwd)/out:/out --env SOURCE_DATE_EPOCH=0 sc \\
+    sh -c "cargo build --release --target wasm32v1-none --locked --offline \\
+           && cp target/wasm32v1-none/release/*.wasm /out/"
+  sha256sum out/*.wasm   # compare against hashes in $MANIFEST_FILE
+
+To verify against the live on-chain hashes (requires stellar CLI ≥ v26):
+  ./scripts/verify-wasm.sh --network $NETWORK
+
+Record this deployment in DEPLOYMENTS.md using the source_commit and
+sha256sums fields from $MANIFEST_FILE.
 EOF

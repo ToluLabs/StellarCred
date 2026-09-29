@@ -26,6 +26,14 @@ expensive functions can make the protocol unusable or unaffordable.
 > competition and surge pricing at submission time. Figures are per-invocation, not including
 > network overhead or base transaction fee.
 
+> **Note:** `IssuerRegistry` 1.1.0 added issuer key sets. `submit_proof` now calls
+> `is_valid_issuer_key` (one persistent read plus a scan of the issuer's retired
+> keys, capped at 8) instead of `get_issuer_pubkey` plus a local 64-byte
+> comparison, and the new admin-only entry points `rotate_issuer_key`,
+> `revoke_issuer_key`, and `get_issuer_keys` are not in the measured tables yet.
+> The key-check figures above are estimates from that change; re-run
+> `make benchmark` on a live deployment to refresh them.
+
 ---
 
 ## Per-transaction CPU budget utilization
@@ -61,8 +69,9 @@ proof verifier, which runs entirely via Soroban host-native functions (no extern
 
 ```
 1. is_valid_issuer (cross-contract call → IssuerRegistry): ~250,000 instructions
-2. get_issuer_pubkey (cross-contract call → IssuerRegistry): ~220,000 instructions
-3. public_inputs_match_pubkey (64-byte key comparison):       ~80,000 instructions
+2. is_valid_issuer_key (cross-contract call → IssuerRegistry, key taken from
+   the proof's public inputs):                          ~300,000 instructions
+3. pubkey_from_public_inputs (64-byte key extraction):  ~80,000 instructions
 4. verify_proof (cross-contract call → CredentialVerifier):
      └─ BN254 UltraHonk host fn:                           ~12,500,000 instructions
 5. Persistent storage write (ProofRecord):                    ~180,000 instructions
@@ -148,6 +157,7 @@ proof verifier, which runs entirely via Soroban host-native functions (no extern
 | `issuer_registry`     | `revoke_issuer`       | ~280,000         | <0.3%    | ~0.00028       |
 | `issuer_registry`     | `is_valid_issuer`     | ~200,000         | <0.2%    | ~0.0002        |
 | `issuer_registry`     | `get_issuer_pubkey`   | ~180,000         | <0.2%    | ~0.00018       |
+| `issuer_registry`     | `is_valid_issuer_key` | ~300,000         | <0.3%    | ~0.0003        |
 | `issuer_registry`     | `admin`               | ~120,000         | <0.1%    | ~0.00012       |
 | `credential_verifier` | `verify_proof`        | ~12,700,000      | ~12.7%   | ~0.013         |
 | `credential_verifier` | `set_vk`              | ~850,000         | <0.9%    | ~0.00085       |

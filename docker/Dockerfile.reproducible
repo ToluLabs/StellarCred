@@ -51,9 +51,10 @@ COPY contracts/credential_verifier/Cargo.toml  contracts/credential_verifier/
 COPY contracts/issuer_registry/Cargo.toml      contracts/issuer_registry/
 COPY contracts/proof_registry/Cargo.toml       contracts/proof_registry/
 COPY contracts/gated_pool/Cargo.toml           contracts/gated_pool/
+COPY contracts/test_support/Cargo.toml         contracts/test_support/
 
 # Stub lib.rs so `cargo fetch` can resolve the workspace without real sources.
-RUN for d in credential_verifier issuer_registry proof_registry gated_pool; do \
+RUN for d in credential_verifier issuer_registry proof_registry gated_pool test_support; do \
         mkdir -p "contracts/$d/src" && \
         printf '#![no_std]\n' > "contracts/$d/src/lib.rs"; \
     done
@@ -74,6 +75,12 @@ COPY contracts/ contracts/
 
 # Source date epoch is set at run time via --env SOURCE_DATE_EPOCH=0 to strip
 # any timestamp that could differ between independent builds.
+#
+# Path remapping: normalise the source tree and registry paths so WASM metadata
+# contains /workspace and /usr/local/cargo regardless of the build context.
+# This makes container output byte-identical to a host build that applies the
+# equivalent --remap-path-prefix flags for its own paths.
+ENV RUSTFLAGS="--remap-path-prefix=/workspace=/workspace --remap-path-prefix=/usr/local/cargo=/usr/local/cargo --remap-path-prefix=/usr/local/rustup=/usr/local/rustup"
 
 # Default command: build and copy WASM artifacts to /out.
 # The caller is expected to bind-mount a host directory at /out.

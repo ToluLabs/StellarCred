@@ -4,6 +4,9 @@
 
 This runbook documents the safe, transparent upgrade process for StellarCred smart contracts on Stellar. The system supports zero-downtime upgrades with comprehensive versioning, audit trails, and rollback capabilities.
 
+For the authoritative statement of support windows, deprecation timelines, and
+the VK pruning safety rule, see [SUPPORT_POLICY.md](SUPPORT_POLICY.md).
+
 **Key Principles:**
 - All contract versions are exposed on-chain and in the app footer
 - Events emit detailed version information for audit trails
@@ -83,6 +86,9 @@ The `/api/ready` endpoint returns:
 ## Pre-Upgrade Checklist
 
 Before upgrading any contract:
+
+> Ensure the planned upgrade aligns with the support windows and deprecation
+> procedure in [SUPPORT_POLICY.md](SUPPORT_POLICY.md) before proceeding.
 
 ### 1. Planning & Testing
 - [ ] Identify which contract(s) need upgrading
@@ -293,6 +299,14 @@ stellar contract invoke \
    - Contract versions show 1.1.0 (or new version)
 
 ---
+### Update the deployment registry
+
+ After a successful deployment, update [`DEPLOYMENTS.md`](./DEPLOYMENTS.md)
+with the deployed contract IDs, contract versions, WASM hashes, and deployment
+ date for each affected network.
+
+ A deployment is not considered complete until the deployment registry has been
+ updated and reviewed.
 
 ## Data Migration Strategy
 
@@ -714,4 +728,5 @@ For upgrade issues:
 - **Contracts**: Inspect events in Soroban explorer
 - **SDK**: Review version in `frontend/packages/sdk/package.json`
 - **Escalation**: Contact admin team with version mismatch details
+- **Support windows and deprecation timelines**: See [SUPPORT_POLICY.md](SUPPORT_POLICY.md)
 

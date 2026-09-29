@@ -37,8 +37,10 @@ export function resolveRequestId(
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Explicit allowlist of fields that are safe to log
-const SAFE_FIELDS = [
+// Explicit allowlist of fields that are safe to log.
+// Exported so that error-reporting.ts can apply the same gate to outgoing
+// webhook payloads (issue #553).
+export const SAFE_FIELDS = [
   "event",
   "credentialType",
   "issuerId",
@@ -62,6 +64,11 @@ const SAFE_FIELDS = [
   "timestamp",
   "auditIndex",
   "auditHash",
+  // Plaid multi-item aggregation: ordinals and counts only — never account
+  // names, balances, or token identifiers.
+  "itemIndex",
+  "itemCount",
+  "accountCount",
 ];
 
 export function stripSensitiveFields<T extends Record<string, unknown>>(obj: T): Partial<T> {

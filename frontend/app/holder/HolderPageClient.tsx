@@ -12,7 +12,6 @@ import {
   IconPlus,
   IconAlertTriangle,
   IconTrash,
-  IconCertificate,
   IconLoader2,
   IconCpu,
   IconCloudUpload,
@@ -57,7 +56,7 @@ import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { IMPORT_PARAM } from "@/lib/transfer";
 
-// The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
+// The encrypted-transfer modals are heavy (credential-crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer — load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
 const TransferExportModal = dynamic(
@@ -78,7 +77,7 @@ function credTtlSecs(cred: Credential): number {
 // Downloads every locally stored credential as a JSON backup file. Pairs with
 // the "Import credential JSON" panel: the file's contents can be pasted back
 // here (or into another browser/device) to restore. Credentials live only in
-// this browser's localStorage, so this is the only backup path — see the
+// this browser&apos;s localStorage, so this is the only backup path — see the
 // "Where your credentials live" docs section.
 async function downloadBackup(): Promise<void> {
   const json = await exportCredentials();
@@ -117,6 +116,7 @@ function daysRemaining(cred: Credential): number {
 import { useProofTimeline, addTimelineEvent } from "@/lib/useProofTimeline";
 import { Timeline } from "@/components/Timeline";
 import { IconHistory } from "@tabler/icons-react";
+import { useIssuerStatus } from "@/lib/hooks/useIssuerStatus";
 
 // ── Credential expiry helpers ─────────────────────────────────────────────────
 
@@ -142,6 +142,36 @@ function formatExpiryDate(ts: number): string {
   });
 }
 
+// ── Storage TTL vs Credential expiry helpers (Issue #552) ───────────────────
+// Soroban persistent storage TTL is refreshed to ~90 days (17,280 * 90 ledgers)
+// on proof submission and whenever bumped via bump_claim.
+const STORAGE_RENT_TTL_SECS = 90 * 86_400;
+
+function storageExpiryTimestamp(cred: Credential): number | null {
+  if (!cred.provedAt) return null;
+  return cred.provedAt + STORAGE_RENT_TTL_SECS;
+}
+
+function storageDaysRemaining(cred: Credential): number {
+  const ts = storageExpiryTimestamp(cred);
+  if (!ts) return 0;
+  const secsLeft = ts - Math.floor(Date.now() / 1000);
+  return Math.max(0, Math.ceil(secsLeft / 86_400));
+}
+
+function isStorageLapsed(cred: Credential): boolean {
+  const ts = storageExpiryTimestamp(cred);
+  if (!ts) return false;
+  return ts <= Math.floor(Date.now() / 1000);
+}
+
+function isStorageExpiringSoon(cred: Credential, windowDays = 14): boolean {
+  const ts = storageExpiryTimestamp(cred);
+  if (!ts) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return ts > now && ts <= now + windowDays * 86_400;
+}
+
 // ── Credential card ──────────────────────────────────────────────────────────
 
 function CredCard({
@@ -159,10 +189,10 @@ function CredCard({
   onRemove: () => void;
   onInspect: () => void;
   isPreview?: boolean;
-  /** Batch selection controls — omitted on cards that can't be batched. */
+  /** Batch selection controls — omitted on cards that can&apos;t be batched. */
   selection?: {
     checked: boolean;
-    /** Why this card can't currently be added, or null when it can. */
+    /** Why this card can&apos;t currently be added, or null when it can. */
     blockedReason: string | null;
     onToggle: () => void;
   };
@@ -187,7 +217,7 @@ function CredCard({
                 <>
                   {" · "}
                   <span style={{ color: "var(--accent)", opacity: 0.75 }}>
-                    expires in {daysRemaining(c)}d
+                    credential expires in {daysRemaining(c)}d
                   </span>
                   {c.provedTxHash && (
                     <>
@@ -205,16 +235,31 @@ function CredCard({
                 </>
               )}
               {status === "expired" && (
-                <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>expired</span></>
+                <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>proof expired</span></>
               )}
             </div>
-            <div style={{ marginTop: "0.1rem" }}>
-              {credIsExpired(c) ? (
-                <span style={{ color: "var(--danger)", fontWeight: 500 }}>Expired</span>
-              ) : (
-                <span style={{ color: credExpiryWithinDays(c, 30) ? "var(--warn)" : "var(--faint)" }}>
-                  Expires {formatExpiryDate(credExpiryTimestamp(c))}
-                </span>
+            <div style={{ marginTop: "0.15rem", display: "flex", flexWrap: "wrap", gap: "0.75rem", fontSize: "0.72rem" }}>
+              <div>
+                <span style={{ color: "var(--faint)" }}>Credential: </span>
+                {credIsExpired(c) ? (
+                  <span style={{ color: "var(--danger)", fontWeight: 500 }}>Expired</span>
+                ) : (
+                  <span style={{ color: credExpiryWithinDays(c, 30) ? "var(--warn)" : "var(--fg)" }}>
+                    Expires {formatExpiryDate(credExpiryTimestamp(c))}
+                  </span>
+                )}
+              </div>
+              {c.provedAt && (
+                <div>
+                  <span style={{ color: "var(--faint)" }}>Storage Rent: </span>
+                  {isStorageLapsed(c) ? (
+                    <span style={{ color: "var(--danger)", fontWeight: 500 }}>Archived (TTL lapsed)</span>
+                  ) : (
+                    <span style={{ color: isStorageExpiringSoon(c) ? "var(--warn)" : "var(--fg)" }}>
+                      ~{storageDaysRemaining(c)}d until archive
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -223,12 +268,24 @@ function CredCard({
         {/* right: badges + button + trash */}
         <div className="card-actions">
           {isPreview && <Badge variant="pending">Preview</Badge>}
+          {(c.issuerStatus === "issuer_revoked") && (
+            <Badge variant="denied" dot>Issuer revoked</Badge>
+          )}
+          {(c.issuerStatus === "key_revoked") && (
+            <Badge variant="denied" dot>Issuer key revoked</Badge>
+          )}
           <Badge variant="verified" dot={false}>Held</Badge>
-          {status === "proved" && !isExpiringSoon(c) && (
+          {status === "proved" && !isExpiringSoon(c) && !isStorageLapsed(c) && (
             <Badge variant="verified" dot={false}>On-chain</Badge>
           )}
           {status === "proved" && isExpiringSoon(c) && (
             <Badge variant="pending" dot={true}>Expiring in {daysRemaining(c)}d</Badge>
+          )}
+          {status === "proved" && isStorageLapsed(c) && (
+            <Badge variant="denied" dot={true}>Storage Archived</Badge>
+          )}
+          {status === "proved" && !isStorageLapsed(c) && isStorageExpiringSoon(c) && (
+            <Badge variant="pending" dot={true}>Rent: {storageDaysRemaining(c)}d left</Badge>
           )}
           {status === "expired" && (
             <Badge variant="denied" dot={true}>Proof Expired</Badge>
@@ -277,6 +334,80 @@ function CredCard({
   );
 }
 
+// Minimal inline illustration for the empty holder state — an abstract
+// credential card with a proof seal, drawn entirely from theme CSS variables
+// (no hardcoded colours) so it adapts to any theme.
+function EmptyStateIllustration() {
+  return (
+    <svg
+      width="132"
+      height="104"
+      viewBox="0 0 132 104"
+      fill="none"
+      aria-hidden="true"
+    >
+      {/* backing card, tilted behind */}
+      <rect
+        x="22"
+        y="12"
+        width="70"
+        height="46"
+        rx="8"
+        transform="rotate(-6 22 12)"
+        stroke="var(--border)"
+        strokeWidth="1.5"
+      />
+      {/* front card */}
+      <rect
+        x="31"
+        y="34"
+        width="70"
+        height="46"
+        rx="8"
+        fill="var(--card)"
+        stroke="var(--border-strong)"
+        strokeWidth="1.5"
+      />
+      {/* proof seal */}
+      <circle cx="65" cy="57" r="9" stroke="var(--accent)" strokeWidth="1.5" />
+      <path
+        d="m61.5 57 2.4 2.4 4.6-4.8"
+        stroke="var(--accent)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* credential text lines */}
+      <path
+        d="M81 52h13"
+        stroke="var(--border-strong)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M81 62h9"
+        stroke="var(--border)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      {/* sparks */}
+      <path
+        d="M112 22v8M108 26h8"
+        stroke="var(--accent)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        opacity="0.7"
+      />
+      <path
+        d="M24 80v6M21 83h6"
+        stroke="var(--border-strong)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 // ── Section header ────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -306,6 +437,27 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Skeleton card (shown while credentials are loading from localStorage) ─────
+
+function SkeletonCard() {
+  return (
+    <div className="card" style={{ padding: "1rem 1.25rem" }} aria-hidden="true">
+      <div className="between" style={{ alignItems: "center", gap: "0.75rem" }}>
+        {/* left: title + meta lines */}
+        <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+          <div className="skeleton" style={{ height: "0.9rem", width: "45%", borderRadius: "var(--radius-xs)" }} />
+          <div className="skeleton" style={{ height: "0.75rem", width: "65%", borderRadius: "var(--radius-xs)" }} />
+        </div>
+        {/* right: badge + button placeholders */}
+        <div className="card-actions" style={{ gap: "0.4rem" }}>
+          <div className="skeleton" style={{ height: "1.375rem", width: "3.5rem", borderRadius: "999px" }} />
+          <div className="skeleton" style={{ height: "1.875rem", width: "6.5rem", borderRadius: "var(--radius-sm)" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Holder page ───────────────────────────────────────────────────────────────
 
 type PageView =
@@ -320,13 +472,14 @@ function HolderInner() {
   const searchParams = useSearchParams();
   const toast = useToast();
   const [creds, setCreds] = useState<Credential[]>([]);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<PageView>({ kind: "list" });
   const [importing, setImporting] = useState(false);
   const [detailCred, setDetailCred] = useState<Credential | null>(null);
   const [transferCred, setTransferCred] = useState<Credential | null>(null);
   const [importPayload, setImportPayload] = useState<string | null>(null);
 
-  useEffect(() => { loadCredentials().then(setCreds); }, []);
+  useEffect(() => { loadCredentials().then((c) => { setCreds(c); setLoading(false); }); }, []);
 
   // Cross-tab sync: listen for storage events from other tabs
   useEffect(() => {
@@ -384,6 +537,22 @@ function HolderInner() {
   // to avoid paying wasm-init cost for types the user has no credential for.
   const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
   useWarmProver(unprovedTypes, Boolean(address));
+
+  // ── Issuer status checks (#626) ────────────────────────────────────────────
+  // Run in the background once the wallet is connected. On each check the
+  // hook writes `issuerStatus` back to the stored credential and calls
+  // loadCredentials() so the UI re-renders with the updated status.
+  useIssuerStatus(
+    isPreview ? [] : creds,
+    address || null,
+    () => { loadCredentials().then(setCreds); },
+  );
+
+  // Credentials whose issuer is no longer active — shown in a dedicated
+  // section at the top so the holder sees the signal before trying to prove.
+  const issuerGoneCreds = displayCreds.filter(
+    (c) => c.issuerStatus === "issuer_revoked" || c.issuerStatus === "key_revoked",
+  );
 
   // ── Batch selection ────────────────────────────────────────────────────────
   // The holder picks which unproved credentials go into one transaction. Both
@@ -450,6 +619,22 @@ function HolderInner() {
 
   // Selecting is only offered when a batch is actually possible: a connected
   // wallet and at least two credentials of distinct types.
+  
+  const [confirmBulkAction, setConfirmBulkAction] = useState<{
+    type: "remove-selected" | "clear-expired";
+    commitments: string[];
+  } | null>(null);
+
+  async function executeBulkRemove(commitments: string[]) {
+    for (const commitment of commitments) {
+      await removeCredential(commitment);
+    }
+    const updated = await loadCredentials();
+    setCreds(updated);
+    setSelectedCommitments([]);
+    setConfirmBulkAction(null);
+  }
+
   const distinctUnprovedTypes = new Set(unproved.map((c) => c.type)).size;
   const canBatch = Boolean(address) && distinctUnprovedTypes >= 2;
   const canSubmitBatch = selectedCreds.length >= 2;
@@ -516,8 +701,61 @@ function HolderInner() {
       ) : (
         <div className="stack reveal" style={{ gap: "1.5rem" }}>
 
+          {/* ── Issuer Gone Banner (#626) ── */}
+          {issuerGoneCreds.length > 0 && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="card"
+              style={{
+                padding: "0.85rem 1.15rem",
+                backgroundColor: "rgba(240,96,77,0.08)",
+                borderColor: "rgba(240,96,77,0.35)",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "0.75rem",
+              }}
+            >
+              <IconAlertTriangle
+                size={18}
+                style={{ color: "var(--danger)", flexShrink: 0, marginTop: 2 }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--danger)" }}>
+                  {issuerGoneCreds.length === 1
+                    ? "1 credential cannot be proved — issuer unavailable"
+                    : `${issuerGoneCreds.length} credentials cannot be proved — issuers unavailable`}
+                </div>
+                <p style={{ margin: "0.35rem 0 0", fontSize: "0.8rem", color: "var(--muted)", lineHeight: 1.5 }}>
+                  {issuerGoneCreds.some((c) => c.issuerStatus === "issuer_revoked")
+                    ? "One or more issuers have been permanently removed from the registry. Proof submission will fail with \u201cIssuerNotTrusted\u201d."
+                    : "One or more issuer signing keys have been emergency-revoked. Proof submission may fail."}
+                  {" "}Obtain a fresh credential from a different trusted issuer.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Issuer Gone credentials ── */}
+          {issuerGoneCreds.length > 0 && (
+            <div className="stack" style={{ gap: "0.6rem" }}>
+              <SectionLabel>Issuer gone · credential affected</SectionLabel>
+              {issuerGoneCreds.map((c) => (
+                <CredCard
+                  key={c.commitment}
+                  c={c}
+                  address={address}
+                  onProve={() => setView({ kind: "single", cred: c })}
+                  onRemove={() => removeCredential(c.commitment).then(setCreds)}
+                  onInspect={() => setDetailCred(c)}
+                  isPreview={isPreview}
+                />
+              ))}
+            </div>
+          )}
+
           {/* ── Expiry Warning Banner ── */}
-          {(expiringSoon.length > 0 || expired.length > 0) && (
+          {!loading && (expiringSoon.length > 0 || expired.length > 0) && (
             <div
               role="status"
               aria-live="polite"
@@ -550,35 +788,30 @@ function HolderInner() {
             </div>
           )}
 
+          {/* ── Skeleton cards (while credentials are being read) ── */}
+          {loading && (
+            <div className="stack" style={{ gap: "0.6rem" }} aria-label="Loading credentials" aria-busy="true">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          )}
+
           {/* ── Empty state ── */}
-          {creds.length === 0 && !importing && (
-            <div
-              className="card"
-              style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
-            >
-              <IconCertificate size={30} stroke={1.3} color="var(--faint)" />
-              <h3 style={{ margin: "1rem 0 0.4rem" }}>No credentials yet</h3>
-              <p className="muted" style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}>
-                Get a credential from a trusted issuer, then generate a
-                zero-knowledge proof to verify it on-chain.
+          {!loading && creds.length === 0 && !importing && (
+            <div className="card empty-state">
+              <EmptyStateIllustration />
+              <h3 style={{ marginTop: "1.25rem" }}>No credentials yet</h3>
+              <p
+                className="muted"
+                style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0.4rem auto 1.5rem" }}
+              >
+                Get your first credential to start generating proofs.
               </p>
-              <a href="/verify" className="btn btn-primary btn-sm" style={{ display: "inline-flex" }}>
+              <Link href="/verify" className="btn btn-primary btn-sm" style={{ display: "inline-flex" }}>
                 Get a credential
                 <IconArrowRight size={14} />
-              </a>
-              <p
-                className="faint"
-                style={{ fontSize: "0.75rem", maxWidth: 380, margin: "1.25rem auto 0", lineHeight: 1.6 }}
-              >
-                Credentials are stored only in this browser&apos;s local storage — clearing
-                site data, switching browsers/devices, or private mode erases them.{" "}
-                <Link
-                  href="/docs#storage"
-                  style={{ color: "var(--accent)", textDecoration: "underline" }}
-                >
-                  Where your credentials live
-                </Link>
-              </p>
+              </Link>
             </div>
           )}
 
@@ -604,6 +837,22 @@ function HolderInner() {
           {expired.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
               <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
+              
+  {expired.length > 0 && (
+    <div className="between" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "8px", alignItems: "center" }}>
+      <span className="faint" style={{ fontSize: "0.85rem", color: "#fca5a5" }}>
+        {expired.length} expired credential{expired.length > 1 ? "s" : ""}
+      </span>
+      <button
+        className="btn btn-sm btn-ghost"
+        style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.3)" }}
+        onClick={() => setConfirmBulkAction({ type: "clear-expired", commitments: expired.map(c => c.commitment) })}
+      >
+        Clear all expired
+      </button>
+    </div>
+  )}
+
               {expired.map((c) => (
                 <CredCard
                   key={c.commitment}
@@ -675,6 +924,18 @@ function HolderInner() {
                         ? `Prove ${selectedCreds.length} selected in one transaction`
                         : "Prove several in one transaction"}
                     </button>
+                    
+  {selectedCreds.length > 0 && (
+    <button
+      className="btn btn-ghost btn-sm"
+      style={{ color: "#ef4444" }}
+      onClick={() => setConfirmBulkAction({ type: "remove-selected", commitments: selectedCommitments })}
+    >
+      <IconTrash size={14} style={{ marginRight: "0.25rem" }} />
+      Remove selected ({selectedCreds.length})
+    </button>
+  )}
+
                     {selectedCreds.length > 0 ? (
                       <button
                         className="btn btn-ghost btn-sm"
@@ -718,13 +979,13 @@ function HolderInner() {
             </div>
           )}
 
-          {!address && creds.length > 0 && (
+          {!loading && !address && creds.length > 0 && (
             <p className="faint" style={{ fontSize: "0.8125rem" }}>
               Connect a wallet to generate and submit proofs.
             </p>
           )}
 
-          {importing ? (
+          {!loading && (importing ? (
             <ImportPanel
               onImport={async (c) => {
                 setCreds(await saveCredential(c));
@@ -764,7 +1025,7 @@ function HolderInner() {
                 </Link>
               </p>
             </div>
-          )}
+          ))}
         </div>
       )}
 
@@ -796,6 +1057,35 @@ function HolderInner() {
           }}
           onClose={() => setImportPayload(null)}
         />
+      )}
+
+      {/* Destructive Action Confirmation Modal */}
+      {confirmBulkAction && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0, 0, 0, 0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div className="modal-card" style={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", padding: "1.5rem", maxWidth: "420px", width: "90%" }}>
+            <h3 style={{ marginTop: 0, fontSize: "1.2rem" }}>
+              {confirmBulkAction.type === "clear-expired" ? "Clear Expired Credentials?" : "Remove Selected Credentials?"}
+            </h3>
+            <p className="faint" style={{ fontSize: "0.9rem", margin: "1rem 0" }}>
+              Are you sure you want to remove {confirmBulkAction.commitments.length} credential{confirmBulkAction.commitments.length > 1 ? "s" : ""}? This will permanently remove them from your browser&apos;s encrypted local storage.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end", gap: "0.75rem" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setConfirmBulkAction(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                style={{ backgroundColor: "#dc2626", color: "#fff" }}
+                onClick={() => executeBulkRemove(confirmBulkAction.commitments)}
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
@@ -1066,12 +1356,41 @@ function ProofFlow({
   const proofDone = stage === "generated" || stage === "submitting" || stage === "confirmed";
   const submitDone = stage === "confirmed";
 
+  // Warn the holder if the issuer has been revoked before they attempt to prove.
+  const issuerGone =
+    cred.issuerStatus === "issuer_revoked" || cred.issuerStatus === "key_revoked";
+
   return (
     <div className="reveal" style={{ maxWidth: 520, margin: "0 auto" }}>
       <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginBottom: "1.5rem" }}>
         <IconArrowLeft size={14} />
         All credentials
       </button>
+
+      {issuerGone && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: "1rem",
+            padding: "0.9rem 1.1rem",
+            borderRadius: "var(--radius)",
+            border: "1px solid rgba(240,96,77,0.35)",
+            background: "rgba(240,96,77,0.07)",
+          }}
+        >
+          <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+            <IconAlertTriangle size={15} />
+            {cred.issuerStatus === "issuer_revoked"
+              ? "Issuer has been removed"
+              : "Issuer signing key revoked"}
+          </div>
+          <p style={{ margin: "0.45rem 0 0", fontSize: "0.82rem", color: "var(--muted)", lineHeight: 1.5 }}>
+            {cred.issuerStatus === "issuer_revoked"
+              ? `${cred.issuer} has been permanently removed from the registry. Proof submission will fail. Obtain a new credential from a different trusted issuer.`
+              : `${cred.issuer} has had its signing key emergency-revoked. Your proof submission may fail with a key mismatch. Contact your issuer or obtain a new credential.`}
+          </p>
+        </div>
+      )}
 
       <div className="card" style={{ padding: "1.75rem" }}>
         {/* credential header */}

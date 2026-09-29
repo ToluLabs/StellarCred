@@ -41,7 +41,10 @@ const ENV_KEYS = [
   "NEXT_PUBLIC_ISSUER_ADDRESS",
   "PERSONA_API_KEY",
   "PERSONA_KYC_TEMPLATE_ID",
+  "PLAID_CLIENT_ID",
+  "PLAID_SECRET",
   "PLAID_ACCESS_TOKEN",
+  "PLAID_ACCESS_TOKENS",
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -112,6 +115,143 @@ describe("signature correctness", () => {
     const sig = Uint8Array.from(credential.sig);
 
     expect(secp256k1.verify(sig, digest, pubkey, { prehash: false })).toBe(true);
+  });
+});
+
+describe("funds issuance (aggregate proof-of-funds)", () => {
+  function plaidItemResponse(accounts: unknown[]) {
+    return { ok: true, json: async () => ({ accounts }) };
+  }
+
+  // Env validation requires client id, secret, and a token to be set
+  // together, so every aggregation test configures the full Plaid triple.
+  function setPlaidEnv(tokens: string) {
+    delete process.env.PLAID_ACCESS_TOKEN;
+    process.env.PLAID_CLIENT_ID = "test-plaid-client-id";
+    process.env.PLAID_SECRET = "test-plaid-secret";
+    process.env.PLAID_ACCESS_TOKENS = tokens;
+  }
+
+  it("overwrites a user-supplied balance with the aggregate summed across linked Plaid items", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    setPlaidEnv("item-a,item-b");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Checking", balances: { available: 1500 } },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Savings", balances: { available: 25000 } },
+          ]),
+        ),
+    );
+
+    const { POST } = await loadRoute();
+
+    const res = await POST(
+      postRequest({
+        credential_types: ["funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+        // User-supplied figure — Plaid's verified aggregate must win.
+        attributes: { balance: "1" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const { credentials } = await res.json();
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0].type).toBe("funds");
+    expect(credentials[0].value).toBe("26500");
+  });
+
+  it("fails closed when any linked item errors instead of attesting a partial sum", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    setPlaidEnv("item-a,item-broken");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Checking", balances: { available: 90000 } },
+          ]),
+        )
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({ error_code: "ITEM_LOGIN_REQUIRED" }),
+        }),
+    );
+
+    const { POST } = await loadRoute();
+
+    const res = await POST(
+      postRequest({
+        credential_types: ["funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+      }),
+    );
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.code).toBe("PLAID_ERROR");
+  });
+
+  it("attests only the aggregate — per-source account data never reaches the credential or the logs", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    setPlaidEnv("item-a,item-b");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Acme Checking", balances: { available: 1200 } },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Acme Savings", balances: { available: 8800 } },
+          ]),
+        ),
+    );
+
+    const { POST } = await loadRoute();
+    // Imported after loadRoute()'s vi.resetModules() so this resolves to the
+    // same fresh logger instance route.ts itself just imported.
+    const { logger } = await import("@/lib/logger");
+    const infoSpy = vi.spyOn(logger, "info");
+    const warnSpy = vi.spyOn(logger, "warn");
+    const errorSpy = vi.spyOn(logger, "error");
+
+    const res = await POST(
+      postRequest({
+        credential_types: ["funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const { credentials } = await res.json();
+    // The aggregate (10000) is attested; component names/balances stay private.
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0].value).toBe("10000");
+    expect(credentials[0].accounts).toBeUndefined();
+    expect(credentials[0].sources).toBeUndefined();
+
+    for (const spy of [infoSpy, warnSpy, errorSpy]) {
+      for (const call of spy.mock.calls) {
+        const logged = JSON.stringify(call);
+        expect(logged).not.toMatch(/Acme|item-a|item-b/);
+      }
+    }
   });
 });
 

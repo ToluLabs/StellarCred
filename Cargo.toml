@@ -3,6 +3,16 @@ resolver = "2"
 members = [
   "contracts/*",
 ]
+# Only the deployable contracts are built by a bare `cargo build`, so the
+# host-only test harness (contracts/test_support, which needs soroban-sdk's
+# `testutils`) is never pulled into the wasm32v1-none build graph. It still
+# compiles for tests and for `cargo clippy --workspace`.
+default-members = [
+  "contracts/credential_verifier",
+  "contracts/gated_pool",
+  "contracts/issuer_registry",
+  "contracts/proof_registry",
+]
 
 [workspace.dependencies]
 # Pinned to 26.0.1 to match rs-soroban-ultrahonk, whose verifier uses the

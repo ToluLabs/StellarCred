@@ -216,6 +216,8 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => setShowRaw((v) => !v)}
+            aria-expanded={showRaw}
+            aria-controls="credential-raw-json-viewer"
             style={{
               fontSize: "0.72rem",
               padding: "0.2rem 0.5rem",
@@ -229,7 +231,7 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
             {showRaw ? t("common.hide") : t("common.show")} {t("credential.rawJson")}
           </button>
           {showRaw && (
-            <div style={{ position: "relative", marginTop: "0.5rem" }}>
+            <div id="credential-raw-json-viewer" style={{ position: "relative", marginTop: "0.5rem" }}>
               <pre
                 className="mono"
                 style={{

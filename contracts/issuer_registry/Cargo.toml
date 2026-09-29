@@ -12,5 +12,9 @@ doctest = false
 soroban-sdk = { workspace = true }
 
 [dev-dependencies]
+# Shared native test harness: deploy-and-wire, register-issuer, set-vk,
+# and build-valid-submission helpers, plus the real UltraHonk fixture
+# catalog. Host-only; never part of the WASM build.
+test_support = { path = "../test_support" }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = "1.4"

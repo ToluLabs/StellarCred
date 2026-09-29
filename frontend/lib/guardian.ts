@@ -3,9 +3,19 @@
 import type { Credential } from "./credential";
 import { parseCredential } from "./credential";
 import { splitSecret, combineShares, type RawShare } from "./shamir";
+import {
+  KEY_BYTES,
+  computeKeyFingerprint,
+  decodeB64,
+  encodeB64Url,
+  generateCredentialKey,
+  importCredentialKey,
+  openWithKey,
+  sealWithKey,
+  toHex,
+} from "./credential-crypto";
 
-const IV_LENGTH = 12;
-const KEY_LENGTH = 32;
+export { computeKeyFingerprint };
 
 export class GuardianRecoveryError extends Error {
   constructor(message: string) {
@@ -26,9 +36,17 @@ export interface GuardianShare {
   keyFingerprint: string; // First 16 hex chars (8 bytes) of SHA-256(encryptionKey)
 }
 
+/**
+ * Guardian backup file. The encrypted payload is the consolidated envelope
+ * (lib/credential-crypto.ts) serialized flat with its key-wrapped fields:
+ * `kdf: "RAW"` because the AES wrap key is generated, not passphrase-derived,
+ * and distributed via Shamir shares rather than a salt. Version 1 (pre-#547)
+ * files carry the same fields without the `kdf` marker and remain recoverable.
+ */
 export interface GuardianEncryptedBackup {
-  version: 1;
+  version: 1 | 2;
   type: "guardian-backup";
+  kdf?: "RAW";
   recoveryId: string;
   createdAt: number;
   threshold: number;
@@ -64,39 +82,10 @@ export interface GuardianRecoverySetupResult {
   rawKeyHex: string;
 }
 
-function toBase64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function fromBase64Url(s: string): Uint8Array {
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-
-/** Computes the key fingerprint (first 8 bytes of SHA-256, hex encoded). */
-export async function computeKeyFingerprint(keyBytes: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", keyBytes as BufferSource);
-  const hashBytes = new Uint8Array(hash);
-  return bytesToHex(hashBytes.slice(0, 8));
-}
-
 /** Generates a unique recovery identifier. */
 export function generateRecoveryId(): string {
   const random = crypto.getRandomValues(new Uint8Array(6));
-  return `sc_rec_${bytesToHex(random)}`;
+  return `sc_rec_${toHex(random)}`;
 }
 
 /**
@@ -127,37 +116,24 @@ export async function createGuardianRecoverySetup(
   const createdAt = Math.floor(Date.now() / 1000);
 
   // 1. Generate 32-byte AES key
-  const rawKey = crypto.getRandomValues(new Uint8Array(KEY_LENGTH));
+  const rawKey = generateCredentialKey();
   const keyFingerprint = await computeKeyFingerprint(rawKey);
 
-  // 2. Encrypt credentials with AES-256-GCM
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const plaintext = new TextEncoder().encode(JSON.stringify(credentials));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    rawKey as BufferSource,
-    { name: "AES-GCM" },
-    false,
-    ["encrypt", "decrypt"],
-  );
-
-  const ciphertextBuffer = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: iv as BufferSource },
-    cryptoKey,
-    plaintext,
-  );
-  const ciphertext = new Uint8Array(ciphertextBuffer);
+  // 2. Encrypt credentials with the consolidated envelope scheme (RAW kdf:
+  // the wrap key is handed to sealWithKey directly, never passphrase-derived)
+  const cryptoKey = await importCredentialKey(rawKey);
+  const sealed = await sealWithKey(JSON.stringify(credentials), cryptoKey);
 
   const backup: GuardianEncryptedBackup = {
-    version: 1,
+    version: 2,
     type: "guardian-backup",
+    kdf: "RAW",
     recoveryId,
     createdAt,
     threshold,
     totalShares,
-    iv: toBase64Url(iv),
-    ciphertext: toBase64Url(ciphertext),
+    iv: sealed.iv,
+    ciphertext: sealed.ciphertext,
     keyFingerprint,
     guardianLabels: guardianLabels?.slice(0, totalShares),
     credentialCount: credentials.length,
@@ -174,7 +150,7 @@ export async function createGuardianRecoverySetup(
     threshold,
     totalShares,
     createdAt,
-    shareData: toBase64Url(rs.data),
+    shareData: encodeB64Url(rs.data),
     keyFingerprint,
   }));
 
@@ -193,7 +169,7 @@ export async function createGuardianRecoverySetup(
     backup,
     shares,
     recoveryKit,
-    rawKeyHex: bytesToHex(rawKey),
+    rawKeyHex: toHex(rawKey),
   };
 }
 
@@ -205,7 +181,7 @@ export async function recoverCredentialsFromShares(
   backup: GuardianEncryptedBackup,
   shares: GuardianShare[],
 ): Promise<Credential[]> {
-  if (!backup || backup.version !== 1 || backup.type !== "guardian-backup") {
+  if (!backup || (backup.version !== 1 && backup.version !== 2) || backup.type !== "guardian-backup") {
     throw new GuardianRecoveryError("Invalid or unsupported guardian backup file format");
   }
 
@@ -237,14 +213,14 @@ export async function recoverCredentialsFromShares(
 
     let data: Uint8Array;
     try {
-      data = fromBase64Url(s.shareData);
+      data = decodeB64(s.shareData);
     } catch {
       throw new GuardianRecoveryError(
         `Corrupted share data for Guardian #${s.guardianIndex}`,
       );
     }
 
-    if (data.length !== KEY_LENGTH) {
+    if (data.length !== KEY_BYTES) {
       throw new GuardianRecoveryError(
         `Invalid share data length for Guardian #${s.guardianIndex}`,
       );
@@ -274,31 +250,18 @@ export async function recoverCredentialsFromShares(
     );
   }
 
-  // Decrypt the ciphertext with AES-256-GCM
-  let iv: Uint8Array;
-  let ciphertext: Uint8Array;
+  // Decrypt the RAW-kdf envelope with the reconstructed wrap key
   try {
-    iv = fromBase64Url(backup.iv);
-    ciphertext = fromBase64Url(backup.ciphertext);
+    decodeB64(backup.iv);
+    decodeB64(backup.ciphertext);
   } catch {
     throw new GuardianRecoveryError("Corrupted backup IV or ciphertext");
   }
 
-  let plaintextBuffer: ArrayBuffer;
+  let plaintext: string;
   try {
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      reconstructedKey as BufferSource,
-      { name: "AES-GCM" },
-      false,
-      ["decrypt"],
-    );
-
-    plaintextBuffer = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: iv as BufferSource },
-      cryptoKey,
-      ciphertext as BufferSource,
-    );
+    const cryptoKey = await importCredentialKey(reconstructedKey, ["decrypt"]);
+    plaintext = await openWithKey({ iv: backup.iv, ciphertext: backup.ciphertext }, cryptoKey);
   } catch {
     throw new GuardianRecoveryError(
       "Decryption failed: corrupted backup ciphertext or authentication tag mismatch",
@@ -308,8 +271,7 @@ export async function recoverCredentialsFromShares(
   // Parse and validate decrypted credentials
   let parsed: unknown;
   try {
-    const jsonStr = new TextDecoder().decode(plaintextBuffer);
-    parsed = JSON.parse(jsonStr);
+    parsed = JSON.parse(plaintext);
   } catch {
     throw new GuardianRecoveryError("Decrypted payload is not valid JSON");
   }
@@ -424,7 +386,7 @@ export function parseGuardianBackup(input: string): GuardianEncryptedBackup {
 
   if (
     !obj ||
-    obj.version !== 1 ||
+    (obj.version !== 1 && obj.version !== 2) ||
     obj.type !== "guardian-backup" ||
     typeof obj.recoveryId !== "string" ||
     typeof obj.threshold !== "number" ||
@@ -437,8 +399,9 @@ export function parseGuardianBackup(input: string): GuardianEncryptedBackup {
   }
 
   return {
-    version: 1,
+    version: obj.version,
     type: "guardian-backup",
+    kdf: "RAW",
     recoveryId: obj.recoveryId,
     createdAt: typeof obj.createdAt === "number" ? obj.createdAt : Math.floor(Date.now() / 1000),
     threshold: obj.threshold,

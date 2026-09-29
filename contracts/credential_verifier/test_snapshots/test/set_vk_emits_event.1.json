@@ -220,6 +220,22 @@
                   "val": {
                     "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                   }
+                },
+                {
+                  "key": {
+                    "symbol": "contract_version"
+                  },
+                  "val": {
+                    "u32": 1000000
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "version"
+                  },
+                  "val": {
+                    "u32": 1
+                  }
                 }
               ]
             }

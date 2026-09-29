@@ -34,10 +34,21 @@ All event data payloads are typed `#[contracttype]` structs serialized using Sor
 | `ProofRegistry` | `revoked` | `("proof_reg", "revoked", <credential_type>)` | `EventProofRevoked` | `revoke` | Issuer |
 | `ProofRegistry` | `paused` | `("proof_reg", "paused")` | `EventPaused` | `pause` | Admin |
 | `ProofRegistry` | `unpaused` | `("proof_reg", "unpaused")` | `EventUnpaused` | `unpause` | Admin |
+| `ProofRegistry` | `adm_prop` | `("proof_reg", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `ProofRegistry` | `adm_acc` | `("proof_reg", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `ProofRegistry` | `adm_canc` | `("proof_reg", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
 | `IssuerRegistry` | `register` | `("iss_reg", "register")` | `EventIssuerRegistered` | `register_issuer` | Admin |
 | `IssuerRegistry` | `revoked` | `("iss_reg", "revoked")` | `EventIssuerRevoked` | `revoke_issuer` | Admin |
+| `IssuerRegistry` | `key_rot` | `("iss_reg", "key_rot")` | `EventIssuerKeyRotated` | `rotate_issuer_key` | Admin |
+| `IssuerRegistry` | `key_revk` | `("iss_reg", "key_revk")` | `EventIssuerKeyRevoked` | `revoke_issuer_key` | Admin |
+| `IssuerRegistry` | `adm_prop` | `("iss_reg", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `IssuerRegistry` | `adm_acc` | `("iss_reg", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `IssuerRegistry` | `adm_canc` | `("iss_reg", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
 | `CredentialVerifier` | `vk_set` | `("cred_ver", "vk_set", <credential_type>)` | `EventVkSet` | `set_vk` | Admin |
 | `CredentialVerifier` | `vk_pruned` | `("cred_ver", "vk_pruned", <credential_type>)` | `EventVkPruned` | `prune_version` | Admin |
+| `CredentialVerifier` | `adm_prop` | `("cred_ver", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `CredentialVerifier` | `adm_acc` | `("cred_ver", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `CredentialVerifier` | `adm_canc` | `("cred_ver", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
 | `GatedPool` | `deposit` | `("gate_pool", "deposit")` | `EventDeposit` | `deposit` | Caller |
 | `GatedPool` | `withdraw` | `("gate_pool", "withdraw")` | `EventWithdraw` | `withdraw` | Caller |
 
@@ -101,6 +112,22 @@ Emitted when a trusted issuer explicitly revokes a holder's cached proof for a c
 - **When it fires:**
   - `revoke(issuer, holder, credential_type)`: Emitted when the registered issuer marks the proof record as revoked.
 
+#### `proof_reg.self_rev` — Holder Self-Revocation
+
+Emitted when a holder removes one or all of their cached proofs.
+
+- **Topics:** `("proof_reg", "self_rev", <credential_type>)`
+- **Payload (`EventHolderRevoked`):**
+  ```rust
+  pub struct EventHolderRevoked {
+      pub holder: Address,
+      pub revoked_at: u64,
+  }
+  ```
+- **When it fires:**
+  - `revoke_proof`: Emitted when the holder removes an existing proof.
+  - `revoke_all`: Emitted once for each existing proof removed.
+
 ---
 
 #### `proof_reg.paused` — Submissions Paused
@@ -149,13 +176,56 @@ Emitted when protocol administration resumes proof submissions.
 
 ---
 
+#### `proof_reg.adm_prop` — Admin Transfer Proposed
+
+Emitted when the root admin proposes a new admin address (#343). The proposal
+sits in instance storage until the proposed address accepts it, a newer
+proposal overwrites it, or the root admin cancels it.
+
+- **Topics:** `("proof_reg", "adm_prop")`
+  - `topics[0]`: `symbol_short!("proof_reg")` (`Symbol("proof_reg")`)
+  - `topics[1]`: `symbol_short!("adm_prop")` (`Symbol("adm_prop")`)
+- **Payload:** `Address` — the proposed new root admin.
+- **When it fires:**
+  - `propose_admin(new_admin)`: Root admin proposes a new admin. Overwrites any existing pending proposal.
+- **Monitoring:** an unexpected proposal signals a pending governance change — verify the proposed address is intended before it accepts.
+
+---
+
+#### `proof_reg.adm_acc` — Admin Transfer Accepted
+
+Emitted when the pending admin candidate accepts the transfer (#343). On
+acceptance the candidate becomes the new root admin AND inherits every role the
+outgoing admin held; the outgoing admin loses all privileged access.
+
+- **Topics:** `("proof_reg", "adm_acc")`
+  - `topics[0]`: `symbol_short!("proof_reg")` (`Symbol("proof_reg")`)
+  - `topics[1]`: `symbol_short!("adm_acc")` (`Symbol("adm_acc")`)
+- **Payload:** `Address` — the address that accepted and is now root admin.
+- **When it fires:**
+  - `accept_admin()`: Pending candidate accepts the proposed transfer.
+
+---
+
+#### `proof_reg.adm_canc` — Admin Proposal Cancelled
+
+Emitted when the root admin cancels a pending admin proposal (#343). No
+transfer takes place and the pending entry is cleared.
+
+- **Topics:** `("proof_reg", "adm_canc")`
+  - `topics[0]`: `symbol_short!("proof_reg")` (`Symbol("proof_reg")`)
+  - `topics[1]`: `symbol_short!("adm_canc")` (`Symbol("adm_canc")`)
+- **Payload:** `()` — empty.
+- **When it fires:**
+  - `cancel_admin_proposal()`: Root admin cancels the pending proposal.
+
+---
+
 #### Non-Event Operations in ProofRegistry
 
 | Function | Description | Reason No Event Emitted |
 |---|---|---|
-| `revoke_proof` / `revoke_all` | Holder self-revocation | Removes the persistent entry directly from contract storage; no third-party issuer is involved. |
 | `upgrade` | Contract bytecode upgrade | Handled directly by Soroban's WASM deployer host function (`update_current_contract_wasm`). |
-| `set_admin` | Admin address update | Standard instance storage update. |
 | `bump_claim` | Storage TTL extension | Maintenance operation renewing persistent entry rent. |
 | `migrate_record` | Legacy storage shape migration | Internal migration upgrading legacy storage formats to current `ProofRecord` structure. |
 
@@ -207,11 +277,120 @@ Emitted when an issuer is revoked by administration.
 
 ---
 
+#### `iss_reg.key_rot` — Issuer Signing Key Rotated
+
+Emitted when an admin rotates an issuer's signing key. The previous key is
+retired with a validity window so credentials it already signed keep verifying;
+new issuance uses the new key.
+
+- **Topics:** `("iss_reg", "key_rot")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("key_rot")` (`Symbol("key_rot")`)
+- **Payload (`EventIssuerKeyRotated`):**
+  ```rust
+  pub struct EventIssuerKeyRotated {
+      pub issuer: Address,
+      pub old_pubkey: BytesN<64>,
+      pub new_pubkey: BytesN<64>,
+      pub old_key_valid_until: u64,
+  }
+  ```
+  | Field | Type | Description |
+  |---|---|---|
+  | `issuer` | `Address` | Issuer whose key set changed. |
+  | `old_pubkey` | `BytesN<64>` | Key that stopped being the current signing key. |
+  | `new_pubkey` | `BytesN<64>` | Key that is current from now on. |
+  | `old_key_valid_until` | `u64` | Ledger timestamp after which `old_pubkey` stops validating submissions (inclusive). |
+- **When it fires:**
+  - `rotate_issuer_key(issuer_id, new_pubkey, old_key_valid_until)`: Admin rotates the key, retiring the old one with a validity window.
+- **Monitoring:** ticket for review — confirm the window covers the issuer's outstanding credential expiries and that the signing environment was cut over to `new_pubkey`. An unscheduled rotation should be treated as an incident.
+
+---
+
+#### `iss_reg.key_revk` — Issuer Signing Key Revoked
+
+Emitted when an admin emergency-revokes one of an issuer's signing keys. Unlike
+a rotation, the key stops validating immediately, regardless of its validity
+window.
+
+- **Topics:** `("iss_reg", "key_revk")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("key_revk")` (`Symbol("key_revk")`)
+- **Payload (`EventIssuerKeyRevoked`):**
+  ```rust
+  pub struct EventIssuerKeyRevoked {
+      pub issuer: Address,
+      pub pubkey: BytesN<64>,
+      pub was_current: bool,
+      pub revoked_at: u64,
+  }
+  ```
+  | Field | Type | Description |
+  |---|---|---|
+  | `issuer` | `Address` | Issuer whose key set changed. |
+  | `pubkey` | `BytesN<64>` | The key that was killed. |
+  | `was_current` | `bool` | `true` when it was the current signing key — the issuer cannot issue until an admin rotates to a new key. `false` when it was a retired key still inside its window. |
+  | `revoked_at` | `u64` | Ledger timestamp at which the revocation took effect. |
+- **When it fires:**
+  - `revoke_issuer_key(issuer_id, pubkey)`: Admin emergency-revokes a key, e.g. on suspected compromise.
+- **Monitoring:** page immediately — either a compromise or a broken rotation.
+
+---
+
+#### `iss_reg.adm_prop` — Admin Transfer Proposed
+
+Emitted when the root admin proposes a new admin address (#342). The proposal
+sits in instance storage until the proposed address accepts it, a newer
+proposal overwrites it, or the root admin cancels it.
+
+- **Topics:** `("iss_reg", "adm_prop")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("adm_prop")` (`Symbol("adm_prop")`)
+- **Payload:** `Address` — the proposed new root admin.
+- **When it fires:**
+  - `propose_admin(new_admin)`: Root admin proposes a new admin. Overwrites any existing pending proposal.
+- **Monitoring:** an unexpected proposal signals a pending governance change — verify the proposed address is intended before it accepts.
+
+---
+
+#### `iss_reg.adm_acc` — Admin Transfer Accepted
+
+Emitted when the pending admin candidate accepts the transfer (#342). On
+acceptance the candidate becomes the new root admin AND inherits every role the
+outgoing admin held; the outgoing admin loses all privileged access.
+
+- **Topics:** `("iss_reg", "adm_acc")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("adm_acc")` (`Symbol("adm_acc")`)
+- **Payload:** `Address` — the address that accepted and is now root admin.
+- **When it fires:**
+  - `accept_admin()`: Pending candidate accepts the proposed transfer.
+
+---
+
+#### `iss_reg.adm_canc` — Admin Proposal Cancelled
+
+Emitted when the root admin cancels a pending admin proposal (#342). No
+transfer takes place and the pending entry is cleared.
+
+- **Topics:** `("iss_reg", "adm_canc")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("adm_canc")` (`Symbol("adm_canc")`)
+- **Payload:** `()` — empty.
+- **When it fires:**
+  - `cancel_admin_proposal()`: Root admin cancels the pending proposal.
+
+---
+
 #### Non-Event Operations in IssuerRegistry
 
 | Function | Description | Reason No Event Emitted |
 |---|---|---|
 | `set_issuer_metadata` | Optional name, URL, logo metadata | Stored directly in persistent entry `DataKey::IssuerMetadata(issuer)` for read-only lookups. |
+| `refresh_issuer_keys_ttl` | Extends the lifetime of an issuer's record and key history | Lifetime maintenance only; it changes no issuer state that the events above report. |
+
+Key rotation and revocation are covered above; see
+[ISSUER_KEY_ROTATION.md](ISSUER_KEY_ROTATION.md) for the operational procedure.
 
 ---
 
@@ -260,6 +439,51 @@ Emitted when deprecated VK bytes are permanently pruned from storage after the m
   | `version` | `u32` | Version number of the pruned verification key. |
 - **When it fires:**
   - `prune_version(credential_type, version)`: Admin prunes deprecated VK bytes.
+
+---
+
+#### `cred_ver.adm_prop` — Admin Transfer Proposed
+
+Emitted when the root admin proposes a new admin address (#342). The proposal
+sits in instance storage until the proposed address accepts it, a newer
+proposal overwrites it, or the root admin cancels it.
+
+- **Topics:** `("cred_ver", "adm_prop")`
+  - `topics[0]`: `symbol_short!("cred_ver")` (`Symbol("cred_ver")`)
+  - `topics[1]`: `symbol_short!("adm_prop")` (`Symbol("adm_prop")`)
+- **Payload:** `Address` — the proposed new root admin.
+- **When it fires:**
+  - `propose_admin(new_admin)`: Root admin proposes a new admin. Overwrites any existing pending proposal.
+- **Monitoring:** an unexpected proposal signals a pending governance change — verify the proposed address is intended before it accepts.
+
+---
+
+#### `cred_ver.adm_acc` — Admin Transfer Accepted
+
+Emitted when the pending admin candidate accepts the transfer (#342). On
+acceptance the candidate becomes the new root admin AND inherits every role the
+outgoing admin held; the outgoing admin loses all privileged access.
+
+- **Topics:** `("cred_ver", "adm_acc")`
+  - `topics[0]`: `symbol_short!("cred_ver")` (`Symbol("cred_ver")`)
+  - `topics[1]`: `symbol_short!("adm_acc")` (`Symbol("adm_acc")`)
+- **Payload:** `Address` — the address that accepted and is now root admin.
+- **When it fires:**
+  - `accept_admin()`: Pending candidate accepts the proposed transfer.
+
+---
+
+#### `cred_ver.adm_canc` — Admin Proposal Cancelled
+
+Emitted when the root admin cancels a pending admin proposal (#342). No
+transfer takes place and the pending entry is cleared.
+
+- **Topics:** `("cred_ver", "adm_canc")`
+  - `topics[0]`: `symbol_short!("cred_ver")` (`Symbol("cred_ver")`)
+  - `topics[1]`: `symbol_short!("adm_canc")` (`Symbol("adm_canc")`)
+- **Payload:** `()` — empty.
+- **When it fires:**
+  - `cancel_admin_proposal()`: Root admin cancels the pending proposal.
 
 ---
 

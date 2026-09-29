@@ -1,24 +1,17 @@
 /**
  * examples/server-side-gate/index.ts
  *
- * Minimal runnable SDK integration showing a server-side hasClaim gate.
- * Works as a Next.js Route Handler (app/api/...) or a plain Node.js server.
+ * Minimal SDK integration snippets showing server-side credential gating
+ * and wallet-control verification.
  *
- * Copy this file into your project, install @stellarcred/sdk, and fill the
- * environment variables below — you'll have a working credential gate in
- * minutes.
+ * ⚠️ NOTE ON WALLET SPOOFING (Issue #543):
+ * Never rely solely on an untrusted wallet address in request headers or return URLs.
+ * Always require the caller to sign a challenge via `verifyWalletClaim` to prove
+ * wallet control before granting access.
  *
- * Setup
- * -----
- * 1. npm install @stellarcred/sdk
- * 2. Set env vars (see .env.example below or pass opts to configure())
- * 3. Import the relevant gate function into your route handler
- *
- * .env.example
- * ------------
- * STELLARCRED_REGISTRY_ID=C...           # ProofRegistry contract ID (Stellar)
- * STELLARCRED_RPC_URL=https://soroban-testnet.stellar.org
- * NEXT_PUBLIC_APP_URL=https://your-app.example.com
+ * FOR THE COMPLETE RUNNABLE EXAMPLE APPLICATION:
+ * See `examples/canonical-integration/` — a complete, runnable application with
+ * interactive UI, automated test suite, route gating, and failure state handling.
  */
 
 // ─── 1. Configure at startup (call once, e.g. in instrumentation.ts) ─────────
@@ -28,6 +21,8 @@ import StellarCred, {
   hasClaim,
   buildVerifyUrl,
   parseReturnParams,
+  createWalletChallenge,
+  verifyWalletClaim,
 } from "@stellarcred/sdk";
 
 // Option A: configure explicitly
@@ -136,45 +131,62 @@ export async function fundsGate(
 /**
  * Called in the route that receives the user back from /verify.
  *
- * IMPORTANT: `sc_verified=true` in the URL is an untrusted hint — never gate
- * on it directly. Always call hasClaim() server-side to confirm the claim.
+ * ⚠️ SECURITY CRITICAL (Issue #543):
+ * `sc_verified=true` and `sc_wallet` in the return URL are UNTRUSTED HINTS.
+ * Anyone can visit your return URL passing another person's verified wallet address.
+ * Never grant access solely by calling `hasClaim(hint.wallet)`.
+ *
+ * Secure pattern:
+ *  1. Parse untrusted hints with `parseReturnParams`.
+ *  2. Require client to sign a challenge via `verifyWalletClaim` to prove wallet control.
+ *  3. Only grant session access when both wallet control AND on-chain claim are valid.
  *
  * Usage (Next.js App Router):
  *
- *   export async function GET(request: Request) {
- *     return handleVerifyReturn(request);
+ *   export async function POST(request: Request) {
+ *     return secureHandleVerifyReturn(request);
  *   }
  */
-export async function handleVerifyReturn(request: Request): Promise<Response> {
-  const url = new URL(request.url);
+export async function secureHandleVerifyReturn(request: Request): Promise<Response> {
+  const body = await request.json().catch(() => ({}));
+  const { wallet, challenge, signature } = body;
 
-  // 1. Parse the untrusted return params (wallet + claimed types)
-  const hint = parseReturnParams(url.searchParams);
-
-  if (!hint.verified || !hint.wallet) {
-    return new Response(JSON.stringify({ error: "Verification not completed" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!wallet || !challenge || !signature) {
+    return new Response(
+      JSON.stringify({
+        error: "Missing wallet control proof (wallet, challenge, signature required)",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
   }
 
-  // 2. Re-verify on-chain — the only thing that's actually trustworthy
-  const isKyc = await hasClaim(hint.wallet, "kyc");
+  // Atomically validates signature AND checks on-chain claim
+  const result = await verifyWalletClaim({
+    wallet,
+    challenge,
+    signature,
+    claim: "kyc",
+  });
 
-  if (!isKyc) {
+  if (!result.ok) {
     return new Response(
-      JSON.stringify({ error: "On-chain claim check failed", wallet: hint.wallet }),
+      JSON.stringify({
+        error: result.error,
+        failureReason: result.failureReason,
+        signatureValid: result.signatureValid,
+        claimValid: result.claimValid,
+      }),
       { status: 403, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  // 3. Grant access — issue a session, set a cookie, etc.
+  // Grant authenticated session
   return new Response(
     JSON.stringify({
       ok: true,
-      wallet: hint.wallet,
-      claims: hint.claims,
-      message: "Access granted — KYC verified on-chain",
+      wallet: result.wallet,
+      claimDetails: result.claimDetails,
+      message: "Access granted — caller proved wallet control AND valid on-chain KYC",
     }),
     { status: 200, headers: { "Content-Type": "application/json" } }
   );

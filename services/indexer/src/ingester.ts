@@ -53,6 +53,7 @@
 import { Horizon } from "@stellar/stellar-sdk";
 import type { Config } from "./config";
 import type { Db } from "./db";
+import { createWebhookDispatcher } from "./webhooks";
 
 // ── Retry configuration ───────────────────────────────────────────────────
 
@@ -319,6 +320,9 @@ type ParsedEvent =
       kind: "revoked";
       holder: string;
       credentialType: string;
+      issuer: string;
+      revokedAt: number;
+      reasonCode: "issuer_revoked" | "holder_revoked";
     }
   | { kind: "unknown" };
 
@@ -327,23 +331,18 @@ type ParsedEvent =
  *
  * ProofRegistry event topology
  * ─────────────────────────────
- * Verified:
- *   topics[0] = ScvSymbol "proof"
- *   topics[1] = ScvSymbol "verified"
- *   value     = ScvU64 expiry
+ * Submitted/verified:
+ *   topics[0] = ScvSymbol "proof_reg"
+ *   topics[1] = ScvSymbol "submitted"
+ *   topics[2] = credential type
+ *   value     = EventProofSubmitted { holder, issuer, verified_at, expiry }
  *
- *   The holder and credential_type are NOT in the topics; they are implicit in
- *   the storage key.  Horizon does, however, surface the transaction's
- *   source_account which is the holder (they must sign submit_proof).
- *
- * Revoked (issuer-initiated, from revoke()):
- *   topics[0] = ScvSymbol "revoked"
- *   value     = ScvVec [holder, credential_type, issuer, timestamp]
- *
- * Revoked (holder self-revoke, revoke_proof()):
- *   No event is emitted by the contract for self-revoke — holder just removes
- *   the storage key.  We therefore won't see a chain event; claims will expire
- *   naturally.
+ * Revoked:
+ *   topics = ("proof_reg", "revoked", credential_type)
+ *   value  = EventProofRevoked { holder, issuer, revoked_at }
+ * Holder self-revocation:
+ *   topics = ("proof_reg", "self_rev", credential_type)
+ *   value  = EventHolderRevoked { holder, revoked_at }
  */
 function parseEvent(
   ev: HorizonContractEvent,
@@ -358,35 +357,101 @@ function parseEvent(
       ? parseInt(ev.ledger, 10)
       : ev.ledger;
 
-  // verified event
-  if (topics[0] === "proof" && topics[1] === "verified") {
-    const holder = ev.source_account ?? "";
-    // credential_type is the 3rd topic (index 2) when emitted — but the
-    // contract's current publish call only emits 2 topics + value.
-    // We extract credential_type from the 3rd topic if present, else "unknown".
-    const credentialType =
-      typeof topics[2] === "string" ? topics[2] : "unknown";
-    const expiry = typeof value === "number" ? value : 0;
+  const structField = (): Record<string, unknown> | undefined => {
+    if (Array.isArray(value)) {
+      const result: Record<string, unknown> = {};
+      for (let i = 0; i + 1 < value.length; i += 2) {
+        if (typeof value[i] === "string") result[value[i] as string] = value[i + 1];
+      }
+      return result;
+    }
+    if (value && typeof value === "object") return value as Record<string, unknown>;
+    return undefined;
+  };
+
+  const eventData = structField();
+  const credentialType = typeof topics[2] === "string" ? topics[2] : "";
+  const numericField = (name: string, fallback: number) => {
+    const raw = eventData?.[name];
+    const parsed = typeof raw === "number" || typeof raw === "string" ? Number(raw) : NaN;
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+  const addressField = (name: string): string => {
+    const raw = eventData?.[name];
+    if (typeof raw === "string") return raw;
+    if (raw && typeof raw === "object" && "address" in raw) {
+      const address = (raw as { address?: unknown }).address;
+      if (typeof address === "string") return address;
+      if (address && typeof address === "object" && "value" in address) {
+        return String((address as { value: unknown }).value);
+      }
+    }
+    return "";
+  };
+
+  if (topics[0] === "proof_reg" && topics[1] === "submitted" && credentialType) {
+    const holder = addressField("holder") || ev.source_account || "";
+    const expiry = numericField("expiry", 0);
 
     return {
       kind: "verified",
       holder,
       credentialType,
-      issuer: "",
+      issuer: addressField("issuer"),
       expiry,
       ledgerSequence,
-      verifiedAt: Math.floor(
-        new Date(ev.ledger_closed_at).getTime() / 1000
+      verifiedAt: numericField(
+        "verified_at",
+        Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
       ),
     };
   }
 
-  // revoked event
-  if (topics[0] === "revoked") {
-    if (Array.isArray(value) && value.length >= 2) {
-      const holder = String(value[0]);
-      const credentialType = String(value[1]);
-      return { kind: "revoked", holder, credentialType };
+  // Preserve compatibility with older indexer fixtures/event streams.
+  if (topics[0] === "proof" && topics[1] === "verified") {
+    return {
+      kind: "verified",
+      holder: ev.source_account ?? "",
+      credentialType: typeof topics[2] === "string" ? topics[2] : "unknown",
+      issuer: "",
+      expiry: typeof value === "number" ? value : 0,
+      ledgerSequence,
+      verifiedAt: Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
+    };
+  }
+
+  if (topics[0] === "proof_reg" && topics[1] === "revoked" && credentialType) {
+    const holder = addressField("holder");
+    const issuer = addressField("issuer");
+    if (holder && issuer) {
+      return {
+        kind: "revoked",
+        holder,
+        credentialType,
+        issuer,
+        revokedAt: numericField(
+          "revoked_at",
+          Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
+        ),
+        reasonCode: "issuer_revoked",
+      };
+    }
+  }
+
+  if (topics[0] === "proof_reg" && topics[1] === "self_rev" && credentialType) {
+    const holder = addressField("holder");
+    if (holder) {
+      return {
+        kind: "revoked",
+        holder,
+        credentialType,
+        issuer: "",
+        revokedAt: numericField(
+          "revoked_at",
+          Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
+        ),
+        reasonCode: "holder_revoked",
+      };
     }
   }
 
@@ -424,6 +489,19 @@ export function createIngester(config: Config, db: Db): Ingester {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlightTick: Promise<number> | null = null;
   const health = freshHealth();
+  const webhookDispatcher = config.webhookSigningSecret
+    ? createWebhookDispatcher(db, config.webhookSigningSecret)
+    : undefined;
+
+  async function processWebhookQueue(): Promise<void> {
+    if (!webhookDispatcher) return;
+    try {
+      await webhookDispatcher.enqueueExpiredClaims();
+      await webhookDispatcher.dispatchPending();
+    } catch (error) {
+      console.error("[indexer] webhook delivery cycle failed:", error);
+    }
+  }
 
   // ── Prometheus metrics state ──────────────────────────────────────────
   const startTime = Date.now();
@@ -536,7 +614,24 @@ export function createIngester(config: Config, db: Db): Ingester {
         });
         processed++;
       } else if (parsed.kind === "revoked") {
+        const claim = await db.claimByWalletAndType(
+          parsed.holder,
+          parsed.credentialType,
+        );
         await db.revokeClaim(parsed.holder, parsed.credentialType);
+        if (webhookDispatcher) {
+          await db.enqueueWebhookEvent({
+            event_id: `${parsed.reasonCode}:${ev.transaction_hash ?? ev.paging_token}:${parsed.holder}:${parsed.credentialType}`,
+            type: "revoked",
+            wallet: parsed.holder,
+            credential_type: parsed.credentialType,
+            expiry: claim?.expiry ?? 0,
+            ledger_sequence:
+              typeof ev.ledger === "string" ? Number(ev.ledger) : ev.ledger,
+            occurred_at: parsed.revokedAt,
+            reason_code: parsed.reasonCode,
+          });
+        }
         processed++;
       }
     }
@@ -550,6 +645,7 @@ export function createIngester(config: Config, db: Db): Ingester {
 
   async function tick(): Promise<number> {
     const tickStart = Date.now();
+    await processWebhookQueue();
 
     const lastLedger = await db.getLastLedger();
 
@@ -636,6 +732,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     if (maxLedger > lastLedger) {
       await db.setLastLedger(maxLedger);
     }
+    await processWebhookQueue();
 
     const tickEnd = Date.now();
     const dbWriteLatencySec = (tickEnd - tickStart) / 1000;

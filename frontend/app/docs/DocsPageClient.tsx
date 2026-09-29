@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
@@ -641,8 +641,8 @@ export default function DocsPageClient() {
               type="funds"
               title="Proof of Funds"
               claim="balance > $10,000"
-              attribute="Account balance from Plaid (verified by bank, never stored)"
-              private="Exact balance figure"
+              attribute="Aggregate balance across linked Plaid accounts (verified by bank, never stored)"
+              private="Exact balance of each account"
             />
             <CredRow
               type="accreditation"
@@ -709,7 +709,7 @@ export default function DocsPageClient() {
             <div style={{ marginBottom: "0.25rem" }}>
               <ContractRow
                 name="IssuerRegistry"
-                role="Stores trusted issuer addresses, their secp256k1 public keys, and which credential types each is authorised to issue. Admins call register_issuer; anyone can read is_valid_issuer and get_issuer_pubkey."
+                role="Stores trusted issuer addresses, their secp256k1 public keys, and which credential types each is authorised to issue. Admins call register_issuer, rotate_issuer_key (keeps credentials signed with the old key valid until their expiry) and revoke_issuer_key (kills a key immediately); anyone can read is_valid_issuer, is_valid_issuer_key and get_issuer_keys."
               />
               <ContractRow
                 name="CredentialVerifier"
@@ -717,7 +717,7 @@ export default function DocsPageClient() {
               />
               <ContractRow
                 name="ProofRegistry"
-                role="The public API for downstream protocols. Calls IssuerRegistry to check trust, verifies the public key in the proof's public inputs matches the registered key, calls CredentialVerifier, and writes (holder, type) → (verified_at, expiry) to persistent storage."
+                role="The public API for downstream protocols. Calls IssuerRegistry to check trust, verifies the public key in the proof's public inputs is one of the issuer's live keys, calls CredentialVerifier, and writes (holder, type) → (verified_at, expiry) to persistent storage."
               />
               <ContractRow
                 name="GatedPool"
@@ -875,9 +875,26 @@ fields 33–64  issuer_y   (secp256k1 Y, one byte per field in low byte)`}</Code
               credential on the Holder page) and choose{" "}
               <strong style={{color:"var(--text)"}}>Transfer to another device</strong>. You pick a
               passphrase and the app shows a QR code; the credential is encrypted with that
-              passphrase (AES-256-GCM, key derived via PBKDF2 — see <Code>lib/crypto.ts</Code>)
+              passphrase (AES-256-GCM, key derived via PBKDF2 — see <Code>lib/credential-crypto.ts</Code>)
               before it ever becomes a QR code, so the code alone reveals nothing. On the other
               device, scan the QR and enter the same passphrase to import.
+            </P>
+            <SubHeading>Credentials belong to the deployment that issued them</SubHeading>
+            <P>
+              Every credential records the network and contract IDs of the
+              StellarCred deployment that issued it. A credential is only ever
+              valid inside that deployment: its issuer is registered in{" "}
+              <em>that</em> deployment&apos;s IssuerRegistry, and proofs are
+              submitted to <em>its</em> ProofRegistry. Cross-deployment import
+              is therefore <strong style={{color:"var(--text)"}}>never valid</strong> —
+              including moving a credential between networks (a testnet
+              credential can never be proven on mainnet). Importing a JSON
+              backup, a QR transfer, or a guardian-recovered credential from a
+              different deployment is rejected at import time with a clear
+              explanation, rather than appearing to succeed and failing later
+              when the proof is submitted. Credentials issued before the
+              deployment was recorded carry no such reference and import
+              unchecked — re-issue them if in doubt.
             </P>
             <SubHeading>What is stored, and where</SubHeading>
             <div

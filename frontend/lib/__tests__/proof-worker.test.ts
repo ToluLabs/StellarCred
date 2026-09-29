@@ -115,6 +115,7 @@ function cloneMessage(message: ProofWorkerEvent): ProofWorkerEvent {
       publicInputs: new Uint8Array(message.publicInputs),
     };
   }
+  // stageProgress and all other plain-object events are safely spread.
   return { ...message };
 }
 
@@ -212,6 +213,54 @@ describe("prover worker: happy path", () => {
     );
 
     // witness first (from the worker itself), then bb.js's own stages.
+    expect(stages).toEqual(["witness", "circuit", "proof"]);
+  });
+
+  it("delivers stageProgress detail (label, expectedMs) for each stage via onStageProgress", async () => {
+    proveWithBackend.mockImplementation((_type, _witness, _signal, onStep) => {
+      onStep?.("circuit");
+      onStep?.("proof");
+      return Promise.resolve(PROOF);
+    });
+    const { proveOffMainThread } = await loadClient();
+    const progressEvents: Array<{ stage: string; expectedMs: number; label: string }> = [];
+
+    await proveOffMainThread(
+      { credentialType: "age", credential: {} },
+      {
+        onStageProgress: (p) =>
+          progressEvents.push({ stage: p.stage, expectedMs: p.expectedMs, label: p.label }),
+      },
+    );
+
+    // One stageProgress per stage start (elapsedMs=0 initial post).
+    // The 500 ms interval fires are suppressed because jsdom's fake clock
+    // doesn't advance automatically; only the synchronous initial posts arrive.
+    const stages = progressEvents.map((p) => p.stage);
+    expect(stages).toEqual(["witness", "circuit", "proof"]);
+
+    // Every event carries a non-zero expectedMs and a non-empty label.
+    for (const p of progressEvents) {
+      expect(p.expectedMs).toBeGreaterThan(0);
+      expect(p.label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("delivers stageProgress on the inline fallback path too", async () => {
+    vi.stubGlobal("Worker", undefined);
+    proveWithBackend.mockImplementation((_type, _witness, _signal, onStep) => {
+      onStep?.("circuit");
+      onStep?.("proof");
+      return Promise.resolve(PROOF);
+    });
+    const { proveOffMainThread } = await loadClient();
+    const stages: string[] = [];
+
+    await proveOffMainThread(
+      { credentialType: "age", credential: {} },
+      { onStageProgress: (p) => stages.push(p.stage) },
+    );
+
     expect(stages).toEqual(["witness", "circuit", "proof"]);
   });
 

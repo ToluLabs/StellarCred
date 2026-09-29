@@ -77,6 +77,55 @@ function fakeEvent(opts: {
   };
 }
 
+function fakeRevokedEvent(opts: { ledger: number; holder: string; issuer: string }) {
+  const entries = [
+    ["holder", xdr.ScVal.scvSymbol(opts.holder)],
+    ["issuer", xdr.ScVal.scvSymbol(opts.issuer)],
+    ["revoked_at", xdr.ScVal.scvU64(xdr.Uint64.fromString("1724000000"))],
+  ].map(([key, val]) =>
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol(key as string),
+      val: val as xdr.ScVal,
+    })
+  );
+  return {
+    paging_token: `${opts.ledger * 100_000}`,
+    contract_id: "CTEST",
+    topic: ["proof_reg", "revoked", "kyc"].map((s) =>
+      scValBase64(xdr.ScVal.scvSymbol(s))
+    ),
+    value: scValBase64(xdr.ScVal.scvMap(entries)),
+    ledger: opts.ledger,
+    ledger_closed_at: "2024-08-18T00:00:00Z",
+    transaction_hash: "revocation-tx",
+    source_account: opts.issuer,
+  };
+}
+
+function fakeHolderRevokedEvent(opts: { ledger: number; holder: string }) {
+  const entries = [
+    ["holder", xdr.ScVal.scvSymbol(opts.holder)],
+    ["revoked_at", xdr.ScVal.scvU64(xdr.Uint64.fromString("1724000000"))],
+  ].map(([key, val]) =>
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol(key as string),
+      val: val as xdr.ScVal,
+    })
+  );
+  return {
+    paging_token: `${opts.ledger * 100_000}`,
+    contract_id: "CTEST",
+    topic: ["proof_reg", "self_rev", "kyc"].map((s) =>
+      scValBase64(xdr.ScVal.scvSymbol(s))
+    ),
+    value: scValBase64(xdr.ScVal.scvMap(entries)),
+    ledger: opts.ledger,
+    ledger_closed_at: "2024-08-18T00:00:00Z",
+    transaction_hash: "holder-revocation-tx",
+    source_account: opts.holder,
+  };
+}
+
 // ── Mock fetch ─────────────────────────────────────────────────────────────
 
 let fetchMock: jest.SpyInstance;
@@ -95,14 +144,14 @@ describe("Ingester finality lag", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -143,15 +192,126 @@ describe("Ingester finality lag", () => {
     expect(processed).toBe(1);
 
     // Check DB: only GALICE should be indexed
-    const aliceClaims = db.claimsByWallet("GALICE");
+    const aliceClaims = await db.claimsByWallet("GALICE");
     expect(aliceClaims).toHaveLength(1);
 
-    const bobClaims = db.claimsByWallet("GBOB");
+    const bobClaims = await db.claimsByWallet("GBOB");
     expect(bobClaims).toHaveLength(0);
 
     // Cursor should be at 90 (the last finalized event), not 96
-    const cursor = db.getLastLedger();
+    const cursor = await db.getLastLedger();
     expect(cursor).toBe(90);
+  });
+
+  it("queues an indexed issuer revocation for the exact subscribed wallet and claim", async () => {
+    await db.createWebhookSubscription({
+      url: "https://127.0.0.1/events",
+      wallet: "GALICE",
+      credential_type: "kyc",
+    });
+    await db.upsertClaim({
+      wallet: "GALICE",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 1_700_000_000,
+      expiry: 9_999_999_999,
+      ledger_sequence: 40,
+      threshold: null,
+      revoked: 0,
+    });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/ledgers")) {
+        return {
+          ok: true,
+          json: async () => ({ _embedded: { records: [{ sequence: 100 }] } }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          _embedded: {
+            records: [
+              fakeRevokedEvent({ ledger: 90, holder: "GALICE", issuer: "GISSUER" }),
+            ],
+          },
+        }),
+      };
+    });
+
+    const ingester = createIngester(
+      makeConfig({ finalityLag: 6, webhookSigningSecret: "w".repeat(32) }),
+      db,
+    );
+    expect(await ingester.tick()).toBe(1);
+
+    expect(await db.claimByWalletAndType("GALICE", "kyc")).toMatchObject({
+      revoked: 1,
+    });
+    const subscriptions = await db.listWebhookSubscriptions();
+    const deliveries = await db.webhookDeliveries(subscriptions[0]!.id, 10);
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]).toMatchObject({
+      type: "revoked",
+      wallet: "GALICE",
+      credential_type: "kyc",
+      reason_code: "issuer_revoked",
+      attempts: 1,
+    });
+    expect(deliveries[0]?.last_error).toMatch(/public IP/);
+  });
+
+  it("queues a holder self-revocation for the exact subscribed wallet and claim", async () => {
+    await db.createWebhookSubscription({
+      url: "https://127.0.0.1/events",
+      wallet: "GALICE",
+      credential_type: "kyc",
+    });
+    await db.upsertClaim({
+      wallet: "GALICE",
+      credential_type: "kyc",
+      issuer: "GISSUER",
+      verified_at: 1_700_000_000,
+      expiry: 9_999_999_999,
+      ledger_sequence: 40,
+      threshold: null,
+      revoked: 0,
+    });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/ledgers")) {
+        return {
+          ok: true,
+          json: async () => ({ _embedded: { records: [{ sequence: 100 }] } }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          _embedded: {
+            records: [fakeHolderRevokedEvent({ ledger: 90, holder: "GALICE" })],
+          },
+        }),
+      };
+    });
+
+    const ingester = createIngester(
+      makeConfig({ finalityLag: 6, webhookSigningSecret: "w".repeat(32) }),
+      db,
+    );
+    expect(await ingester.tick()).toBe(1);
+
+    expect(await db.claimByWalletAndType("GALICE", "kyc")).toMatchObject({
+      revoked: 1,
+    });
+    const subscriptions = await db.listWebhookSubscriptions();
+    const deliveries = await db.webhookDeliveries(subscriptions[0]!.id, 10);
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]).toMatchObject({
+      type: "revoked",
+      wallet: "GALICE",
+      credential_type: "kyc",
+      reason_code: "holder_revoked",
+      attempts: 1,
+    });
   });
 
   it("returns 0 when head hasn't advanced past the lag buffer", async () => {
@@ -175,14 +335,14 @@ describe("Ingester reorg detection", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -190,10 +350,10 @@ describe("Ingester reorg detection", () => {
 
   it("detects reorg when cursor > head and rolls back", async () => {
     // Simulate: we ingested up to ledger 50, but network reorged to 40.
-    db.setLastLedger(50);
+    await db.setLastLedger(50);
 
     // Insert a claim at ledger 50 (now orphaned)
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GORPHAN",
       credential_type: "kyc",
       issuer: "G",
@@ -233,7 +393,7 @@ describe("Ingester reorg detection", () => {
     const processed = await ingester.tick();
 
     // The orphaned claim at ledger 50 should be deleted
-    const orphanClaims = db.claimsByWallet("GORPHAN");
+    const orphanClaims = await db.claimsByWallet("GORPHAN");
     expect(orphanClaims).toHaveLength(0);
 
     // The new event at ledger 42 (below ceiling 34... wait, head=40, lag=6, ceiling=34)
@@ -244,7 +404,7 @@ describe("Ingester reorg detection", () => {
     expect(processed).toBeGreaterThanOrEqual(0);
 
     // Cursor should be reset to the reorg point (40)
-    const cursor = db.getLastLedger();
+    const cursor = await db.getLastLedger();
     expect(cursor).toBeLessThanOrEqual(40);
   });
 });
@@ -253,14 +413,14 @@ describe("Ingester reconcile", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -268,24 +428,24 @@ describe("Ingester reconcile", () => {
 
   it("reconcile deletes claims after reorg point and re-indexes", async () => {
     // Insert claims at various ledgers
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GA1", credential_type: "kyc", issuer: "G",
       verified_at: 1000, expiry: 9999999, ledger_sequence: 10,
       threshold: null, revoked: 0,
     });
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GA2", credential_type: "kyc", issuer: "G",
       verified_at: 2000, expiry: 9999999, ledger_sequence: 20,
       threshold: null, revoked: 0,
     });
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GA3", credential_type: "kyc", issuer: "G",
       verified_at: 3000, expiry: 9999999, ledger_sequence: 30,
       threshold: null, revoked: 0,
     });
 
     // Reorg point is 15: claims at ledger 20 and 30 should be deleted
-    db.setLastLedger(30);
+    await db.setLastLedger(30);
 
     // Mock Horizon to return events in the reorged range (up to ceiling)
     fetchMock.mockImplementation(async (url: string) => {
@@ -317,11 +477,11 @@ describe("Ingester reconcile", () => {
     const processed = await ingester.reconcile(15);
 
     // GA1 (ledger 10, below the reorg point) should still exist
-    const a1 = db.claimsByWallet("GA1");
+    const a1 = await db.claimsByWallet("GA1");
     expect(a1).toHaveLength(1);
 
     // GA3 (ledger 30, above the reorg point) is deleted by the rollback…
-    const a3 = db.claimsByWallet("GA3");
+    const a3 = await db.claimsByWallet("GA3");
     expect(a3).toHaveLength(0);
 
     // …while GA2 (ledger 20, above the reorg point) is re-indexed from the
@@ -333,7 +493,7 @@ describe("Ingester reconcile", () => {
 
     // Cursor advances to the highest ledger re-indexed (25), not the reorg
     // point — reconcile deletes and then re-ingests.
-    const cursor = db.getLastLedger();
+    const cursor = await db.getLastLedger();
     expect(cursor).toBe(25);
   });
 });
@@ -342,14 +502,14 @@ describe("Ingester finalize lag with HEAD_LEDGER override", () => {
   let db: Db;
   let tmpFile: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tmpFile = path.join(os.tmpdir(), `ingester-test-${Date.now()}-${Math.random()}.db`);
     db = createSqliteDb(makeConfig({ sqlitePath: tmpFile }));
-    db.migrate();
+    await db.migrate();
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(tmpFile); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-wal"); } catch { /* */ }
     try { fs.unlinkSync(tmpFile + "-shm"); } catch { /* */ }
@@ -383,7 +543,7 @@ describe("Ingester finalize lag with HEAD_LEDGER override", () => {
     const processed = await ingester.tick();
     expect(processed).toBe(1);
 
-    const claims = db.claimsByWallet("GALICE");
+    const claims = await db.claimsByWallet("GALICE");
     expect(claims).toHaveLength(1);
   });
 });

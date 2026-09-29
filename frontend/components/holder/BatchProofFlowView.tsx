@@ -44,12 +44,17 @@ export function BatchProofFlowView({
     batchError,
     batchFee,
     blockedByNetwork,
+    rpcIssue,
+    proceedAnyway,
+    retryNetworkCheck,
     cancel,
   } = useBatchProofFlow(creds, holder, networkMismatch, onProved);
 
   const isSubmitting = batchStage === "submitting";
   const isConfirmed = batchStage === "confirmed";
   const isError = batchStage === "error";
+  /** Degraded mode: the network is down, so proving was never started. */
+  const isBlocked = batchStage === "blocked";
 
   // Focus management
   useEffect(() => {
@@ -62,6 +67,7 @@ export function BatchProofFlowView({
         successRef.current?.focus();
         break;
       case "error":
+      case "blocked":
         errorRef.current?.focus();
         break;
     }
@@ -163,6 +169,48 @@ export function BatchProofFlowView({
         {blockedByNetwork && (
           <div ref={networkMismatchRef} tabIndex={-1} role="status" style={{ marginTop: "1.5rem" }}>
             <NetworkMismatchBanner />
+          </div>
+        )}
+
+        {/* Degraded mode: RPC unreachable — nothing has been proved yet. */}
+        {isBlocked && (
+          <div
+            ref={errorRef}
+            tabIndex={-1}
+            role="alert"
+            style={{
+              marginTop: "1.5rem",
+              padding: "0.9rem 1.1rem",
+              borderRadius: "var(--radius)",
+              border: "1px solid rgba(240,96,77,0.3)",
+              background: "rgba(240,96,77,0.06)",
+            }}
+          >
+            <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+              <IconAlertTriangle size={15} />
+              Network unavailable — proving deferred
+            </div>
+            <div style={{ fontSize: "0.8125rem", marginTop: "0.45rem", lineHeight: 1.65, color: "var(--text)" }}>
+              {rpcIssue?.message ?? "The Stellar RPC endpoint is not responding."}{" "}
+              Your credentials are fine; a batch of {creds.length} proofs would have
+              cost the proving step and then failed at submission.
+            </div>
+            <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <button
+                className="btn btn-primary"
+                style={{ width: "100%" }}
+                onClick={() => void retryNetworkCheck()}
+              >
+                Check the network again
+              </button>
+              <button
+                className="btn btn-ghost"
+                style={{ width: "100%" }}
+                onClick={proceedAnyway}
+              >
+                Generate the proofs anyway
+              </button>
+            </div>
           </div>
         )}
 

@@ -1,0 +1,96 @@
+name: Proving perf gate
+
+# Proving-performance regression gate (GitHub #629; pairs with #534).
+#
+# Measures the proving pipeline stages the browser instrumentation names
+# (witness → prove → submit, mirroring frontend/lib/proof-perf.ts) with the
+# pinned Noir/Barretenberg toolchain on a representative circuit, medians
+# multiple runs, and fails the PR when a gated stage or the ACIR gate count
+# regresses beyond the thresholds in perf/proving-baselines.json.
+#
+# Noise handling: the gate metric is the MEDIAN of 5 runs of CPU time
+# (user+sys), which is close to deterministic across multi-tenant runners,
+# with a generous 1.75x fail threshold (warn at ~1.3x). submit is a proxy
+# stage (no RPC in CI) and is warn-only.
+#
+# Deliberately separate from ci.yml (like first-load.yml): proving is slow and
+# only circuit changes or the gate itself can move these numbers.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'circuits/**'
+      - 'frontend/lib/proof-perf.ts'
+      - 'scripts/perf/**'
+      - 'perf/**'
+      - '.github/workflows/proving-perf.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NOIR_VERSION: "1.0.0-beta.9"
+  BB_VERSION: "0.87.0"
+
+jobs:
+  proving-perf:
+    name: Proving performance regression gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore / install Noir toolchain
+        uses: actions/cache@v4
+        id: cache-noir
+        with:
+          path: ~/.nargo
+          key: nargo-${{ runner.os }}-${{ env.NOIR_VERSION }}
+      - if: steps.cache-noir.outputs.cache-hit != 'true'
+        name: Download Noir toolchain
+        shell: bash
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/noir-lang/noirup/324a51fca2c410d2477400316efc5ce0d743a5b3/install | bash
+          export PATH="$HOME/.nargo/bin:$PATH"
+          noirup -v ${{ env.NOIR_VERSION }}
+
+      - name: Restore / install Barretenberg toolchain
+        uses: actions/cache@v4
+        id: cache-bb
+        with:
+          path: ~/.bb
+          key: bb-${{ runner.os }}-${{ env.BB_VERSION }}
+      - if: steps.cache-bb.outputs.cache-hit != 'true'
+        name: Download Barretenberg toolchain
+        shell: bash
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          export PATH="$HOME/.bb:$PATH"
+          source "$HOME/.bashrc" 2>/dev/null || true
+          bbup -v ${{ env.BB_VERSION }}
+
+      - name: Measure proving stages (median of 5 runs) and gate counts
+        id: measure
+        shell: bash
+        working-directory: circuits
+        run: |
+          # bbup installs bb flat at ~/.bb (no bin/ subdir) — mirror ci.yml.
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$HOME/.bb/bin:$PATH"
+          # kyc_proof is the representative circuit: the smallest full pipeline
+          # (Poseidon2 commitment + secp256k1 ECDSA) and the one every other
+          # credential circuit is a superset of. Its Prover.toml is committed,
+          # so no input regeneration step is needed here.
+          node ../scripts/perf/measure-proving.mjs \
+            --runs 5 \
+            --circuit kyc_proof \
+            --compare ../perf/proving-baselines.json
+
+      - name: Upload measurement report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proving-perf-report
+          path: perf/proving-perf-report.json
+          retention-days: 14

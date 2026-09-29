@@ -6,6 +6,7 @@ import {
   IconTrendingUp,
   IconCurrencyDollar,
 } from "@tabler/icons-react";
+import rawDemoProtocols from "@/data/demo-protocols.json";
 
 export interface Requirement {
   label: string;
@@ -24,112 +25,31 @@ export interface Protocol {
   actionLabel: string;
   inputLabel: string;
   inputDefault: string;
+  /** Present on every demo protocol; absent (or false) on real integrations. */
+  isDemo?: boolean;
   icon: React.ReactNode;
 }
 
-export const PROTOCOLS: Protocol[] = [
-  {
-    id: "lendfi",
-    name: "LendFi",
-    tagline: "Institutional DeFi Lending",
-    description:
-      "Undercollateralised lending for verified institutional participants. Requires full KYC, age, and accreditation proofs.",
-    stat: { label: "Total value locked", value: "$124,800", sub: "USDC · stellar:testnet" },
-    requirements: [
-      { label: "KYC verified",       type: "kyc" },
-      { label: "Age ≥ 18",           type: "age",    minThreshold: 18 },
-      { label: "Accredited investor", type: "income", minThreshold: 200000 },
-    ],
-    verifyUrl: "/verify?return_url=/apps/lendfi&claim=kyc",
-    actionLabel: "Deposit",
-    inputLabel: "Amount (USDC)",
-    inputDefault: "5,000",
-    icon: <IconBuildingBank size={18} stroke={1.6} />,
-  },
-  {
-    id: "agegate",
-    name: "AgeGate",
-    tagline: "21+ Regulated Markets",
-    description:
-      "Access to regulated derivatives and structured products restricted to verified adults. Age is proved from a ZK commitment — your date of birth is never revealed.",
-    stat: { label: "Eligible instruments", value: "47", sub: "regulated derivatives" },
-    requirements: [
-      { label: "Age ≥ 21",    type: "age", minThreshold: 21 },
-      { label: "KYC verified", type: "kyc" },
-    ],
-    verifyUrl: "/verify?return_url=/apps/agegate&claim=age&threshold_years=21",
-    actionLabel: "Access markets",
-    inputLabel: "Notional value (USD)",
-    inputDefault: "25,000",
-    icon: <IconId size={18} stroke={1.6} />,
-  },
-  {
-    id: "fundvault",
-    name: "FundVault",
-    tagline: "Institutional Yield Pool",
-    description:
-      "Fixed-rate yield vault for participants who can prove minimum liquid reserves. Balance is verified directly from your bank — nothing is disclosed on-chain.",
-    stat: { label: "Current APY", value: "8.4%", sub: "30-day trailing average" },
-    requirements: [{ label: "Balance ≥ $10,000", type: "funds", minThreshold: 10000 }],
-    verifyUrl: "/verify?return_url=/apps/fundvault&claim=funds&threshold=10000",
-    actionLabel: "Deposit",
-    inputLabel: "Amount (USDC)",
-    inputDefault: "10,000",
-    icon: <IconCoin size={18} stroke={1.6} />,
-  },
-  {
-    id: "borderfi",
-    name: "BorderFi",
-    tagline: "Cross-Border Transfers",
-    description:
-      "Compliant cross-border payment rails for verified, non-sanctioned participants. Jurisdiction is proved in zero-knowledge — your country is never revealed on-chain.",
-    stat: { label: "Daily volume", value: "$2.1M", sub: "USDC · 38 corridors" },
-    requirements: [
-      { label: "KYC verified",          type: "kyc" },
-      { label: "Jurisdiction eligible", type: "jurisdiction" },
-    ],
-    verifyUrl: "/verify?return_url=/apps/borderfi&claim=kyc",
-    actionLabel: "Send funds",
-    inputLabel: "Amount (USDC)",
-    inputDefault: "1,000",
-    icon: <IconWorld size={18} stroke={1.6} />,
-  },
-  {
-    id: "yieldmax",
-    name: "YieldMax",
-    tagline: "Premium Yield Vault",
-    description:
-      "High-yield fixed-income vault restricted to participants with verified liquid reserves above $50,000. Your exact balance is never disclosed — only the threshold.",
-    stat: { label: "Current APY", value: "12.7%", sub: "90-day trailing average" },
-    requirements: [
-      { label: "KYC verified",      type: "kyc" },
-      { label: "Balance ≥ $50,000", type: "funds", minThreshold: 50000 },
-    ],
-    verifyUrl: "/verify?return_url=/apps/yieldmax&claim=funds&threshold=50000",
-    actionLabel: "Deposit",
-    inputLabel: "Amount (USDC)",
-    inputDefault: "50,000",
-    icon: <IconTrendingUp size={18} stroke={1.6} />,
-  },
-  {
-    id: "tradepro",
-    name: "TradePro",
-    tagline: "Institutional Trading Desk",
-    description:
-      "Derivatives and structured products for verified high-net-worth traders. Requires KYC, accredited-investor status, and age verification.",
-    stat: { label: "Open interest", value: "$8.3M", sub: "perpetuals · options" },
-    requirements: [
-      { label: "KYC verified",       type: "kyc" },
-      { label: "Age ≥ 18",           type: "age",    minThreshold: 18 },
-      { label: "Income ≥ $500,000",  type: "income", minThreshold: 500000 },
-    ],
-    verifyUrl: "/verify?return_url=/apps/tradepro&claim=kyc",
-    actionLabel: "Start trading",
-    inputLabel: "Notional value (USD)",
-    inputDefault: "100,000",
-    icon: <IconCurrencyDollar size={18} stroke={1.6} />,
-  },
-];
+/** Maps the serialisable icon key stored in demo-protocols.json to a React node. */
+function resolveIcon(key: string): React.ReactNode {
+  switch (key) {
+    case "bank":     return <IconBuildingBank size={18} stroke={1.6} />;
+    case "id":       return <IconId size={18} stroke={1.6} />;
+    case "coin":     return <IconCoin size={18} stroke={1.6} />;
+    case "world":    return <IconWorld size={18} stroke={1.6} />;
+    case "trending": return <IconTrendingUp size={18} stroke={1.6} />;
+    case "dollar":   return <IconCurrencyDollar size={18} stroke={1.6} />;
+    default:         return null;
+  }
+}
+
+/** All demo protocols, hydrated with their React icon nodes. */
+export const PROTOCOLS: Protocol[] = (
+  rawDemoProtocols as Array<Omit<Protocol, "icon"> & { iconKey: string }>
+).map(({ iconKey, ...rest }) => ({
+  ...rest,
+  icon: resolveIcon(iconKey),
+}));
 
 export function getProtocol(id: string): Protocol | undefined {
   return PROTOCOLS.find((p) => p.id === id);

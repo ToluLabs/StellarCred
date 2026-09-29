@@ -52,9 +52,11 @@ import {
 } from "./proof";
 import type {
   ProofJobRequest,
+  ProofStage,
   ProofWorkerCommand,
   ProofWorkerEvent,
 } from "./proof-protocol";
+import { PROOF_PERF_TARGETS } from "./proof-perf";
 
 /**
  * The slice of `DedicatedWorkerGlobalScope` this module uses. Typed locally
@@ -102,6 +104,21 @@ function errorMessage(err: unknown): string {
 }
 
 /**
+ * Stage labels and expected durations based on telemetry baselines.
+ */
+const STAGE_INFO: Record<ProofStage, { label: string; expectedMs: number }> = {
+  witness: { label: "Generating witness", expectedMs: PROOF_PERF_TARGETS.witnessMs },
+  circuit: { label: "Loading circuit WASM", expectedMs: 5000 },
+  proof: { label: "Generating UltraPlonk proof", expectedMs: PROOF_PERF_TARGETS.proveMs - 5000 },
+};
+
+interface StageTimer {
+  stage: ProofStage;
+  startMs: number;
+  interval: ReturnType<typeof setInterval>;
+}
+
+/**
  * Builds a prover bound to `scope`. Factored out of the module-level worker
  * wiring so unit tests can drive the real command handling with a fake
  * postMessage sink instead of needing a browser worker.
@@ -109,9 +126,50 @@ function errorMessage(err: unknown): string {
 export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">): ProverWorker {
   /** AbortController per in-flight job, so `cancel` can stop exactly one proof. */
   const jobs = new Map<number, AbortController>();
+  /** Per-stage timers for elapsed progress updates. */
+  const stageTimers = new Map<number, StageTimer>();
 
   function post(event: ProofWorkerEvent, transfer?: Transferable[]): void {
     scope.postMessage(event, transfer);
+  }
+
+  function postStageStart(jobId: number, stage: ProofStage): void {
+    const startMs = performance.now();
+    const info = STAGE_INFO[stage];
+
+    post({ event: "progress", jobId, stage });
+    post({
+      event: "stageProgress",
+      jobId,
+      progress: { stage, elapsedMs: 0, expectedMs: info.expectedMs, label: info.label },
+    });
+
+    // Send elapsed-time updates every 500 ms so the UI counter ticks in real time.
+    const interval = setInterval(() => {
+      const timer = stageTimers.get(jobId);
+      if (!timer || timer.stage !== stage) {
+        clearInterval(interval);
+        return;
+      }
+      post({
+        event: "stageProgress",
+        jobId,
+        progress: {
+          stage,
+          elapsedMs: Math.floor(performance.now() - startMs),
+          expectedMs: info.expectedMs,
+          label: info.label,
+        },
+      });
+    }, 500);
+
+    stageTimers.set(jobId, { stage, startMs, interval });
+  }
+
+  function clearStageTimer(jobId: number): void {
+    const timer = stageTimers.get(jobId);
+    if (timer) clearInterval(timer.interval);
+    stageTimers.delete(jobId);
   }
 
   async function runProve(jobId: number, request: ProofJobRequest): Promise<void> {
@@ -121,18 +179,23 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
     try {
       // Stage 1 — witness. The fetch (and the hex→bytes decode of its response)
       // happens in here, which is the point: both used to run on the UI thread.
-      post({ event: "progress", jobId, stage: "witness" });
+      postStageStart(jobId, "witness");
       const witness = request.aggregate
         ? await computeAggregateWitness(request.aggregate, signal)
         : await computeWitness(request.credentialType, request.credential ?? {}, signal);
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      clearStageTimer(jobId);
 
       // Stage 2 — UltraHonk proving. `onStep` forwards bb.js's own stages
       // straight through to the UI as progress messages.
       const result = await proveWithBackend(request.credentialType, witness, signal, (stage) => {
-        if (!signal.aborted) post({ event: "progress", jobId, stage });
+        if (!signal.aborted) {
+          clearStageTimer(jobId);
+          postStageStart(jobId, stage);
+        }
       });
 
+      clearStageTimer(jobId);
       const proof = transferable(result.proof);
       const publicInputs = transferable(result.publicInputs);
       post(
@@ -143,8 +206,10 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
       // Every failure — witness error, circuit-not-found, abort, wasm crash —
       // reaches the main thread as a structured error, never as an uncaught
       // rejection that would silently strand a pending promise over there.
+      clearStageTimer(jobId);
       post({ event: "error", jobId, name: errorName(err), message: errorMessage(err) });
     } finally {
+      clearStageTimer(jobId);
       jobs.delete(jobId);
     }
   }

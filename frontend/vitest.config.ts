@@ -41,7 +41,7 @@ export default defineConfig({
     include: [
       "lib/**/*.test.{js,ts}",
       "packages/sdk/src/**/*.test.{js,ts}",
-      "app/**/*.test.{js,ts}",
+      "app/**/*.test.{js,ts,tsx}",
       "components/**/*.test.{js,ts,tsx}",
     ],
     testTimeout: 30000,

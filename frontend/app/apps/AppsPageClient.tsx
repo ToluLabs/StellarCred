@@ -12,6 +12,7 @@ import {
   IconAlertCircle,
   IconRefresh,
   IconPlus,
+  IconFlask,
 } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
@@ -40,7 +41,7 @@ function ProtocolCard({
 }) {
   const router = useRouter();
   const isPreview = usePreviewMode();
-  const { state, statuses, retry, checking } = useProtocolAccessCheck(
+  const { state, statuses, retry, checking, unresolved, issue } = useProtocolAccessCheck(
     protocol.requirements,
     activeWallet,
     // Preview mode is "!address"; don't auto-grant when disconnected — show Connect wallet.
@@ -74,6 +75,29 @@ function ProtocolCard({
         >
           {protocol.icon}
           {protocol.name}
+          {protocol.isDemo && (
+            <span
+              title="This is an illustrative demo — not a live integration"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.25rem",
+                padding: "0.1rem 0.45rem",
+                borderRadius: "999px",
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                background: "rgba(250,180,50,0.12)",
+                color: "#f5b942",
+                border: "1px solid rgba(250,180,50,0.3)",
+                lineHeight: 1.4,
+              }}
+            >
+              <IconFlask size={9} stroke={2.2} />
+              Demo
+            </span>
+          )}
         </span>
         <div className="row" style={{ gap: "0.3rem" }}>
           {protocol.requirements.map((r, i) => {
@@ -138,8 +162,8 @@ function ProtocolCard({
             <span className="row" style={{ gap: "0.6rem" }}>
               {checking ? (
                 <IconLoader2 size={15} color="var(--faint)" className="spin" />
-              ) : state === "error" ? (
-                <IconAlertCircle size={15} color="var(--danger)" />
+              ) : unresolved ? (
+                <IconAlertCircle size={15} color="var(--warn)" />
               ) : statuses[i] ? (
                 <IconCheck size={15} color="var(--accent)" stroke={2.5} />
               ) : (
@@ -149,7 +173,7 @@ function ProtocolCard({
                 style={{
                   fontSize: "0.875rem",
                   color:
-                    !checking && state !== "error" && statuses[i]
+                    !checking && !unresolved && statuses[i]
                       ? "var(--text)"
                       : "var(--muted)",
                 }}
@@ -159,8 +183,8 @@ function ProtocolCard({
             </span>
             {checking ? (
               <Badge variant="pending">Checking</Badge>
-            ) : state === "error" ? (
-              <Badge variant="denied">Unavailable</Badge>
+            ) : unresolved ? (
+              <Badge variant="pending">Unknown</Badge>
             ) : statuses[i] ? (
               <Badge variant="verified">Proved</Badge>
             ) : (
@@ -181,7 +205,7 @@ function ProtocolCard({
         }}
         onClick={(e) => {
           // Keep retry/control clicks from navigating into the protocol.
-          if (state === "error") e.stopPropagation();
+          if (unresolved) e.stopPropagation();
         }}
       >
         {!activeWallet ? (
@@ -198,14 +222,21 @@ function ProtocolCard({
             )}
             {state === "granted" && <Badge variant="verified">Access granted</Badge>}
             {state === "denied" && <Badge variant="denied">Access denied</Badge>}
-            {state === "error" && (
+            {unresolved && (
               <>
                 <span className="row" style={{ gap: "0.4rem" }}>
-                  <Badge variant="denied">Check failed</Badge>
+                  <Badge variant="pending">Cannot verify</Badge>
                   <span className="faint" style={{ fontSize: "0.72rem" }}>
-                    RPC error
+                    {state === "unknown"
+                      ? "Network unreachable — not a rejection"
+                      : "RPC error"}
                   </span>
                 </span>
+                {issue && (
+                  <span className="faint" style={{ fontSize: "0.7rem" }}>
+                    {issue.message}
+                  </span>
+                )}
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"

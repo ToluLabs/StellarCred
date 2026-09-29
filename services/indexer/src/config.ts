@@ -37,6 +37,8 @@ export interface Config {
    * exposes it in tests without requiring every caller to supply it.
    */
   apiKey?: string;
+  /** HMAC key used to sign outbound claim lifecycle webhooks. */
+  webhookSigningSecret?: string;
 }
 
 function required(name: string): string {
@@ -112,6 +114,10 @@ export function loadConfig(): Config {
   );
   const rateLimitEnabled =
     optional("RATE_LIMIT_ENABLED", "true").toLowerCase() !== "false";
+  const webhookSigningSecret = process.env["WEBHOOK_SIGNING_SECRET"]?.trim();
+  if (webhookSigningSecret && webhookSigningSecret.length < 32) {
+    throw new Error("WEBHOOK_SIGNING_SECRET must contain at least 32 characters");
+  }
 
   return {
     stellarNetwork: network,
@@ -131,5 +137,6 @@ export function loadConfig(): Config {
     rateLimitWindowMs: (Number.isFinite(windowSec) && windowSec > 0 ? windowSec : 60) * 1000,
     rateLimitMax: Number.isFinite(maxReq) && maxReq > 0 ? maxReq : 120,
     rateLimitEnabled,
+    webhookSigningSecret,
   };
 }

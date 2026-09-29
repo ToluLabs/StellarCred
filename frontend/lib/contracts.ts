@@ -13,7 +13,8 @@
 //                              PreflightResult, normalizeSimulationError,
 //                              evaluateSimulation)
 //   contract-simulation.ts   — preflight / read-only queries
-//                              (VerificationStatus, checkClaim, isVerified)
+//                              (ReadStatus, ClaimResult, VerificationResult,
+//                              checkClaim, isVerified)
 //   contract-transactions.ts — tx construction, signing, submission, polling,
 //                              and preflight simulations
 //                              (ProofSubmissionParams, MAX_BATCH_SIZE,
@@ -31,7 +32,11 @@ export {
 } from "./contract-errors";
 
 // ── contract-simulation ───────────────────────────────────────────────────────
-export type { VerificationStatus } from "./contract-simulation";
+export type {
+  ReadStatus,
+  ClaimResult,
+  VerificationResult,
+} from "./contract-simulation";
 export { checkClaim, isVerified } from "./contract-simulation";
 
 // ── contract-transactions ─────────────────────────────────────────────────────
