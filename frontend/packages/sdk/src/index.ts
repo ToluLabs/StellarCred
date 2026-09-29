@@ -24,6 +24,7 @@
 
 export * from "./claims";
 export * from "./challenge";
+export * from "./uniqueness";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
@@ -58,6 +59,11 @@ import {
   verifyWalletSignature,
   verifyWalletClaim,
 } from "./challenge";
+import {
+  canonicalizeUniquenessPayload,
+  createUniquenessAttestation,
+  sameUniquenessSubject,
+} from "./uniqueness";
 
 export const StellarCred = {
   configure,
@@ -79,6 +85,9 @@ export const StellarCred = {
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,
+  canonicalizeUniquenessPayload,
+  createUniquenessAttestation,
+  sameUniquenessSubject,
   CLAIM_TYPES,
   TimeoutError,
   ConfigError,

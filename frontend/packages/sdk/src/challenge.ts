@@ -215,6 +215,7 @@ export type WalletClaimFailureReason =
   | "challenge_replayed"
   | "invalid_signature"
   | "on_chain_error"
+  | "rpc_failure"
   | CredentialFailureReason;
 
 /** Typed verification result combining signature verification and on-chain claim check. */
