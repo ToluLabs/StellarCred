@@ -6,6 +6,7 @@ import { isStorageAvailable } from "./safe-storage";
 
 export interface ClaimParams {
   threshold_years?: string;
+  max_age_days?: string;
   threshold?: string;
   restricted?: string[];
   /** "0" = denylist/block (default), "1" = allowlist/allow */
@@ -51,6 +52,12 @@ export const TYPE_META: Record<
     claim: "age ≥ 18",
     issuable: true,
     attribute: "Date of birth",
+  },
+  date_range: {
+    title: "Credential Freshness",
+    claim: "issued within 90 days",
+    issuable: true,
+    attribute: "Issuance date",
   },
   income: {
     title: "Accredited (Income)",

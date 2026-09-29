@@ -34,6 +34,12 @@ C=$(commit 3650 12345)
   echo "current_date = \"20000\""; echo "threshold_years = \"18\""; node "$SCRIPTS/sign.js" "$C"; } \
   > "$ROOT/age_proof/Prover.toml"
 
+echo "date_range..."
+C=$(commit 3650 12345)
+{ echo "issuance_date = \"3650\""; echo "salt = \"12345\""; echo "commitment = \"$C\""; \
+  echo "current_date = \"3700\""; echo "max_age_days = \"90\""; node "$SCRIPTS/sign.js" "$C"; } \
+  > "$ROOT/date_range/Prover.toml"
+
 echo "income_proof..."
 C=$(commit 250000 99)
 { echo "income = \"250000\""; echo "salt = \"99\""; echo "commitment = \"$C\""; \

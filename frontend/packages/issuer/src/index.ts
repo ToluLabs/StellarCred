@@ -27,6 +27,7 @@ import commit3Circuit from "./commit3-circuit.json";
 export const CREDENTIAL_TYPES = [
   "kyc",
   "age",
+  "date_range",
   "jurisdiction",
   "income",
   "funds",
@@ -38,6 +39,7 @@ export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 
 export interface ClaimParams {
   threshold_years?: string;
+  max_age_days?: string;
   threshold?: string;
   restricted?: string[];
   /** "0" = denylist/block (default), "1" = allowlist/allow */
@@ -114,6 +116,14 @@ function attributeToValue(type: CredentialType, attribute: Record<string, string
         throw new Error("Invalid date_of_birth: must be on or after 1970-01-01");
       return String(days);
     }
+    case "date_range": {
+      const issued = attribute.issuance_date;
+      if (!issued) throw new Error("date_range credential requires attribute.issuance_date");
+      const days = Math.floor(new Date(issued).getTime() / 86_400_000);
+      if (!Number.isFinite(days) || days < 0)
+        throw new Error("Invalid issuance_date: must be on or after 1970-01-01");
+      return String(days);
+    }
     case "income": {
       const income = parseInt(attribute.income ?? "", 10);
       if (!Number.isFinite(income) || income < 0) throw new Error("income credential requires a non-negative attribute.income");
@@ -187,6 +197,7 @@ function signCommitment(
 const TYPE_TITLE: Record<CredentialType, string> = {
   kyc: "KYC Complete",
   age: "Age Verified",
+  date_range: "Credential Freshness",
   income: "Accredited (Income)",
   jurisdiction: "Jurisdiction Eligible",
   funds: "Proof of Funds",
@@ -198,6 +209,8 @@ function buildClaimLabel(type: CredentialType, claimParams?: ClaimParams): strin
   switch (type) {
     case "age":
       return `age ≥ ${claimParams?.threshold_years ?? "18"}`;
+    case "date_range":
+      return `issued within ${claimParams?.max_age_days ?? "90"} days`;
     case "income": {
       const t = Number(claimParams?.threshold ?? "200000");
       return `income > $${t.toLocaleString("en-US")}`;

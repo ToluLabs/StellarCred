@@ -27,6 +27,7 @@ const TYPES = Object.entries(TYPE_META) as [
 const DEFAULT_ATTR: Record<CredentialType, string> = {
   kyc: "",
   age: "1995-06-15",
+  date_range: new Date().toISOString().slice(0, 10),
   income: "250000",
   jurisdiction: "566",
   funds: "50000",
@@ -130,6 +131,7 @@ export default function IssuerPage() {
     try {
       const attributes: Record<string, string> = {};
       if (type === "age") attributes.date_of_birth = attribute;
+      else if (type === "date_range") attributes.issuance_date = attribute;
       else if (type === "income") attributes.income = attribute;
       else if (type === "funds") attributes.balance = attribute;
       else if (type === "accreditation") attributes.net_worth = attribute;

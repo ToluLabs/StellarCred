@@ -26,6 +26,7 @@ const DIGITS_RE = /^[0-9]+$/;
 
 export interface ClaimParams {
   threshold_years?: string;
+  max_age_days?: string;
   threshold?: string;
   restricted?: string[];
   /** "0" = denylist (default), "1" = allowlist */
@@ -205,6 +206,8 @@ export function validateWitnessCredential(
   switch (type) {
     case "age":
       return checkThreshold(params.threshold_years, "credential.claimParams.threshold_years");
+    case "date_range":
+      return checkThreshold(params.max_age_days, "credential.claimParams.max_age_days");
     case "income":
     case "funds":
     case "accreditation":

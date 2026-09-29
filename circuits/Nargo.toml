@@ -5,6 +5,7 @@ members = [
     "commit3",
     "kyc_proof",
     "age_proof",
+    "date_range",
     "income_proof",
     "jurisdiction_proof",
     "funds_proof",

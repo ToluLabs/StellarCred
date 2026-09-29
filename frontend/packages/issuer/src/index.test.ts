@@ -103,6 +103,23 @@ describe("IssuerClient.issue — pipeline round-trip", () => {
     expect(credential.expiry).toBe("365 days");
   });
 
+  it("issues a freshness credential bound to a day-level issuance date", async () => {
+    const issuer = new IssuerClient({ privateKey: TEST_PRIVATE_KEY_64 });
+    const credential = await issuer.issue({
+      type: "date_range",
+      holder: "GABCDEXAMPLEHOLDERADDRESS",
+      issuerId: "test-issuer",
+      issuerName: "Test Issuer",
+      expiry: "90 days",
+      attribute: { issuance_date: "2026-09-01" },
+      claimParams: { max_age_days: "30" },
+    });
+
+    expect(credential.value).toBe(String(Math.floor(Date.parse("2026-09-01") / 86_400_000)));
+    expect(credential.claim).toBe("issued within 30 days");
+    expect(credential.claimParams).toEqual({ max_age_days: "30" });
+  });
+
   it("rejects an unknown credential type", async () => {
     const issuer = new IssuerClient({ privateKey: TEST_PRIVATE_KEY_64 });
     await expect(

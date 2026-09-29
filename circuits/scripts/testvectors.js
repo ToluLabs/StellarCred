@@ -32,6 +32,7 @@ const VECTORS_DIR = path.join(ROOT, "testvectors");
 const CIRCUITS = [
   "kyc_proof",
   "age_proof",
+  "date_range",
   "income_proof",
   "jurisdiction_proof",
   "funds_proof",

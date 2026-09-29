@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { InputMap } from "@noir-lang/noir_js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { logger, stripSensitiveFields, resolveRequestId } from "../../../lib/logger";
 import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
 import {
@@ -81,6 +83,7 @@ async function resolveCurrentDate(): Promise<number> {
 
 // Default claim params — used when a credential has no protocol-specific values.
 const DEFAULT_THRESHOLD_YEARS = "18";
+const DEFAULT_MAX_AGE_DAYS = "90";
 const DEFAULT_INCOME_THRESHOLD = "200000";
 const DEFAULT_FUNDS_THRESHOLD = "10000";
 const DEFAULT_ACCREDITATION_THRESHOLD = "1000000";
@@ -117,6 +120,15 @@ async function buildInputs(
         commitment,
         current_date: currentDate,
         threshold_years: asFieldString(params.threshold_years, DEFAULT_THRESHOLD_YEARS),
+      };
+    case "date_range":
+      return {
+        issuance_date: value,
+        salt,
+        ...sigInputs,
+        commitment,
+        current_date: currentDate,
+        max_age_days: asFieldString(params.max_age_days, DEFAULT_MAX_AGE_DAYS),
       };
     case "income":
       return {
@@ -184,10 +196,15 @@ async function buildInputs(
   }
 }
 
-function circuitFor(type: string) {
+async function circuitFor(type: string) {
   switch (type) {
     case "age":
       return ageCircuit;
+    case "date_range": {
+      // Emitted by circuits/scripts/build.sh using the pinned Noir toolchain.
+      const file = path.join(process.cwd(), "public", "circuits", "date_range.json");
+      return JSON.parse(await readFile(file, "utf8"));
+    }
     case "funds":
       return fundsCircuit;
     case "accreditation":
@@ -279,7 +296,7 @@ export async function POST(req: NextRequest) {
     const currentDate = String(await resolveCurrentDate());
     
     const { Noir } = await import("@noir-lang/noir_js");
-    const circuit = circuitFor(type);
+    const circuit = await circuitFor(type);
     const noir = new Noir(circuit as never);
     const inputs = await buildInputs(type, credential, currentDate);
     const { witness } = await noir.execute(inputs);

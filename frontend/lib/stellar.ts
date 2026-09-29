@@ -21,6 +21,7 @@ export const CONTRACTS = {
 export const CREDENTIAL_TYPES = [
   "kyc",
   "age",
+  "date_range",
   "jurisdiction",
   "income",
   "funds",

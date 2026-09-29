@@ -46,6 +46,7 @@ To securely commit to human-readable attributes, issuers must map them to `Field
 
 - **KYC (`kyc_proof`)**: The value is a random `Field` element acting as a secret, representing a successful KYC verification.
 - **Age (`age_proof`)**: The value is the holder's Date of Birth (DOB) represented as **days since the Unix epoch** (e.g., `Jan 1 1990` = `7305`).
+- **Date range (`date_range`)**: The value is the credential issuance date represented as **days since the Unix epoch**. The exact date remains private.
 - **Income (`income_proof`)**: The value is the holder's annual income represented as a `u64` in whole currency units (e.g., whole USD).
 - **Funds (`funds_proof`)**: The value is the holder's account balance represented as a `u64` in whole currency units.
 - **Accreditation (`accreditation_proof`)**: The value is the holder's net worth represented as a `u64` in whole currency units.
@@ -72,6 +73,19 @@ The following tables define the ABI order of public inputs for each credential c
 | 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
 | 3 | `current_date` | `u64` | Current date as days since Unix epoch |
 | 4 | `threshold_years` | `u64` | Minimum required age in years |
+
+### `date_range`
+| Index | Name | Type | Description |
+|-------|------|------|-------------|
+| 0 | `commitment` | `Field` | `Poseidon2([issuance_date, salt], 2)` |
+| 1 | `issuer_x` | `[u8; 32]` | Issuer secp256k1 public key X coordinate |
+| 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
+| 3 | `current_date` | `u64` | Ledger-derived date as days since Unix epoch |
+| 4 | `max_age_days` | `u64` | Maximum permitted credential age, inclusive |
+
+The circuit rejects future issuance dates and accepts the exact boundary where
+`current_date - issuance_date == max_age_days`. Verifiers must bind
+`current_date` to ledger time; the witness endpoint does this server-side.
 
 ### `income_proof`
 | Index | Name | Type | Description |

@@ -36,7 +36,7 @@ describe("normalizeRestricted", () => {
 
 describe("validateWitnessCredential", () => {
   it("accepts a well-formed credential of every type", () => {
-    for (const type of ["kyc", "age", "income", "funds", "accreditation", "jurisdiction"]) {
+    for (const type of ["kyc", "age", "date_range", "income", "funds", "accreditation", "jurisdiction"]) {
       expect(validateWitnessCredential(type, validCredential())).toBeNull();
     }
   });
@@ -117,6 +117,14 @@ describe("validateWitnessCredential", () => {
     const cred = validCredential({ claimParams: { threshold_years: "21.5" } });
     expect(validateWitnessCredential("age", cred)).toEqual({
       field: "credential.claimParams.threshold_years",
+      message: "must be a non-negative integer",
+    });
+  });
+
+  it("rejects a non-integer date-range window", () => {
+    const cred = validCredential({ claimParams: { max_age_days: "30.5" } });
+    expect(validateWitnessCredential("date_range", cred)).toEqual({
+      field: "credential.claimParams.max_age_days",
       message: "must be a non-negative integer",
     });
   });

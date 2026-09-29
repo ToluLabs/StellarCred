@@ -801,6 +801,7 @@ export function buildVerifyUrl(options: {
   claimParams?: {
     /** For "age" claims: minimum age in years (default "18"). */
     threshold_years?: string;
+    max_age_days?: string;
     /** For "income" / "funds" claims: minimum value in whole units (default varies). */
     threshold?: string;
     /** For "jurisdiction" claims: ISO 3166-1 numeric codes (default []). */
@@ -837,8 +838,9 @@ export function buildVerifyUrl(options: {
   url.searchParams.set("return_url", returnUrl);
   url.searchParams.set("claim", options.claim);
   if (options.claimParams) {
-    const { threshold_years, threshold, restricted, mode } = options.claimParams;
+    const { threshold_years, max_age_days, threshold, restricted, mode } = options.claimParams;
     if (threshold_years) url.searchParams.set("threshold_years", threshold_years);
+    if (max_age_days) url.searchParams.set("max_age_days", max_age_days);
     if (threshold) url.searchParams.set("threshold", threshold);
     if (restricted) {
       url.searchParams.set("restricted", Array.isArray(restricted) ? restricted.join(",") : restricted);

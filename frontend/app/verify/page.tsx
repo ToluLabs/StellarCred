@@ -100,6 +100,9 @@ function VerifyInner() {
     threshold_years:
       searchParams.get("threshold_years") ??
       (claimParam === "age" ? minThresholdParam : undefined),
+    max_age_days:
+      searchParams.get("max_age_days") ??
+      (claimParam === "date_range" ? minThresholdParam : undefined),
     threshold:
       searchParams.get("threshold") ??
       (["funds", "income", "accreditation", "employment"].includes(
@@ -117,6 +120,7 @@ function VerifyInner() {
   const radioRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [attributes, setAttributes] = useState<Record<string, string>>({
     date_of_birth: "1995-06-15",
+    issuance_date: new Date().toISOString().slice(0, 10),
     income: "250000",
     net_worth: "1500000",
     country_code: "566",
@@ -706,6 +710,17 @@ function VerifyInner() {
                             onChange={(e) =>
                               setAttr("date_of_birth", e.target.value)
                             }
+                          />
+                        </div>
+                      )}
+                      {on && key === "date_range" && (
+                        <div style={{ marginTop: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
+                          <label className="field-label" htmlFor="attr-issuance-date">{m.attribute}</label>
+                          <input
+                            id="attr-issuance-date"
+                            type="date"
+                            value={attributes.issuance_date}
+                            onChange={(e) => setAttr("issuance_date", e.target.value)}
                           />
                         </div>
                       )}
