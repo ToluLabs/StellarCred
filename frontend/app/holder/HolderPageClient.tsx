@@ -117,6 +117,7 @@ import { useProofTimeline, addTimelineEvent } from "@/lib/useProofTimeline";
 import { Timeline } from "@/components/Timeline";
 import { IconHistory } from "@tabler/icons-react";
 import { useIssuerStatus } from "@/lib/hooks/useIssuerStatus";
+import { getProofPreflightWarnings, type ProofPreflightWarning } from "@/lib/proof-preflight";
 
 // ── Credential expiry helpers ─────────────────────────────────────────────────
 
@@ -1250,6 +1251,8 @@ function ProofFlow({
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState<ContractError | null>(null);
   const [errorPhase, setErrorPhase] = useState<"proving" | "submitting" | null>(null);
+  const [preflightWarnings, setPreflightWarnings] = useState<ProofPreflightWarning[]>([]);
+  const [proceedAfterWarning, setProceedAfterWarning] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1257,6 +1260,9 @@ function ProofFlow({
   const { addEvent } = useProofTimeline(cred);
 
   useEffect(() => {
+    const warnings = getProofPreflightWarnings(cred);
+    setPreflightWarnings(warnings);
+    if (warnings.length > 0 && !proceedAfterWarning) return;
     const controller = new AbortController();
     const { signal } = controller;
 
@@ -1314,8 +1320,7 @@ function ProofFlow({
       controller.abort();
       clearInterval(timerRef.current!);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cred]);
+  }, [cred, proceedAfterWarning]);
 
   async function onSubmit() {
     if (!proof || networkMismatch) return;
@@ -1401,6 +1406,33 @@ function ProofFlow({
           <h2 style={{ marginBottom: "0.25rem" }}>{cred.title}</h2>
           <span className="mono faint" style={{ fontSize: "0.8rem" }}>{cred.claim}</span>
         </div>
+        {preflightWarnings.length > 0 && !proceedAfterWarning && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: "1.5rem",
+              padding: "0.9rem 1.1rem",
+              borderRadius: "var(--radius)",
+              border: "1px solid rgba(240,96,77,0.35)",
+              background: "rgba(240,96,77,0.07)",
+            }}
+          >
+            <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+              <IconAlertTriangle size={15} />
+              This credential may not satisfy the requested gate
+            </div>
+            <ul style={{ margin: "0.55rem 0 0.8rem 1.2rem", padding: 0, color: "var(--text)", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+              {preflightWarnings.map((warning) => <li key={`${warning.code}-${warning.message}`}>{warning.message}</li>)}
+            </ul>
+            <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.75rem", lineHeight: 1.5 }}>
+              This is a convenience check using local credential data. The circuit is authoritative, and you may still continue.
+            </p>
+            <button className="btn btn-ghost" style={{ marginTop: "0.85rem", width: "100%" }} onClick={() => setProceedAfterWarning(true)}>
+              Generate the proof anyway
+              <IconArrowRight size={15} />
+            </button>
+          </div>
+        )}
 
         {/* step list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
@@ -1646,6 +1678,8 @@ function BatchProofFlow({
   const [txHash, setTxHash] = useState("");
   const [batchError, setBatchError] = useState<ContractError | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [preflightWarnings, setPreflightWarnings] = useState<Array<{ cred: Credential; warnings: ProofPreflightWarning[] }>>([]);
+  const [proceedAfterWarning, setProceedAfterWarning] = useState(false);
   const toast = useToast();
   const { networkMismatch } = useWallet();
   const generatedProofs = useRef<Array<{ proof: Uint8Array; publicInputs: Uint8Array } | null>>(
@@ -1655,11 +1689,17 @@ function BatchProofFlow({
   // even if the parent re-renders between proof generation and submission.
   const credsRef = useRef(creds);
   const holderRef = useRef(holder);
+  const credsKey = creds.map((cred) => cred.commitment).join(",");
   useEffect(() => { credsRef.current = creds; }, [creds]);
   useEffect(() => { holderRef.current = holder; }, [holder]);
 
   // Generate proofs for all credentials in sequence.
   useEffect(() => {
+    const warnings = creds
+      .map((cred) => ({ cred, warnings: getProofPreflightWarnings(cred) }))
+      .filter((entry) => entry.warnings.length > 0);
+    setPreflightWarnings(warnings);
+    if (warnings.length > 0 && !proceedAfterWarning) return;
     let cancelled = false;
     toast.info(`Generating ${creds.length} proofs…`);
 
@@ -1743,8 +1783,7 @@ function BatchProofFlow({
     })();
 
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [credsKey, proceedAfterWarning]);
 
   // All proofs ready — fire the batch submission automatically, but never
   // while the connected wallet is on the wrong network: submission would
@@ -1824,6 +1863,29 @@ function BatchProofFlow({
             Proofs are generated in your browser, then submitted in a single on-chain transaction.
           </span>
         </div>
+        {preflightWarnings.length > 0 && !proceedAfterWarning && (
+          <div role="alert" style={{ marginBottom: "1.5rem", padding: "0.9rem 1.1rem", borderRadius: "var(--radius)", border: "1px solid rgba(240,96,77,0.35)", background: "rgba(240,96,77,0.07)" }}>
+            <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+              <IconAlertTriangle size={15} />
+              Some credentials may not satisfy the requested gate
+            </div>
+            {preflightWarnings.map(({ cred, warnings }) => (
+              <div key={cred.commitment} style={{ marginTop: "0.55rem", fontSize: "0.8125rem", lineHeight: 1.55 }}>
+                <strong>{cred.title}</strong>
+                <ul style={{ margin: "0.15rem 0 0 1.2rem", padding: 0 }}>
+                  {warnings.map((warning) => <li key={`${warning.code}-${warning.message}`}>{warning.message}</li>)}
+                </ul>
+              </div>
+            ))}
+            <p style={{ margin: "0.8rem 0 0", color: "var(--muted)", fontSize: "0.75rem", lineHeight: 1.5 }}>
+              This convenience check uses local data. The circuit remains authoritative, and you may continue with the batch.
+            </p>
+            <button className="btn btn-ghost" style={{ marginTop: "0.85rem", width: "100%" }} onClick={() => setProceedAfterWarning(true)}>
+              Generate the proofs anyway
+              <IconArrowRight size={15} />
+            </button>
+          </div>
+        )}
 
         {/* Per-credential progress rows */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.5rem" }}>
