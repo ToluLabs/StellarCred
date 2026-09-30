@@ -26,20 +26,29 @@ vi.mock("@stellar/stellar-sdk", () => ({
 import {
   configure,
   hasClaim,
+  getClaim,
+  hasClaims,
   getClaims,
   getClaimRecord,
   buildVerifyUrl,
   checkClaimStatus,
   verifyPreset,
+  buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
+  parseReturnParams,
+  watchClaim,
+  withRetry,
   ConfigError,
   InvalidAddressError,
   RpcError,
   TimeoutError,
+  CLAIM_TYPES,
   StellarCred,
   withRetry,
   __resetBoundaryWarningForTesting,
 } from "./index";
-import { hasClaim as sharedHasClaim } from "./claims";
+import * as claimsModule from "./claims";
 
 const WALLET = "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -230,7 +239,7 @@ describe("read request timeout", () => {
     vi.useRealTimers();
     isVerified.mockImplementation(() => new Promise(() => {}));
 
-    await expect(sharedHasClaim(WALLET, "kyc")).resolves.toBe(false);
+    await expect(claimsModule.hasClaim(WALLET, "kyc")).resolves.toBe(false);
   });
 
   it("returns false when check_claim never settles", async () => {

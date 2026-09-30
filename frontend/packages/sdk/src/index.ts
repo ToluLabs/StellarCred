@@ -65,6 +65,27 @@ import {
   verifyWalletClaim,
 } from "./challenge";
 
+import {
+  configure,
+  healthCheck,
+  isConfigured,
+  hasClaim,
+  getClaim,
+  hasClaims,
+  getClaims,
+  verifyPreset,
+  buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
+  parseReturnParams,
+  watchClaim,
+  CLAIM_TYPES,
+  TimeoutError,
+  ConfigError,
+  InvalidAddressError,
+  RpcError,
+} from "./claims";
+
 export const StellarCred = {
   configure,
   healthCheck,
