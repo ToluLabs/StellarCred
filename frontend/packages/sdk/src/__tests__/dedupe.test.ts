@@ -29,6 +29,7 @@ describe("SDK deduplication (#522)", () => {
     expect(indexExports.InvalidAddressError).toBe(claimsExports.InvalidAddressError);
     expect(indexExports.RpcError).toBe(claimsExports.RpcError);
     expect(indexExports.TimeoutError).toBe(claimsExports.TimeoutError);
+    expect(indexExports.IndexerError).toBe(claimsExports.IndexerError);
   });
 
   it("exports identical CLAIM_TYPES array", () => {

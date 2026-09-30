@@ -9,6 +9,11 @@ StellarCred is designed with strict privacy guarantees:
 - No raw identity data is stored on-chain or in backend services.
 - Only cryptographic commitments and zero-knowledge proofs are published on the Stellar blockchain.
 
+> **These guarantees cover credential contents, not verification metadata.** On-chain claims,
+> the wallet-to-claim link, delegation grants, and the issuer's view of the attribute at
+> issuance are not hidden. See **[Limitations and non-goals](LIMITATIONS.md)** for the full
+> breakdown by party.
+
 ## High-Level Component Diagram
 
 The diagram below shows the key components and their interactions. It also highlights the trust boundaries.

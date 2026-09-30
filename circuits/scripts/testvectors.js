@@ -20,6 +20,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { versionOf } = require("./circuit-versions");
 
 const NOIR_VERSION = "1.0.0-beta.9";
 const BB_VERSION = "0.87.0";
@@ -111,9 +112,22 @@ function buildVector(name, toolchain) {
       fs.readFileSync(path.join(outDir, "public_inputs_fields.json"), "utf8"),
     );
     const witness = parseProverToml(fs.readFileSync(path.join(dir, "Prover.toml"), "utf8"));
+    // The declared circuit version is part of what these vectors pin. A VK hash
+    // change alone cannot tell you *which* circuit a credential was issued
+    // against, so the version is pinned alongside it and a circuit edit that
+    // forgets to bump circuits/circuit-versions.json fails here (#633).
+    const declared = versionOf(name);
+    if (!declared) {
+      throw new Error(
+        `Circuit "${name}" has no entry in circuits/circuit-versions.json — add its ` +
+          `version and vkVersion so credentials can record what they were issued against.`,
+      );
+    }
 
     return {
       circuit: name,
+      circuit_version: declared.version,
+      circuit_vk_version: declared.vkVersion,
       noir_version: toolchain.nargoVersion,
       bb_version: toolchain.bbVersion,
       witness,
@@ -173,6 +187,22 @@ function main() {
 
     const mismatches = [];
     if (committed.vk_hash !== fresh.vk_hash) mismatches.push("vk_hash");
+    // A version bump that is not reflected in the committed vector means the
+    // vector was regenerated (or hand-edited) without the version being
+    // declared consistently — the credential <-> circuit <-> VK chain would
+    // then be ambiguous.
+    if (committed.circuit_version !== fresh.circuit_version) {
+      mismatches.push(
+        `circuit_version (committed ${committed.circuit_version ?? "none"} != ` +
+          `circuits/circuit-versions.json ${fresh.circuit_version})`,
+      );
+    }
+    if (committed.circuit_vk_version !== fresh.circuit_vk_version) {
+      mismatches.push(
+        `circuit_vk_version (committed ${committed.circuit_vk_version ?? "none"} != ` +
+          `circuits/circuit-versions.json ${fresh.circuit_vk_version})`,
+      );
+    }
     if (JSON.stringify(committed.public_inputs) !== JSON.stringify(fresh.public_inputs)) {
       mismatches.push("public_inputs");
     }
@@ -193,7 +223,8 @@ function main() {
     for (const d of drifted) console.error(`  - ${d.name}: ${d.reason}`);
     console.error(
       `\nPinned toolchain: nargo ${NOIR_VERSION} / bb ${BB_VERSION} (see circuits/README.md).\n` +
-        `If you changed a circuit or bumped the toolchain on purpose, regenerate the vectors with:\n` +
+        `If you changed a circuit or bumped the toolchain on purpose, first bump its entry in\n` +
+        `circuits/circuit-versions.json, then regenerate the vectors with:\n` +
         `  node circuits/scripts/testvectors.js update\n` +
         `and commit the result. Otherwise this is a real regression — do not update the vectors to hide it.`,
     );

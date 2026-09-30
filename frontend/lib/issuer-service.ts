@@ -18,6 +18,7 @@ import {
   auditLogFilePath,
   auditLogPersist,
 } from "./audit-log";
+import { enqueueOutboundEvent } from "./outbound-sink";
 
 // Server-side only — never shipped to the browser.
 // Set ISSUER_PRIVATE_KEY in .env.local to the 64-char hex secp256k1 private
@@ -128,6 +129,10 @@ export async function issueAndAuditCredentials(
         issuer: issuerId,
         commitment: credential.commitment,
       });
+      // Audit persistence remains synchronous so the hash chain is durable
+      // before issuance returns; the shared sink publishes the same redacted
+      // entry without adding network latency to the request.
+      enqueueOutboundEvent({ kind: "audit", payload: entry });
       logger.info(
         stripSensitiveFields({
           event: "audit_log_appended",

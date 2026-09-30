@@ -14,6 +14,7 @@
 // server accumulate on this process.
 
 import { NextRequest, NextResponse } from "next/server";
+import { enqueueOutboundEvent } from "../../../lib/outbound-sink";
 
 const STAGES = ["witness", "prove", "submit"] as const;
 type StageName = (typeof STAGES)[number];
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
   for (const run of runs) {
     received += absorb(run as RawRun);
   }
+  enqueueOutboundEvent({ kind: "telemetry", payload: { runs } });
 
   return NextResponse.json({
     received,

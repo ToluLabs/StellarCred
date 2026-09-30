@@ -548,7 +548,8 @@ fn bump_claim(env, holder: Address, credential_type: Symbol)
 - **Events:** none.
 - **Notes:** extends the record's persistent-entry lifetime to
   `max(90 days, time until expiry)` without changing the claim. Useful for
-  keepers keeping long-lived claims readable.
+  keepers keeping long-lived claims readable. See [STORAGE_TTL.md](./STORAGE_TTL.md)
+  for full details on the storage lifetime model, rent fees, and archived vs expired state behavior.
 
 ## 7. Introspection (public views)
 

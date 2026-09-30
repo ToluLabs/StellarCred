@@ -249,19 +249,11 @@ jobs:
         run: |
           export PATH="$HOME/.nargo/bin:$HOME/.bb:$PATH"
 
+          # Circuit package name -> frontend credential-type filename, read from
+          # the shared version module rather than a third copy of this table.
           type_of() {
-            case "$1" in
-              kyc_proof) echo kyc ;;
-              age_proof) echo age ;;
-              income_proof) echo income ;;
-              jurisdiction_proof) echo jurisdiction ;;
-              funds_proof) echo funds ;;
-              employment_proof) echo employment ;;
-              accreditation_proof) echo accreditation ;;
-              aggregate_proof) echo aggregate ;;
-              set_membership) echo set_membership ;;
-              *) echo "$1" ;;
-            esac
+            node -e 'process.stdout.write(require(process.argv[1]).typeOfCircuit(process.argv[2]))' \
+              "$PWD/scripts/circuit-versions.js" "$1"
           }
 
           FAILED=0
@@ -311,6 +303,14 @@ jobs:
           if [ "$FAILED" -ne 0 ]; then
             exit 1
           fi
+
+      - name: Check staged artifacts carry the declared circuit version
+        # A VK hash proves the *bytecode* is unchanged, not that a credential
+        # can tell which circuit it was issued against. That identity lives in
+        # circuits/circuit-versions.json and is stamped into every compiled
+        # artifact the app serves — a stale or missing stamp means credentials
+        # would be checked against a version nobody declared (#633).
+        run: node scripts/stamp-circuit-version.js check-all ../frontend/public/circuits
 
       - name: Check verify-wasm.sh syntax
         run: bash -n ../scripts/verify-wasm.sh

@@ -65,23 +65,33 @@ access tokens:
 
 ---
 
-## Optional Error Reporting
+## Shared outbound sink
 
-Unexpected 500 errors can be forwarded to an external error sink (e.g., Sentry, webhook) for operational awareness without requiring user reports.
+Telemetry, audit notifications, and unexpected 500 errors use one bounded,
+best-effort outbound sink. It applies one redaction boundary to all three
+event types, never waits on a remote destination from the request path, and
+tracks queued, delivered, failed, and dropped events. The audit file remains
+hash-chained and is persisted locally before issuance returns.
+
+The current counters are exposed by `GET /api/health` under `outboundSink`.
 
 ### Configuration
 
-Set the `ERROR_REPORTING_WEBHOOK` environment variable to enable error reporting:
+Set the shared destination with:
 
 ```bash
-ERROR_REPORTING_WEBHOOK=https://your-error-sink.example.com/api/errors
+OUTBOUND_SINK_URL=https://your-error-sink.example.com/api/events
+OUTBOUND_SINK_QUEUE_SIZE=256
 ```
 
-**Default:** Off (no error reporting when unset)
+**Default:** Network delivery is off when `OUTBOUND_SINK_URL` is unset. Local
+audit persistence and in-process telemetry continue to work. The old
+`ERROR_REPORTING_WEBHOOK` setting remains a deprecated compatibility alias.
 
 ### Error Report Payload
 
-When enabled, 500 errors trigger a POST to the configured webhook with the following JSON payload:
+When enabled, outbound events trigger a POST to the configured sink. Error
+events retain this redacted payload shape:
 
 ```json
 {
@@ -102,20 +112,26 @@ The error report contains no PII:
 - No credential values
 - Only operational metadata (method, path, requestId, status, environment)
 
-### Timeout
+### Timeout and drops
 
-Error reporting requests have a 5-second timeout to avoid hanging the API response. Failures are logged locally but do not affect the user response.
+Outbound requests have a 5-second timeout. Failures and bounded-queue drops
+are logged locally but do not affect the user response.
 
 ### Environment Variable Reference
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ERROR_REPORTING_WEBHOOK` | No | (unset) | Webhook URL for 500 error reporting. Unset = disabled. |
+| `OUTBOUND_SINK_URL` | No | (unset) | Shared destination for telemetry, audit, and error events. |
+| `OUTBOUND_SINK_QUEUE_SIZE` | No | `256` | Maximum in-memory outbound queue depth. |
+| `ERROR_REPORTING_WEBHOOK` | No | (unset) | Deprecated alias for the shared destination. |
 
 Add to your environment configuration (e.g., `.env.local` or production secrets manager):
 
 ```bash
-# Optional: Forward unexpected 500 errors to an error sink
+# Optional: Forward telemetry, audit, and error events to one sink
+OUTBOUND_SINK_URL=https://your-sentry-or-webhook.example.com/api/events
+
+# Deprecated compatibility alias
 ERROR_REPORTING_WEBHOOK=https://your-sentry-or-webhook.example.com/api/errors
 ```
 
@@ -124,7 +140,7 @@ ERROR_REPORTING_WEBHOOK=https://your-sentry-or-webhook.example.com/api/errors
 ## Implementation Details
 
 - **Middleware**: `frontend/middleware.ts` - Logs all API requests and triggers error reporting
-- **Error Reporting**: `frontend/lib/error-reporting.ts` - Handles webhook delivery
+- **Outbound Sink**: `frontend/lib/outbound-sink.ts` - Redaction, queueing, delivery, and drop metrics
 - **Logger**: `frontend/lib/logger.ts` - Structured logging with sensitive field filtering
 - **Safe Fields**: Updated `SAFE_FIELDS` array includes new logging fields
 

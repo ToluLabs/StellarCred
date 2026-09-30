@@ -161,3 +161,86 @@ describe("validateVerifyParams trusted_issuers", () => {
     expect(r.hasErrors).toBe(true);
   });
 });
+describe("parseVerifyParams expiry", () => {
+  const now = () => Math.floor(Date.now() / 1000);
+
+  it("treats a link with no exp as unbounded (legacy behaviour unchanged)", () => {
+    const r = parseVerifyParams({
+      return_url: "/apps/lendfi",
+      claim: "kyc",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.exp).toBeUndefined();
+  });
+
+  it("accepts a link whose exp is in the future", () => {
+    const future = String(now() + 600);
+    const r = parseVerifyParams({
+      return_url: "/apps/lendfi",
+      claim: "kyc",
+      exp: future,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.exp).toBe(Number(future));
+  });
+
+  it("rejects a link whose exp is in the past with expired_link", () => {
+    const past = String(now() - 60);
+    const r = parseVerifyParams({
+      return_url: "/apps/lendfi",
+      claim: "kyc",
+      exp: past,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("expired_link");
+  });
+
+  it("rejects a malformed exp with bad_exp", () => {
+    const r = parseVerifyParams({
+      return_url: "/apps/lendfi",
+      claim: "kyc",
+      exp: "tomorrow",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("bad_exp");
+  });
+
+  it("rejects a non-integer exp with bad_exp", () => {
+    const r = parseVerifyParams({
+      return_url: "/apps/lendfi",
+      claim: "kyc",
+      exp: String(now() + 1.5),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("bad_exp");
+  });
+});
+
+describe("parseVerifyParams single-use jti", () => {
+  it("exposes jti when present on a well-formed link", () => {
+    const r = parseVerifyParams({
+      return_url: "/apps/lendfi",
+      claim: "kyc",
+      jti: "abc123def456",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.jti).toBe("abc123def456");
+  });
+
+  it("rejects a malformed jti with bad_jti", () => {
+    const r = parseVerifyParams({
+      return_url: "/apps/lendfi",
+      claim: "kyc",
+      jti: "short",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("bad_jti");
+  });
+
+  it("treats a bare jti (no other verify params) as a verification link", () => {
+    const r = parseVerifyParams({ jti: "abc123def456" });
+    expect(r.isVerificationLink).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("missing_return_url");
+  });
+});

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CREDENTIAL_TYPES, type ClaimParams, type Credential } from "@stellarcred/issuer";
 import { fetchIssuerPubkey } from "@/lib/issuer-registry";
+import { circuitVersionStampFor } from "@/lib/circuit-versions";
 import { readJsonBody, bodyErrorResponse } from "@/lib/request-limits";
 import {
   logger,
@@ -331,7 +332,13 @@ async function executeBatchRequest(
         index,
         success: true,
         holder,
-        credentials,
+        // Record the circuit each credential was issued against, exactly as the
+        // single-issue route does, so the holder's device can detect a
+        // superseded circuit before proving rather than via a failed witness.
+        credentials: credentials.map((credential) => ({
+          ...credential,
+          ...circuitVersionStampFor(credential.type),
+        })),
       });
       successful++;
     } catch (err) {

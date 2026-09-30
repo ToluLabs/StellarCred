@@ -534,6 +534,7 @@ impl Contracts {
                 self.registry_id.clone(),
                 Symbol::new(env, required_type),
                 min_threshold,
+                None::<Address>,
             ),
         );
         GatedPoolClient::new(env, &id)

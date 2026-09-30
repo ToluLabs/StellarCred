@@ -414,6 +414,25 @@ describe("prover worker: failures", () => {
     ).rejects.toThrow("Witness generation failed: 500 boom");
   });
 
+  it("rebuilds a circuit-version mismatch as its real type, not a bare Error", async () => {
+    // The circuit-version gate (#633) throws a typed error so the UI can show
+    // it without the generic "proof generation failed" wrapper. Only the name
+    // survives the worker boundary, so the client has to restore the type —
+    // otherwise the check would pass on the inline fallback and silently fail
+    // on the worker path that production actually takes.
+    const { proveOffMainThread } = await loadClient();
+    // From the module registry loadClient just populated, so `instanceof` below
+    // is the same identity check the UI makes. (beforeEach calls
+    // vi.resetModules(), so the statically-imported class would be a different
+    // object and the assertion would be meaningless.)
+    const { CircuitVersionMismatchError: Revived } = await import("../circuit-versions");
+    computeWitness.mockRejectedValue(new Revived("issued against 0.9.0"));
+
+    await expect(
+      proveOffMainThread({ credentialType: "age", credential: {} }),
+    ).rejects.toBeInstanceOf(Revived);
+  });
+
   it("surfaces a non-Error rejection without losing it", async () => {
     computeWitness.mockRejectedValue("string failure");
     const { proveOffMainThread } = await loadClient();

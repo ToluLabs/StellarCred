@@ -3,7 +3,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { CREDENTIAL_TYPES, type CredentialType } from "./stellar";
 import { deploymentMismatchMessage, type DeploymentRef } from "./deployment";
+import { circuitVersionMismatchMessage } from "./circuit-versions";
 import { isStorageAvailable } from "./safe-storage";
+import {
+  ENVELOPE_VERSION,
+  PBKDF2_ITERATIONS,
+  SALT_BYTES,
+  decodeB64,
+  derivePassphraseKey,
+  isCredentialEnvelope,
+  openWithKey,
+  resolveEnvelopeIterations,
+  sealWithKey,
+  type CredentialEnvelope,
+} from "./credential-crypto";
 
 export interface ClaimParams {
   threshold_years?: string;
@@ -48,6 +61,21 @@ export interface Credential {
    * Absent on credentials minted before this field existed.
    */
   deployment?: DeploymentRef;
+  /**
+   * The circuit version this credential was issued against (#633). A circuit
+   * source change can alter the public-input layout, and nothing else on the
+   * credential would reveal that the circuit which can prove it has been
+   * superseded — the only symptom would be an invalid witness at prove time.
+   * Stamped by /api/issue and checked before every proof; absent on
+   * credentials minted before this field existed.
+   */
+  circuitVersion?: string;
+  /**
+   * The `CredentialVerifier` VK version paired with {@link circuitVersion},
+   * so the credential → circuit → VK chain is explicit on the credential
+   * itself rather than implied by whichever app build happens to be running.
+   */
+  circuitVkVersion?: number;
   /**
    * Last-checked status of this credential's issuer in IssuerRegistry (#626).
    *
@@ -127,13 +155,15 @@ export function randomField(): string {
   );
 }
 
-// ---- At-rest encryption (AES-256-GCM + PBKDF2) ------------------------------
+// ---- At-rest encryption (consolidated scheme, lib/credential-crypto.ts) ----
 //
-// The AES key is derived from a user passphrase via PBKDF2-SHA256 (100k
-// iterations). The passphrase never leaves the browser; the derived key lives
+// The AES key is derived from a user passphrase via the single PBKDF2-SHA256
+// path (#547). The passphrase never leaves the browser; the derived key lives
 // only in a module-level variable for the duration of the session. The
-// encrypted envelope stored in localStorage contains the salt and IV so the
-// key can be re-derived on the next unlock.
+// encrypted envelope stored in localStorage is a version-3 credential
+// envelope carrying the salt and iterations so the key can be re-derived on
+// the next unlock. Stores written before the consolidation carry the legacy
+// version-1 envelope (100k iterations) and are migrated on unlock.
 //
 // This design satisfies #284: an XSS that reads localStorage gets only the
 // encrypted envelope — it does not have the passphrase and cannot derive the
@@ -157,114 +187,30 @@ export const CREDENTIALS_STORAGE_KEY = "stellarcred:credentials";
 
 const STORE_KEY = CREDENTIALS_STORAGE_KEY;
 
-/** PBKDF2 iteration count — aligned with lib/backup.ts (OWASP guidance). */
-const PBKDF2_ITERATIONS = 100_000;
-const SALT_LENGTH = 16;
-const IV_LENGTH = 12;
-
-/**
- * Envelope written to localStorage. The salt and IV travel with the
- * ciphertext so the key can be re-derived from the same passphrase.
- */
-interface EncryptedEnvelope {
-  version: 1;
-  salt: string;       // base64
-  iv: string;         // base64
-  ciphertext: string; // base64
-}
-
 // ---- In-memory key cache (not persisted) ------------------------------------
 let _cachedKey: CryptoKey | null = null;
 
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function fromBase64(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/** Derive an AES-256-GCM key from a passphrase via PBKDF2-SHA256. */
-async function deriveAtRestKey(
-  passphrase: string,
-  salt: Uint8Array,
-): Promise<CryptoKey> {
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(passphrase),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
-
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: new Uint8Array(salt),
-      iterations: PBKDF2_ITERATIONS,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-// Store the salt used at unlock time so encrypt can embed it in envelopes.
+// Salt the cached key was derived with, so saves can embed it in envelopes.
 let _unlockSalt: Uint8Array | null = null;
 
-async function encryptWithCachedKey(plaintext: string): Promise<EncryptedEnvelope> {
+/** Cache a fresh current-scheme key (600k PBKDF2) derived from the passphrase. */
+async function setFreshKey(passphrase: string): Promise<void> {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+  _cachedKey = await derivePassphraseKey(passphrase, saltBytes);
+  _unlockSalt = saltBytes;
+}
+
+async function encryptWithCachedKey(plaintext: string): Promise<CredentialEnvelope> {
   if (!_cachedKey || !_unlockSalt) {
     throw new Error(
       "Credential store is locked. Call unlockCredentialStore(passphrase) first.",
     );
   }
-  const ivBytes = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const encoded = new TextEncoder().encode(plaintext);
-  const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: ivBytes as BufferSource },
-      _cachedKey,
-      encoded,
-    ),
-  );
-
-  return {
-    version: 1,
-    salt: toBase64(_unlockSalt),
-    iv: toBase64(ivBytes),
-    ciphertext: toBase64(ciphertext),
-  };
-}
-
-async function decryptWithCachedKey(
-  envelope: EncryptedEnvelope,
-): Promise<string> {
-  if (!_cachedKey) {
-    throw new Error(
-      "Credential store is locked. Call unlockCredentialStore(passphrase) first.",
-    );
-  }
-  const iv = fromBase64(envelope.iv);
-  const ciphertext = fromBase64(envelope.ciphertext);
-
-  const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: iv as BufferSource },
-    _cachedKey,
-    ciphertext as BufferSource,
-  );
-
-  return new TextDecoder().decode(decrypted);
+  return sealWithKey(plaintext, _cachedKey, {
+    kdf: "PBKDF2-SHA256",
+    salt: _unlockSalt,
+    iterations: PBKDF2_ITERATIONS,
+  });
 }
 
 // ---- Public unlock / lock API -----------------------------------------------
@@ -283,42 +229,38 @@ export async function unlockCredentialStore(passphrase: string): Promise<void> {
   const raw = localStorage.getItem(STORE_KEY);
   if (!raw) {
     // No existing data — derive key for future use.
-    const saltBytes = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-    const key = await deriveAtRestKey(passphrase, saltBytes);
-    _cachedKey = key;
-    _unlockSalt = saltBytes;
+    await setFreshKey(passphrase);
     return;
   }
 
-  // Try new envelope format first.
+  // Credential envelope — current (v3) or legacy (v1, pre-#547, 100k
+  // iterations). Verify the passphrase by attempting decryption.
   try {
     const parsed = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      parsed.version === 1 &&
-      typeof parsed.salt === "string" &&
-      typeof parsed.iv === "string" &&
-      typeof parsed.ciphertext === "string"
-    ) {
-      const salt = fromBase64(parsed.salt);
-      const key = await deriveAtRestKey(passphrase, salt);
+    if (isCredentialEnvelope(parsed) && typeof parsed.salt === "string") {
+      const salt = decodeB64(parsed.salt);
+      const iterations = resolveEnvelopeIterations(parsed);
+      const key = await derivePassphraseKey(passphrase, salt, iterations);
+      const plaintext = await openWithKey(parsed, key);
 
-      // Verify the passphrase by attempting decryption.
-      const iv = fromBase64(parsed.iv);
-      const ciphertext = fromBase64(parsed.ciphertext);
-      await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: iv as BufferSource },
-        key,
-        ciphertext as BufferSource,
-      );
+      if (
+        parsed.version === ENVELOPE_VERSION &&
+        parsed.kdf === "PBKDF2-SHA256" &&
+        iterations === PBKDF2_ITERATIONS
+      ) {
+        _cachedKey = key;
+        _unlockSalt = salt;
+        return;
+      }
 
-      _cachedKey = key;
-      _unlockSalt = salt;
+      // Legacy envelope — migrate to the current scheme with a fresh salt
+      // while the passphrase is in hand.
+      await setFreshKey(passphrase);
+      localStorage.setItem(STORE_KEY, JSON.stringify(await encryptWithCachedKey(plaintext)));
       return;
     }
   } catch {
-    // Not a valid envelope — fall through.
+    // Not a valid envelope, or the passphrase failed to decrypt — fall through.
   }
 
   // Try legacy plaintext JSON (pre-encryption data).
@@ -326,10 +268,7 @@ export async function unlockCredentialStore(passphrase: string): Promise<void> {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       // Legacy plaintext — accept the passphrase and re-encrypt on next save.
-      const saltBytes = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-      const key = await deriveAtRestKey(passphrase, saltBytes);
-      _cachedKey = key;
-      _unlockSalt = saltBytes;
+      await setFreshKey(passphrase);
       return;
     }
   } catch {
@@ -340,10 +279,7 @@ export async function unlockCredentialStore(passphrase: string): Promise<void> {
   // If the data is a non-JSON base64 blob, it was encrypted with the old
   // random key. We cannot decrypt it without that key, so we treat it as
   // corrupted and accept the passphrase for fresh use.
-  const saltBytes = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-  const key = await deriveAtRestKey(passphrase, saltBytes);
-  _cachedKey = key;
-  _unlockSalt = saltBytes;
+  await setFreshKey(passphrase);
 }
 
 /** Lock the credential store, clearing the derived key from memory. */
@@ -363,7 +299,7 @@ export function isCredentialStoreUnlocked(): boolean {
  * Load credentials from localStorage.
  *
  * Handles three storage formats:
- * 1. New PBKDF2 envelope (requires unlocked store)
+ * 1. Credential envelope (lib/credential-crypto.ts; requires unlocked store)
  * 2. Legacy plaintext JSON array (pre-encryption migration)
  * 3. Old sessionStorage-based encryption (broken — returns empty, user
  *    should re-import credentials after unlock)
@@ -389,19 +325,13 @@ export async function loadCredentials(): Promise<Credential[]> {
     // Not plaintext JSON, fall through to decryption.
   }
 
-  // New PBKDF2 envelope format.
+  // Credential envelope (v3 current; a v1 blob left by another tab before
+  // its unlock migration is still readable with the cached key).
   if (_cachedKey) {
     try {
       const parsed = JSON.parse(raw);
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        parsed.version === 1 &&
-        typeof parsed.salt === "string" &&
-        typeof parsed.iv === "string" &&
-        typeof parsed.ciphertext === "string"
-      ) {
-        const decrypted = await decryptWithCachedKey(parsed as EncryptedEnvelope);
+      if (isCredentialEnvelope(parsed)) {
+        const decrypted = await openWithKey(parsed, _cachedKey);
         return JSON.parse(decrypted);
       }
     } catch {
@@ -556,6 +486,27 @@ export function parseCredential(json: string): Credential {
   // without a deployment reference predate this field and pass through.
   const mismatch = deploymentMismatchMessage(c.deployment);
   if (mismatch) throw new Error(mismatch);
+
+  // Circuit-compatibility guard (#633): a credential issued against a
+  // superseded circuit version may no longer be expressible by the circuits
+  // this app serves. Rejecting it at import — alongside the deployment guard —
+  // is the earliest point at which the holder can be told, and the prove path
+  // re-checks it independently. Credentials with no recorded circuit version
+  // predate this field and pass through.
+  const circuitMismatch = circuitVersionMismatchMessage(c.type, c.circuitVersion);
+  if (circuitMismatch) throw new Error(circuitMismatch);
+
+  // The VK version is advisory next to `circuitVersion` (the registry is
+  // authoritative), but a non-integer is a corrupted credential and would
+  // silently poison the credential → circuit → VK chain.
+  if (
+    c.circuitVkVersion !== undefined &&
+    (!Number.isInteger(c.circuitVkVersion) || (c.circuitVkVersion as number) < 1)
+  ) {
+    throw new Error(
+      "Not a valid credential: circuitVkVersion must be a positive integer when present.",
+    );
+  }
 
   return c as unknown as Credential;
 }

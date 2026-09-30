@@ -113,6 +113,22 @@ the first page; a `null` `nextCursor` means there are no more claims. `limit`
 }
 ```
 
+### Real-time claim subscriptions (`#392`)
+
+The `/recent` feed and `/claims?wallet=` snapshot are the two endpoints the
+SDK's `subscribeClaims()` helper (`@stellarcred/sdk`, see
+[frontend/packages/sdk/README.md](../../frontend/packages/sdk/README.md))
+composes into a push subscription: it tails `/recent` once per poll for
+`gained` events (keyset cursor over `nextCursor`), and periodically re-reads
+`/claims?wallet=` to reconcile `revoked` flags into `lost` events. Protocols
+can therefore build their own feeds from the same pair without touching
+Soroban RPC, or call the helper directly.
+
+Because every subscription tick costs one `/recent` call plus one `/claims`
+call per wallet per `resyncMs`, size `RATE_LIMIT_MAX` for the expected
+`watched-wallets / resync-interval` request rate when serving many
+subscribers.
+
 ---
 
 ## Environment Variables

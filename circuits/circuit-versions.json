@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "Single source of truth for circuit version identity (issue #633).",
+    "",
+    "Each circuit has a declared version that is stamped into its compiled",
+    "artifact (frontend/public/circuits/<type>.json) by",
+    "circuits/scripts/stamp-circuit-version.js, recorded on every credential at",
+    "issuance, and checked before proving. Without it a credential carries no",
+    "record of which circuit can prove it, so a circuit change that alters the",
+    "public-input layout only surfaces as a failed proof.",
+    "",
+    "RULES",
+    "- Bump `version` (MAJOR.MINOR.PATCH) whenever a change to the circuit can",
+    "  alter its public-input layout or the constraints it enforces. Bump MAJOR",
+    "  for a layout change (existing credentials become unprovable), MINOR for",
+    "  new constraints that keep the layout, PATCH for comment/tooling-only edits.",
+    "- Bump `vkVersion` alongside `version`: it is the credential-type VK counter",
+    "  in CredentialVerifier (monotonic u32 from 1; 0 is reserved as the",
+    "  'not stored' sentinel). Register the new VK with set_vk(type, vkVersion),",
+    "  deprecate and prune the old one per SUPPORT_POLICY.md.",
+    "- Every circuit listed here is proven and has an on-chain VK. The `commit`",
+    "  and `commit3` helpers are deliberately absent: they are executed to derive",
+    "  commitments and never proven, so there is no VK to tie a version to.",
+    "- Both fields are also asserted against circuits/testvectors/*.json by",
+    "  circuits/scripts/testvectors.js, so a circuit edit that forgets to bump",
+    "  the version fails CI."
+  ],
+  "circuits": {
+    "kyc_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "age_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "income_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "jurisdiction_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "funds_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "accreditation_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "range_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "employment_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "aggregate_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "set_membership": { "version": "1.0.0", "vkVersion": 1 }
+  }
+}

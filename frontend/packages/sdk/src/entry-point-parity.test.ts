@@ -15,7 +15,7 @@ import * as fromClaims from "./claims";
 import * as fromChallenge from "./challenge";
 import * as fromUniqueness from "./uniqueness";
 
-// ── Claim-checking functions (sourced from claims.ts) ────────────────────────
+// â”€â”€ Claim-checking functions (sourced from claims.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CLAIMS_EXPORTS = [
   "configure",
@@ -41,9 +41,10 @@ const CLAIMS_EXPORTS = [
   "ConfigError",
   "InvalidAddressError",
   "RpcError",
+  "IndexerError",
 ] as const;
 
-// ── Challenge functions (sourced from challenge.ts) ──────────────────────────
+// â”€â”€ Challenge functions (sourced from challenge.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CHALLENGE_EXPORTS = [
   "createWalletChallenge",
@@ -62,7 +63,7 @@ describe("entry-point parity (issue #609 / #522)", () => {
     fromClaims.resetConfig();
   });
 
-  // ── claims.ts exports re-exported identically by index.ts ─────────────────
+  // â”€â”€ claims.ts exports re-exported identically by index.ts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   for (const name of CLAIMS_EXPORTS) {
     it(`index.ts re-exports the same ${name} reference as claims.ts`, () => {
@@ -75,7 +76,7 @@ describe("entry-point parity (issue #609 / #522)", () => {
     });
   }
 
-  // ── challenge.ts exports re-exported identically by index.ts ──────────────
+  // â”€â”€ challenge.ts exports re-exported identically by index.ts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   for (const name of CHALLENGE_EXPORTS) {
     it(`index.ts re-exports the same ${name} reference as challenge.ts`, () => {
@@ -126,6 +127,7 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.ConfigError).toBe(fromClaims.ConfigError);
     expect(ns.InvalidAddressError).toBe(fromClaims.InvalidAddressError);
     expect(ns.RpcError).toBe(fromClaims.RpcError);
+    expect(ns.IndexerError).toBe(fromClaims.IndexerError);
   });
 
   it("StellarCred namespace members are the same references as challenge.ts exports", () => {
@@ -150,7 +152,7 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(fromIndex.default).toBe(fromIndex.StellarCred);
   });
 
-  it("configure() call propagates to getConfig() — single config object", () => {
+  it("configure() call propagates to getConfig() â€” single config object", () => {
     fromIndex.configure({ registryId: "C_PARITY_TEST", requestTimeoutMs: 1234 });
     const cfg = fromClaims.getConfig();
     expect(cfg.registryId).toBe("C_PARITY_TEST");

@@ -1,4 +1,5 @@
-import { logger, stripSensitiveFields, SAFE_FIELDS } from "./logger";
+import { SAFE_FIELDS } from "./logger";
+import { getOutboundSink } from "./outbound-sink";
 
 export interface ErrorReport {
   method: string;
@@ -74,8 +75,9 @@ export function safeErrorMessage(exception: unknown): string {
 }
 
 /**
- * Reports an unexpected 500 error to an external error sink (e.g., Sentry, webhook).
- * Only active when ERROR_REPORTING_WEBHOOK is configured.
+ * Queues an unexpected 500 error for the shared outbound sink. The returned
+ * promise is only for delivery observability; callers can intentionally use
+ * `void reportError(...)` so request handling never waits for the network.
  *
  * Redaction guarantee:
  * - The full payload object is passed through `redactPayload`, which applies
@@ -85,13 +87,7 @@ export function safeErrorMessage(exception: unknown): string {
  *   PII patterns replaced) before being included in the payload.
  * - Stack frames are NEVER included in the outgoing payload.
  */
-export async function reportError(report: ErrorReport): Promise<void> {
-  // Read at call time so tests (and runtime env changes) are reflected correctly.
-  const webhookUrl = process.env.ERROR_REPORTING_WEBHOOK;
-  if (!webhookUrl) {
-    return;
-  }
-
+export function reportError(report: ErrorReport): Promise<void> {
   // Build the candidate payload with only fields that belong in the allowlist
   const candidatePayload: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
@@ -113,37 +109,5 @@ export async function reportError(report: ErrorReport): Promise<void> {
   // SAFE_FIELDS will be silently dropped here.
   const safePayload = redactPayload(candidatePayload);
 
-  try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(safePayload),
-      signal: AbortSignal.timeout(5000), // 5s timeout to avoid hanging
-    });
-
-    if (!response.ok) {
-      logger.warn(
-        stripSensitiveFields({
-          event: "error_reporting_rejected",
-          requestId: report.requestId,
-          status: response.status,
-        }),
-      );
-    } else {
-      logger.info(
-        stripSensitiveFields({
-          event: "error_reported",
-          requestId: report.requestId,
-        }),
-      );
-    }
-  } catch (err) {
-    logger.error(
-      stripSensitiveFields({
-        event: "error_reporting_failed",
-        requestId: report.requestId,
-        error: (err as Error).message,
-      }),
-    );
-  }
+  return getOutboundSink().enqueueAndWait({ kind: "error", payload: safePayload });
 }

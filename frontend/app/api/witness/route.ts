@@ -14,6 +14,7 @@ import {
   validateWitnessCredential,
   type ClaimParams,
 } from "../../../lib/witness-input";
+import { witnessCircuitVersionMismatch } from "../../../lib/circuit-versions";
 import ageCircuit from "../../../public/circuits/age.json";
 import fundsCircuit from "../../../public/circuits/funds.json";
 import incomeCircuit from "../../../public/circuits/income.json";
@@ -253,6 +254,28 @@ export async function POST(req: NextRequest) {
   }
 
   logger.info(stripSensitiveFields({ event: "witness_request_received", credentialType: type, requestId }));
+
+  // Circuit-compatibility gate (#633), ahead of any Noir work. A credential
+  // issued against a superseded circuit version may no longer be expressible by
+  // the circuit this server compiles, and the symptom would otherwise be an
+  // opaque constraint failure naming none of the real cause. Answering with a
+  // 409 here means the holder sees "issued against v1, this app serves v2"
+  // instead of "witness generation failed". The client checks the same thing
+  // before it even asks; this is the authoritative re-check on the side that
+  // owns the compiled circuits.
+  const circuitMismatch = witnessCircuitVersionMismatch(type, credential);
+  if (circuitMismatch) {
+    logger.warn(stripSensitiveFields({
+      event: "witness_request_rejected",
+      credentialType: type,
+      outcome: "circuit_version_mismatch",
+      requestId,
+    }));
+    return sendResponse(NextResponse.json(
+      { error: circuitMismatch, code: "circuit_version_mismatch" },
+      { status: 409 },
+    ));
+  }
 
   // Circuit-shape validation before building the InputMap: a wrong-length
   // signature or a non-numeric field would otherwise fail deep inside Noir.

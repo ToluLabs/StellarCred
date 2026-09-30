@@ -1,4 +1,4 @@
-// @stellarcred/sdk — shared claim-checking core
+// @stellarcred/sdk â€” shared claim-checking core
 //
 // Authoritative module holding the complete claim-checking machinery:
 // config, low-level ProofRegistry reads, and the public functions
@@ -6,10 +6,20 @@
 // plus all associated types and error classes.
 //
 // `index.ts`, `core.ts`, `react.ts`, `server.ts`, and `challenge.ts` all import
-// from here, so nothing in this module imports back from those files — keeping
+// from here, so nothing in this module imports back from those files â€” keeping
 // the module graph acyclic.
 
 import { Client as ProofRegistryClient } from "../../proof-registry/src/index";
+import {
+  IndexerError,
+  evaluateClaimRow,
+  fetchWalletClaims,
+  findClaimRow,
+  type IndexerClaimRow,
+} from "./indexer";
+
+export { IndexerError };
+export type { IndexerClaimRow };
 
 // ---------------------------------------------------------------------------
 // Runtime environment detection
@@ -17,7 +27,7 @@ import { Client as ProofRegistryClient } from "../../proof-registry/src/index";
 
 /**
  * Returns true when the SDK is running in a browser (or browser-like) context.
- * Used only for development-mode boundary warnings — never throws.
+ * Used only for development-mode boundary warnings â€” never throws.
  */
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -44,7 +54,7 @@ function isDev(): boolean {
 let _warnedBoundaryViolation = false;
 
 /**
- * @internal — test-only hook to reset the one-shot boundary violation flag
+ * @internal â€” test-only hook to reset the one-shot boundary violation flag
  * between test cases. Not part of the public API.
  */
 export function __resetBoundaryWarningForTesting(): void {
@@ -54,8 +64,7 @@ export function __resetBoundaryWarningForTesting(): void {
 function warnOnClientServerBoundaryViolation(opts: {
   registryId?: string;
   rpcUrl?: string;
-}): void {
-  if (!isBrowser()) return;
+}): void {  if (!isBrowser()) return;
   if (!isDev()) return;
   if (_warnedBoundaryViolation) return;
 
@@ -91,14 +100,39 @@ function warnOnClientServerBoundaryViolation(opts: {
       "appear to come from server-only environment variables (e.g. STELLARCRED_REGISTRY_ID " +
       "or PROOF_REGISTRY_ID without the NEXT_PUBLIC_ prefix).\n\n" +
       "The ProofRegistry contract ID and RPC URL are read-only infrastructure config " +
-      "that is safe to expose to the client — but they must reach the browser through " +
+      "that is safe to expose to the client â€” but they must reach the browser through " +
       "public env vars (NEXT_PUBLIC_PROOF_REGISTRY_ID / NEXT_PUBLIC_RPC_URL in Next.js, " +
       "VITE_* in Vite) rather than server-only names.\n\n" +
       "If you are verifying claims server-side (recommended for access control), " +
-      "import from '@stellarcred/sdk/server' instead — the intent is explicit at " +
+      "import from '@stellarcred/sdk/server' instead â€” the intent is explicit at " +
       "the import site and this warning will not fire.\n\n" +
-      "See the SDK README §Trust boundary for details. " +
+      "See the SDK README Â§Trust boundary for details. " +
       "This warning only appears in development mode.",
+  );
+}
+
+let _warnedIndexerKeyInBrowser = false;
+
+/**
+ * An indexer API key is a secret, unlike `registryId`/`rpcUrl` which are
+ * read-only infrastructure config that is safe to publish. Shipping it to a
+ * browser hands it to every visitor, so warn loudly rather than treating it as
+ * another boundary-var mixup.
+ */
+function warnOnIndexerKeyInBrowser(indexerApiKey?: string): void {
+  if (!isBrowser() || !isDev() || _warnedIndexerKeyInBrowser) return;
+  if (!indexerApiKey) return;
+
+  _warnedIndexerKeyInBrowser = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[StellarCred] configure() was called in a browser context with an " +
+      "`indexerApiKey`. That key is a secret and is now exposed to every visitor " +
+      "of this site.\n\n" +
+      "Read claims from the browser without a key (leave `indexerApiKey` unset), " +
+      "or proxy indexer reads through your own backend and keep the key " +
+      "server-side. Note also that the indexer's CORS policy does not allow the " +
+      "X-API-Key header from a browser.\n\nThis warning only appears in development mode.",
   );
 }
 
@@ -156,6 +190,23 @@ export interface RetryOptions {
   jitter?: boolean;
 }
 
+/**
+ * Where a claim read is sourced from. Defaults to `"chain"`.
+ *
+ * - `"chain"` — simulate against ProofRegistry. Trust-minimised: the only
+ *   thing you trust is the contract. This is the default and the only mode
+ *   that should gate access on its own.
+ * - `"indexer"` — read from an operator-run indexer over HTTP. Much faster,
+ *   but the indexer is an **off-chain cache of public chain data**. It can be
+ *   stale, lagging, or wrong, and you are trusting whoever runs it. Never use
+ *   this as the sole basis for a security decision.
+ * - `"indexer-verified"` — read from the indexer, then confirm the answer
+ *   against the chain and return the chain's result. Costs a chain read, so it
+ *   is not faster than `"chain"`; its value is that a disagreement between the
+ *   two is surfaced, which tells an operator their indexer has drifted.
+ */
+export type ClaimSource = "chain" | "indexer" | "indexer-verified";
+
 export interface SDKConfig {
   registryId?: string;
   rpcUrl?: string;
@@ -166,6 +217,27 @@ export interface SDKConfig {
   baseDelayMs?: number;
   maxDelayMs?: number;
   jitter?: boolean;
+  /**
+   * Base URL of a StellarCred indexer, e.g. `https://indexer.example.com`.
+   * Required before any read can use `source: "indexer"` or
+   * `source: "indexer-verified"`; without it those reads fail soft exactly as
+   * an unconfigured `registryId` does for chain reads.
+   */
+  indexerUrl?: string;
+  /**
+   * API key for indexers that gate `/claims` behind one. This is a secret —
+   * there is deliberately no `NEXT_PUBLIC_` fallback for it, and configuring
+   * it from a browser context warns in development.
+   */
+  indexerApiKey?: string;
+  /**
+   * How long indexer results for a wallet are reused, in milliseconds. Exists
+   * so a `getClaims`/`hasClaims` fan-out over N credential types issues one
+   * HTTP request instead of N. Set to `0` to disable. Only ever affects
+   * `source: "indexer"` and `source: "indexer-verified"` reads — chain reads
+   * are never cached.
+   */
+  indexerCacheMs?: number;
 }
 
 const DEFAULT_CONFIG: Required<SDKConfig> = {
@@ -182,13 +254,16 @@ const DEFAULT_CONFIG: Required<SDKConfig> = {
   baseDelayMs: 500,
   maxDelayMs: 5000,
   jitter: true,
+  indexerUrl: env("STELLARCRED_INDEXER_URL", "NEXT_PUBLIC_INDEXER_URL"),
+  indexerApiKey: env("STELLARCRED_INDEXER_API_KEY"),
+  indexerCacheMs: 2000,
 };
 
 let _config: Required<SDKConfig> = { ...DEFAULT_CONFIG };
 
 /**
  * Override SDK defaults at runtime. Call this once at app startup before any
- * `hasClaim` / `getClaims` calls. Each key is optional — omitted keys keep
+ * `hasClaim` / `getClaims` calls. Each key is optional â€” omitted keys keep
  * their env-var-derived or default values.
  */
 export function configure(opts: SDKConfig): void {
@@ -196,11 +271,14 @@ export function configure(opts: SDKConfig): void {
     registryId: opts.registryId,
     rpcUrl: opts.rpcUrl,
   });
+  warnOnIndexerKeyInBrowser(opts.indexerApiKey);
   _config = { ..._config, ...opts };
-  // The cached client is bound to the old config — drop it so the next read
+  // The cached client is bound to the old config â€” drop it so the next read
   // rebuilds against the new one.
   _client = null;
   _clientKey = "";
+  // Cached rows may have come from the previous indexerUrl/apiKey.
+  clearIndexerCache();
 }
 
 /**
@@ -219,6 +297,8 @@ export function resetConfig(): void {
   _clientKey = "";
   _warnedMissingRegistryId = false;
   _warnedBoundaryViolation = false;
+  _warnedIndexerKeyInBrowser = false;
+  clearIndexerCache();
 }
 
 /**
@@ -248,7 +328,7 @@ export function healthCheck(): {
 }
 
 /**
- * Alias for `healthCheck().configured` — a quick boolean check.
+ * Alias for `healthCheck().configured` â€” a quick boolean check.
  */
 export function isConfigured(): boolean {
   return healthCheck().configured;
@@ -653,8 +733,11 @@ async function getClient(throwOnError = false): Promise<ProofRegistryClient | nu
 async function fanOut<T, R>(
   items: readonly T[],
   fn: (item: T) => Promise<R>,
+  warmChain = true,
 ): Promise<R[]> {
-  await getClient().catch(() => null);
+  // Indexer-only reads never touch ProofRegistry, so skip building a client
+  // they would not use.
+  if (warmChain) await getClient().catch(() => null);
   return Promise.all(items.map(fn));
 }
 
@@ -727,7 +810,293 @@ export async function withRetry<T>(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Low-level read: optional indexer fast path (#613)
+//
+// Everything below is opt-in. `source: "chain"` (the default) never reaches
+// this code, so the trust-minimised path is byte-for-byte what it was before.
+// ---------------------------------------------------------------------------
+
+interface IndexerCacheEntry {
+  fetchedAt: number;
+  rows: Promise<IndexerClaimRow[]>;
+}
+
+/**
+ * Short-lived per-wallet memo of indexer rows. A `getClaims`/`hasClaims`
+ * fan-out asks for N credential types but the indexer returns them all in one
+ * response, so without this a single `getClaims` call would issue six
+ * identical HTTP requests. Chain reads never touch this cache.
+ */
+const _indexerCache = new Map<string, IndexerCacheEntry>();
+
+export function clearIndexerCache(): void {
+  _indexerCache.clear();
+}
+
+/**
+ * @internal — test-only hook mirroring {@link resetClientForTesting}.
+ */
+export function resetIndexerForTesting(): void {
+  clearIndexerCache();
+  _warnedMissingIndexerUrl = false;
+  _warnedIndexerDrift = false;
+}
+
+let _warnedMissingIndexerUrl = false;
+function warnIfMissingIndexerUrlOnce(): void {
+  if (_config.indexerUrl) {
+    _warnedMissingIndexerUrl = false;
+    return;
+  }
+  if (_warnedMissingIndexerUrl || !isDev()) return;
+  _warnedMissingIndexerUrl = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[StellarCred] A claim read used `source: \"indexer\"` or \"indexer-verified\" " +
+      "but no `indexerUrl` is configured, so it fell back to returning " +
+      "false/null. Set STELLARCRED_INDEXER_URL (or NEXT_PUBLIC_INDEXER_URL) or call " +
+      "StellarCred.configure({ indexerUrl }). This warning only logs in development.",
+  );
+}
+
+let _warnedIndexerDrift = false;
+/**
+ * Fires when `source: "indexer-verified"` finds the indexer and the chain
+ * disagree. Surfacing this is the entire point of the mode, so unlike the
+ * configuration warnings it is NOT gated on development mode — an operator
+ * whose indexer has drifted needs to see it in production. Still rate-limited
+ * to once per process.
+ */
+function warnOnIndexerDrift(
+  claimType: string,
+  indexerValid: boolean | null,
+  chainValid: boolean | null,
+): void {
+  if (indexerValid === null || chainValid === null) return;
+  if (indexerValid === chainValid) return;
+  if (_warnedIndexerDrift) return;
+  _warnedIndexerDrift = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[StellarCred] Indexer disagreed with the chain for claim "${claimType}": ` +
+      `indexer said ${indexerValid}, ProofRegistry said ${chainValid}. The chain ` +
+      "result was used. This usually means the indexer is lagging or stale — " +
+      "check its /health endpoint for ledger lag. This warning logs once per process.",
+  );
+}
+
+async function readIndexerRows(
+  wallet: string,
+  throwOnError: boolean,
+  requestTimeoutMs: number,
+  retryOptions?: RetryOptions,
+): Promise<IndexerClaimRow[] | null> {
+  const { indexerUrl, indexerApiKey, indexerCacheMs } = _config;
+
+  if (!indexerUrl) {
+    if (throwOnError) {
+      throw new ConfigError(
+        "StellarCred is not configured for indexer reads: missing indexerUrl",
+      );
+    }
+    warnIfMissingIndexerUrlOnce();
+    return null;
+  }
+
+  const key = `${indexerUrl}|${wallet}`;
+  const cached = _indexerCache.get(key);
+  let pending: Promise<IndexerClaimRow[]>;
+
+  if (cached && Date.now() - cached.fetchedAt < indexerCacheMs) {
+    pending = cached.rows;
+  } else {
+    pending = withRequestTimeout(
+      () =>
+        withRetry(
+          () =>
+            fetchWalletClaims(wallet, {
+              indexerUrl,
+              apiKey: indexerApiKey,
+            }),
+          retryOptions,
+        ),
+      requestTimeoutMs,
+    ).catch((err) => {
+      // Never let a rejected promise linger in the cache and poison later reads.
+      _indexerCache.delete(key);
+      throw err;
+    });
+    if (indexerCacheMs > 0) {
+      _indexerCache.set(key, { fetchedAt: Date.now(), rows: pending });
+    }
+  }
+
+  try {
+    return await pending;
+  } catch (err) {
+    if (throwOnError) {
+      if (err instanceof ConfigError) throw err;
+      if (err instanceof IndexerError) throw err;
+      throw new IndexerError(`Indexer read failed for wallet "${wallet}"`, {
+        cause: err,
+      });
+    }
+    return null;
+  }
+}
+
+async function readIsVerifiedFromIndexer(
+  wallet: string,
+  claimType: string,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
+  const rows = await readIndexerRows(
+    wallet,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  if (!rows) return null;
+
+  const row = findClaimRow(rows, claimType);
+  // Mirrors the contract's `(false, 0, 0)` for "never submitted" so callers can
+  // still distinguish that from "submitted but no longer valid".
+  if (!row) return { valid: false, verifiedAt: 0, expiry: 0 };
+
+  return {
+    valid: evaluateClaimRow(row, {
+      trustedIssuers,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    }),
+    verifiedAt: row.verified_at,
+    expiry: row.expiry,
+  };
+}
+
+async function readCheckClaimFromIndexer(
+  wallet: string,
+  claimType: string,
+  minThreshold: number,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<boolean> {
+  const rows = await readIndexerRows(
+    wallet,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  if (!rows) return false;
+
+  const row = findClaimRow(rows, claimType);
+  if (!row) return false;
+
+  return evaluateClaimRow(row, {
+    trustedIssuers,
+    minThreshold,
+    nowSeconds: Math.floor(Date.now() / 1000),
+  });
+}
+
 async function readIsVerified(
+  wallet: string,
+  claimType: string,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+  source: ClaimSource = "chain",
+): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
+  if (source === "chain") {
+    return readIsVerifiedFromChain(
+      wallet,
+      claimType,
+      trustedIssuers,
+      throwOnError,
+      requestTimeoutMs,
+      retryOptions,
+    );
+  }
+
+  const fromIndexer = await readIsVerifiedFromIndexer(
+    wallet,
+    claimType,
+    trustedIssuers,
+    // A failed indexer read must not abort an indexer-verified read: the chain
+    // is authoritative anyway, so only surface errors for pure "indexer".
+    source === "indexer" ? throwOnError : false,
+    requestTimeoutMs,
+    retryOptions,
+  );
+
+  if (source === "indexer") return fromIndexer;
+
+  const fromChain = await readIsVerifiedFromChain(
+    wallet,
+    claimType,
+    trustedIssuers,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  warnOnIndexerDrift(claimType, fromIndexer?.valid ?? null, fromChain?.valid ?? null);
+  return fromChain;
+}
+
+async function readCheckClaim(
+  wallet: string,
+  claimType: string,
+  minThreshold: number,
+  trustedIssuers?: string[],
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+  source: ClaimSource = "chain",
+): Promise<boolean> {
+  if (source === "chain") {
+    return readCheckClaimFromChain(
+      wallet,
+      claimType,
+      minThreshold,
+      trustedIssuers,
+      throwOnError,
+      requestTimeoutMs,
+      retryOptions,
+    );
+  }
+
+  const fromIndexer = await readCheckClaimFromIndexer(
+    wallet,
+    claimType,
+    minThreshold,
+    trustedIssuers,
+    source === "indexer" ? throwOnError : false,
+    requestTimeoutMs,
+    retryOptions,
+  );
+
+  if (source === "indexer") return fromIndexer;
+
+  const fromChain = await readCheckClaimFromChain(
+    wallet,
+    claimType,
+    minThreshold,
+    trustedIssuers,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  warnOnIndexerDrift(claimType, fromIndexer, fromChain);
+  return fromChain;
+}
+
+async function readIsVerifiedFromChain(
   wallet: string,
   claimType: string,
   trustedIssuers?: string[],
@@ -766,7 +1135,7 @@ async function readIsVerified(
   }
 }
 
-async function readCheckClaim(
+async function readCheckClaimFromChain(
   wallet: string,
   claimType: string,
   minThreshold: number,
@@ -904,6 +1273,7 @@ export async function hasClaim(
       throwOnError,
       opts.requestTimeoutMs,
       opts.retryOptions,
+      opts.source,
     );
   }
 
@@ -914,6 +1284,7 @@ export async function hasClaim(
     throwOnError,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
+    opts?.source,
   );
   return !!r && r.valid;
 }
@@ -958,6 +1329,7 @@ export async function getClaim(
     opts?.throwOnError === true,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
+    opts?.source,
   );
   return r && r.valid ? r : null;
 }
@@ -1165,36 +1537,42 @@ export async function hasClaims(
     return results;
   }
 
-  await fanOut(unique, async (t) => {
-    try {
-      const minThreshold = opts?.minThresholds?.[t];
-      if (minThreshold !== undefined) {
-        validateThreshold(minThreshold);
-        results[t] = await readCheckClaim(
+  await fanOut(
+    unique,
+    async (t) => {
+      try {
+        const minThreshold = opts?.minThresholds?.[t];
+        if (minThreshold !== undefined) {
+          validateThreshold(minThreshold);
+          results[t] = await readCheckClaim(
+            normalizedWallet,
+            t,
+            minThreshold,
+            opts?.trustedIssuers,
+            opts?.throwOnError === true,
+            opts?.requestTimeoutMs,
+            opts?.retryOptions,
+            opts?.source,
+          );
+          return;
+        }
+        const r = await readIsVerified(
           normalizedWallet,
           t,
-          minThreshold,
           opts?.trustedIssuers,
           opts?.throwOnError === true,
           opts?.requestTimeoutMs,
           opts?.retryOptions,
+          opts?.source,
         );
-        return;
+        results[t] = !!r && r.valid;
+      } catch (err) {
+        if (opts?.throwOnError) throw err;
+        results[t] = false;
       }
-      const r = await readIsVerified(
-        normalizedWallet,
-        t,
-        opts?.trustedIssuers,
-        opts?.throwOnError === true,
-        opts?.requestTimeoutMs,
-        opts?.retryOptions,
-      );
-      results[t] = !!r && r.valid;
-    } catch (err) {
-      if (opts?.throwOnError) throw err;
-      results[t] = false;
-    }
-  });
+    },
+    opts?.source !== "indexer",
+  );
 
   return results;
 }
@@ -1205,7 +1583,7 @@ export async function hasClaims(
 export async function verifyPreset(
   wallet: string,
   claims: readonly PresetClaim[],
-  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
 ): Promise<PresetVerificationResult> {
   const types = claims.map((c) => c.type);
   const minThresholds: Partial<Record<ClaimType, number>> = {};
@@ -1219,6 +1597,7 @@ export async function verifyPreset(
     requestTimeoutMs: opts?.requestTimeoutMs,
     throwOnError: opts?.throwOnError,
     retryOptions: opts?.retryOptions,
+    source: opts?.source,
   });
   const allValid = types.length > 0 && types.every((t) => results[t] === true);
   return { results, allValid };
@@ -1259,22 +1638,27 @@ export async function getClaims(
     return [];
   }
 
-  const results = await fanOut(CLAIM_TYPES, async (t) => {
-    try {
-      const r = await readIsVerified(
-        normalizedWallet,
-        t,
-        undefined,
-        throwOnError,
-        opts?.requestTimeoutMs,
-        opts?.retryOptions,
-      );
-      return r && r.valid ? { type: t, verifiedAt: r.verifiedAt, expiry: r.expiry } : null;
-    } catch (err) {
-      if (throwOnError) throw err;
-      return null;
-    }
-  });
+  const results = await fanOut(
+    CLAIM_TYPES,
+    async (t) => {
+      try {
+        const r = await readIsVerified(
+          normalizedWallet,
+          t,
+          undefined,
+          throwOnError,
+          opts?.requestTimeoutMs,
+          opts?.retryOptions,
+          opts?.source,
+        );
+        return r && r.valid ? { type: t, verifiedAt: r.verifiedAt, expiry: r.expiry } : null;
+      } catch (err) {
+        if (throwOnError) throw err;
+        return null;
+      }
+    },
+    opts?.source !== "indexer",
+  );
 
   return results.filter((x): x is NonNullable<typeof x> => x !== null);
 }
@@ -1290,6 +1674,13 @@ export function buildVerifyUrl(opts: {
   wallet?: string;
   state?: string;
   baseUrl?: string;
+  expiresInMinutes?: number;
+  /**
+   * When true, generate a URL-safe single-use token id (`jti`) and embed it
+   * in the link. The verify page consumes it on first successful use and
+   * rejects subsequent visits in the same browser session.
+   */
+  singleUse?: boolean;
   claimParams?: {
     threshold?: string;
     threshold_years?: string;
@@ -1325,6 +1716,34 @@ export function buildVerifyUrl(opts: {
         : opts.claimParams.restricted;
       url.searchParams.set("param_restricted", restricted);
     }
+  }
+
+  if (opts.expiresInMinutes !== undefined) {
+    if (
+      !Number.isFinite(opts.expiresInMinutes) ||
+      opts.expiresInMinutes <= 0
+    ) {
+      throw new Error("expiresInMinutes must be a positive number");
+    }
+    const exp =
+      Math.floor(Date.now() / 1000) + Math.floor(opts.expiresInMinutes * 60);
+    url.searchParams.set("exp", String(exp));
+  }
+
+  if (opts.singleUse) {
+    let jti: string;
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      jti = crypto.randomUUID().replace(/-/g, "");
+    } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      jti = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    } else {
+      throw new Error(
+        "singleUse requires a crypto implementation with randomUUID or getRandomValues",
+      );
+    }
+    url.searchParams.set("jti", jti);
   }
 
   return url.toString();
@@ -1408,6 +1827,12 @@ export interface WatchClaimOptions {
   timeoutMs?: number;
   minThreshold?: number;
   requestTimeoutMs?: number;
+  /**
+   * See the warning on {@link ClaimOptions.source}. Note that a lagging indexer
+   * can delay detection of a freshly-submitted claim, so a poll that ends in
+   * {@link TimeoutError} may reflect indexer lag rather than a missing claim.
+   */
+  source?: ClaimSource;
 }
 
 export interface WatchClaimCallbackOptions extends WatchClaimOptions {
@@ -1434,6 +1859,7 @@ export function watchClaim(
   const pollMs = opts?.pollMs ?? 3000;
   const timeoutMs = opts?.timeoutMs ?? 120000;
   const minThreshold = opts?.minThreshold;
+  const source = opts?.source;
   const onChange = (opts as WatchClaimCallbackOptions)?.onChange;
 
   let intervalId: ReturnType<typeof setInterval>;
@@ -1456,6 +1882,7 @@ export function watchClaim(
         const verified = await hasClaim(wallet, claimType, {
           minThreshold,
           requestTimeoutMs: opts?.requestTimeoutMs,
+          source,
         });
         if (isStopped) return;
         if (verified !== lastState) {
@@ -1480,6 +1907,7 @@ export function watchClaim(
           const verified = await hasClaim(wallet, claimType, {
             minThreshold,
             requestTimeoutMs: opts?.requestTimeoutMs,
+            source,
           });
           if (isStopped) return;
           if (verified) {

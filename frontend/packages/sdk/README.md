@@ -79,6 +79,12 @@ behavior: it returns `false` or an empty result by default, and throws
 | `STELLARCRED_RPC_URL` | `NEXT_PUBLIC_RPC_URL` |
 | `STELLARCRED_NETWORK_PASSPHRASE` | `NEXT_PUBLIC_NETWORK_PASSPHRASE` |
 | `STELLARCRED_BASE_URL` | `NEXT_PUBLIC_STELLARCRED_BASE_URL` |
+| `STELLARCRED_INDEXER_URL` | `NEXT_PUBLIC_INDEXER_URL` |
+| `STELLARCRED_INDEXER_API_KEY` | *(no browser alias — it is a secret)* |
+
+Setting `STELLARCRED_INDEXER_URL` alone changes nothing: reads still go to the
+chain until you pass `source` explicitly. See
+[Indexer fast path](#indexer-fast-path-optional).
 
 ## Contract Deployments
 
@@ -329,6 +335,74 @@ const stop = StellarCred.watchClaim(wallet, 'funds', {
 // stop();
 ```
 
+### `subscribeClaims(options)` — real-time subscriptions (`#392`)
+
+A push-style subscription helper for protocol backends: watch a **set of wallets** across a **set of claim types** with a single subscription and receive `gained` / `lost` change events, instead of running one `watchClaim` poll per wallet against the chain.
+
+It consumes the indexer HTTP API (`services/indexer`) rather than ProofRegistry RPC:
+
+| Indexer endpoint | Used for | Cadence |
+|---|---|---|
+| `GET /recent?limit=100[&cursor=…]` | the cursor-ordered verified-claims feed — every row newer than the previous `(ledger_sequence, id)` cursor is a potential `gained` for a watched wallet | every `pollMs` (default 10 s) |
+| `GET /claims?wallet=G…` | authoritative per-wallet snapshots (`revoked` flag + `expiry`) — detects `lost (revoked)` and reconciles state after downtime or reorg rollback | every `resyncMs` (default 60 s) |
+
+Expiry losses need no request at all: the indexer stores each proof's `expiry` timestamp, so a claim that lapses is reported as `lost` within one `pollMs` window. Event topic semantics match the on-chain `proof_reg.submitted` / `proof_reg.revoked` events documented in [EVENTS.md](../../../EVENTS.md); the subscription is eventually consistent with the indexer's configured `FINALITY_LAG` (≈30 s on defaults).
+
+```ts
+import { subscribeClaims } from "@stellarcred/sdk/server";
+
+const stop = subscribeClaims({
+  wallets: ["GABC…", "GDEF…"],          // any number of wallets
+  claims: ["kyc", "accreditation"],      // defaults to all known claim types
+  // baseUrl: "https://indexer.yourdomain.xyz", // or configure({ indexerUrl }) / STELLARCRED_INDEXER_URL
+  pollMs: 10_000,
+  onGained: (e) => grantAccess(e.wallet, e.claim),
+  onLost: (e) => revokeAccess(e.wallet, e.claim, e.reason), // "revoked" | "expired"
+  onError: (err) => logger.warn(err),
+});
+
+// later — stop feeding events
+stop();
+```
+
+Registering a webhook instead of (or in addition to) in-process callbacks lets a worker fleet receive the push:
+
+```ts
+subscribeClaims({
+  wallets: watchedWallets,
+  webhook: {
+    url: "https://api.yourprotocol.xyz/hooks/stellarcred",
+    secret: process.env.STELLARCRED_WEBHOOK_SECRET, // sent as X-StellarCred-Webhook-Secret
+  },
+});
+```
+
+Each change is POSTed as JSON with headers `X-StellarCred-Event: claim_gained | claim_lost` and, when a `secret` is configured, `X-StellarCred-Webhook-Secret` — your receiver should reject requests that don't match it. Deliveries retry on non-2xx up to `webhook.retries` times and report exhaustion through `onError`. Payload shape:
+
+```json
+{
+  "event": "claim_gained",
+  "kind": "gained",
+  "wallet": "GABC…",
+  "claim": "kyc",
+  "reason": null,
+  "at": 1700000000,
+  "issuer": "GISS…",
+  "verifiedAt": 1699999000,
+  "expiry": 1700604800,
+  "ledgerSequence": 54321,
+  "threshold": null
+}
+```
+
+Options: `wallets` (required, validated as Stellar Ed25519 keys), `claims`, `baseUrl` (indexer origin; falls back to `configure({ indexerUrl })` / `STELLARCRED_INDEXER_URL` / the SDK `baseUrl`), `apiKey` (sent as `Authorization: Bearer` for indexers running with `API_KEY` set), `pollMs`, `resyncMs`, `emitInitialState` (also replay currently-active claims as `gained`), `requestTimeoutMs`, `onChange` / `onGained` / `onLost` / `onError`, `webhook`.
+
+Notes:
+
+- Sizing: each poll is one `/recent` call regardless of watch-list size; each resync is one `/claims` call per wallet. Keep `resyncMs` within your indexer's per-IP rate limit (`RATE_LIMIT_MAX`, default 120 req/60 s), or raise it there for large watch lists.
+- Holder self-revocation (`revoke_proof`) emits no contract event, so it surfaces as `lost (expired)` when the indexed proof expires; issuer revocations surface as `lost (revoked)` on the next resync.
+- Prefer `@stellarcred/sdk/server` — subscriptions belong in a backend process, and browser bundles cannot guard webhook secrets.
+
 ### `buildVerifyUrl(options)`
 
 Builds a StellarCred verification URL to redirect users to. After verifying, StellarCred returns the user to `returnUrl` with `?sc_verified=true&sc_wallet=<address>&sc_claims=<claim-types>` appended. `sc_claims` is a comma-separated list of the claim types issued in the current session (not all-time claims), allowing protocols to optimistically update their UI before an on-chain read completes.
@@ -535,6 +609,128 @@ production, in Node.js, and when no suspicious indicators are present.
 
 To silence the warning permanently for server-side code, import from
 `@stellarcred/sdk/server` — the warning is only relevant for browser bundles.
+
+## Indexer fast path (optional)
+
+By default every read simulates against `ProofRegistry`. That is the correct
+trust model — the only thing your protocol needs to trust is the contract — but
+it costs a round trip to a Soroban RPC node per credential type, and the chain
+cannot answer questions like "what has this issuer ever issued?" or "what
+happened recently?".
+
+A StellarCred [indexer](../../../services/indexer) answers those faster. The SDK
+can read from one, **off by default and only when you ask for it per call**.
+
+> ### ⚠️ Read this before you gate anything on it
+>
+> An indexer is an **off-chain cache of public chain data, operated by someone**.
+> It can be stale, lagging, misconfigured, or dishonest. A claim read with
+> `source: "indexer"` is *not* a proof.
+>
+> **Never use `source: "indexer"` as the sole basis for a security decision.**
+> Gate access with `source: "chain"` (the default) or `source: "indexer-verified"`.
+> Use plain `"indexer"` for UI, analytics, previews, and anywhere a wrong answer
+> costs you a flicker rather than an authorisation bypass.
+
+### The three sources
+
+```ts
+import StellarCred from "@stellarcred/sdk";
+
+StellarCred.configure({
+  registryId: process.env.PROOF_REGISTRY_ID,
+  indexerUrl: process.env.STELLARCRED_INDEXER_URL,
+  // indexerApiKey: process.env.STELLARCRED_INDEXER_API_KEY,  // only if the indexer gates /claims
+});
+
+// 1. Default — trust-minimised. Use this for gating.
+const ok = await StellarCred.hasClaim(wallet, "kyc");
+
+// 2. Fast path — trusts the indexer operator. Not for security decisions.
+const preview = await StellarCred.hasClaim(wallet, "kyc", { source: "indexer" });
+
+// 3. Trust anchor — reads the indexer, then confirms on-chain and returns the
+//    CHAIN's answer. Use when you want drift detection alongside the read.
+const gated = await StellarCred.hasClaim(wallet, "kyc", {
+  source: "indexer-verified",
+});
+```
+
+`source` is accepted by `hasClaim`, `getClaim`, `hasClaims`, `getClaims`,
+`verifyPreset`, and `watchClaim`, and is inherited by `createClaimGate` and
+`useStellarCred` through the options they forward.
+
+**`"indexer-verified"` is not faster than `"chain"`.** It still performs a chain
+read, because the chain is what makes the answer trustworthy. Its value is that
+a disagreement between the two is logged, which tells you your indexer has
+drifted before your users are affected by it:
+
+```
+[StellarCred] Indexer disagreed with the chain for claim "kyc": indexer said
+true, ProofRegistry said false. The chain result was used. …
+```
+
+That warning is rate-limited to once per process and — unlike the SDK's other
+warnings — fires in production too, because an integrity signal you only see in
+development is not much use.
+
+### What the fast path does and does not change
+
+`minThreshold` and `trustedIssuers` are both honoured on the indexer path. The
+SDK re-evaluates them from the raw claim row using the same predicates the
+contract uses, so a call is drop-in compatible across sources:
+
+| Contract rule | Indexer equivalent |
+|---|---|
+| `!revoked` | `row.revoked === 0` |
+| `expiry > ledger.timestamp()` | `expiry > Date.now()/1000` |
+| `issuer_is_trusted(list, issuer)` | same, with an empty issuer treated as the contract's `None` and therefore rejected when a filter is set |
+| `threshold.unwrap_or(0) >= min` | `(row.threshold ?? 0) >= min` |
+
+### Known divergences
+
+These are inherent to reading a cache rather than the chain, and are the reason
+`"indexer"` must not gate access:
+
+- **Clock source.** The contract compares `expiry` against the ledger timestamp;
+  the SDK compares against your local wall clock. Near an expiry boundary the two
+  can disagree, in either direction.
+- **Lag.** The indexer trails the chain by its finality lag plus poll interval
+  (seconds by default, longer if it is unhealthy). A just-submitted claim can
+  read as absent, and a just-revoked claim can still read as valid. Check the
+  indexer's `GET /health` for `lag` and `status` if you depend on freshness.
+- **Trust.** You are trusting the indexer operator to serve you honest data.
+  `"chain"` and `"indexer-verified"` do not ask you to.
+
+### Fan-out and caching
+
+`GET /claims?wallet=…` returns *all* of a wallet's claims in one response, so a
+`getClaims` fan-out over the six credential types issues **one** HTTP request,
+not six. To do that the SDK memoises indexer rows per wallet for
+`indexerCacheMs` (default `2000`, set `0` to disable).
+
+This cache applies only to `"indexer"` and `"indexer-verified"` reads. **Chain
+reads are never cached** — every `source: "chain"` call is a fresh simulation.
+
+### Failure behaviour
+
+The indexer path follows the SDK's existing fail-soft convention: an unreachable
+indexer, an HTTP error, or a malformed body yields `false` / `null` / `[]` rather
+than throwing, and throws `IndexerError` (or `ConfigError` when `indexerUrl` is
+missing) under `throwOnError: true`. Failed responses are not cached.
+
+For `source: "indexer-verified"` a failed indexer read is not fatal — the chain
+read still happens and still decides the result.
+
+### The API key is a secret
+
+`indexerApiKey` is sent as `Authorization: Bearer`. There is deliberately no
+`NEXT_PUBLIC_` alias for it, and configuring one from a browser context warns in
+development: shipping it to the browser hands it to every visitor. Either read
+from the browser without a key, or proxy indexer reads through your own backend.
+
+Note also that the indexer's CORS policy does not allow an `X-API-Key` header
+through a browser preflight, which is why the SDK uses `Authorization`.
 
 ## How it works
 

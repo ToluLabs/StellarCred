@@ -12,6 +12,7 @@
 // to know which path it got.
 
 import type { GeneratedProof, ProverCircuit } from "./proof";
+import { CircuitVersionMismatchError } from "./circuit-versions";
 import type {
   ProofJobRequest,
   ProofStage,
@@ -52,8 +53,19 @@ function abortError(): DOMException {
   return new DOMException("Aborted", "AbortError");
 }
 
-/** Rebuild an Error from the name/message pair the worker sent back. */
+/**
+ * Rebuild an Error from the name/message pair the worker sent back.
+ *
+ * The `name` is what lets the two paths stay behaviourally identical: a typed
+ * error thrown inside the worker loses its prototype crossing the boundary, so
+ * it is reconstructed here. Without this, `instanceof` checks in the UI would
+ * pass on the main-thread fallback and silently fail on the worker path —
+ * which is the path production actually takes.
+ */
 function reviveError(name: string, message: string): Error {
+  if (name === "CircuitVersionMismatchError") {
+    return new CircuitVersionMismatchError(message);
+  }
   const err = new Error(message);
   err.name = name;
   return err;

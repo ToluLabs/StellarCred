@@ -34,12 +34,21 @@ All event data payloads are typed `#[contracttype]` structs serialized using Sor
 | `ProofRegistry` | `revoked` | `("proof_reg", "revoked", <credential_type>)` | `EventProofRevoked` | `revoke` | Issuer |
 | `ProofRegistry` | `paused` | `("proof_reg", "paused")` | `EventPaused` | `pause` | Admin |
 | `ProofRegistry` | `unpaused` | `("proof_reg", "unpaused")` | `EventUnpaused` | `unpause` | Admin |
+| `ProofRegistry` | `adm_prop` | `("proof_reg", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `ProofRegistry` | `adm_acc` | `("proof_reg", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `ProofRegistry` | `adm_canc` | `("proof_reg", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
 | `IssuerRegistry` | `register` | `("iss_reg", "register")` | `EventIssuerRegistered` | `register_issuer` | Admin |
 | `IssuerRegistry` | `revoked` | `("iss_reg", "revoked")` | `EventIssuerRevoked` | `revoke_issuer` | Admin |
 | `IssuerRegistry` | `key_rot` | `("iss_reg", "key_rot")` | `EventIssuerKeyRotated` | `rotate_issuer_key` | Admin |
 | `IssuerRegistry` | `key_revk` | `("iss_reg", "key_revk")` | `EventIssuerKeyRevoked` | `revoke_issuer_key` | Admin |
+| `IssuerRegistry` | `adm_prop` | `("iss_reg", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `IssuerRegistry` | `adm_acc` | `("iss_reg", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `IssuerRegistry` | `adm_canc` | `("iss_reg", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
 | `CredentialVerifier` | `vk_set` | `("cred_ver", "vk_set", <credential_type>)` | `EventVkSet` | `set_vk` | Admin |
 | `CredentialVerifier` | `vk_pruned` | `("cred_ver", "vk_pruned", <credential_type>)` | `EventVkPruned` | `prune_version` | Admin |
+| `CredentialVerifier` | `adm_prop` | `("cred_ver", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `CredentialVerifier` | `adm_acc` | `("cred_ver", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `CredentialVerifier` | `adm_canc` | `("cred_ver", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
 | `GatedPool` | `deposit` | `("gate_pool", "deposit")` | `EventDeposit` | `deposit` | Caller |
 | `GatedPool` | `withdraw` | `("gate_pool", "withdraw")` | `EventWithdraw` | `withdraw` | Caller |
 
@@ -167,12 +176,56 @@ Emitted when protocol administration resumes proof submissions.
 
 ---
 
+#### `proof_reg.adm_prop` — Admin Transfer Proposed
+
+Emitted when the root admin proposes a new admin address (#343). The proposal
+sits in instance storage until the proposed address accepts it, a newer
+proposal overwrites it, or the root admin cancels it.
+
+- **Topics:** `("proof_reg", "adm_prop")`
+  - `topics[0]`: `symbol_short!("proof_reg")` (`Symbol("proof_reg")`)
+  - `topics[1]`: `symbol_short!("adm_prop")` (`Symbol("adm_prop")`)
+- **Payload:** `Address` — the proposed new root admin.
+- **When it fires:**
+  - `propose_admin(new_admin)`: Root admin proposes a new admin. Overwrites any existing pending proposal.
+- **Monitoring:** an unexpected proposal signals a pending governance change — verify the proposed address is intended before it accepts.
+
+---
+
+#### `proof_reg.adm_acc` — Admin Transfer Accepted
+
+Emitted when the pending admin candidate accepts the transfer (#343). On
+acceptance the candidate becomes the new root admin AND inherits every role the
+outgoing admin held; the outgoing admin loses all privileged access.
+
+- **Topics:** `("proof_reg", "adm_acc")`
+  - `topics[0]`: `symbol_short!("proof_reg")` (`Symbol("proof_reg")`)
+  - `topics[1]`: `symbol_short!("adm_acc")` (`Symbol("adm_acc")`)
+- **Payload:** `Address` — the address that accepted and is now root admin.
+- **When it fires:**
+  - `accept_admin()`: Pending candidate accepts the proposed transfer.
+
+---
+
+#### `proof_reg.adm_canc` — Admin Proposal Cancelled
+
+Emitted when the root admin cancels a pending admin proposal (#343). No
+transfer takes place and the pending entry is cleared.
+
+- **Topics:** `("proof_reg", "adm_canc")`
+  - `topics[0]`: `symbol_short!("proof_reg")` (`Symbol("proof_reg")`)
+  - `topics[1]`: `symbol_short!("adm_canc")` (`Symbol("adm_canc")`)
+- **Payload:** `()` — empty.
+- **When it fires:**
+  - `cancel_admin_proposal()`: Root admin cancels the pending proposal.
+
+---
+
 #### Non-Event Operations in ProofRegistry
 
 | Function | Description | Reason No Event Emitted |
 |---|---|---|
 | `upgrade` | Contract bytecode upgrade | Handled directly by Soroban's WASM deployer host function (`update_current_contract_wasm`). |
-| `set_admin` | Admin address update | Standard instance storage update. |
 | `bump_claim` | Storage TTL extension | Maintenance operation renewing persistent entry rent. |
 | `migrate_record` | Legacy storage shape migration | Internal migration upgrading legacy storage formats to current `ProofRecord` structure. |
 
@@ -284,6 +337,51 @@ window.
 
 ---
 
+#### `iss_reg.adm_prop` — Admin Transfer Proposed
+
+Emitted when the root admin proposes a new admin address (#342). The proposal
+sits in instance storage until the proposed address accepts it, a newer
+proposal overwrites it, or the root admin cancels it.
+
+- **Topics:** `("iss_reg", "adm_prop")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("adm_prop")` (`Symbol("adm_prop")`)
+- **Payload:** `Address` — the proposed new root admin.
+- **When it fires:**
+  - `propose_admin(new_admin)`: Root admin proposes a new admin. Overwrites any existing pending proposal.
+- **Monitoring:** an unexpected proposal signals a pending governance change — verify the proposed address is intended before it accepts.
+
+---
+
+#### `iss_reg.adm_acc` — Admin Transfer Accepted
+
+Emitted when the pending admin candidate accepts the transfer (#342). On
+acceptance the candidate becomes the new root admin AND inherits every role the
+outgoing admin held; the outgoing admin loses all privileged access.
+
+- **Topics:** `("iss_reg", "adm_acc")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("adm_acc")` (`Symbol("adm_acc")`)
+- **Payload:** `Address` — the address that accepted and is now root admin.
+- **When it fires:**
+  - `accept_admin()`: Pending candidate accepts the proposed transfer.
+
+---
+
+#### `iss_reg.adm_canc` — Admin Proposal Cancelled
+
+Emitted when the root admin cancels a pending admin proposal (#342). No
+transfer takes place and the pending entry is cleared.
+
+- **Topics:** `("iss_reg", "adm_canc")`
+  - `topics[0]`: `symbol_short!("iss_reg")` (`Symbol("iss_reg")`)
+  - `topics[1]`: `symbol_short!("adm_canc")` (`Symbol("adm_canc")`)
+- **Payload:** `()` — empty.
+- **When it fires:**
+  - `cancel_admin_proposal()`: Root admin cancels the pending proposal.
+
+---
+
 #### Non-Event Operations in IssuerRegistry
 
 | Function | Description | Reason No Event Emitted |
@@ -341,6 +439,51 @@ Emitted when deprecated VK bytes are permanently pruned from storage after the m
   | `version` | `u32` | Version number of the pruned verification key. |
 - **When it fires:**
   - `prune_version(credential_type, version)`: Admin prunes deprecated VK bytes.
+
+---
+
+#### `cred_ver.adm_prop` — Admin Transfer Proposed
+
+Emitted when the root admin proposes a new admin address (#342). The proposal
+sits in instance storage until the proposed address accepts it, a newer
+proposal overwrites it, or the root admin cancels it.
+
+- **Topics:** `("cred_ver", "adm_prop")`
+  - `topics[0]`: `symbol_short!("cred_ver")` (`Symbol("cred_ver")`)
+  - `topics[1]`: `symbol_short!("adm_prop")` (`Symbol("adm_prop")`)
+- **Payload:** `Address` — the proposed new root admin.
+- **When it fires:**
+  - `propose_admin(new_admin)`: Root admin proposes a new admin. Overwrites any existing pending proposal.
+- **Monitoring:** an unexpected proposal signals a pending governance change — verify the proposed address is intended before it accepts.
+
+---
+
+#### `cred_ver.adm_acc` — Admin Transfer Accepted
+
+Emitted when the pending admin candidate accepts the transfer (#342). On
+acceptance the candidate becomes the new root admin AND inherits every role the
+outgoing admin held; the outgoing admin loses all privileged access.
+
+- **Topics:** `("cred_ver", "adm_acc")`
+  - `topics[0]`: `symbol_short!("cred_ver")` (`Symbol("cred_ver")`)
+  - `topics[1]`: `symbol_short!("adm_acc")` (`Symbol("adm_acc")`)
+- **Payload:** `Address` — the address that accepted and is now root admin.
+- **When it fires:**
+  - `accept_admin()`: Pending candidate accepts the proposed transfer.
+
+---
+
+#### `cred_ver.adm_canc` — Admin Proposal Cancelled
+
+Emitted when the root admin cancels a pending admin proposal (#342). No
+transfer takes place and the pending entry is cleared.
+
+- **Topics:** `("cred_ver", "adm_canc")`
+  - `topics[0]`: `symbol_short!("cred_ver")` (`Symbol("cred_ver")`)
+  - `topics[1]`: `symbol_short!("adm_canc")` (`Symbol("adm_canc")`)
+- **Payload:** `()` — empty.
+- **When it fires:**
+  - `cancel_admin_proposal()`: Root admin cancels the pending proposal.
 
 ---
 
@@ -474,6 +617,26 @@ Off-chain indexers (e.g. `services/indexer`) monitor events using Soroban RPC `g
 | `u32` | `ScVal::U32` | `number` |
 | `i128` | `ScVal::I128` | `bigint` / `string` |
 | `BytesN<64>` | `ScVal::Bytes` | `Buffer` / `Uint8Array` (64 bytes hex) |
+
+### SDK Real-Time Subscription Helper (`#392`)
+
+Protocols that need push-style notification when a watched wallet gains or
+loses a claim should use `subscribeClaims()` from `@stellarcred/sdk` instead
+of decoding these events themselves. It consumes the indexer service
+(`services/indexer`) so a single subscription covers many wallets:
+
+- **Gains** stream from `GET /recent` — rows are the indexed
+  `("proof_reg", "submitted", <credential_type>)` events, ordered by
+  `(ledger_sequence, id)`; the helper walks pages newer than its stored
+  keyset cursor once per `pollMs`.
+- **Losses** (`("proof_reg", "revoked", <credential_type>)`) are detected by
+  diffing periodic `GET /claims?wallet=…` snapshots (the `revoked` flag), and
+  proof expiry is computed locally from the indexed `expiry` timestamps.
+
+Because both endpoints derive from the event payloads above, event schema
+stability (see §Schema Stability Guarantees) is what makes the subscription
+feed safe to build on. See the SDK README §`subscribeClaims` for the callback
+and webhook payload schemas.
 
 ---
 

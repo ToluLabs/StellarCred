@@ -18,6 +18,13 @@
 //! stored as a `Map<Symbol, Address>` (role name → current holder); the root
 //! admin can delegate or rotate holders via `grant_role` / `revoke_role`, and
 //! anyone can query membership with `has_role`.
+//!
+//! Admin transfer is two-step (#342): the root admin calls `propose_admin`
+//! with the incoming address, and that address must call `accept_admin` to
+//! take over. On acceptance, the accepted address becomes the new root admin
+//! AND inherits every role the outgoing admin held — a wholesale governance
+//! transfer. A pending proposal can be overwritten by another `propose_admin`
+//! or cleared with `cancel_admin_proposal`.
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
@@ -84,6 +91,9 @@ const MAX_PROOF_VALIDITY_SECONDS: u64 = 90 * 86_400;
 #[contracttype]
 pub enum DataKey {
     Admin,
+    /// Pending root-admin candidate set by `propose_admin` and consumed by
+    /// `accept_admin` (#342).
+    PendingAdmin,
     /// RBAC: role name (Symbol) → current holder (Address).
     Roles,
     /// Verification key bytes, keyed by (credential-type symbol, version).
@@ -119,6 +129,8 @@ pub enum Error {
     RoleNotHeld = 7,
     /// `revoke_role` named an address that is not the current holder of the role.
     RoleHolderMismatch = 8,
+    /// `accept_admin` was called with no pending proposal (#342).
+    NoPendingAdmin = 9,
 }
 
 #[contract]
@@ -143,7 +155,6 @@ impl CredentialVerifier {
         CONTRACT_VERSION
     }
 
-    /// Register the verification key for a credential circuit. Admin-only.
     /// Register the verification key for a credential circuit. Admin-role only.
     /// A version's VK is immutable once set — re-registering an existing
     /// (credential_type, version) panics with `VkAlreadySet`; register a new
@@ -173,7 +184,10 @@ impl CredentialVerifier {
         if env
             .storage()
             .persistent()
-            .get::<_, bool>(&DataKey::DeprecatedVersion(credential_type.clone(), version))
+            .get::<_, bool>(&DataKey::DeprecatedVersion(
+                credential_type.clone(),
+                version,
+            ))
             .unwrap_or(false)
         {
             panic_with_error!(&env, Error::VersionDeprecated);
@@ -276,7 +290,10 @@ impl CredentialVerifier {
         if !env
             .storage()
             .persistent()
-            .get::<_, bool>(&DataKey::DeprecatedVersion(credential_type.clone(), version))
+            .get::<_, bool>(&DataKey::DeprecatedVersion(
+                credential_type.clone(),
+                version,
+            ))
             .unwrap_or(false)
         {
             panic_with_error!(&env, Error::VersionDeprecated);
@@ -443,6 +460,86 @@ impl CredentialVerifier {
             Some(roles) => roles.get(role) == Some(address),
             None => false,
         }
+    }
+
+    /// Returns the root admin address.
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized))
+    }
+
+    /// Propose a new root admin. Root-admin only. Overwrites any existing
+    /// pending proposal. Emits `("cred_ver", "adm_prop")` with the proposed
+    /// address as the payload (#342).
+    #[allow(deprecated)]
+    pub fn propose_admin(env: Env, new_admin: Address) {
+        Self::require_admin(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+
+        env.events().publish(
+            (symbol_short!("cred_ver"), symbol_short!("adm_prop")),
+            new_admin,
+        );
+    }
+
+    /// Accept the pending root-admin role. Callable only by the address named
+    /// in the most recent `propose_admin`. On success the accepted address
+    /// becomes the new `DataKey::Admin` AND inherits every role the outgoing
+    /// admin held — a wholesale governance transfer, so the outgoing root
+    /// loses all privileged access exactly as it did before roles existed.
+    /// Fine-grained delegation afterwards uses `grant_role` / `revoke_role`.
+    /// Emits `("cred_ver", "adm_acc")` with the new admin as the payload (#342).
+    #[allow(deprecated)]
+    pub fn accept_admin(env: Env) {
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NoPendingAdmin));
+        pending.require_auth();
+
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+        // Wholesale governance transfer: hand the new admin every role the old
+        // admin held, so VK management power moves with the admin key.
+        let mut roles: Map<Symbol, Address> = Self::roles(&env);
+        for (role, holder) in roles.iter() {
+            if holder == old_admin {
+                roles.set(role, pending.clone());
+            }
+        }
+        env.storage().instance().set(&DataKey::Roles, &roles);
+        env.storage().instance().set(&DataKey::Admin, &pending);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events().publish(
+            (symbol_short!("cred_ver"), symbol_short!("adm_acc")),
+            pending,
+        );
+    }
+
+    /// Cancel a pending admin proposal. Root-admin only. Emits
+    /// `("cred_ver", "adm_canc")` with an empty payload (#342).
+    #[allow(deprecated)]
+    pub fn cancel_admin_proposal(env: Env) {
+        Self::require_admin(&env);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events()
+            .publish((symbol_short!("cred_ver"), symbol_short!("adm_canc")), ());
+    }
+
+    /// Read the current pending admin proposal, if any (#342).
+    pub fn pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
     }
 
     fn roles(env: &Env) -> Map<Symbol, Address> {

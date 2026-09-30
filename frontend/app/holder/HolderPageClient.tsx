@@ -12,7 +12,6 @@ import {
   IconPlus,
   IconAlertTriangle,
   IconTrash,
-  IconCertificate,
   IconLoader2,
   IconCpu,
   IconCloudUpload,
@@ -57,7 +56,7 @@ import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { IMPORT_PARAM } from "@/lib/transfer";
 
-// The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
+// The encrypted-transfer modals are heavy (credential-crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer — load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
 const TransferExportModal = dynamic(
@@ -143,6 +142,36 @@ function formatExpiryDate(ts: number): string {
   });
 }
 
+// ── Storage TTL vs Credential expiry helpers (Issue #552) ───────────────────
+// Soroban persistent storage TTL is refreshed to ~90 days (17,280 * 90 ledgers)
+// on proof submission and whenever bumped via bump_claim.
+const STORAGE_RENT_TTL_SECS = 90 * 86_400;
+
+function storageExpiryTimestamp(cred: Credential): number | null {
+  if (!cred.provedAt) return null;
+  return cred.provedAt + STORAGE_RENT_TTL_SECS;
+}
+
+function storageDaysRemaining(cred: Credential): number {
+  const ts = storageExpiryTimestamp(cred);
+  if (!ts) return 0;
+  const secsLeft = ts - Math.floor(Date.now() / 1000);
+  return Math.max(0, Math.ceil(secsLeft / 86_400));
+}
+
+function isStorageLapsed(cred: Credential): boolean {
+  const ts = storageExpiryTimestamp(cred);
+  if (!ts) return false;
+  return ts <= Math.floor(Date.now() / 1000);
+}
+
+function isStorageExpiringSoon(cred: Credential, windowDays = 14): boolean {
+  const ts = storageExpiryTimestamp(cred);
+  if (!ts) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return ts > now && ts <= now + windowDays * 86_400;
+}
+
 // ── Credential card ──────────────────────────────────────────────────────────
 
 function CredCard({
@@ -188,7 +217,7 @@ function CredCard({
                 <>
                   {" · "}
                   <span style={{ color: "var(--accent)", opacity: 0.75 }}>
-                    expires in {daysRemaining(c)}d
+                    credential expires in {daysRemaining(c)}d
                   </span>
                   {c.provedTxHash && (
                     <>
@@ -206,16 +235,31 @@ function CredCard({
                 </>
               )}
               {status === "expired" && (
-                <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>expired</span></>
+                <> · <span style={{ color: "var(--danger)", opacity: 0.8 }}>proof expired</span></>
               )}
             </div>
-            <div style={{ marginTop: "0.1rem" }}>
-              {credIsExpired(c) ? (
-                <span style={{ color: "var(--danger)", fontWeight: 500 }}>Expired</span>
-              ) : (
-                <span style={{ color: credExpiryWithinDays(c, 30) ? "var(--warn)" : "var(--faint)" }}>
-                  Expires {formatExpiryDate(credExpiryTimestamp(c))}
-                </span>
+            <div style={{ marginTop: "0.15rem", display: "flex", flexWrap: "wrap", gap: "0.75rem", fontSize: "0.72rem" }}>
+              <div>
+                <span style={{ color: "var(--faint)" }}>Credential: </span>
+                {credIsExpired(c) ? (
+                  <span style={{ color: "var(--danger)", fontWeight: 500 }}>Expired</span>
+                ) : (
+                  <span style={{ color: credExpiryWithinDays(c, 30) ? "var(--warn)" : "var(--fg)" }}>
+                    Expires {formatExpiryDate(credExpiryTimestamp(c))}
+                  </span>
+                )}
+              </div>
+              {c.provedAt && (
+                <div>
+                  <span style={{ color: "var(--faint)" }}>Storage Rent: </span>
+                  {isStorageLapsed(c) ? (
+                    <span style={{ color: "var(--danger)", fontWeight: 500 }}>Archived (TTL lapsed)</span>
+                  ) : (
+                    <span style={{ color: isStorageExpiringSoon(c) ? "var(--warn)" : "var(--fg)" }}>
+                      ~{storageDaysRemaining(c)}d until archive
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -231,11 +275,17 @@ function CredCard({
             <Badge variant="denied" dot>Issuer key revoked</Badge>
           )}
           <Badge variant="verified" dot={false}>Held</Badge>
-          {status === "proved" && !isExpiringSoon(c) && (
+          {status === "proved" && !isExpiringSoon(c) && !isStorageLapsed(c) && (
             <Badge variant="verified" dot={false}>On-chain</Badge>
           )}
           {status === "proved" && isExpiringSoon(c) && (
             <Badge variant="pending" dot={true}>Expiring in {daysRemaining(c)}d</Badge>
+          )}
+          {status === "proved" && isStorageLapsed(c) && (
+            <Badge variant="denied" dot={true}>Storage Archived</Badge>
+          )}
+          {status === "proved" && !isStorageLapsed(c) && isStorageExpiringSoon(c) && (
+            <Badge variant="pending" dot={true}>Rent: {storageDaysRemaining(c)}d left</Badge>
           )}
           {status === "expired" && (
             <Badge variant="denied" dot={true}>Proof Expired</Badge>
@@ -281,6 +331,80 @@ function CredCard({
         <Timeline events={events} />
       )}
     </div>
+  );
+}
+
+// Minimal inline illustration for the empty holder state — an abstract
+// credential card with a proof seal, drawn entirely from theme CSS variables
+// (no hardcoded colours) so it adapts to any theme.
+function EmptyStateIllustration() {
+  return (
+    <svg
+      width="132"
+      height="104"
+      viewBox="0 0 132 104"
+      fill="none"
+      aria-hidden="true"
+    >
+      {/* backing card, tilted behind */}
+      <rect
+        x="22"
+        y="12"
+        width="70"
+        height="46"
+        rx="8"
+        transform="rotate(-6 22 12)"
+        stroke="var(--border)"
+        strokeWidth="1.5"
+      />
+      {/* front card */}
+      <rect
+        x="31"
+        y="34"
+        width="70"
+        height="46"
+        rx="8"
+        fill="var(--card)"
+        stroke="var(--border-strong)"
+        strokeWidth="1.5"
+      />
+      {/* proof seal */}
+      <circle cx="65" cy="57" r="9" stroke="var(--accent)" strokeWidth="1.5" />
+      <path
+        d="m61.5 57 2.4 2.4 4.6-4.8"
+        stroke="var(--accent)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* credential text lines */}
+      <path
+        d="M81 52h13"
+        stroke="var(--border-strong)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M81 62h9"
+        stroke="var(--border)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      {/* sparks */}
+      <path
+        d="M112 22v8M108 26h8"
+        stroke="var(--accent)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        opacity="0.7"
+      />
+      <path
+        d="M24 80v6M21 83h6"
+        stroke="var(--border-strong)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -675,33 +799,19 @@ function HolderInner() {
 
           {/* ── Empty state ── */}
           {!loading && creds.length === 0 && !importing && (
-            <div
-              className="card"
-              style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
-            >
-              <IconCertificate size={30} stroke={1.3} color="var(--faint)" />
-              <h3 style={{ margin: "1rem 0 0.4rem" }}>No credentials yet</h3>
-              <p className="muted" style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}>
-                Get a credential from a trusted issuer, then generate a
-                zero-knowledge proof to verify it on-chain.
+            <div className="card empty-state">
+              <EmptyStateIllustration />
+              <h3 style={{ marginTop: "1.25rem" }}>No credentials yet</h3>
+              <p
+                className="muted"
+                style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0.4rem auto 1.5rem" }}
+              >
+                Get your first credential to start generating proofs.
               </p>
-              <a href="/verify" className="btn btn-primary btn-sm" style={{ display: "inline-flex" }}>
+              <Link href="/verify" className="btn btn-primary btn-sm" style={{ display: "inline-flex" }}>
                 Get a credential
                 <IconArrowRight size={14} />
-              </a>
-              <p
-                className="faint"
-                style={{ fontSize: "0.75rem", maxWidth: 380, margin: "1.25rem auto 0", lineHeight: 1.6 }}
-              >
-                Credentials are stored only in this browser&apos;s local storage — clearing
-                site data, switching browsers/devices, or private mode erases them.{" "}
-                <Link
-                  href="/docs#storage"
-                  style={{ color: "var(--accent)", textDecoration: "underline" }}
-                >
-                  Where your credentials live
-                </Link>
-              </p>
+              </Link>
             </div>
           )}
 

@@ -573,6 +573,18 @@ p {
   box-shadow: var(--shadow-glow);
 }
 
+/* Empty state — vertically centred inside a dashed card (holder page) */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 340px;
+  padding: 3rem 1.5rem;
+  border-style: dashed;
+}
+
 /* ---- Buttons ---------------------------------------------------------------- */
 
 .btn {

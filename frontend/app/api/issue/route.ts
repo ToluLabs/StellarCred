@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CREDENTIAL_TYPES, type ClaimParams, type CredentialType } from "@stellarcred/issuer";
 import { fetchIssuerPubkey } from "@/lib/issuer-registry";
 import { currentDeploymentRef } from "@/lib/deployment";
+import { circuitVersionStampFor } from "@/lib/circuit-versions";
 import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
 import {
   logger,
@@ -488,9 +489,15 @@ async function executeRequest(
       claimParams,
       requestId,
     });
+    // Stamp the deployment and the circuit version on every credential at mint
+    // time (#545, #633). The circuit version is what lets the holder's device
+    // detect — before proving, with a message naming both versions — that the
+    // circuit this credential was issued against is no longer the one this app
+    // serves, instead of surfacing it later as an invalid witness.
     const credentials = issuedCredentials.map((credential) => ({
       ...credential,
       deployment: currentDeploymentRef(),
+      ...circuitVersionStampFor(credential.type),
     }));
 
     outcome = "success";

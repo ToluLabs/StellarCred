@@ -8,8 +8,7 @@ use proptest::test_runner::RngSeed;
 use soroban_sdk::{
     symbol_short,
     testutils::{
-        storage::Persistent as _, Address as _, Events as _, Ledger as _, MockAuth,
-        MockAuthInvoke,
+        storage::Persistent as _, Address as _, Events as _, Ledger as _, MockAuth, MockAuthInvoke,
     },
     vec, Address, Bytes, BytesN, Env, IntoVal, Symbol,
 };
@@ -486,7 +485,8 @@ fn batch_all_pass() {
             expiry: 9999,
             vk_version: None,
         },
-    ];    h.registry.submit_proofs(&holder, &submissions);
+    ];
+    h.registry.submit_proofs(&holder, &submissions);
     assert!(
         h.registry
             .is_verified(&holder, &symbol_short!("kyc"), &None)
@@ -595,17 +595,26 @@ fn aggregate_submits_real_proof_and_stores_claims() {
     let h = deploy_aggregate(&env);
     let holder = Address::generate(&env);
 
-    h.c
-        .aggregate_call(&env, &h.issuer, &[9999, 9999])
+    h.c.aggregate_call(&env, &h.issuer, &[9999, 9999])
         .submit(&h.c, &holder);
-    assert!(h.c.registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
-        .0);
-    assert!(h.c.registry
-        .is_verified(&holder, &symbol_short!("age"), &None)
-        .0);
-    assert!(h.c.registry.check_claim(&holder, &symbol_short!("age"), &Some(18), &None));
-    assert!(!h.c.registry.check_claim(&holder, &symbol_short!("age"), &Some(19), &None));
+    assert!(
+        h.c.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
+    assert!(
+        h.c.registry
+            .is_verified(&holder, &symbol_short!("age"), &None)
+            .0
+    );
+    assert!(h
+        .c
+        .registry
+        .check_claim(&holder, &symbol_short!("age"), &Some(18), &None));
+    assert!(!h
+        .c
+        .registry
+        .check_claim(&holder, &symbol_short!("age"), &Some(19), &None));
 }
 
 #[test]
@@ -627,8 +636,14 @@ fn aggregate_honors_per_credential_expiries() {
         &vec![&env, 90_000u64, 5_000u64],
     );
 
-    let kyc_record = h.c.registry.get_record(&holder, &symbol_short!("kyc")).unwrap();
-    let age_record = h.c.registry.get_record(&holder, &symbol_short!("age")).unwrap();
+    let kyc_record =
+        h.c.registry
+            .get_record(&holder, &symbol_short!("kyc"))
+            .unwrap();
+    let age_record =
+        h.c.registry
+            .get_record(&holder, &symbol_short!("age"))
+            .unwrap();
     assert_eq!(kyc_record.expiry, 90_000);
     assert_eq!(age_record.expiry, 5_000);
     assert_ne!(kyc_record.expiry, age_record.expiry);
@@ -643,7 +658,9 @@ fn aggregate_rejects_past_expiry_in_any_slot() {
     let holder = Address::generate(&env);
 
     // First slot valid, second slot (age) has a past expiry — whole call must revert.
-    assert!(h.c.try_submit_aggregate(&env, &holder, &h.issuer, &[9999u64, 0u64]));
+    assert!(h
+        .c
+        .try_submit_aggregate(&env, &holder, &h.issuer, &[9999u64, 0u64]));
     assert!(!h.c.verify(&env, &holder, &KYC));
 }
 
@@ -656,7 +673,9 @@ fn aggregate_rejects_over_max_expiry_in_any_slot() {
     let holder = Address::generate(&env);
 
     // First slot valid, second slot (age) has an over-max expiry — whole call must revert.
-    assert!(h.c.try_submit_aggregate(&env, &holder, &h.issuer, &[9999u64, u64::MAX]));
+    assert!(h
+        .c
+        .try_submit_aggregate(&env, &holder, &h.issuer, &[9999u64, u64::MAX]));
     assert!(!h.c.verify(&env, &holder, &KYC));
 }
 
@@ -965,11 +984,9 @@ fn grant_then_verifier_can_check() {
     h.registry
         .grant_verification(&holder, &verifier, &symbol_short!("kyc"), &5000);
 
-    let (valid, verified_at, expiry) = h.registry.check_delegated_verification(
-        &holder,
-        &verifier,
-        &symbol_short!("kyc"),
-    );
+    let (valid, verified_at, expiry) =
+        h.registry
+            .check_delegated_verification(&holder, &verifier, &symbol_short!("kyc"));
     assert!(valid);
     assert_eq!(expiry, 9999); // the underlying claim's own expiry, not the grant's
     let (_, expected_at, _) = h
@@ -988,11 +1005,9 @@ fn check_delegated_verification_without_a_grant_returns_false() {
     submit(&env, &h, &holder, 9999);
 
     // The claim itself is valid, but this verifier was never delegated to.
-    let (valid, verified_at, expiry) = h.registry.check_delegated_verification(
-        &holder,
-        &verifier,
-        &symbol_short!("kyc"),
-    );
+    let (valid, verified_at, expiry) =
+        h.registry
+            .check_delegated_verification(&holder, &verifier, &symbol_short!("kyc"));
     assert!(!valid);
     assert_eq!(verified_at, 0);
     assert_eq!(expiry, 0);
@@ -1122,12 +1137,9 @@ fn grant_rejects_an_expiry_in_the_past() {
     let verifier = Address::generate(&env);
     env.ledger().with_mut(|li| li.timestamp = 1000);
 
-    let res = h.registry.try_grant_verification(
-        &holder,
-        &verifier,
-        &symbol_short!("kyc"),
-        &500,
-    );
+    let res = h
+        .registry
+        .try_grant_verification(&holder, &verifier, &symbol_short!("kyc"), &500);
     assert!(res.is_err());
 }
 
@@ -1271,7 +1283,8 @@ fn upgrade_requires_upgrader_role() {
     assert!(res.is_err());
 
     // After revocation the former holder loses upgrade power too.
-    h.registry.revoke_role(&symbol_short!("upgrader"), &upgrader);
+    h.registry
+        .revoke_role(&symbol_short!("upgrader"), &upgrader);
     let res = h
         .registry
         .mock_auths(&[MockAuth {
@@ -1395,7 +1408,11 @@ fn pause_requires_pauser_role() {
         &None,
         &2000,
     );
-    assert!(h.registry.is_verified(&holder, &symbol_short!("kyc"), &None).0);
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
 }
 
 #[test]
@@ -1410,7 +1427,8 @@ fn migrate_record_requires_admin_role() {
 
     // Delegate the admin role away from the root admin.
     let admin_delegate = Address::generate(&env);
-    h.registry.grant_role(&symbol_short!("admin"), &admin_delegate);
+    h.registry
+        .grant_role(&symbol_short!("admin"), &admin_delegate);
 
     // The admin-role holder can migrate (idempotent no-op on a current record).
     h.registry
@@ -1599,7 +1617,6 @@ fn has_role_is_a_public_view() {
     assert!(h
         .registry
         .has_role(&Symbol::new(&env, "issuer_manager"), &delegate));
-
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1791,18 +1808,21 @@ fn batch_accepts_credentials_signed_with_retired_keys() {
     ];
 
     h.registry.submit_proofs(&holder, &submissions);
-    assert!(h
-        .registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
-        .0);
-    assert!(h
-        .registry
-        .is_verified(&holder, &symbol_short!("funds"), &None)
-        .0);
-    assert!(h
-        .registry
-        .is_verified(&holder, &symbol_short!("age"), &None)
-        .0);
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("funds"), &None)
+            .0
+    );
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("age"), &None)
+            .0
+    );
 }
 
 /// Same guarantee for the aggregate layout, where each credential's key sits
@@ -1845,12 +1865,16 @@ fn aggregate_accepts_a_credential_signed_with_a_retired_key() {
         &vec![&env, ROT_T0 + 1000u64, ROT_T0 + 1000u64],
     );
 
-    assert!(registry
-        .is_verified(&holder, &symbol_short!("kyc"), &None)
-        .0);
-    assert!(registry
-        .is_verified(&holder, &symbol_short!("age"), &None)
-        .0);
+    assert!(
+        registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
+    assert!(
+        registry
+            .is_verified(&holder, &symbol_short!("age"), &None)
+            .0
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2544,4 +2568,124 @@ fn successful_batch_preserves_issuer_and_threshold() {
         &None,
         &Some(vec![&env, h.funds_issuer.clone()]), // wrong issuer
     ));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Issue #552 — Storage TTL strategy & observable archived vs expired behavior
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_storage_ttl_extension_and_bump_claim() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    // Initial submission at t=0 with credential expiry at t=2000.
+    submit(&env, &h, &holder, 2000);
+
+    // Initial read confirms active validity.
+    assert!(
+        h.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None)
+            .0
+    );
+    assert_eq!(
+        h.registry.claim_expiry(&holder, &symbol_short!("kyc")),
+        2000
+    );
+
+    // Anyone can bump a valid claim before it expires.
+    h.registry.bump_claim(&holder, &symbol_short!("kyc"));
+
+    // Advance time past credential expiry.
+    env.ledger().with_mut(|li| li.timestamp = 2000);
+
+    // Bumping an expired claim is rejected with ProofNotFound.
+    let res = h.registry.try_bump_claim(&holder, &symbol_short!("kyc"));
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_storage_archived_vs_expired_observable_behavior() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+    let cred = symbol_short!("kyc");
+
+    // ── 1. ACTIVE VALID STATE (now < expiry) ─────────────────────────────────
+    env.ledger().with_mut(|li| li.timestamp = 500);
+    submit(&env, &h, &holder, 1000);
+
+    let (is_v, verified_at, expiry) = h.registry.is_verified(&holder, &cred, &None);
+    assert!(is_v, "Active valid entry must return is_verified = true");
+    assert_eq!(
+        verified_at, 500,
+        "verified_at matches ledger timestamp of submission"
+    );
+    assert_eq!(expiry, 1000, "expiry matches credential validity");
+    assert!(h.registry.check_claim(&holder, &cred, &None, &None));
+    let record = h.registry.get_record(&holder, &cred);
+    assert!(record.is_some());
+    assert_eq!(record.as_ref().unwrap().expiry, 1000);
+    assert!(!record.unwrap().revoked);
+    assert_eq!(h.registry.claim_expiry(&holder, &cred), 1000);
+
+    // ── 2. ACTIVE EXPIRED STATE (now >= expiry, entry in active storage) ────
+    env.ledger().with_mut(|li| li.timestamp = 1001);
+
+    let (is_v_exp, verified_at_exp, expiry_exp) = h.registry.is_verified(&holder, &cred, &None);
+    assert!(
+        !is_v_exp,
+        "Active expired entry must return is_verified = false"
+    );
+    assert_eq!(
+        verified_at_exp, 500,
+        "Audit trail verified_at preserved in active expired state"
+    );
+    assert_eq!(
+        expiry_exp, 1000,
+        "Audit trail expiry preserved in active expired state"
+    );
+    assert!(!h.registry.check_claim(&holder, &cred, &None, &None));
+    let record_exp = h.registry.get_record(&holder, &cred);
+    assert!(
+        record_exp.is_some(),
+        "Record is still present in active persistent storage"
+    );
+    assert_eq!(record_exp.unwrap().expiry, 1000);
+    assert_eq!(h.registry.claim_expiry(&holder, &cred), 1000);
+    // Bumping an expired claim panics
+    assert!(h.registry.try_bump_claim(&holder, &cred).is_err());
+
+    // ── 3. ARCHIVED STATE (storage TTL elapsed, entry pruned/lapsed) ─────────
+    // Simulate Soroban persistent storage TTL lapse / eviction
+    env.as_contract(&h.registry.address, || {
+        let key = DataKey::Proof(holder.clone(), cred.clone());
+        env.storage().persistent().remove(&key);
+    });
+
+    let (is_v_arch, verified_at_arch, expiry_arch) = h.registry.is_verified(&holder, &cred, &None);
+    assert!(!is_v_arch, "Archived entry must return is_verified = false");
+    assert_eq!(
+        verified_at_arch, 0,
+        "Archived entry returns verified_at = 0 (no record found)"
+    );
+    assert_eq!(
+        expiry_arch, 0,
+        "Archived entry returns expiry = 0 (distinguishable from active expired)"
+    );
+    assert!(!h.registry.check_claim(&holder, &cred, &None, &None));
+    assert!(
+        h.registry.get_record(&holder, &cred).is_none(),
+        "get_record returns None for archived entry"
+    );
+    assert_eq!(
+        h.registry.claim_expiry(&holder, &cred),
+        0,
+        "claim_expiry returns 0 for archived entry"
+    );
+    // Bumping an archived claim panics with ProofNotFound
+    assert!(h.registry.try_bump_claim(&holder, &cred).is_err());
 }

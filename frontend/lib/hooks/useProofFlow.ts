@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 
 import { proveOffMainThread, type ProofStageProgress } from "../proof-client";
+import { CircuitVersionMismatchError } from "../circuit-versions";
 import { withTimeout, ProofTimeoutError, DEFAULT_PROOF_TIMEOUT_MS } from "../proof-timeout";
 import {
   submitProof as defaultSubmitProof,
@@ -192,6 +193,18 @@ export function useProofFlow(
             setStage("error");
             setStageProgress(null);
             toast.error("Proof timed out — please try again.");
+            return;
+          }
+          // A circuit-version mismatch (#633) is not a prover failure and retrying
+          // will never help, so it gets the message as-is rather than the generic
+          // "proof generation failed" wrapper — the explanation already names both
+          // versions and what the holder should do about it.
+          if (e instanceof CircuitVersionMismatchError) {
+            setError({ code: null, friendly: e.message, raw: e.message });
+            setErrorPhase("proving");
+            setStage("error");
+            setStageProgress(null);
+            toast.error("This credential can’t be proven by the current circuit.");
             return;
           }
           const parsed = parseContractError((e as Error).message);

@@ -219,7 +219,10 @@ fn rejects_proof_with_truncated_public_inputs() {
     assert!(!c.verify_proof(
         &symbol_short!("kyc"),
         &Bytes::from_slice(&env, fixture!("negative/kyc_truncated_inputs", "proof")),
-        &Bytes::from_slice(&env, fixture!("negative/kyc_truncated_inputs", "public_inputs")),
+        &Bytes::from_slice(
+            &env,
+            fixture!("negative/kyc_truncated_inputs", "public_inputs")
+        ),
         &None,
     ));
 }
@@ -240,7 +243,10 @@ fn rejects_proof_from_wrong_circuit_type() {
     assert!(!c.verify_proof(
         &symbol_short!("kyc"),
         &Bytes::from_slice(&env, fixture!("negative/kyc_wrong_circuit", "proof")),
-        &Bytes::from_slice(&env, fixture!("negative/kyc_wrong_circuit", "public_inputs")),
+        &Bytes::from_slice(
+            &env,
+            fixture!("negative/kyc_wrong_circuit", "public_inputs")
+        ),
         &None,
     ));
 }
@@ -486,13 +492,21 @@ fn deprecated_vk_can_be_pruned_after_validity_window() {
     c.set_vk(&symbol_short!("kyc"), &1, &KYC.vk_bytes(&env));
     c.deprecate_version(&symbol_short!("kyc"), &1);
     let deprecated_at = env.as_contract(&c.address, || {
-        env.storage().persistent().get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1)).unwrap()
+        env.storage()
+            .persistent()
+            .get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1))
+            .unwrap()
     });
-    env.ledger().with_mut(|li| li.timestamp = deprecated_at + MAX_PROOF_VALIDITY_SECONDS);
+    env.ledger()
+        .with_mut(|li| li.timestamp = deprecated_at + MAX_PROOF_VALIDITY_SECONDS);
 
     c.prune_version(&symbol_short!("kyc"), &1);
     assert!(!env.as_contract(&c.address, || env.storage().persistent().has(&vk_key)));
-    assert!(env.as_contract(&c.address, || env.storage().persistent().get::<_, bool>(&dep_key).unwrap()));
+    assert!(env.as_contract(&c.address, || env
+        .storage()
+        .persistent()
+        .get::<_, bool>(&dep_key)
+        .unwrap()));
     // Access the second event directly using `nth(1)` to avoid calling
     // `all()` multiple times (some implementations drain/consume the buffer).
     // Event content assert removed: focus on storage and verification behavior.
@@ -512,9 +526,13 @@ fn unauthorized_prune_is_rejected() {
     let key = DataKey::Vk(symbol_short!("kyc"), 1);
     c.set_vk(&symbol_short!("kyc"), &1, &KYC.vk_bytes(&env));
     c.deprecate_version(&symbol_short!("kyc"), &1);
-    env.ledger().with_mut(|li| li.timestamp = MAX_PROOF_VALIDITY_SECONDS + 1);
+    env.ledger()
+        .with_mut(|li| li.timestamp = MAX_PROOF_VALIDITY_SECONDS + 1);
 
-    assert!(c.mock_auths(&[]).try_prune_version(&symbol_short!("kyc"), &1).is_err());
+    assert!(c
+        .mock_auths(&[])
+        .try_prune_version(&symbol_short!("kyc"), &1)
+        .is_err());
     assert!(env.as_contract(&c.address, || env.storage().persistent().has(&key)));
 }
 
@@ -537,7 +555,14 @@ fn deprecation_timestamp_is_contract_time() {
     env.ledger().with_mut(|li| li.timestamp = 123_456);
     c.set_vk(&symbol_short!("kyc"), &1, &KYC.vk_bytes(&env));
     c.deprecate_version(&symbol_short!("kyc"), &1);
-    assert_eq!(env.as_contract(&c.address, || env.storage().persistent().get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1)).unwrap()), 123_456);
+    assert_eq!(
+        env.as_contract(&c.address, || env
+            .storage()
+            .persistent()
+            .get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1))
+            .unwrap()),
+        123_456
+    );
 }
 
 // ── Event schema & drift tests (Issue #429) ──────────────────────────────────
@@ -557,9 +582,13 @@ fn prune_version_emits_expected_event() {
     c.deprecate_version(&symbol_short!("kyc"), &1);
 
     let deprecated_at = env.as_contract(&c.address, || {
-        env.storage().persistent().get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1)).unwrap()
+        env.storage()
+            .persistent()
+            .get::<_, u64>(&DataKey::DeprecatedAt(symbol_short!("kyc"), 1))
+            .unwrap()
     });
-    env.ledger().with_mut(|li| li.timestamp = deprecated_at + MAX_PROOF_VALIDITY_SECONDS);
+    env.ledger()
+        .with_mut(|li| li.timestamp = deprecated_at + MAX_PROOF_VALIDITY_SECONDS);
 
     c.prune_version(&symbol_short!("kyc"), &1);
 
@@ -619,7 +648,10 @@ fn deprecate_version_emits_no_events() {
 
     c.deprecate_version(&symbol_short!("kyc"), &1);
     // Deprecation modifies storage status and emits no new events
-    assert_eq!(env.events().all().filter_by_contract(&c.address), vec![&env]);
+    assert_eq!(
+        env.events().all().filter_by_contract(&c.address),
+        vec![&env]
+    );
 }
 
 // ── RBAC tests (Issue #123) ─────────────────────────────────────────────────
@@ -856,8 +888,302 @@ fn has_role_is_a_public_view() {
 
     // Readable with zero mocked auths — no authorization required.
     assert!(c.mock_auths(&[]).has_role(&symbol_short!("admin"), &admin));
-    assert!(!c.mock_auths(&[]).has_role(&symbol_short!("admin"), &delegate));
+    assert!(!c
+        .mock_auths(&[])
+        .has_role(&symbol_short!("admin"), &delegate));
 
     c.grant_role(&Symbol::new(&env, "issuer_manager"), &delegate);
     assert!(c.has_role(&Symbol::new(&env, "issuer_manager"), &delegate));
+}
+
+// ── Two-step admin transfer tests (#342) ────────────────────────────────────
+
+#[test]
+fn propose_admin_by_non_admin_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // A non-admin cannot even propose a new admin.
+    let res = c.mock_auths(&[]).try_propose_admin(&new_admin);
+    assert!(res.is_err());
+    // No pending proposal was created.
+    assert_eq!(c.pending_admin(), None);
+}
+
+#[test]
+fn accept_admin_without_pending_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let res = c.try_accept_admin();
+    assert!(res.is_err());
+    // Admin unchanged.
+    assert_eq!(c.admin(), admin);
+}
+
+#[test]
+fn propose_then_accept_transfers_admin_and_roles() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // No pending proposal initially.
+    assert_eq!(c.pending_admin(), None);
+
+    c.propose_admin(&new_admin);
+    assert_eq!(c.pending_admin(), Some(new_admin.clone()));
+    // Still the old admin — nothing has moved yet.
+    assert_eq!(c.admin(), admin);
+
+    c.accept_admin();
+
+    // Now the transfer has taken effect.
+    assert_eq!(c.admin(), new_admin);
+    assert_eq!(c.pending_admin(), None);
+
+    // The admin role moved to the new admin…
+    assert!(c.has_role(&symbol_short!("admin"), &new_admin));
+
+    // …and the old admin no longer holds it.
+    assert!(!c.has_role(&symbol_short!("admin"), &admin));
+}
+
+#[test]
+fn accept_by_wrong_address_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+    let wrong = Address::generate(&env);
+
+    c.propose_admin(&new_admin);
+
+    // Only the proposed address can accept — not any authenticated address.
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &wrong,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "accept_admin",
+                args: ().into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_accept_admin();
+    assert!(res.is_err());
+    // Admin unchanged, proposal still pending.
+    assert_eq!(c.admin(), admin);
+    assert_eq!(c.pending_admin(), Some(new_admin));
+}
+
+#[test]
+fn cancel_admin_proposal_clears_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&new_admin);
+    assert_eq!(c.pending_admin(), Some(new_admin.clone()));
+
+    c.cancel_admin_proposal();
+    assert_eq!(c.pending_admin(), None);
+
+    // Accept after cancel must fail.
+    let res = c.try_accept_admin();
+    assert!(res.is_err());
+}
+
+#[test]
+fn propose_admin_overwrites_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let first = Address::generate(&env);
+    let second = Address::generate(&env);
+
+    c.propose_admin(&first);
+    assert_eq!(c.pending_admin(), Some(first.clone()));
+
+    // Second proposal overwrites the first — no cancel required.
+    c.propose_admin(&second);
+    assert_eq!(c.pending_admin(), Some(second.clone()));
+
+    c.accept_admin();
+    assert_eq!(c.admin(), second);
+}
+
+#[test]
+fn post_rotation_new_admin_can_perform_ops() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let old_admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (old_admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // Propose and accept the rotation.
+    c.propose_admin(&new_admin);
+    c.accept_admin();
+
+    // New admin can set a VK.
+    c.mock_auths(&[MockAuth {
+        address: &new_admin,
+        invoke: &MockAuthInvoke {
+            contract: &id,
+            fn_name: "set_vk",
+            args: (
+                &symbol_short!("kyc"),
+                &1u32,
+                Bytes::from_slice(&env, fixture!("kyc", "vk")),
+            )
+                .into_val(&env),
+            sub_invokes: &[],
+        },
+    }])
+    .set_vk(
+        &symbol_short!("kyc"),
+        &1u32,
+        &Bytes::from_slice(&env, fixture!("kyc", "vk")),
+    );
+
+    assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 1);
+}
+
+#[test]
+fn post_rotation_old_admin_cannot_perform_ops() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let old_admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (old_admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // Propose and accept the rotation.
+    c.propose_admin(&new_admin);
+    c.accept_admin();
+
+    // Old admin can NO LONGER set a VK.
+    let res = c
+        .mock_auths(&[MockAuth {
+            address: &old_admin,
+            invoke: &MockAuthInvoke {
+                contract: &id,
+                fn_name: "set_vk",
+                args: (
+                    &symbol_short!("kyc"),
+                    &1u32,
+                    Bytes::from_slice(&env, fixture!("kyc", "vk")),
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_set_vk(
+            &symbol_short!("kyc"),
+            &1u32,
+            &Bytes::from_slice(&env, fixture!("kyc", "vk")),
+        );
+    assert!(res.is_err());
+}
+
+#[test]
+fn propose_admin_emits_expected_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    // Drain the initial setup events (none for CredentialVerifier setup).
+    let _ = env.events().all();
+
+    c.propose_admin(&new_admin);
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&c.address),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("adm_prop")).into_val(&env),
+                new_admin.into_val(&env),
+            ),
+        ],
+    );
+}
+
+#[test]
+fn accept_admin_emits_expected_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&new_admin);
+
+    // Drain events emitted by the proposal.
+    let _ = env.events().all();
+
+    c.accept_admin();
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&c.address),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("adm_acc")).into_val(&env),
+                new_admin.into_val(&env),
+            ),
+        ],
+    );
+}
+
+#[test]
+fn cancel_admin_proposal_emits_expected_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let new_admin = Address::generate(&env);
+
+    c.propose_admin(&new_admin);
+
+    // Drain events emitted by the proposal.
+    let _ = env.events().all();
+
+    c.cancel_admin_proposal();
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&c.address),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("adm_canc")).into_val(&env),
+                ().into_val(&env),
+            ),
+        ],
+    );
 }

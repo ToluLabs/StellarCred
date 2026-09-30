@@ -36,6 +36,7 @@ governs:
 
 | Artifact | Where | Current version |
 |---|---|---|
+| Noir circuit logic | `circuits/circuit-versions.json` | per-circuit `MAJOR.MINOR.PATCH` |
 | Verification key (VK) per credential type | `CredentialVerifier` on-chain | type-specific `u32` counter |
 | Proof record schema | `ProofRegistry` on-chain | `PROOF_RECORD_SCHEMA_VERSION = 1` |
 | Contract ABI | each Soroban contract | `CONTRACT_VERSION = 1_000_000` (1.0.0) |
@@ -45,6 +46,32 @@ governs:
 ---
 
 ## Versioned Artifacts
+
+### Circuits
+
+Each credential circuit has a declared version in
+`circuits/circuit-versions.json`, paired with the VK version it is deployed
+under. The two answer different questions and a support decision needs both:
+
+* **Circuit version** — *which logic* can express a credential. Bumped when a
+  change can alter the public-input layout or the constraints enforced.
+* **VK version** — *which key* on-chain accepts a proof. Bumped whenever the
+  circuit is recompiled into a new key.
+
+A credential records the circuit version it was issued against at mint time
+(`circuitVersion`, with `circuitVkVersion` alongside it), and the app checks it
+before proving. This is the credential → circuit → VK chain made explicit: a
+credential cannot be silently unprovable after a circuit upgrade, because the
+mismatch is reported before a witness is ever built rather than surfacing as a
+failed proof.
+
+Support consequences follow the same rules as VK versions: bump the circuit
+MAJOR when existing credentials become unprovable, and those credentials must be
+re-issued. Bump MINOR or PATCH for changes that keep existing credentials
+valid. The bump procedure and its CI enforcement are documented in
+[circuits/README.md](circuits/README.md#circuit-versions); VK deprecation and
+pruning timelines are unchanged and still govern how long the *old* key stays
+available.
 
 ### Verification Keys (VK)
 

@@ -875,7 +875,7 @@ fields 33–64  issuer_y   (secp256k1 Y, one byte per field in low byte)`}</Code
               credential on the Holder page) and choose{" "}
               <strong style={{color:"var(--text)"}}>Transfer to another device</strong>. You pick a
               passphrase and the app shows a QR code; the credential is encrypted with that
-              passphrase (AES-256-GCM, key derived via PBKDF2 — see <Code>lib/crypto.ts</Code>)
+              passphrase (AES-256-GCM, key derived via PBKDF2 — see <Code>lib/credential-crypto.ts</Code>)
               before it ever becomes a QR code, so the code alone reveals nothing. On the other
               device, scan the QR and enter the same passphrase to import.
             </P>

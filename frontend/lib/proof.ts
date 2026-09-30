@@ -24,12 +24,22 @@
 // to the worker path — only the thread differs.
 
 import type { CredentialType } from "./stellar";
+import { assertCredentialCircuitCompatible, CircuitVersionMismatchError } from "./circuit-versions";
 
 /** The compiled Noir circuit artifact emitted by circuits/scripts/build.sh to
  * /public/circuits/<type>.json.
  */
 export interface CircuitArtifact {
   bytecode: string;
+  /**
+   * Declared circuit version (issue #633), stamped into the artifact by
+   * circuits/scripts/stamp-circuit-version.js from
+   * circuits/circuit-versions.json. Present on every artifact built after
+   * versioning was introduced; older artifacts simply lack it.
+   */
+  circuit_version?: string;
+  /** The `CredentialVerifier` VK counter paired with `circuit_version`. */
+  circuit_vk_version?: number;
 }
 
 export interface GeneratedProof {
@@ -200,6 +210,16 @@ export async function destroyAllBackends(): Promise<void> {
   await Promise.all(Array.from(backendCache.keys()).map(destroyBackend));
 }
 
+/** Pull the human-readable `error` out of a JSON API body, if it is one. */
+function extractErrorMessage(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === "string" && parsed.error.length > 0 ? parsed.error : null;
+  } catch {
+    return null;
+  }
+}
+
 // Stage 1 — server computes the witness (Noir circuit execution).
 // Exported so ProofFlow can report progress between stages.
 // When signal is provided, fetch abort cancels the server-side witness computation.
@@ -208,6 +228,15 @@ export async function computeWitness(
   credential: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  // Circuit-compatibility gate (#633), before any work is spent. A credential
+  // issued against a superseded circuit version may no longer be expressible by
+  // the circuit this build serves, and the only way to find that out from the
+  // witness alone is an opaque Noir failure. Checking the recorded version here
+  // turns it into a message that names both versions. This is also the path
+  // the prover worker takes, so the guard applies on both the worker and the
+  // main-thread fallback.
+  assertCredentialCircuitCompatible(credential, type);
+
   const res = await fetch("/api/witness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -216,6 +245,15 @@ export async function computeWitness(
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
+    // The server owns the compiled circuits, so its verdict is authoritative
+    // when it disagrees with this build's registry (a deploy skewed between the
+    // two, or an older client that does not carry the check). Surface its
+    // explanation as a CircuitVersionMismatchError rather than burying it in a
+    // generic "witness generation failed" string.
+    if (/circuit_version_mismatch/.test(msg)) {
+      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
+      throw new CircuitVersionMismatchError(detail);
+    }
     throw new Error(`Witness generation failed: ${msg}`);
   }
   const { witness: hex } = (await res.json()) as { witness: string };
@@ -316,6 +354,14 @@ export async function computeAggregateWitness(
   inputs: AggregateInput,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  // The aggregate circuit re-verifies the KYC and age claims itself, so both
+  // inner credentials must be provable by their own circuits under their own
+  // versions. Check each before spending witness-generation time; the type
+  // override is required because the merged payload below is keyed
+  // `kyc_*`/`age_*` and carries no `type` of its own.
+  assertCredentialCircuitCompatible(inputs.kyc, "kyc");
+  assertCredentialCircuitCompatible(inputs.age, "age");
+
   // Build the merged credential object with prefixed keys matching the aggregate
   // circuit's parameter names. Noir treats `pub` parameters as ordinary witness
   // inputs too — the backend never derives them from the private inputs — so the
@@ -353,6 +399,12 @@ export async function computeAggregateWitness(
     // ── Metadata (public) ───────────────────────────────────────────────────
     // The PoC circuit asserts num_credentials == 2.
     num_credentials: "2",
+    // Circuit version each inner credential was issued against. buildInputs
+    // ignores these (they are not circuit inputs), but the witness route reads
+    // them to enforce the same compatibility gate on the aggregate path that
+    // single proofs get.
+    kyc_circuitVersion: inputs.kyc.circuitVersion,
+    age_circuitVersion: inputs.age.circuitVersion,
   };
 
   const res = await fetch("/api/witness", {
@@ -363,6 +415,10 @@ export async function computeAggregateWitness(
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
+    if (/circuit_version_mismatch/.test(msg)) {
+      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
+      throw new CircuitVersionMismatchError(detail);
+    }
     throw new Error(`Aggregate witness generation failed: ${msg}`);
   }
   const { witness: hex } = (await res.json()) as { witness: string };

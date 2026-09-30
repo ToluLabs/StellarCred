@@ -6,6 +6,12 @@
 #   vk, proof, public_inputs   the UltraHonk artifacts (bb)
 # The vk is what you deploy into CredentialVerifier.set_vk(<type>, vk).
 #
+# Each staged artifact is also stamped with the circuit version declared in
+# circuits/circuit-versions.json, so the browser can tell which circuit a
+# credential was issued against (#633). The credential-type filename and the
+# version table are both resolved through circuits/scripts/circuit-versions.js
+# so they cannot drift apart.
+#
 # Requires the EXACT versions the on-chain verifier was built against, or the VK
 # will not validate proofs:
 #   noirup -v 1.0.0-beta.9        (Noir / nargo)
@@ -22,21 +28,18 @@ export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
 command -v nargo >/dev/null || { echo "nargo not found — run: noirup -v $NOIR_VERSION"; exit 1; }
 command -v bb >/dev/null    || { echo "bb not found — run: bbup -v $BB_VERSION"; exit 1; }
 
-# Map circuit directory -> frontend credential-type filename (bash 3.2 safe).
+# Map circuit directory -> frontend credential-type filename. Resolved from the
+# shared version module rather than duplicated here, so the two never disagree
+# (e.g. a new circuit would otherwise get a filename nobody versioned).
 type_of() {
-  case "$1" in
-    kyc_proof) echo kyc ;;
-    age_proof) echo age ;;
-    income_proof) echo income ;;
-    jurisdiction_proof) echo jurisdiction ;;
-    funds_proof) echo funds ;;
-    accreditation_proof) echo accreditation ;;
-    range_proof) echo range ;;
-    employment_proof) echo employment ;;
-    aggregate_proof) echo aggregate ;;
-    set_membership) echo set_membership ;;
-    *) echo "$1" ;;
-  esac
+  # Absolute path: build() runs from the circuit's own directory via pushd.
+  node -e 'process.stdout.write(require(process.argv[1]).typeOfCircuit(process.argv[2]))' \
+    "$ROOT/scripts/circuit-versions.js" "$1"
+}
+
+# Stamp the declared circuit version into a staged compiled artifact.
+stamp_version() {
+  node "$ROOT/scripts/stamp-circuit-version.js" stamp "$1" "$2"
 }
 
 REPO="$(cd "$ROOT/.." && pwd)"
@@ -64,7 +67,9 @@ build() {
   local gz="$ROOT/target/${name}.gz"
 
   # The commit helpers are only ever executed (to derive commitments), never
-  # proven — compile and stage their JSON, nothing else.
+  # proven and never registered on-chain, so they have no VK to version against
+  # and are deliberately not stamped. Every other circuit IS proven, and
+  # stamp_version below fails loudly if it has no declared version.
   case "$name" in
     commit|commit3)
       nargo compile
@@ -87,6 +92,7 @@ build() {
   mkdir -p "$FIXTURES/$type"
   cp target/vk "$FIXTURES/$type/vk"
   cp "$json" "$FRONTEND_CIRCUITS/${type}.json"
+  stamp_version "$name" "$FRONTEND_CIRCUITS/${type}.json"
   echo "  -> fixtures/${type}/vk"
   echo "  -> frontend/public/circuits/${type}.json"
 

@@ -3,7 +3,7 @@ use proptest::prelude::*;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events as _, Ledger as _},
-    vec, Address, Env, IntoVal,
+    token, vec, Address, Env, IntoVal,
 };
 use test_support::{Contracts, GatedPoolClient, FUNDS, KYC};
 
@@ -299,4 +299,125 @@ fn withdraw_emits_event() {
     // Verify balance was updated
     assert_eq!(h.pool.get_balance(&user), 300);
 }
+
+struct TokenHarness {
+    c: Contracts,
+    pool: GatedPoolClient<'static>,
+    token: token::Client<'static>,
+    token_admin: token::StellarAssetClient<'static>,
+    issuer: Address,
+}
+
+fn deploy_with_token(env: &Env) -> TokenHarness {
+    let c = Contracts::deploy(env);
+    let issuer = c.register_issuer_for(env, &KYC, &["kyc", "funds"]);
+    c.enable_vks(env, &[&KYC, &FUNDS]);
+
+    let token_admin = Address::generate(env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_addr = token_contract.address();
+
+    let pool_id = env.register(
+        GatedPool,
+        (
+            c.registry.address.clone(),
+            symbol_short!("kyc"),
+            None::<Option<u64>>,
+            Some(token_addr.clone()),
+        ),
+    );
+
+    TokenHarness {
+        c,
+        pool: GatedPoolClient::new(env, &pool_id),
+        token: token::Client::new(env, &token_addr),
+        token_admin: token::StellarAssetClient::new(env, &token_addr),
+        issuer,
+    }
+}
+
+#[test]
+fn test_token_address_query() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let th = deploy_with_token(&env);
+    assert_eq!(th.pool.token_address(), Some(th.token.address));
+
+    let h = deploy(&env);
+    assert_eq!(h.pool.token_address(), None);
+}
+
+#[test]
+fn test_real_token_deposit_and_withdraw_success() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let th = deploy_with_token(&env);
+    let user = Address::generate(&env);
+
+    // Mint 1000 tokens to user
+    th.token_admin.mint(&user, &1000);
+    assert_eq!(th.token.balance(&user), 1000);
+    assert_eq!(th.token.balance(&th.pool.address), 0);
+
+    // Submit KYC proof to registry
+    th.c.submit(&env, &user, &th.issuer, &KYC, 1_000_000);
+
+    // User deposits 400 into pool
+    th.pool.deposit(&user, &400);
+
+    // Token balances transferred
+    assert_eq!(th.token.balance(&user), 600);
+    assert_eq!(th.token.balance(&th.pool.address), 400);
+    assert_eq!(th.pool.get_balance(&user), 400);
+
+    // User withdraws 150 from pool
+    th.pool.withdraw(&user, &150);
+
+    // Token balances updated
+    assert_eq!(th.token.balance(&user), 750);
+    assert_eq!(th.token.balance(&th.pool.address), 250);
+    assert_eq!(th.pool.get_balance(&user), 250);
+}
+
+#[test]
+#[should_panic]
+fn test_real_token_deposit_fails_when_user_has_insufficient_tokens() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let th = deploy_with_token(&env);
+    let user = Address::generate(&env);
+
+    // Mint only 50 tokens
+    th.token_admin.mint(&user, &50);
+
+    th.c.submit(&env, &user, &th.issuer, &KYC, 1_000_000);
+
+    // Attempting to deposit 100 should panic / fail due to token balance
+    th.pool.deposit(&user, &100);
+}
+
+#[test]
+#[should_panic]
+fn test_real_token_withdraw_fails_when_pool_has_insufficient_tokens() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let th = deploy_with_token(&env);
+    let user = Address::generate(&env);
+
+    th.token_admin.mint(&user, &200);
+
+    th.c.submit(&env, &user, &th.issuer, &KYC, 1_000_000);
+
+    th.pool.deposit(&user, &200);
+    assert_eq!(th.pool.get_balance(&user), 200);
+
+    // Forcibly drain the pool's token balance to simulate token shortage
+    let thief = Address::generate(&env);
+    th.token.transfer(&th.pool.address, &thief, &200);
+    assert_eq!(th.token.balance(&th.pool.address), 0);
+
+    // User attempts to withdraw: should fail because pool doesn't have the tokens
+    th.pool.withdraw(&user, &100);
+}
+
 

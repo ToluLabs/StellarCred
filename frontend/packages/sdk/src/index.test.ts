@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const isVerified = vi.fn();
 const checkClaim = vi.fn();
@@ -28,6 +28,7 @@ import {
   hasClaim,
   getClaims,
   getClaimRecord,
+  buildVerifyUrl,
   checkClaimStatus,
   verifyPreset,
   ConfigError,
@@ -54,7 +55,7 @@ describe("error taxonomy exports", () => {
   });
 });
 
-describe("hasClaim — address validation", () => {
+describe("hasClaim â€” address validation", () => {
   beforeEach(() => {
     isVerified.mockReset();
     checkClaim.mockReset();
@@ -116,7 +117,7 @@ describe("hasClaim — address validation", () => {
   });
 });
 
-describe("hasClaim — fail-soft default", () => {
+describe("hasClaim â€” fail-soft default", () => {
   beforeEach(() => {
     isVerified.mockReset();
     checkClaim.mockReset();
@@ -153,7 +154,7 @@ describe("hasClaim — fail-soft default", () => {
   });
 });
 
-describe("hasClaim — throwOnError", () => {
+describe("hasClaim â€” throwOnError", () => {
   beforeEach(() => {
     isVerified.mockReset();
     checkClaim.mockReset();
@@ -265,7 +266,7 @@ describe("read request timeout", () => {
   });
 });
 
-describe("getClaims — address validation", () => {
+describe("getClaims â€” address validation", () => {
   beforeEach(() => {
     isVerified.mockReset();
     checkClaim.mockReset();
@@ -296,7 +297,7 @@ describe("getClaims — address validation", () => {
   });
 });
 
-describe("getClaims — throwOnError", () => {
+describe("getClaims â€” throwOnError", () => {
   beforeEach(() => {
     isVerified.mockReset();
   });
@@ -388,7 +389,7 @@ describe("SDK withRetry with exponential backoff", () => {
   });
 });
 
-// ── verifyPreset (#386) ──────────────────────────────────────────────────────
+// â”€â”€ verifyPreset (#386) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe("verifyPreset", () => {
   beforeEach(() => {
@@ -451,7 +452,7 @@ describe("verifyPreset", () => {
   });
 });
 
-// ── Client/server boundary warning (Issue #535) ─────────────────────────────
+// â”€â”€ Client/server boundary warning (Issue #535) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe("warnOnClientServerBoundaryViolation", () => {
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
@@ -477,14 +478,14 @@ describe("warnOnClientServerBoundaryViolation", () => {
   });
 
   it("does NOT warn in a non-browser (Node.js) context even with server-only env vars", () => {
-    // In vitest/Node, `window` is not defined — simulates a real Node.js environment.
+    // In vitest/Node, `window` is not defined â€” simulates a real Node.js environment.
     // Ensure window is absent.
     delete (globalThis as Record<string, unknown>).window;
     process.env["STELLARCRED_REGISTRY_ID"] = "C_SERVER_REGISTRY";
 
     configure({ registryId: "C_SERVER_REGISTRY" });
 
-    // No boundary warning should fire — we're in Node, not a browser.
+    // No boundary warning should fire â€” we're in Node, not a browser.
     const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
       typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
     );
@@ -568,7 +569,7 @@ describe("warnOnClientServerBoundaryViolation", () => {
   });
 });
 
-describe("checkClaimStatus and getClaimRecord — failure state handling", () => {
+describe("checkClaimStatus and getClaimRecord â€” failure state handling", () => {
   beforeEach(() => {
     getRecord.mockReset();
     configure({ registryId: "C_TEST_REGISTRY" });
@@ -696,5 +697,41 @@ describe("checkClaimStatus and getClaimRecord — failure state handling", () =>
       threshold: 21,
       vkVersion: 2,
     });
+  });
+});
+describe("buildVerifyUrl expiry + single-use", () => {
+  const base = { returnUrl: "https://proto.example/cb", claim: "kyc" as const };
+
+  it("defaults to a link with no exp and no jti (legacy behaviour)", () => {
+    const u = new URL(buildVerifyUrl(base));
+    expect(u.searchParams.has("exp")).toBe(false);
+    expect(u.searchParams.has("jti")).toBe(false);
+  });
+
+  it("sets exp = now + expiresInMinutes*60 when expiresInMinutes is given", () => {
+    const before = Math.floor(Date.now() / 1000);
+    const u = new URL(buildVerifyUrl({ ...base, expiresInMinutes: 5 }));
+    const after = Math.floor(Date.now() / 1000);
+    const exp = Number(u.searchParams.get("exp"));
+    expect(exp).toBeGreaterThanOrEqual(before + 300);
+    expect(exp).toBeLessThanOrEqual(after + 300);
+  });
+
+  it("rejects a non-positive expiresInMinutes", () => {
+    expect(() => buildVerifyUrl({ ...base, expiresInMinutes: 0 })).toThrow();
+    expect(() => buildVerifyUrl({ ...base, expiresInMinutes: -5 })).toThrow();
+  });
+
+  it("sets a URL-safe jti when singleUse is true", () => {
+    const u = new URL(buildVerifyUrl({ ...base, singleUse: true }));
+    const jti = u.searchParams.get("jti");
+    expect(jti).toBeTruthy();
+    expect(jti!).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
+  });
+
+  it("produces distinct jti values across calls", () => {
+    const a = new URL(buildVerifyUrl({ ...base, singleUse: true })).searchParams.get("jti");
+    const b = new URL(buildVerifyUrl({ ...base, singleUse: true })).searchParams.get("jti");
+    expect(a).not.toBe(b);
   });
 });
