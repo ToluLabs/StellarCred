@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import * as fromIndex from "./index";
 import * as fromClaims from "./claims";
 import * as fromChallenge from "./challenge";
+import * as fromUniqueness from "./uniqueness";
 
 // â”€â”€ Claim-checking functions (sourced from claims.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -51,6 +52,12 @@ const CHALLENGE_EXPORTS = [
   "verifyWalletClaim",
 ] as const;
 
+const UNIQUENESS_EXPORTS = [
+  "canonicalizeUniquenessPayload",
+  "createUniquenessAttestation",
+  "sameUniquenessSubject",
+] as const;
+
 describe("entry-point parity (issue #609 / #522)", () => {
   beforeEach(() => {
     fromClaims.resetConfig();
@@ -82,7 +89,20 @@ describe("entry-point parity (issue #609 / #522)", () => {
     });
   }
 
-  // â”€â”€ StellarCred namespace holds same references â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── uniqueness.ts exports re-exported identically by index.ts ─────────────
+
+  for (const name of UNIQUENESS_EXPORTS) {
+    it(`index.ts re-exports the same ${name} reference as uniqueness.ts`, () => {
+      const fromIndexValue = (fromIndex as Record<string, unknown>)[name];
+      const fromUniquenessValue = (fromUniqueness as Record<string, unknown>)[name];
+
+      expect(fromIndexValue).toBeDefined();
+      expect(fromUniquenessValue).toBeDefined();
+      expect(fromIndexValue).toBe(fromUniquenessValue);
+    });
+  }
+
+  // ── StellarCred namespace holds same references ────────────────────────────
 
   it("StellarCred namespace members are the same references as claims.ts exports", () => {
     const ns = fromIndex.StellarCred;
@@ -116,6 +136,16 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.createWalletChallenge).toBe(fromChallenge.createWalletChallenge);
     expect(ns.verifyWalletSignature).toBe(fromChallenge.verifyWalletSignature);
     expect(ns.verifyWalletClaim).toBe(fromChallenge.verifyWalletClaim);
+  });
+
+  it("StellarCred namespace members are the same references as uniqueness.ts exports", () => {
+    const ns = fromIndex.StellarCred;
+
+    expect(ns.canonicalizeUniquenessPayload).toBe(
+      fromUniqueness.canonicalizeUniquenessPayload,
+    );
+    expect(ns.createUniquenessAttestation).toBe(fromUniqueness.createUniquenessAttestation);
+    expect(ns.sameUniquenessSubject).toBe(fromUniqueness.sameUniquenessSubject);
   });
 
   it("default export equals the StellarCred named export", () => {

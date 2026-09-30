@@ -42,6 +42,8 @@
     "test:integration": "vitest run test/integration.test.ts",
     "typecheck": "tsc --noEmit",
     "docs:api": "typedoc",
+    "bundle:budget": "node scripts/check-bundle-budget.mjs",
+    "bundle:report": "node scripts/report-bundle-composition.mjs",
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {

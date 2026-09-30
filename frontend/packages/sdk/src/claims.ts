@@ -469,16 +469,7 @@ export interface ClaimOptions {
   requestTimeoutMs?: number;
   throwOnError?: boolean;
   retryOptions?: RetryOptions;
-  /**
-   * Where to read from. Defaults to `"chain"`.
-   *
-   * ⚠️ `"indexer"` reads come from an operator-run off-chain cache, not from
-   * ProofRegistry. They are faster but can be stale or wrong, and **must not be
-   * the sole basis for a security decision** — gate-critical checks should use
-   * `"chain"`, or `"indexer-verified"` to keep the chain as the authority.
-   * Requires `indexerUrl` to be configured. See {@link ClaimSource}.
-   */
-  source?: ClaimSource;
+  dryRun?: DryRunOptions;
 }
 
 export interface Claim {
@@ -493,8 +484,7 @@ export interface BatchClaimOptions {
   requestTimeoutMs?: number;
   throwOnError?: boolean;
   retryOptions?: RetryOptions;
-  /** See the warning on {@link ClaimOptions.source}. */
-  source?: ClaimSource;
+  dryRun?: DryRunOptions;
 }
 
 export interface PresetClaim {
@@ -512,6 +502,7 @@ export type CredentialFailureReason =
   | "expired"
   | "revoked"
   | "wrong_issuer"
+  | "untrusted_issuer"
   | "unmet_threshold";
 
 export interface ProofRecordDetails {
@@ -525,9 +516,30 @@ export interface ProofRecordDetails {
 
 export interface CredentialStatusResult {
   valid: boolean;
-  status: "verified" | CredentialFailureReason;
+  status: "verified" | "rpc_failure" | CredentialFailureReason;
   record?: ProofRecordDetails | null;
   error?: string;
+}
+
+export type DryRunClaimState = CredentialStatusResult["status"];
+
+export interface DryRunClaimFixture {
+  wallet?: string;
+  claimType: string;
+  state: DryRunClaimState;
+  verifiedAt?: number;
+  expiry?: number;
+  revoked?: boolean;
+  issuer?: string;
+  threshold?: number;
+  vkVersion?: number;
+  error?: string;
+}
+
+export interface DryRunOptions {
+  enabled: true;
+  claims: DryRunClaimFixture[];
+  nowSeconds?: number;
 }
 
 
@@ -577,6 +589,105 @@ export function validateThreshold(minThreshold: number | undefined): void {
       `Invalid minThreshold: ${minThreshold}. Threshold must be a non-negative integer.`,
     );
   }
+}
+
+function dryRunFixtureFor(
+  wallet: string,
+  claimType: string,
+  dryRun?: DryRunOptions,
+): DryRunClaimFixture | null {
+  if (!dryRun?.enabled) return null;
+  const normalizedWallet = wallet.trim();
+  return (
+    dryRun.claims.find(
+      (fixture) =>
+        fixture.claimType === claimType &&
+        (!fixture.wallet || fixture.wallet.trim() === normalizedWallet),
+    ) ?? null
+  );
+}
+
+function dryRunStatus(
+  wallet: string,
+  claimType: string,
+  opts?: ClaimOptions,
+): CredentialStatusResult | null {
+  const fixture = dryRunFixtureFor(wallet, claimType, opts?.dryRun);
+  if (!fixture) {
+    return opts?.dryRun?.enabled
+      ? {
+          valid: false,
+          status: "not_verified",
+          record: null,
+          error: `Dry-run fixture missing for "${claimType}".`,
+        }
+      : null;
+  }
+
+  const nowSeconds = opts?.dryRun?.nowSeconds ?? Math.floor(Date.now() / 1000);
+  const record: ProofRecordDetails = {
+    verifiedAt: fixture.verifiedAt ?? nowSeconds,
+    expiry:
+      fixture.expiry ??
+      (fixture.state === "expired" ? nowSeconds - 1 : nowSeconds + 86_400),
+    revoked: fixture.revoked ?? fixture.state === "revoked",
+    issuer: fixture.issuer,
+    threshold: fixture.threshold,
+    vkVersion: fixture.vkVersion ?? 1,
+  };
+
+  if (fixture.state === "verified") {
+    if (record.expiry <= nowSeconds) {
+      return {
+        valid: false,
+        status: "expired",
+        record,
+        error: `Dry-run credential "${claimType}" is expired.`,
+      };
+    }
+    if (record.revoked) {
+      return {
+        valid: false,
+        status: "revoked",
+        record,
+        error: `Dry-run credential "${claimType}" is revoked.`,
+      };
+    }
+    if (opts?.trustedIssuers?.length) {
+      if (!record.issuer || !opts.trustedIssuers.includes(record.issuer)) {
+        return {
+          valid: false,
+          status: "untrusted_issuer",
+          record,
+          error: `Dry-run issuer "${record.issuer ?? "unknown"}" is not trusted.`,
+        };
+      }
+    }
+    if (opts?.minThreshold !== undefined) {
+      const provenThreshold = record.threshold ?? 0;
+      if (provenThreshold < opts.minThreshold) {
+        return {
+          valid: false,
+          status: "unmet_threshold",
+          record,
+          error: `Dry-run threshold (${provenThreshold}) is less than required minimum (${opts.minThreshold}).`,
+        };
+      }
+    }
+    return { valid: true, status: "verified", record };
+  }
+
+  return {
+    valid: false,
+    status: fixture.state,
+    record:
+      fixture.state === "not_verified" || fixture.state === "rpc_failure"
+        ? null
+        : record,
+    error:
+      fixture.error ??
+      `Dry-run fixture for "${claimType}" returned ${fixture.state}.`,
+  };
 }
 
 let _client: Promise<ProofRegistryClient> | null = null;
@@ -1123,10 +1234,20 @@ export async function hasClaim(
   claimType: string,
   opts?: ClaimOptions,
 ): Promise<boolean> {
-  // An indexer-only read does not touch ProofRegistry, so a missing registryId
-  // is not a problem worth warning about.
-  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
   const throwOnError = opts?.throwOnError === true;
+
+  if (opts?.dryRun?.enabled) {
+    if (opts?.minThreshold !== undefined) {
+      validateThreshold(opts.minThreshold);
+    }
+    const result = dryRunStatus(wallet, claimType, opts);
+    if (result?.status === "rpc_failure" && throwOnError) {
+      throw new RpcError(result.error ?? "Dry-run RPC failure");
+    }
+    return result?.valid === true;
+  }
+
+  warnIfMissingRegistryIdOnce();
 
   let normalizedWallet: string;
   try {
@@ -1175,9 +1296,23 @@ export async function hasClaim(
 export async function getClaim(
   wallet: string,
   claimType: string,
-  opts?: Pick<ClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
+  opts?: Pick<
+    ClaimOptions,
+    "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "dryRun"
+  >,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
-  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
+  if (opts && "dryRun" in opts && opts.dryRun?.enabled) {
+    const result = dryRunStatus(wallet, claimType, opts as ClaimOptions);
+    return result?.valid && result.record
+      ? {
+          valid: true,
+          verifiedAt: result.record.verifiedAt,
+          expiry: result.record.expiry,
+        }
+      : null;
+  }
+
+  warnIfMissingRegistryIdOnce();
 
   let normalizedWallet: string;
   try {
@@ -1206,8 +1341,12 @@ export async function getClaim(
 export async function getClaimRecord(
   wallet: string,
   claimType: string,
-  opts?: Pick<ClaimOptions, "requestTimeoutMs" | "throwOnError" | "retryOptions">,
+  opts?: Pick<ClaimOptions, "requestTimeoutMs" | "throwOnError" | "retryOptions" | "dryRun">,
 ): Promise<ProofRecordDetails | null> {
+  if (opts && "dryRun" in opts && opts.dryRun?.enabled) {
+    return dryRunStatus(wallet, claimType, opts as ClaimOptions)?.record ?? null;
+  }
+
   warnIfMissingRegistryIdOnce();
 
   let normalizedWallet: string;
@@ -1237,8 +1376,27 @@ export async function checkClaimStatus(
   claimType: string,
   opts?: ClaimOptions,
 ): Promise<CredentialStatusResult> {
-  warnIfMissingRegistryIdOnce();
   const throwOnError = opts?.throwOnError === true;
+
+  if (opts?.dryRun?.enabled) {
+    if (opts?.minThreshold !== undefined) {
+      validateThreshold(opts.minThreshold);
+    }
+    const result = dryRunStatus(wallet, claimType, opts);
+    if (result?.status === "rpc_failure" && throwOnError) {
+      throw new RpcError(result.error ?? "Dry-run RPC failure");
+    }
+    return (
+      result ?? {
+        valid: false,
+        status: "not_verified",
+        record: null,
+        error: `Dry-run fixture missing for "${claimType}".`,
+      }
+    );
+  }
+
+  warnIfMissingRegistryIdOnce();
 
   let normalizedWallet: string;
   try {
@@ -1343,10 +1501,30 @@ export async function hasClaims(
   types: readonly ClaimType[],
   opts?: BatchClaimOptions,
 ): Promise<Partial<Record<ClaimType, boolean>>> {
-  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
-
   const unique = Array.from(new Set(types));
   const results: Partial<Record<ClaimType, boolean>> = {};
+
+  if (opts?.dryRun?.enabled) {
+    for (const type of unique) {
+      const minThreshold = opts.minThresholds?.[type];
+      if (minThreshold !== undefined) {
+        validateThreshold(minThreshold);
+      }
+      const result = dryRunStatus(wallet, type, {
+        minThreshold,
+        trustedIssuers: opts.trustedIssuers,
+        throwOnError: opts.throwOnError,
+        dryRun: opts.dryRun,
+      });
+      if (result?.status === "rpc_failure" && opts.throwOnError) {
+        throw new RpcError(result.error ?? "Dry-run RPC failure");
+      }
+      results[type] = result?.valid === true;
+    }
+    return results;
+  }
+
+  warnIfMissingRegistryIdOnce();
 
   let normalizedWallet: string;
   try {
@@ -1431,10 +1609,20 @@ export async function verifyPreset(
  */
 export async function getClaims(
   wallet: string,
-  opts?: Pick<ClaimOptions, "throwOnError" | "requestTimeoutMs" | "retryOptions" | "source">,
+  opts?: Pick<ClaimOptions, "throwOnError" | "requestTimeoutMs" | "retryOptions" | "dryRun">,
 ): Promise<Claim[]> {
-  if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
   const throwOnError = opts?.throwOnError === true;
+
+  if (opts?.dryRun?.enabled) {
+    return CLAIM_TYPES.flatMap((type) => {
+      const result = dryRunStatus(wallet, type, { dryRun: opts.dryRun });
+      return result?.valid && result.record
+        ? [{ type, verifiedAt: result.record.verifiedAt, expiry: result.record.expiry }]
+        : [];
+    });
+  }
+
+  warnIfMissingRegistryIdOnce();
 
   let normalizedWallet: string;
   try {

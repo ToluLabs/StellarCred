@@ -131,6 +131,33 @@ const incomeOk = await StellarCred.hasClaim(wallet, "income", {
 });
 ```
 
+#### Dry-run mode for integrators
+
+Use `dryRun` when wiring gates, quotas, or test environments before real
+credentials exist. It is explicit per call, accepts named fixture states, and
+never talks to RPC.
+
+```ts
+const dryRun = {
+  enabled: true,
+  claims: [
+    { wallet: "demo-wallet", claimType: "kyc", state: "verified", issuer: "G...ISSUER" },
+    { wallet: "demo-wallet", claimType: "funds", state: "unmet_threshold", threshold: 100 },
+  ],
+} as const;
+
+const ok = await StellarCred.hasClaim("demo-wallet", "kyc", { dryRun });
+const status = await StellarCred.checkClaimStatus("demo-wallet", "funds", {
+  dryRun,
+  minThreshold: 1000,
+});
+```
+
+Supported fixture states are `verified`, `not_verified`, `expired`, `revoked`,
+`unmet_threshold`, `untrusted_issuer`, `wrong_issuer`, and `rpc_failure`.
+`rpc_failure` returns `false` by default and throws `RpcError` when
+`throwOnError: true` is used, matching live RPC behavior.
+
 ### `getClaim(wallet, claimType, opts?)`
 
 Returns the full claim record with `verifiedAt` and `expiry` timestamps, or `null` if the wallet has no current proof of that type. Respects `trustedIssuers`.
@@ -240,6 +267,41 @@ const claims = await StellarCred.getClaims(wallet);
 //   funds:        { verified: false },
 // }
 ```
+
+### `createUniquenessAttestation(input)`
+
+Creates a deterministic, campaign-scoped nullifier for leaderboard-safe
+airdrops and quota systems. The wallet is included in the attestation object for
+auditability, while protocols store or compare only the `nullifier` when they
+need proof-of-uniqueness without exposing raw claim details in public rankings.
+
+```ts
+const attestation = await StellarCred.createUniquenessAttestation({
+  wallet,
+  campaignId: "founders-airdrop-1",
+  scope: "leaderboard",
+  epoch: "2026-09",
+});
+
+await claimAirdrop({ nullifier: attestation.nullifier });
+```
+
+Use separate `scope` values for `airdrop`, `quota`, and `leaderboard` contexts
+so the same holder cannot be correlated across unrelated protocol surfaces.
+
+## Bundle visibility
+
+The SDK has local bundle guards that do not require CI workflow permissions:
+
+```bash
+pnpm build
+pnpm bundle:budget   # fail if browser/server entrypoints exceed budget
+pnpm bundle:report   # write BUNDLE_COMPOSITION.md with output shares
+```
+
+Run these before PRs that touch SDK imports, exports, or dependencies. The
+package keeps `"sideEffects": false` so browser bundlers can tree-shake unused
+helpers from the main entrypoint.
 
 ### `watchClaim(wallet, claimType, opts?)`
 
