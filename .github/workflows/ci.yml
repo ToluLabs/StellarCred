@@ -635,7 +635,7 @@ jobs:
       # rebuilding. The artifact is scoped to the current SHA so it is always
       # the exact output from the frontend job above.
       - name: Download frontend build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-build-${{ github.sha }}
           path: frontend
