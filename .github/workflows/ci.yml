@@ -448,7 +448,7 @@ jobs:
       # can consume it without rebuilding. Retention is short — this is a
       # transient CI artifact, not a release artifact.
       - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build-${{ github.sha }}
           path: |
