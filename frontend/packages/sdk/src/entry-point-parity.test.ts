@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 
 import * as fromIndex from "./index";
 import * as fromClaims from "./claims";
+import * as fromCapabilities from "./capabilities";
 import * as fromChallenge from "./challenge";
 import * as fromErrors from "./errors";
 
@@ -59,6 +60,14 @@ const CHALLENGE_EXPORTS = [
   "verifyWalletClaim",
 ] as const;
 
+// ── Capability-descriptor functions (sourced from capabilities.ts, #639) ─────
+
+const CAPABILITIES_EXPORTS = [
+  "bootstrap",
+  "fetchCapabilities",
+  "validateCapabilitiesDescriptor",
+] as const;
+
 describe("entry-point parity (issue #609 / #522)", () => {
   beforeEach(() => {
     fromClaims.resetConfig();
@@ -90,6 +99,21 @@ describe("entry-point parity (issue #609 / #522)", () => {
     });
   }
 
+  // ── capabilities.ts exports re-exported identically by index.ts ───────────
+
+  for (const name of CAPABILITIES_EXPORTS) {
+    it(`index.ts re-exports the same ${name} reference as capabilities.ts`, () => {
+      const fromIndexValue = (fromIndex as Record<string, unknown>)[name];
+      const fromCapabilitiesValue = (fromCapabilities as Record<string, unknown>)[name];
+
+      expect(fromIndexValue).toBeDefined();
+      expect(fromCapabilitiesValue).toBeDefined();
+      expect(fromIndexValue).toBe(fromCapabilitiesValue);
+    });
+  }
+
+  // ── StellarCred namespace holds same references ────────────────────────────
+  // â”€â”€ StellarCred namespace holds same references â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // ── errors.ts exports re-exported identically by index.ts (issue #404) ────
 
   for (const name of ERRORS_EXPORTS) {
@@ -138,6 +162,14 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.verifyWalletClaim).toBe(fromChallenge.verifyWalletClaim);
   });
 
+  it("StellarCred namespace members are the same references as capabilities.ts exports", () => {
+    const ns = fromIndex.StellarCred;
+
+    expect(ns.bootstrap).toBe(fromCapabilities.bootstrap);
+    expect(ns.fetchCapabilities).toBe(fromCapabilities.fetchCapabilities);
+    expect(ns.validateCapabilitiesDescriptor).toBe(
+      fromCapabilities.validateCapabilitiesDescriptor,
+    );
   it("StellarCred namespace members are the same references as errors.ts exports", () => {
     const ns = fromIndex.StellarCred;
 
