@@ -4,8 +4,8 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-     "check-env": "node scripts/check-env-sync.mjs",
-     "check": "npm run check-env && npm run lint && npm run test",
+    "check-env": "node scripts/check-env-sync.mjs",
+    "check": "npm run check-env && npm run lint && npm run test",
     "start": "node dist/index.js",
     "dev": "npm run build && npm start",
     "build": "tsc",
@@ -17,6 +17,9 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "graphql": "^16.9.0",
+    "graphql-http": "^1.22.0",
+    "graphql-yoga": "^5.24.1",
     "pg": "^8.12.0"
   },
   "devDependencies": {

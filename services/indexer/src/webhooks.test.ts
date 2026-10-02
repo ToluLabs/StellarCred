@@ -68,6 +68,7 @@ describe("claim lifecycle webhooks", () => {
       ledger_sequence: 42,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
 
     let captured:

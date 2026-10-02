@@ -43,6 +43,21 @@ import {
 /** A `claims` row as it comes back from the driver, before normalisation. */
 type RawRow = Record<string, unknown>;
 
+function encodeCursor(ledgerSequence: number, id: number): string {
+  return Buffer.from(`${ledgerSequence}:${id}`, "utf8").toString("base64url");
+}
+
+function decodeCursor(cursor: string): { ledgerSequence: number; id: number } | null {
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    const [ledgerSequence, id] = decoded.split(":").map(Number);
+    if (Number.isNaN(ledgerSequence) || Number.isNaN(id)) return null;
+    return { ledgerSequence, id };
+  } catch {
+    return null;
+  }
+}
+
 interface RawIssuerAgg {
   total: SqlParam;
   active: SqlParam;
@@ -118,15 +133,16 @@ export function createSharedDb(dialect: SqlDialect): Db {
       await dialect.run(
         `INSERT INTO claims
            (wallet, credential_type, issuer, verified_at, expiry,
-            ledger_sequence, threshold, revoked)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ledger_sequence, threshold, revoked, reason_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(wallet, credential_type) DO UPDATE SET
            issuer          = ${ex}.issuer,
            verified_at     = ${ex}.verified_at,
            expiry          = ${ex}.expiry,
            ledger_sequence = ${ex}.ledger_sequence,
            threshold       = ${ex}.threshold,
-           revoked         = 0`,
+           revoked         = 0,
+           reason_code     = 'other'`,
         [
           row.wallet,
           row.credential_type,
@@ -136,16 +152,75 @@ export function createSharedDb(dialect: SqlDialect): Db {
           row.ledger_sequence,
           row.threshold ?? null,
           0,
+          "other",
         ],
       );
     },
 
-    async revokeClaim(wallet, credentialType) {
+    async revokeClaim(wallet, credentialType, reasonCode?: string) {
       await dialect.run(
-        `UPDATE claims SET revoked = 1
+        `UPDATE claims SET revoked = 1, reason_code = ?
          WHERE wallet = ? AND credential_type = ?`,
-        [wallet, credentialType],
+        [reasonCode || "other", wallet, credentialType],
       );
+    },
+
+    async queryClaims(filter, limit, after) {
+      const params: (string | number)[] = [];
+      const conditions: string[] = [];
+
+      if (filter.wallet) {
+        conditions.push("wallet = ?");
+        params.push(filter.wallet);
+      }
+      if (filter.credentialType) {
+        conditions.push("credential_type = ?");
+        params.push(filter.credentialType);
+      }
+      if (filter.issuer) {
+        conditions.push("issuer = ?");
+        params.push(filter.issuer);
+      }
+      if (filter.active === true) {
+        conditions.push("revoked = 0");
+      }
+      if (filter.revoked === true) {
+        conditions.push("revoked = 1");
+      }
+      if (filter.verifiedAfter !== undefined) {
+        conditions.push("verified_at >= ?");
+        params.push(filter.verifiedAfter);
+      }
+      if (filter.verifiedBefore !== undefined) {
+        conditions.push("verified_at <= ?");
+        params.push(filter.verifiedBefore);
+      }
+
+      let cursorCondition = "";
+      if (after) {
+        const cursor = decodeCursor(after);
+        if (cursor) {
+          cursorCondition = conditions.length > 0
+            ? ` AND (ledger_sequence < ? OR (ledger_sequence = ? AND id < ?))`
+            : `WHERE (ledger_sequence < ? OR (ledger_sequence = ? AND id < ?))`;
+          params.push(cursor.ledgerSequence, cursor.ledgerSequence, cursor.id);
+        }
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const sql = `SELECT * FROM claims ${whereClause}${cursorCondition} ORDER BY ledger_sequence DESC, id DESC LIMIT ?`;
+      params.push(limit + 1);
+
+      const rows = await dialect.all<Record<string, unknown>>(sql, params);
+      const hasNextPage = rows.length > limit;
+      const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
+
+      const lastRow = pageRows[pageRows.length - 1];
+      const endCursor = lastRow
+        ? encodeCursor(Number(lastRow["ledger_sequence"]), Number(lastRow["id"]))
+        : "";
+
+      return { rows: pageRows as unknown as ClaimRow[], hasNextPage, endCursor };
     },
 
     async claimByWalletAndType(wallet, credentialType) {

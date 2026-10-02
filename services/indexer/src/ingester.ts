@@ -323,6 +323,7 @@ type ParsedEvent =
       issuer: string;
       revokedAt: number;
       reasonCode: "issuer_revoked" | "holder_revoked";
+      reason: string;
     }
   | { kind: "unknown" };
 
@@ -424,6 +425,16 @@ function parseEvent(
     const holder = addressField("holder");
     const issuer = addressField("issuer");
     if (holder && issuer) {
+      const reasonRaw = eventData?.["reason"];
+      const reasonNum = typeof reasonRaw === "number" ? reasonRaw : Number(reasonRaw);
+      const reasonMap: Record<number, string> = {
+        0: "expired",
+        1: "superseded",
+        2: "fraud",
+        3: "user_request",
+        4: "other",
+      };
+      const reason = reasonMap[reasonNum] || "other";
       return {
         kind: "revoked",
         holder,
@@ -434,6 +445,7 @@ function parseEvent(
           Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
         ),
         reasonCode: "issuer_revoked",
+        reason,
       };
     }
   }
@@ -441,6 +453,16 @@ function parseEvent(
   if (topics[0] === "proof_reg" && topics[1] === "self_rev" && credentialType) {
     const holder = addressField("holder");
     if (holder) {
+      const reasonRaw = eventData?.["reason"];
+      const reasonNum = typeof reasonRaw === "number" ? reasonRaw : Number(reasonRaw);
+      const reasonMap: Record<number, string> = {
+        0: "expired",
+        1: "superseded",
+        2: "fraud",
+        3: "user_request",
+        4: "other",
+      };
+      const reason = reasonMap[reasonNum] || "other";
       return {
         kind: "revoked",
         holder,
@@ -451,6 +473,7 @@ function parseEvent(
           Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
         ),
         reasonCode: "holder_revoked",
+        reason,
       };
     }
   }
@@ -611,6 +634,7 @@ export function createIngester(config: Config, db: Db): Ingester {
           ledger_sequence: parsed.ledgerSequence,
           threshold: null,
           revoked: 0,
+          reason_code: "other",
         });
         processed++;
       } else if (parsed.kind === "revoked") {
@@ -618,7 +642,7 @@ export function createIngester(config: Config, db: Db): Ingester {
           parsed.holder,
           parsed.credentialType,
         );
-        await db.revokeClaim(parsed.holder, parsed.credentialType);
+        await db.revokeClaim(parsed.holder, parsed.credentialType, parsed.reason);
         if (webhookDispatcher) {
           await db.enqueueWebhookEvent({
             event_id: `${parsed.reasonCode}:${ev.transaction_hash ?? ev.paging_token}:${parsed.holder}:${parsed.credentialType}`,

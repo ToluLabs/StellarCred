@@ -41,6 +41,11 @@ export interface IndexerClaimRow {
    * this shape. Treat any non-zero value as revoked.
    */
   revoked: number;
+  /**
+   * Revocation reason code: `expired`, `superseded`, `fraud`, `user_request`,
+   * or `other`. Only meaningful when `revoked` is non-zero.
+   */
+  reason_code: string;
 }
 
 /** Response envelope of `GET /claims?wallet=…`. */

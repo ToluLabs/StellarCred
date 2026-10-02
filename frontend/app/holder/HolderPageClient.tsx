@@ -25,12 +25,42 @@ import {
   IconCertificate,
   IconArrowRight,
   IconDownload,
+  IconFileDownload,
+  IconFileSpreadsheet,
 } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { ConfigBanner } from "@/components/ConfigBanner";
-import { useToast } from "@/components/Toast";
+import { NetworkMismatchBanner } from "@/components/NetworkMismatchBanner";
+import { proofSubmissionConfigured } from "@/lib/config";
+import { truncateHash } from "@/lib/format";
+import { EXPLORER_TX } from "@/lib/stellar";
+import { computeWitness, proveWithBackend } from "@/lib/proof";
+import { useWarmProver } from "@/lib/use-warm-prover";
+import {
+  submitProof,
+  submitProofs,
+  MAX_BATCH_SIZE,
+  parseContractError,
+  type ContractError,
+  type ProofSubmissionParams,
+} from "@/lib/contracts";
+import {
+  type Credential,
+  loadCredentials,
+  saveCredential,
+  removeCredential,
+  markProved,
+  markAllProved,
+  parseCredential,
+  exportCredentials,
+} from "@/lib/credential";
+import { isStorageAvailable } from "@/lib/safe-storage";
+import { downloadHistoryJson, downloadHistoryCsv } from "@/lib/export-history";
+import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
+import { usePreviewMode } from "@/lib/wallet-context";
+import CopyButton from "@/components/CopyButton";
 import dynamic from "next/dynamic";
 import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { IMPORT_PARAM } from "@/lib/transfer";
@@ -426,35 +456,63 @@ function HolderInner() {
           </p>
         )}
 
-        {/* ── Import / export ── */}
-        {importing ? (
-          <ImportPanel
-            onImport={(c) => {
-              save(c);
-              setImporting(false);
-            }}
-            onCancel={() => setImporting(false)}
-          />
-        ) : (
-          <div className="stack" style={{ gap: "0.55rem" }}>
-            <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
-                <IconPlus size={14} />
-                Import credential JSON
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={downloadBackup}
-                disabled={creds.length === 0}
-                title={
-                  creds.length === 0
-                    ? "No credentials to back up yet"
-                    : "Download a JSON backup of all credentials"
-                }
-              >
-                <IconDownload size={14} />
-                Export backup
-              </button>
+          {!loading && (importing ? (
+            <ImportPanel
+              onImport={async (c) => {
+                setCreds(await saveCredential(c));
+                setImporting(false);
+              }}
+              onCancel={() => setImporting(false)}
+            />
+          ) : (
+            <div className="stack" style={{ gap: "0.55rem" }}>
+              <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setImporting(true)}
+                >
+                  <IconPlus size={14} />
+                  Import credential JSON
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={downloadBackup}
+                  disabled={creds.length === 0}
+                  title={creds.length === 0 ? "No credentials to back up yet" : "Download a JSON backup of all credentials"}
+                >
+                  <IconDownload size={14} />
+                  Export backup
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => downloadHistoryJson(creds)}
+                  disabled={creds.length === 0}
+                  title="Download proof history as JSON (non-sensitive fields only)"
+                >
+                  <IconFileDownload size={14} />
+                  Export history JSON
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => downloadHistoryCsv(creds)}
+                  disabled={creds.length === 0}
+                  title="Download proof history as CSV (non-sensitive fields only)"
+                >
+                  <IconFileSpreadsheet size={14} />
+                  Export history CSV
+                </button>
+              </div>
+              <p className="faint" style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
+                Credentials live only in this browser (localStorage) — export a backup
+                before clearing site data or switching devices, and restore it here with{" "}
+                “Import credential JSON”.{" "}
+                <Link
+                  href="/docs#storage"
+                  style={{ color: "var(--accent)", textDecoration: "underline" }}
+                >
+                  Where your credentials live
+                </Link>
+              </p>
             </div>
             <p
               className="faint"

@@ -504,6 +504,7 @@ export interface ProofRecordDetails {
   issuer?: string;
   threshold?: number;
   vkVersion: number;
+  reason?: string;
 }
 
 export interface CredentialStatusResult {
@@ -1070,6 +1071,13 @@ async function readRecord(
       requestTimeoutMs,
     );
     if (!result) return null;
+    const reasonMap: Record<number, string> = {
+      0: "expired",
+      1: "superseded",
+      2: "fraud",
+      3: "user_request",
+      4: "other",
+    };
     return {
       verifiedAt: Number(result.verified_at),
       expiry: Number(result.expiry),
@@ -1080,6 +1088,7 @@ async function readRecord(
           ? Number(result.threshold)
           : undefined,
       vkVersion: Number(result.vk_version),
+      reason: result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
     };
   } catch (err) {
     if (throwOnError) {

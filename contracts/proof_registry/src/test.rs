@@ -357,7 +357,12 @@ fn issuer_revoke_invalidates_proof() {
     let holder = Address::generate(&env);
 
     submit(&env, &h, &holder, 9999);
-    h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"));
+    h.registry.revoke(
+        &h.issuer,
+        &holder,
+        &symbol_short!("kyc"),
+        &Some(RevocationReason::Fraud),
+    );
     assert!(
         !h.registry
             .is_verified(&holder, &symbol_short!("kyc"), &None)
@@ -376,7 +381,7 @@ fn issuer_revoke_rejects_wrong_issuer() {
     submit(&env, &h, &holder, 9999);
     let res = h
         .registry
-        .try_revoke(&stranger, &holder, &symbol_short!("kyc"));
+        .try_revoke(&stranger, &holder, &symbol_short!("kyc"), &None);
     assert!(res.is_err());
 }
 
@@ -397,7 +402,7 @@ fn issuer_revoke_rejects_different_trusted_issuer() {
 
     let result = h
         .registry
-        .try_revoke(&other_issuer, &holder, &symbol_short!("kyc"));
+        .try_revoke(&other_issuer, &holder, &symbol_short!("kyc"), &None);
 
     assert!(result.is_err());
     assert!(
@@ -416,13 +421,68 @@ fn issuer_revoke_rejects_missing_proof() {
 
     let result = h
         .registry
-        .try_revoke(&h.issuer, &holder, &symbol_short!("kyc"));
+        .try_revoke(&h.issuer, &holder, &symbol_short!("kyc"), &None);
 
     assert!(result.is_err());
     assert!(h
         .registry
         .get_record(&holder, &symbol_short!("kyc"))
         .is_none());
+}
+
+#[test]
+fn revoke_with_reason_codes_stores_and_emits_each_code() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    let reasons = [
+        RevocationReason::Expired,
+        RevocationReason::Superseded,
+        RevocationReason::Fraud,
+        RevocationReason::UserRequest,
+        RevocationReason::Other,
+    ];
+
+    for (i, reason) in reasons.iter().enumerate() {
+        let holder_i = Address::generate(&env);
+        submit(&env, &h, &holder_i, 9999);
+
+        h.registry.revoke(
+            &h.issuer,
+            &holder_i,
+            &symbol_short!("kyc"),
+            &Some(*reason),
+        );
+
+        let record = h
+            .registry
+            .get_record(&holder_i, &symbol_short!("kyc"))
+            .unwrap();
+        assert!(record.revoked);
+        assert_eq!(record.reason, *reason);
+
+        let _ = env.events().all();
+    }
+}
+
+#[test]
+fn revoke_without_reason_defaults_to_other() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 9999);
+    h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"), &None);
+
+    let record = h
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .unwrap();
+    assert!(record.revoked);
+    assert_eq!(record.reason, RevocationReason::Other);
 }
 
 #[test]
@@ -865,7 +925,12 @@ fn issuer_revoke_emits_expected_event() {
     // Drain submit event
     let _ = env.events().all();
 
-    h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"));
+    h.registry.revoke(
+        &h.issuer,
+        &holder,
+        &symbol_short!("kyc"),
+        &Some(RevocationReason::Fraud),
+    );
 
     let all_events = env.events().all().filter_by_contract(&h.registry_id);
     assert_eq!(
@@ -884,6 +949,7 @@ fn issuer_revoke_emits_expected_event() {
                     holder,
                     issuer: h.issuer.clone(),
                     revoked_at: env.ledger().timestamp(),
+                    reason: RevocationReason::Fraud,
                 }
                 .into_val(&env),
             ),
@@ -963,6 +1029,7 @@ fn holder_self_revoke_emits_a_lifecycle_event() {
                 EventHolderRevoked {
                     holder,
                     revoked_at: env.ledger().timestamp(),
+                    reason: RevocationReason::UserRequest,
                 }
                 .into_val(&env),
             ),
@@ -1950,6 +2017,7 @@ proptest! {
             revoked: !valid,
             issuer: Some(proof_issuer.clone()),
             vk_version: 0,
+            reason: RevocationReason::Other,
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
@@ -1997,6 +2065,7 @@ proptest! {
             revoked: false,
             issuer: None,
             vk_version: 0,
+            reason: RevocationReason::Other,
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
@@ -2022,6 +2091,7 @@ proptest! {
             revoked: false,
             issuer: None,
             vk_version: 0,
+            reason: RevocationReason::Other,
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
@@ -2058,6 +2128,7 @@ proptest! {
             revoked: !valid,
             issuer: None,
             vk_version: 0,
+            reason: RevocationReason::Other,
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
@@ -2087,6 +2158,7 @@ proptest! {
             revoked: false,
             issuer: Some(proof_issuer),
             vk_version: 0,
+            reason: RevocationReason::Other,
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
@@ -2138,6 +2210,7 @@ proptest! {
             revoked,
             issuer: Some(proof_issuer.clone()),
             vk_version: 0,
+            reason: RevocationReason::Other,
         };
         set_proof_record(&env, &reg_id, &holder, &cred, &record);
 
@@ -2234,7 +2307,7 @@ proptest! {
             .is_verified(&holder, &symbol_short!("kyc"), &None);
         prop_assert!(before, "proof should be valid before revocation");
 
-        h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"));
+        h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"), &None);
 
         let trusted = if use_issuer_filter {
             Some(vec![&env, h.issuer.clone()])
@@ -2404,7 +2477,7 @@ fn single_revocation_does_not_affect_other_types() {
 
     // Revoke only kyc.
     h.registry
-        .revoke(&h.kyc_issuer, &holder, &symbol_short!("kyc"));
+        .revoke(&h.kyc_issuer, &holder, &symbol_short!("kyc"), &None);
 
     // kyc must be revoked.
     assert!(

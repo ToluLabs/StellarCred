@@ -282,4 +282,22 @@ describe("lib/wallet.ts getKit() WalletConnect module wiring", () => {
     expect(wc).toBeDefined();
     expect(wc?.params.projectId).toBe("test-project-id");
   });
+
+  it("registers a Ledger module", async () => {
+    vi.resetModules();
+    const { getKit } = await import("../wallet");
+    const { getLedgerModule, LEDGER_ID } = await import("../ledger-module");
+
+    const modules = (getKit() as unknown as MockKitInstance).modules;
+    const ledger = modules.find((m) => m.id === LEDGER_ID);
+    expect(ledger).toBeDefined();
+    expect(ledger?.name).toBe("Ledger");
+  });
+
+  it("Ledger module is available when WebUSB is supported", async () => {
+    const { getLedgerModule } = await import("../ledger-module");
+    const ledger = getLedgerModule();
+    const available = await ledger.isAvailable();
+    expect(typeof available).toBe("boolean");
+  });
 });

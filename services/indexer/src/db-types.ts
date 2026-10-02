@@ -29,6 +29,8 @@ export interface ClaimInput {
   threshold: number | null;
   /** 1 if the issuer has revoked this proof, 0 otherwise */
   revoked: number;
+  /** Revocation reason code: expired, superseded, fraud, user_request, other */
+  reason_code: string;
 }
 
 /** A claim row as read back from the database (includes the `id` cursor). */
@@ -103,8 +105,28 @@ export interface Db {
   /** Mark a claim as revoked. */
   revokeClaim(
     wallet: string,
-    credentialType: string
+    credentialType: string,
+    reasonCode?: string
   ): void | Promise<void>;
+
+  /** Run a filtered, paginated claim query (used by the GraphQL endpoint). */
+  queryClaims(
+    filter: {
+      wallet?: string;
+      credentialType?: string;
+      issuer?: string;
+      active?: boolean;
+      revoked?: boolean;
+      verifiedAfter?: number;
+      verifiedBefore?: number;
+    },
+    limit: number,
+    after?: string
+  ): Promise<{
+    rows: ClaimRow[];
+    hasNextPage: boolean;
+    endCursor: string;
+  }>;
   /** Read a specific claim before applying a revocation event. */
   claimByWalletAndType(wallet: string, credentialType: string): ClaimRow | undefined | Promise<ClaimRow | undefined>;
 
@@ -348,6 +370,7 @@ export function toClaimRow(row: Record<string, unknown>): ClaimRow {
     ledger_sequence: Number(row["ledger_sequence"]),
     threshold: row["threshold"] == null ? null : Number(row["threshold"]),
     revoked: Number(row["revoked"]),
+    reason_code: (row["reason_code"] as string) || "other",
   };
 }
 
