@@ -259,11 +259,7 @@ fn set_vk_emits_event() {
     let contract_id = env.register(CredentialVerifier, (admin.clone(),));
     let c = CredentialVerifierClient::new(&env, &contract_id);
 
-    c.set_vk(
-        &symbol_short!("kyc"),
-        &1u32,
-        &KYC.vk_bytes(&env),
-    );
+    c.set_vk(&symbol_short!("kyc"), &1u32, &KYC.vk_bytes(&env));
 
     assert_eq!(
         env.events().all().filter_by_contract(&c.address),
@@ -300,20 +296,12 @@ fn latest_version_tracks_updates() {
     assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 1);
 
     // Skip v2 to leave a gap for the out-of-order registration below.
-    c.set_vk(
-        &symbol_short!("kyc"),
-        &3u32,
-        &KYC.vk_bytes(&env),
-    );
+    c.set_vk(&symbol_short!("kyc"), &3u32, &KYC.vk_bytes(&env));
     assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 3);
 
     // Out-of-order registration of an older, previously-unregistered version
     // must not regress latest.
-    c.set_vk(
-        &symbol_short!("kyc"),
-        &2u32,
-        &KYC.vk_bytes(&env),
-    );
+    c.set_vk(&symbol_short!("kyc"), &2u32, &KYC.vk_bytes(&env));
     assert_eq!(c.get_latest_version(&symbol_short!("kyc")), 3);
 }
 
@@ -327,19 +315,11 @@ fn old_proof_still_verifies_after_upgrade() {
     let (_admin, c) = deploy_credential_verifier(&env);
 
     // Register v1 and verify a proof against it explicitly.
-    c.set_vk(
-        &symbol_short!("kyc"),
-        &1u32,
-        &KYC.vk_bytes(&env),
-    );
+    c.set_vk(&symbol_short!("kyc"), &1u32, &KYC.vk_bytes(&env));
     assert!(verify_with(&c, &env, &KYC, Some(1)));
 
     // Upgrade to v2 — the old v1 proof must still verify (VK at (kyc,1) intact).
-    c.set_vk(
-        &symbol_short!("kyc"),
-        &2u32,
-        &KYC.vk_bytes(&env),
-    );
+    c.set_vk(&symbol_short!("kyc"), &2u32, &KYC.vk_bytes(&env));
     assert!(verify_with(&c, &env, &KYC, Some(1)));
     // And `None` now resolves to v2 (latest).
     assert!(verify_with(&c, &env, &KYC, None));
@@ -379,11 +359,7 @@ fn refresh_latest_version_ttl_restores_pointer_ttl() {
     let latest_key = DataKey::LatestVersion(symbol_short!("kyc"));
     let vk_key = DataKey::Vk(symbol_short!("kyc"), 1u32);
 
-    c.set_vk(
-        &symbol_short!("kyc"),
-        &1u32,
-        &KYC.vk_bytes(&env),
-    );
+    c.set_vk(&symbol_short!("kyc"), &1u32, &KYC.vk_bytes(&env));
     assert_eq!(
         env.as_contract(&c.address, || env
             .storage()
@@ -455,11 +431,7 @@ fn set_vk_rejects_overwrite_of_existing_version() {
     let env = Env::default();
     env.mock_all_auths();
     let c = setup_verifier(&env, &KYC, 1);
-    let res = c.try_set_vk(
-        &symbol_short!("kyc"),
-        &1u32,
-        &KYC.vk_bytes(&env),
-    );
+    let res = c.try_set_vk(&symbol_short!("kyc"), &1u32, &KYC.vk_bytes(&env));
     assert!(
         res.is_err(),
         "re-registering an existing version must be rejected"
@@ -510,12 +482,14 @@ fn deprecated_vk_can_be_pruned_after_validity_window() {
     // Access the second event directly using `nth(1)` to avoid calling
     // `all()` multiple times (some implementations drain/consume the buffer).
     // Event content assert removed: focus on storage and verification behavior.
-    assert!(c.try_verify_proof(
-        &symbol_short!("kyc"),
-        &KYC.proof_bytes(&env),
-        &KYC.public_inputs_bytes(&env),
-        &Some(1),
-    ).is_err());
+    assert!(c
+        .try_verify_proof(
+            &symbol_short!("kyc"),
+            &KYC.proof_bytes(&env),
+            &KYC.public_inputs_bytes(&env),
+            &Some(1),
+        )
+        .is_err());
 }
 
 #[test]
@@ -737,12 +711,8 @@ fn set_vk_requires_admin_role() {
         address: &delegate,
         invoke: &MockAuthInvoke {
             contract: &id,
-            fn_name: "set_vk",                args: (
-                    &symbol_short!("kyc"),
-                    &1u32,
-                    KYC.vk_bytes(&env),
-                )
-                .into_val(&env),
+            fn_name: "set_vk",
+            args: (&symbol_short!("kyc"), &1u32, KYC.vk_bytes(&env)).into_val(&env),
             sub_invokes: &[],
         },
     }])
@@ -755,12 +725,7 @@ fn set_vk_requires_admin_role() {
             invoke: &MockAuthInvoke {
                 contract: &id,
                 fn_name: "set_vk",
-                args: (
-                    &symbol_short!("kyc"),
-                    &2u32,
-                    KYC.vk_bytes(&env),
-                )
-                    .into_val(&env),
+                args: (&symbol_short!("kyc"), &2u32, KYC.vk_bytes(&env)).into_val(&env),
                 sub_invokes: &[],
             },
         }])
@@ -796,12 +761,7 @@ fn set_vk_requires_admin_role() {
         invoke: &MockAuthInvoke {
             contract: &id,
             fn_name: "set_vk",
-            args: (
-                &symbol_short!("kyc"),
-                &2u32,
-                KYC.vk_bytes(&env),
-            )
-                .into_val(&env),
+            args: (&symbol_short!("kyc"), &2u32, KYC.vk_bytes(&env)).into_val(&env),
             sub_invokes: &[],
         },
     }])

@@ -723,7 +723,15 @@ impl ProofRegistry {
 
             let threshold =
                 Self::extract_threshold_from_aggregate(&ct, &public_inputs, field_offset);
-            Self::store_claim(&env, &holder, &ct, now, expiries.get(i).unwrap(), threshold, issuer.clone());
+            Self::store_claim(
+                &env,
+                &holder,
+                &ct,
+                now,
+                expiries.get(i).unwrap(),
+                threshold,
+                issuer.clone(),
+            );
 
             env.events().publish(
                 (
@@ -821,7 +829,12 @@ impl ProofRegistry {
     /// own revocation, same as `revoke_proof`. A no-op (not an error) if no
     /// such delegation exists.
     #[allow(deprecated)]
-    pub fn revoke_verification(env: Env, holder: Address, verifier: Address, credential_type: Symbol) {
+    pub fn revoke_verification(
+        env: Env,
+        holder: Address,
+        verifier: Address,
+        credential_type: Symbol,
+    ) {
         holder.require_auth();
         env.storage().persistent().remove(&DataKey::Delegation(
             holder.clone(),

@@ -419,5 +419,3 @@ fn test_real_token_withdraw_fails_when_pool_has_insufficient_tokens() {
     // User attempts to withdraw: should fail because pool doesn't have the tokens
     th.pool.withdraw(&user, &100);
 }
-
-

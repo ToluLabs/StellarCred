@@ -370,6 +370,93 @@ Please do **not** open a public issue for security vulnerabilities. See [SECURIT
 - **Noir**: keep circuits as simple as possible — constraint count directly affects browser proving time.
 - **Comments**: only when the *why* is non-obvious (a constraint, a workaround, a subtle invariant). Don't explain what the code does.
 
+## Automated code-quality checks
+
+Every pull request is gated by a dedicated **Code Quality** workflow
+(`.github/workflows/code-quality.yml`) that runs two fast jobs in parallel
+before your PR can be merged:
+
+| Job | Command | Fails when |
+|-----|---------|------------|
+| Format check | `cargo fmt --all -- --check` | Any file in the workspace diverges from `cargo fmt` output |
+| Clippy lint | `cargo clippy --workspace --all-targets -- -D warnings` | Any Clippy warning is emitted (warnings are errors) |
+
+Both jobs use the pinned Rust toolchain (`1.93.1`) and share the same Cargo
+cache as the main CI pipeline so they warm up quickly.
+
+### Fixing failures
+
+**Format failure** — rustfmt prints a diff of what changed. Fix it in one command:
+
+```bash
+cargo fmt --all
+```
+
+Commit the result and push; the check will go green.
+
+**Clippy failure** — the log shows the exact lint name and the offending line.
+Fix the code, or — when suppression is genuinely warranted — add an `allow`
+attribute with a comment explaining why:
+
+```rust
+#[allow(clippy::too_many_arguments)] // all args are required by the Soroban host ABI
+pub fn submit_proof(…) { … }
+```
+
+Bare `#[allow(…)]` without justification will be flagged in review.
+
+### Running checks locally before pushing
+
+Run the exact same commands the workflow uses:
+
+```bash
+# Format check (exit non-zero + diff if any file needs reformatting)
+cargo fmt --all -- --check
+
+# Lint (exit non-zero on any warning)
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Or use the Makefile shortcuts:
+
+```bash
+make fmt    # cargo fmt --check across all contract crates
+make lint   # cargo clippy -D warnings across all contract crates
+```
+
+### Optional: pre-commit hook
+
+To catch issues before they ever reach CI, add a pre-commit hook that mirrors
+the workflow. Create `.git/hooks/pre-commit` with:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "→ cargo fmt --check"
+cargo fmt --all -- --check || {
+  echo ""
+  echo "  Formatting issues found. Run: cargo fmt --all"
+  exit 1
+}
+
+echo "→ cargo clippy"
+cargo clippy --workspace --all-targets -- -D warnings || {
+  echo ""
+  echo "  Clippy warnings found. Fix them or add a justified #[allow(…)]."
+  exit 1
+}
+```
+
+Then make it executable:
+
+```bash
+chmod +x .git/hooks/pre-commit
+```
+
+The hook runs automatically on every `git commit`. To bypass it for a WIP
+commit (not recommended on feature branches), use `git commit --no-verify`.
+
 ## Commit messages
 
 StellarCred uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit message must have a structured prefix so the changelog and release notes are generated automatically.

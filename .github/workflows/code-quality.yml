@@ -1,0 +1,83 @@
+name: Code Quality
+
+on:
+  pull_request:
+
+# Cancel any in-progress run for the same PR, saving CI minutes when commits
+# are pushed in quick succession.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Narrowest possible default: read-only checkout for both jobs.
+permissions:
+  contents: read
+
+jobs:
+  # ── Format check ────────────────────────────────────────────────────────────
+  # Fails immediately when any file in the Cargo workspace diverges from the
+  # output of `cargo fmt`. Run `cargo fmt --all` locally to fix violations.
+  format:
+    name: Format check (cargo fmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustfmt ships with every stable toolchain, so no extra component
+      # declaration is needed. The version is pinned to match the rest of CI
+      # and produce consistent formatting output.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          components: rustfmt
+
+      - name: Check formatting
+        # --all covers every crate in the workspace, including the
+        # host-only test_support harness that `cargo build` skips.
+        # -- --check makes the command exit non-zero and print a diff when
+        # any file would be changed by `cargo fmt`.
+        run: cargo fmt --all -- --check
+        # Surface a plain-English hint alongside rustfmt's own diff output.
+        # The hint is printed only when the check fails (|| true keeps the
+        # step from masking the real exit code).
+        env:
+          RUSTFMT_HINT: "Run `cargo fmt --all` locally and commit the result."
+
+  # ── Clippy lint ─────────────────────────────────────────────────────────────
+  # Treats every Clippy warning as an error. New lints must be fixed or
+  # explicitly silenced with `#[allow(clippy::lint_name)]` plus a comment
+  # explaining why — a bare allow without justification will be flagged in
+  # review. See CONTRIBUTING.md for the full style policy.
+  lint:
+    name: Clippy lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          components: clippy
+
+      # Cache the Cargo registry and the incremental build products.
+      # The key matches the pattern used by the main CI workflow so both jobs
+      # share the same warm cache on the same runner OS + lockfile hash.
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Run Clippy
+        # --workspace so the host-only test_support crate is linted too.
+        # --all-targets covers lib, bin, tests, examples, and benchmarks.
+        # -D warnings promotes every warning to an error; the build fails
+        # on any new lint rather than silently accumulating warnings.
+        run: cargo clippy --workspace --all-targets -- -D warnings
