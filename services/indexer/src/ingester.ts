@@ -55,41 +55,6 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { createWebhookDispatcher } from "./webhooks";
 
-import { Database } from './db';
-import { logger } from './logger';
-
-export interface VerifiedEventPayload {
-  holder: string;
-  credentialType: string;
-  threshold?: string | number | null;
-  [key: string]: any;
-}
-
-export function parseEvent(rawEvent: any): VerifiedEventPayload {
-  // Decode event parameters from contract logs/events
-  return {
-    holder: rawEvent.holder,
-    credentialType: rawEvent.credentialType,
-    // Parse threshold if present (supporting numeric or string representations from smart contract/events)
-    threshold: rawEvent.threshold !== undefined && rawEvent.threshold !== null 
-      ? Number(rawEvent.threshold) 
-      : null,
-  };
-}
-
-export async function processVerifiedEvent(db: Database, rawEvent: any): Promise<void> {
-  const parsed = parseEvent(rawEvent);
-
-  logger.info({ holder: parsed.holder, credentialType: parsed.credentialType, threshold: parsed.threshold }, 'Processing verified event');
-
-  await db.upsertClaim({
-    wallet: parsed.holder,
-    credential_type: parsed.credentialType,
-    threshold: parsed.threshold, // Persist actual threshold instead of null
-    revoked: 0,
-  });
-}
-
 // ── Retry configuration ───────────────────────────────────────────────────
 
 /** Maximum number of fetch attempts per tick (1 = no retry). */
