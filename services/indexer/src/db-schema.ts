@@ -64,6 +64,7 @@ export function buildClaimsTable(dialect: SqlDialect): string {
   ${column("ledger_sequence", int, { notNull: true, default: "0" })},
   ${column("threshold", int)},
   ${column("revoked", dialect.flagType, { notNull: true, default: "0" })},
+  ${column("reason_code", "TEXT", { notNull: true, default: "'other'" })},
   ${dialect.claimsKeyClause}
 )`;
 }

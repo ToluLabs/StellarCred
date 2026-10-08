@@ -52,6 +52,7 @@ const nextConfig = {
     // Applying ProvidePlugin on the server replaces Node's real `process`
     // with `process/browser` (env: {}), which hides server-only env vars
     // like ISSUER_PRIVATE_KEY even after they are set in .env.local.
+    config.plugins.push(new webpack.NormalModuleReplacementPlugin(/@ledgerhq\/devices\/hid-framing/, (resource) => { resource.request = "@ledgerhq/devices/lib-es/hid-framing.js"; }));
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

@@ -49,6 +49,7 @@ function makeRow(overrides: Partial<IndexerClaimRow> = {}): IndexerClaimRow {
     ledger_sequence: 100,
     threshold: null,
     revoked: 0,
+    reason_code: "other",
     ...overrides,
   };
 }

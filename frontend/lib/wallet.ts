@@ -24,6 +24,7 @@ import {
   WALLET_CONNECT_ID,
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { NETWORK, NETWORK_PASSPHRASE } from "./stellar";
+import { getLedgerModule, LEDGER_ID } from "./ledger-module";
 
 const APP_NETWORK =
   NETWORK === "mainnet" ? WalletNetwork.PUBLIC :
@@ -51,18 +52,30 @@ function walletConnectModule(): ModuleInterface | null {
 }
 
 let kit: StellarWalletsKit | null = null;
+let ledgerModule: ReturnType<typeof getLedgerModule> | null = null;
 
 export function getKit(): StellarWalletsKit {
   if (!kit) {
     const wc = walletConnectModule();
+    ledgerModule = getLedgerModule();
+    const modules: ModuleInterface[] = [...allowAllModules()];
+    if (wc) modules.push(wc);
+    modules.push(ledgerModule);
     kit = new StellarWalletsKit({
       network: APP_NETWORK,
       selectedWalletId: FREIGHTER_ID,
-      modules: wc ? [...allowAllModules(), wc] : allowAllModules(),
+      modules,
     });
   }
   return kit;
 }
+
+export function getLedger(): ReturnType<typeof getLedgerModule> {
+  getKit();
+  return ledgerModule!;
+}
+
+export { getLedgerModule };
 
 export type WalletErrorKind = "not-installed" | "dismissed" | "rejected" | "timeout" | "unknown";
 
@@ -190,7 +203,7 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
   // Its own "not connected" errors are relay/session failures (dropped
   // socket, expired session, peer rejection), so it's excluded from the
   // not-installed classification and falls through to "rejected" instead.
-  if (wallet?.id !== WALLET_CONNECT_ID && /not connected|not available/i.test(message)) {
+  if (wallet?.id !== WALLET_CONNECT_ID && wallet?.id !== LEDGER_ID && /not connected|not available/i.test(message)) {
     return new WalletConnectError(
       "not-installed",
       wallet
@@ -198,6 +211,30 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
         : "No Stellar wallet extension found. Install one to continue.",
       wallet ? { walletName: wallet.name, installUrl: wallet.url } : undefined,
     );
+  }
+  // Ledger-specific errors: connection issues, device locked, app not open
+  if (wallet?.id === LEDGER_ID) {
+    if (/locked|pin/i.test(message)) {
+      return new WalletConnectError(
+        "rejected",
+        "Ledger is locked. Enter your PIN to continue.",
+        { walletName: "Ledger" }
+      );
+    }
+    if (/app.*not.*open|stellar.*app/i.test(message)) {
+      return new WalletConnectError(
+        "rejected",
+        "Open the Stellar app on your Ledger device.",
+        { walletName: "Ledger" }
+      );
+    }
+    if (/denied|rejected/i.test(message)) {
+      return new WalletConnectError(
+        "rejected",
+        "Transaction was rejected on the Ledger device.",
+        { walletName: "Ledger" }
+      );
+    }
   }
   return new WalletConnectError("rejected", "Connection cancelled");
 }

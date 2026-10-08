@@ -79,6 +79,17 @@ pub struct EventProofSubmitted {
     pub expiry: u64,
 }
 
+/// Reason codes for issuer-initiated proof revocations (#393).
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RevocationReason {
+    Expired = 0,
+    Superseded = 1,
+    Fraud = 2,
+    UserRequest = 3,
+    Other = 4,
+}
+
 /// Payload emitted when an issuer revokes a holder's proof.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -86,6 +97,7 @@ pub struct EventProofRevoked {
     pub holder: Address,
     pub issuer: Address,
     pub revoked_at: u64,
+    pub reason: RevocationReason,
 }
 
 /// Payload emitted when a holder revokes their own cached proof.
@@ -94,6 +106,7 @@ pub struct EventProofRevoked {
 pub struct EventHolderRevoked {
     pub holder: Address,
     pub revoked_at: u64,
+    pub reason: RevocationReason,
 }
 
 /// Payload emitted when submissions are paused.
@@ -223,6 +236,7 @@ pub struct ProofRecord {
     pub revoked: bool,
     pub issuer: Option<Address>,
     pub vk_version: u32,
+    pub reason: RevocationReason,
 }
 
 #[contracttype]
@@ -551,6 +565,7 @@ impl ProofRegistry {
             revoked: false,
             issuer: Some(issuer_id),
             vk_version: vk_version.unwrap_or(0),
+            reason: RevocationReason::Other,
         };
         env.storage().persistent().set(&key, &record);
         Self::bump_ttl(&env, &key, expiry);
@@ -641,6 +656,7 @@ impl ProofRegistry {
                 revoked: false,
                 issuer: Some(sub.issuer_id.clone()),
                 vk_version: effective_version,
+                reason: RevocationReason::Other,
             };
             env.storage().persistent().set(&key, &record);
             Self::bump_ttl(&env, &key, sub.expiry);
@@ -947,6 +963,7 @@ impl ProofRegistry {
                 EventHolderRevoked {
                     holder,
                     revoked_at: env.ledger().timestamp(),
+                    reason: RevocationReason::UserRequest,
                 },
             );
         }
@@ -977,6 +994,7 @@ impl ProofRegistry {
                     EventHolderRevoked {
                         holder: holder.clone(),
                         revoked_at: env.ledger().timestamp(),
+                        reason: RevocationReason::UserRequest,
                     },
                 );
             }
@@ -985,8 +1003,16 @@ impl ProofRegistry {
 
     /// Revoke an existing proof before expiry. The caller must be both a
     /// currently trusted issuer and the issuer stored on that proof record.
+    /// `reason` is an optional revocation reason code (#393); defaults to
+    /// `RevocationReason::Other` when not provided.
     #[allow(deprecated)]
-    pub fn revoke(env: Env, issuer: Address, holder: Address, credential_type: Symbol) {
+    pub fn revoke(
+        env: Env,
+        issuer: Address,
+        holder: Address,
+        credential_type: Symbol,
+        reason: Option<RevocationReason>,
+    ) {
         issuer.require_auth();
 
         let registry = IssuerClient::new(&env, &Self::issuer_registry(&env));
@@ -1004,13 +1030,14 @@ impl ProofRegistry {
             panic_with_error!(&env, Error::NotAuthorized);
         }
         record.revoked = true;
+        record.reason = reason.unwrap_or(RevocationReason::Other);
         env.storage().persistent().set(&key, &record);
         env.storage()
             .persistent()
             .extend_ttl(&key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
 
         // Emit: topics = ("proof_reg", "revoked", credential_type)
-        //       data   = EventProofRevoked { holder, issuer, revoked_at }
+        //       data   = EventProofRevoked { holder, issuer, revoked_at, reason }
         env.events().publish(
             (
                 symbol_short!("proof_reg"),
@@ -1021,6 +1048,7 @@ impl ProofRegistry {
                 holder,
                 issuer,
                 revoked_at: env.ledger().timestamp(),
+                reason: record.reason,
             },
         );
     }
@@ -1058,6 +1086,7 @@ impl ProofRegistry {
                 revoked: legacy.revoked,
                 issuer: None,
                 vk_version: 0,
+                reason: RevocationReason::Other,
             };
             env.storage().persistent().set(&key, &record);
             Self::bump_ttl(&env, &key, record.expiry);
@@ -1192,6 +1221,7 @@ impl ProofRegistry {
             revoked: false,
             issuer: Some(issuer),
             vk_version: 0,
+            reason: RevocationReason::Other,
         };
         env.storage().persistent().set(&key, &record);
         Self::bump_ttl(env, &key, expiry);

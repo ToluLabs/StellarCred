@@ -101,7 +101,8 @@ threshold: Option<u64>;
  * VK version that was used to verify this proof. Preserved so that old
  * proofs remain valid even after the circuit is upgraded to a new version.
  */
-vk_version: u32;
+  vk_version: u32;
+  reason?: number;
 }
 
 

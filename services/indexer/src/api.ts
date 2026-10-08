@@ -111,6 +111,7 @@ import type { IntegrityChecker } from "./integrity";
 import { isIP } from "net";
 import { StrKey } from "@stellar/stellar-sdk";
 import { MAX_WEBHOOK_DELIVERY_ATTEMPTS } from "./webhooks";
+import { createGraphQLHandler } from "./graphql";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -154,6 +155,7 @@ export interface SerializedClaim {
   ledger_sequence: number;
   threshold: number | null;
   /** 0 or 1 — see the module doc comment for why this isn't a boolean. */
+  reason_code: string;
   revoked: number;
   /** Derived, not event-sourced — see the module doc comment. */
   expired: boolean;
@@ -183,6 +185,7 @@ export function serializeClaim(
     expiry: Number(row.expiry),
     ledger_sequence: Number(row.ledger_sequence),
     threshold: row.threshold === null ? null : Number(row.threshold),
+    reason_code: row.reason_code,
     revoked: Number(row.revoked),
     expired: isExpired(row, now),
     state: claimState(row, now),
@@ -288,6 +291,13 @@ export function buildApp(
     }
     guard(req, res, next);
   };
+
+  // ── GraphQL endpoint ─────────────────────────────────────────────────────
+  // Provides a flexible, typed query interface over the claims store.
+  // Supports filtering by wallet, credential_type, issuer, active/revoked,
+  // and time range, with cursor-based pagination.
+  const graphqlHandler = createGraphQLHandler(db);
+  app.use("/graphql", graphqlHandler as any);
 
   // ── GET /health ──────────────────────────────────────────────────────────
   // Exposes ingester lag so operators can alert when the indexer falls behind.

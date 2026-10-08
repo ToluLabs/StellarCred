@@ -218,6 +218,7 @@ describe("Ingester finality lag", () => {
       ledger_sequence: 40,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/ledgers")) {
@@ -275,6 +276,7 @@ describe("Ingester finality lag", () => {
       ledger_sequence: 40,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/ledgers")) {
@@ -362,6 +364,7 @@ describe("Ingester reorg detection", () => {
       ledger_sequence: 50,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
 
     // Head is 40 — reorg scenario
@@ -431,17 +434,17 @@ describe("Ingester reconcile", () => {
     await db.upsertClaim({
       wallet: "GA1", credential_type: "kyc", issuer: "G",
       verified_at: 1000, expiry: 9999999, ledger_sequence: 10,
-      threshold: null, revoked: 0,
+      threshold: null, revoked: 0, reason_code: "other",
     });
     await db.upsertClaim({
       wallet: "GA2", credential_type: "kyc", issuer: "G",
       verified_at: 2000, expiry: 9999999, ledger_sequence: 20,
-      threshold: null, revoked: 0,
+      threshold: null, revoked: 0, reason_code: "other",
     });
     await db.upsertClaim({
       wallet: "GA3", credential_type: "kyc", issuer: "G",
       verified_at: 3000, expiry: 9999999, ledger_sequence: 30,
-      threshold: null, revoked: 0,
+      threshold: null, revoked: 0, reason_code: "other",
     });
 
     // Reorg point is 15: claims at ledger 20 and 30 should be deleted

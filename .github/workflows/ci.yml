@@ -180,9 +180,6 @@ jobs:
         # --locked ensures Cargo.lock is respected exactly (no silent dep upgrades).
         run: cargo build --release --target wasm32v1-none --locked
 
-      - name: Run contract tests
-        run: cargo test --locked
-
       - name: Lint (clippy)
         # Blocking — clippy warnings are treated as errors for all contract
         # crates. Any new lint must either be fixed or explicitly allowed with

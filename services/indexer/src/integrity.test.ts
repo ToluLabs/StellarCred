@@ -73,6 +73,7 @@ function claimRow(overrides: Partial<ClaimRow> = {}): ClaimRow {
     verified_at: NOW - 1000,
     expiry: NOW + 1000,
     ledger_sequence: 42,
+    reason_code: "other",
     threshold: null,
     revoked: 0,
     ...overrides,
@@ -312,6 +313,7 @@ describe("createIntegrityChecker", () => {
         ledger_sequence: 100 + i,
         threshold: null,
         revoked: 0,
+        reason_code: "other",
       });
     }
   }
@@ -394,6 +396,7 @@ describe("createIntegrityChecker", () => {
       ledger_sequence: 7,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
     const reader = fakeReader({}); // contract has no record for it
     const report = await checker(reader).run();

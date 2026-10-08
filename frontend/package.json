@@ -15,7 +15,7 @@
     "test:theme": "node --import tsx --test lib/theme.test.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
-        "first-load": "pnpm dlx @lhci/cli@0.14.0 autorun --config=.lighthouserc.json && node scripts/assert-no-prover-on-critical-path.mjs",
+    "first-load": "pnpm dlx @lhci/cli@0.14.0 autorun --config=.lighthouserc.json && node scripts/assert-no-prover-on-critical-path.mjs",
     "size": "size-limit",
     "check:i18n": "node scripts/check-i18n-parity.mjs",
     "verify:audit-log": "node --import tsx --experimental-strip-types scripts/verify-audit-log.ts"
@@ -23,6 +23,8 @@
   "dependencies": {
     "@aztec/bb.js": "0.87.0",
     "@creit.tech/stellar-wallets-kit": "^1.7.0",
+    "@ledgerhq/hw-app-str": "^7.0.0",
+    "@ledgerhq/hw-transport-webusb": "^6.28.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@noir-lang/noir_js": "1.0.0-beta.9",
@@ -34,6 +36,7 @@
     "jsqr": "^1.4.0",
     "next": "14.2.15",
     "next-intl": "^3.16.0",
+    "@ledgerhq/devices": "6.27.1",
     "pino": "^10.3.1",
     "process": "^0.11.10",
     "qrcode": "^1.5.4",
@@ -44,7 +47,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
     "@next/bundle-analyzer": "^14.2.35",
-        "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.62.0",
     "@size-limit/file": "^13.0.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
@@ -63,6 +66,11 @@
     "tsx": "^4.23.5",
     "typescript": "^5",
     "vitest": "^2.1.9"
+  },
+  "pnpm": {
+    "overrides": {
+      "@ledgerhq/devices": "6.27.1"
+    }
   },
   "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be"
 }

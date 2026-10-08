@@ -55,41 +55,6 @@ import type { Config } from "./config";
 import type { Db } from "./db";
 import { createWebhookDispatcher } from "./webhooks";
 
-import { Database } from './db';
-import { logger } from './logger';
-
-export interface VerifiedEventPayload {
-  holder: string;
-  credentialType: string;
-  threshold?: string | number | null;
-  [key: string]: any;
-}
-
-export function parseEvent(rawEvent: any): VerifiedEventPayload {
-  // Decode event parameters from contract logs/events
-  return {
-    holder: rawEvent.holder,
-    credentialType: rawEvent.credentialType,
-    // Parse threshold if present (supporting numeric or string representations from smart contract/events)
-    threshold: rawEvent.threshold !== undefined && rawEvent.threshold !== null 
-      ? Number(rawEvent.threshold) 
-      : null,
-  };
-}
-
-export async function processVerifiedEvent(db: Database, rawEvent: any): Promise<void> {
-  const parsed = parseEvent(rawEvent);
-
-  logger.info({ holder: parsed.holder, credentialType: parsed.credentialType, threshold: parsed.threshold }, 'Processing verified event');
-
-  await db.upsertClaim({
-    wallet: parsed.holder,
-    credential_type: parsed.credentialType,
-    threshold: parsed.threshold, // Persist actual threshold instead of null
-    revoked: 0,
-  });
-}
-
 // ── Retry configuration ───────────────────────────────────────────────────
 
 /** Maximum number of fetch attempts per tick (1 = no retry). */
@@ -358,6 +323,7 @@ type ParsedEvent =
       issuer: string;
       revokedAt: number;
       reasonCode: "issuer_revoked" | "holder_revoked";
+      reason: string;
     }
   | { kind: "unknown" };
 
@@ -459,6 +425,16 @@ function parseEvent(
     const holder = addressField("holder");
     const issuer = addressField("issuer");
     if (holder && issuer) {
+      const reasonRaw = eventData?.["reason"];
+      const reasonNum = typeof reasonRaw === "number" ? reasonRaw : Number(reasonRaw);
+      const reasonMap: Record<number, string> = {
+        0: "expired",
+        1: "superseded",
+        2: "fraud",
+        3: "user_request",
+        4: "other",
+      };
+      const reason = reasonMap[reasonNum] || "other";
       return {
         kind: "revoked",
         holder,
@@ -469,6 +445,7 @@ function parseEvent(
           Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
         ),
         reasonCode: "issuer_revoked",
+        reason,
       };
     }
   }
@@ -476,6 +453,16 @@ function parseEvent(
   if (topics[0] === "proof_reg" && topics[1] === "self_rev" && credentialType) {
     const holder = addressField("holder");
     if (holder) {
+      const reasonRaw = eventData?.["reason"];
+      const reasonNum = typeof reasonRaw === "number" ? reasonRaw : Number(reasonRaw);
+      const reasonMap: Record<number, string> = {
+        0: "expired",
+        1: "superseded",
+        2: "fraud",
+        3: "user_request",
+        4: "other",
+      };
+      const reason = reasonMap[reasonNum] || "other";
       return {
         kind: "revoked",
         holder,
@@ -486,6 +473,7 @@ function parseEvent(
           Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
         ),
         reasonCode: "holder_revoked",
+        reason,
       };
     }
   }
@@ -646,6 +634,7 @@ export function createIngester(config: Config, db: Db): Ingester {
           ledger_sequence: parsed.ledgerSequence,
           threshold: null,
           revoked: 0,
+          reason_code: "other",
         });
         processed++;
       } else if (parsed.kind === "revoked") {
@@ -653,7 +642,7 @@ export function createIngester(config: Config, db: Db): Ingester {
           parsed.holder,
           parsed.credentialType,
         );
-        await db.revokeClaim(parsed.holder, parsed.credentialType);
+        await db.revokeClaim(parsed.holder, parsed.credentialType, parsed.reason);
         if (webhookDispatcher) {
           await db.enqueueWebhookEvent({
             event_id: `${parsed.reasonCode}:${ev.transaction_hash ?? ev.paging_token}:${parsed.holder}:${parsed.credentialType}`,

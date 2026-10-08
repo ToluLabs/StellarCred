@@ -82,7 +82,7 @@ function makeConfig(sqlitePath: string): Config {
 
 beforeEach(async () => {
   // Use a unique temp file per test so each test gets a fresh DB
-  tmpFile = path.join(os.tmpdir(), `indexer-test-${Date.now()}-${Math.random()}.db`);
+  tmpFile = path.join(os.tmpdir(), `indexer-test-${Date.now() + "-" + Math.random()}-${Math.random()}.db`);
   db = createSqliteDb(makeConfig(tmpFile));
   await db.migrate();
   app = buildApp(db, makeIngester());
@@ -154,6 +154,7 @@ describe("GET /claims", () => {
       ledger_sequence: 42,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
 
     const res = await request(app).get("/claims?wallet=GALICE");
@@ -186,13 +187,13 @@ describe("GET /stats", () => {
       revoked: 0,
     };
     await (db as ReturnType<typeof createSqliteDb>).upsertClaim({
-      ...base, wallet: "GA1", credential_type: "kyc",
+      ...base, wallet: "GA1", credential_type: "kyc", reason_code: "other",
     });
     await (db as ReturnType<typeof createSqliteDb>).upsertClaim({
-      ...base, wallet: "GA2", credential_type: "kyc",
+      ...base, wallet: "GA2", credential_type: "kyc", reason_code: "other",
     });
     await (db as ReturnType<typeof createSqliteDb>).upsertClaim({
-      ...base, wallet: "GA3", credential_type: "age",
+      ...base, wallet: "GA3", credential_type: "age", reason_code: "other",
     });
 
     const res = await request(app).get("/stats");
@@ -225,7 +226,7 @@ describe("GET /recent", () => {
   ) {
     const dbc = db as ReturnType<typeof createSqliteDb>;
     for (const r of rows) {
-      await dbc.upsertClaim({ ...base, ...r });
+      await dbc.upsertClaim({ ...base, ...r, reason_code: "other" });
     }
   }
 
@@ -374,6 +375,7 @@ describe("GET /issuers/:issuer/stats", () => {
       ledger_sequence: 1,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
     await dbc.upsertClaim({
       wallet: "GA2",
@@ -384,6 +386,7 @@ describe("GET /issuers/:issuer/stats", () => {
       ledger_sequence: 2,
       threshold: 21,
       revoked: 0,
+      reason_code: "other",
     });
     await dbc.upsertClaim({
       wallet: "GA3",
@@ -394,6 +397,7 @@ describe("GET /issuers/:issuer/stats", () => {
       ledger_sequence: 3,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
     await dbc.revokeClaim("GA3", "kyc");
 
@@ -418,6 +422,7 @@ describe("GET /issuers/:issuer/stats", () => {
       ledger_sequence: 1,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
     await dbc.upsertClaim({
       wallet: "GA2",
@@ -428,6 +433,7 @@ describe("GET /issuers/:issuer/stats", () => {
       ledger_sequence: 2,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
 
     const res = await request(app).get("/issuers/GISSUER_A/stats");
@@ -555,6 +561,7 @@ describe("claim response schema", () => {
       expiry: "1999999999",
       ledger_sequence: "123456789",
       threshold: "50000",
+      reason_code: "other",
       revoked: 0,
     } as unknown as ClaimRow;
 
@@ -568,6 +575,7 @@ describe("claim response schema", () => {
       verified_at: 1700000000,
       expiry: 1999999999,
       ledger_sequence: 123456789,
+      reason_code: "other",
       threshold: 50000,
       revoked: 0,
       expired: false,
@@ -610,6 +618,7 @@ describe("claim response schema", () => {
       verified_at: 1700000000,
       expiry: 1999999999,
       ledger_sequence: 123456789,
+      reason_code: "other",
       threshold: 50000,
       revoked: 0,
     };
@@ -635,6 +644,7 @@ describe("claim response schema", () => {
       ledger_sequence: 42,
       threshold: 500,
       revoked: 0,
+      reason_code: "other",
     });
 
     const expectedKeys = [
@@ -645,6 +655,8 @@ describe("claim response schema", () => {
       "verified_at",
       "expiry",
       "ledger_sequence",
+      "reason_code",
+      
       "threshold",
       "revoked",
       // Derived, not event-sourced (#612) — see the api.ts module doc comment.
@@ -676,6 +688,7 @@ describe("claim response schema", () => {
       ledger_sequence: 42,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
 
     const res = await request(app).get("/issuers/GISSUER_REVOKE/credentials");
@@ -695,6 +708,7 @@ describe("claim response schema", () => {
       ledger_sequence: 50,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
 
     const res = await request(app).get("/issuers/GISSUER_ANALYTICS/analytics");
@@ -715,6 +729,7 @@ describe("claim response schema", () => {
       ledger_sequence: 60,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
 
     const res = await request(app).get("/credentials/0x123abc/events?wallet=GCHARLIE&type=kyc");
@@ -752,6 +767,7 @@ describe("on-chain data integrity (#612)", () => {
 
   async function seedClaim(overrides: Partial<ClaimRow> = {}) {
     await (db as ReturnType<typeof createSqliteDb>).upsertClaim({
+      reason_code: "other",
       wallet: WALLET,
       credential_type: "kyc",
       issuer: "GISSUER",
@@ -955,5 +971,230 @@ describe("claim lifecycle webhook subscriptions", () => {
         claimType: "unknown",
       });
     expect(unknownClaim.status).toBe(400);
+  });
+});
+
+describe("GraphQL endpoint", () => {
+  let graphqlDb: Db;
+  let graphqlApp: Application;
+  let graphqlTmpFile: string;
+
+  beforeEach(async () => {
+    graphqlTmpFile = path.join(os.tmpdir(), `indexer-test-gql-${Date.now() + "-" + Math.random()}.db`);
+    graphqlDb = createSqliteDb({ sqlitePath: graphqlTmpFile } as unknown as Config);
+    graphqlDb.migrate();
+
+    const wallet1 = Keypair.random().publicKey();
+    const wallet2 = Keypair.random().publicKey();
+    const issuer1 = Keypair.random().publicKey();
+    const issuer2 = Keypair.random().publicKey();
+
+    await graphqlDb.upsertClaim({
+      wallet: wallet1,
+      credential_type: "kyc",
+      issuer: issuer1,
+      verified_at: 1000,
+      expiry: 2000,
+      ledger_sequence: 100,
+      threshold: null,
+      revoked: 0,
+      reason_code: "other",
+    });
+    await graphqlDb.upsertClaim({
+      wallet: wallet1,
+      credential_type: "age",
+      issuer: issuer1,
+      verified_at: 1100,
+      expiry: 2100,
+      ledger_sequence: 101,
+      threshold: 18,
+      revoked: 0,
+      reason_code: "other",
+    });
+    await graphqlDb.upsertClaim({
+      wallet: wallet2,
+      credential_type: "kyc",
+      issuer: issuer2,
+      verified_at: 1200,
+      expiry: 2200,
+      ledger_sequence: 102,
+      threshold: null,
+      revoked: 1,
+      reason_code: "fraud",
+    });
+
+    graphqlApp = buildApp(graphqlDb, makeIngester());
+  });
+
+  afterEach(async () => {
+    await graphqlDb.close();
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try { fs.unlinkSync(graphqlTmpFile + suffix); } catch { /* ignore */ }
+    }
+  });
+
+  it("returns all claims with no filter", async () => {
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims { edges { wallet credentialType revoked reasonCode } pageInfo { hasNextPage endCursor } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(3);
+  });
+
+  it("filters by wallet", async () => {
+    const wallet = Keypair.random().publicKey();
+    await graphqlDb.upsertClaim({
+      wallet,
+      credential_type: "kyc",
+      issuer: Keypair.random().publicKey(),
+      verified_at: 1000,
+      expiry: 2000,
+      ledger_sequence: 100,
+      threshold: null,
+      revoked: 0,
+      reason_code: "other",
+    });
+
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { wallet: "${wallet}" }) { edges { wallet credentialType } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(1);
+    expect(claims[0].wallet).toBe(wallet);
+  });
+
+  it("filters by credential type", async () => {
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { credentialType: "kyc" }) { edges { credentialType } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(2);
+    claims.forEach((c: any) => expect(c.credentialType).toBe("kyc"));
+  });
+
+  it("filters by issuer", async () => {
+    const issuer = Keypair.random().publicKey();
+    await graphqlDb.upsertClaim({
+      wallet: Keypair.random().publicKey(),
+      credential_type: "kyc",
+      issuer,
+      verified_at: 1000,
+      expiry: 2000,
+      ledger_sequence: 100,
+      threshold: null,
+      revoked: 0,
+      reason_code: "other",
+    });
+
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { issuer: "${issuer}" }) { edges { issuer } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(1);
+    expect(claims[0].issuer).toBe(issuer);
+  });
+
+  it("filters by active status", async () => {
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { active: true }) { edges { revoked } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(2);
+    claims.forEach((c: any) => expect(c.revoked).toBe(false));
+  });
+
+  it("filters by revoked status", async () => {
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { revoked: true }) { edges { revoked reasonCode } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(1);
+    expect(claims[0].revoked).toBe(true);
+    expect(claims[0].reasonCode).toBe("fraud");
+  });
+
+  it("filters by verifiedAfter", async () => {
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { verifiedAfter: 1100 }) { edges { verifiedAt } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(2);
+  });
+
+  it("filters by verifiedBefore", async () => {
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { verifiedBefore: 1100 }) { edges { verifiedAt } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(1);
+  });
+
+  it("paginates with cursor", async () => {
+    const res1 = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(first: 2) { edges { id } pageInfo { hasNextPage endCursor } } }`,
+      });
+
+    expect(res1.status).toBe(200);
+    expect(res1.body.data.claims.edges).toHaveLength(2);
+    expect(res1.body.data.claims.pageInfo.hasNextPage).toBe(true);
+    expect(res1.body.data.claims.pageInfo.endCursor).toBeTruthy();
+
+    const res2 = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(first: 2, after: "${res1.body.data.claims.pageInfo.endCursor}") { edges { id } pageInfo { hasNextPage endCursor } } }`,
+      });
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.data.claims.edges).toHaveLength(1);
+    expect(res2.body.data.claims.pageInfo.hasNextPage).toBe(false);
+  });
+
+  it("combines multiple filters", async () => {
+    const res = await request(graphqlApp)
+      .post("/graphql")
+      .send({
+        query: `{ claims(filter: { credentialType: "kyc", active: true }) { edges { credentialType revoked } } }`,
+      });
+
+    expect(res.status).toBe(200);
+    const claims = res.body.data.claims.edges;
+    expect(claims).toHaveLength(1);
+    expect(claims[0].credentialType).toBe("kyc");
+    expect(claims[0].revoked).toBe(false);
   });
 });

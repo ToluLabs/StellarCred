@@ -48,6 +48,7 @@ use credential_verifier::EventVkSet;
 use issuer_registry::{EventIssuerRegistered, EventIssuerRevoked};
 use proof_registry::{
     EventPaused, EventProofRevoked, EventProofSubmitted, EventUnpaused,
+    RevocationReason,
 };
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger as _},
@@ -257,7 +258,7 @@ fn four_contract_lifecycle_end_to_end() {
 
     // 8. Revoke the claim (the issuing issuer, through ProofRegistry)
     //    → ClaimRevoked.
-    w.c.registry.revoke(&w.issuer, &holder, &symbol_short!("kyc"));
+    w.c.registry.revoke(&w.issuer, &holder, &symbol_short!("kyc"), &None);
     // Event assertion directly after the emitting call (see note above).
     assert_eq!(
         env.events().all().filter_by_contract(&w.c.registry.address),
@@ -275,6 +276,7 @@ fn four_contract_lifecycle_end_to_end() {
                     holder: holder.clone(),
                     issuer: w.issuer.clone(),
                     revoked_at: T0,
+                    reason: RevocationReason::Other,
                 }
                 .into_val(&env),
             ),

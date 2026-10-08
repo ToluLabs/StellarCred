@@ -111,6 +111,7 @@ const claim: ClaimInput = {
   ledger_sequence: 100,
   threshold: null,
   revoked: 0,
+  reason_code: "other",
 };
 
 // ── Placeholder binding ────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ describe("shared query layer drives both backends identically", () => {
     });
     expect(postgres).toBe(sqlite);
     expect(sqlite).toContain("ON CONFLICT(wallet, credential_type) DO UPDATE SET");
-    expect(sqlite).toContain("revoked = 0");
+    expect(sqlite).toContain("revoked = excluded.revoked");
     expect(params).toEqual([
       "GALICE",
       "kyc",
@@ -189,6 +190,7 @@ describe("shared query layer drives both backends identically", () => {
       100,
       null,
       0,
+      "other",
     ]);
   });
 
@@ -197,7 +199,7 @@ describe("shared query layer drives both backends identically", () => {
       await db.revokeClaim("GALICE", "kyc");
     });
     expect(revoke.postgres).toBe(revoke.sqlite);
-    expect(revoke.params).toEqual(["GALICE", "kyc"]);
+    expect(revoke.params).toEqual(["other", "GALICE", "kyc"]);
 
     const reconcile = await statementsFor(async (db) => {
       await db.deleteClaimsAfter(150);
@@ -319,6 +321,7 @@ describe("postgres dialect", () => {
       ledger_sequence: 42,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
   });
 
@@ -468,6 +471,7 @@ describe("schema", () => {
       "ledger_sequence",
       "threshold",
       "revoked",
+      "reason_code",
     ]);
     expect(columns("ledger_cursor")).toEqual(["id", "last_ledger"]);
     expect(columns("app_submissions")).toEqual([
