@@ -122,7 +122,7 @@ jobs:
           components: clippy
 
       - name: Cache cargo registry + build products
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -133,7 +133,7 @@ jobs:
             cargo-${{ runner.os }}-
 
       - name: Install Noir
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-noir
         with:
           path: ~/.nargo
@@ -147,7 +147,7 @@ jobs:
           noirup -v ${{ env.NOIR_VERSION }}
 
       - name: Install Barretenberg
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-bb
         with:
           path: ~/.bb
@@ -201,7 +201,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Restore / install Noir toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-noir-circuits
         with:
           path: ~/.nargo
@@ -215,7 +215,7 @@ jobs:
           noirup -v ${{ env.NOIR_VERSION }}
 
       - name: Restore / install Barretenberg toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-bb-circuits
         with:
           path: ~/.bb
@@ -340,7 +340,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Restore Noir toolchain (from circuits job cache)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: cache-noir-fuzz
         with:
           path: ~/.nargo
