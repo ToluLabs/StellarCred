@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Review npm dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         continue-on-error: true
 
       - name: Setup Node for custom checks
