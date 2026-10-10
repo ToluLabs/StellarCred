@@ -86,6 +86,32 @@ Setting `STELLARCRED_INDEXER_URL` alone changes nothing: reads still go to the
 chain until you pass `source` explicitly. See
 [Indexer fast path](#indexer-fast-path-optional).
 
+## Bootstrapping from a deployment (capability descriptor)
+
+Instead of supplying contract IDs one by one, the SDK can configure itself
+from a deployment's machine-readable capability descriptor (issue #639) —
+you supply a single URL and the descriptor provides the network passphrase,
+RPC URL, and ProofRegistry contract ID:
+
+```ts
+// One-URL setup: fetch {base}/api/capabilities and apply it.
+await StellarCred.bootstrap({ descriptorUrl: "https://app.example.com/api/capabilities" });
+
+// ...or rely on the configured/default baseUrl:
+await StellarCred.bootstrap(); // fetches {baseUrl}/api/capabilities
+
+const ok = await StellarCred.hasClaim(wallet, "kyc");
+```
+
+`bootstrap()` throws `ConfigError` when the descriptor is unreachable,
+malformed, or has no `proof_registry` contract ID. The descriptor is public
+and cacheable — nothing sensitive — and also reports the credential types the
+deployment supports, a registered-issuer summary, the public indexer URL (when
+configured), whether sponsored submission is available, and the SDK version
+range known to work. Helpers `fetchCapabilities()` and
+`validateCapabilitiesDescriptor()` are exported for integrators that want the
+raw descriptor without reconfiguring.
+
 ## Contract Deployments
 
 For the authoritative list of deployed StellarCred contract IDs, contract
