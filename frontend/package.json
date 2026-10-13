@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
-    "@next/bundle-analyzer": "^14.2.35",
+    "@next/bundle-analyzer": "^16.4.0",
     "@playwright/test": "^1.62.0",
     "@size-limit/file": "^13.0.1",
     "@testing-library/jest-dom": "^6.6.3",
