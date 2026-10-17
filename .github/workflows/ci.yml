@@ -318,6 +318,12 @@ jobs:
       - name: Check deploy-mainnet.sh syntax
         run: bash -n ../scripts/deploy-mainnet.sh
 
+      - name: Validate deploy env var mappings
+        # Fails fast when a deploy script references an env var that is not
+        # declared in the deploy pipeline, or when a required var is missing.
+        # Guards against the staging typo that silently used the wrong var.
+        run: bash ../scripts/validate-deploy-env.sh
+
       - name: Check benchmark.sh syntax
         run: bash -n ../scripts/benchmark.sh
 
@@ -328,6 +334,13 @@ jobs:
             echo "=== nargo test $dir ==="
             (cd "$dir" && nargo test)
           done
+
+      - name: Smoke check deploy env vars (staging)
+        # Runs the same validation the deploy pipeline uses, with the staging
+        # env var set, so a missing/renamed var fails CI instead of staging.
+        env:
+          DEPLOY_ENV: staging
+        run: bash ../scripts/validate-deploy-env.sh --env staging
 
   # ── Circuit fuzzing ─────────────────────────────────────────────────────────
   # Intentionally runs after circuits so it can reuse the compiled artifacts
@@ -380,6 +393,24 @@ jobs:
         run: |
           export PATH="$HOME/.nargo/bin:$PATH"
           node circuits/scripts/fuzz_circuits.js --iterations 10
+
+  # ── Deploy config: env var validation ──────────────────────────────────────
+  # Fails fast when a deploy script references an env var that is not declared
+  # in the deploy pipeline, or when a required var is missing. This is the CI
+  # gate that would have caught the staging typo before it reached staging.
+  deploy-config:
+    name: Validate deploy env vars
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate deploy script env var mappings
+        run: bash scripts/validate-deploy-env.sh
+
+      - name: Smoke check staging deploy env vars
+        env:
+          DEPLOY_ENV: staging
+        run: bash scripts/validate-deploy-env.sh --env staging
 
   # ── Frontend: typecheck, lint, test, build (once) ──────────────────────────
   # Runs in parallel with contracts, circuits, and indexer.
