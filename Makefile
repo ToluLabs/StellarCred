@@ -20,7 +20,7 @@ PNPM_MAJOR      := 9
 .PHONY: help all build test lint fmt clean check-api-reference doctor \
         build-contracts test-contracts lint-contracts \
         compile-circuits check-circuits \
-        build-frontend test-frontend lint-frontend test-sdk test-example test-a11y \
+        build-frontend test-frontend lint-frontend test-sdk test-example test-a11y test-e2e \
         build-indexer test-indexer run-indexer
 
 # ------------------------------------------------------------------------------
@@ -54,6 +54,7 @@ help:
 	@echo "  make test-sdk        - Run standalone @stellarcred/sdk integration tests"
 	@echo "  make test-example    - Run canonical integration example typecheck & tests"
 	@echo "  make test-a11y       - Run axe-core accessibility tests (requires Playwright)"
+	@echo "  make test-e2e        - Run Playwright E2E tests: wallet-connect, holder-proof, sdk-gating, functional"
 	@echo "  make build-indexer   - Compile TypeScript indexer service"
 	@echo "  make test-indexer    - Run Jest test suite for indexer"
 	@echo "  make run-indexer     - Start local indexer service"
@@ -248,6 +249,17 @@ test-example:
 ## test-a11y: Run axe-core accessibility tests
 test-a11y:
 	cd frontend && pnpm test:e2e
+
+## test-e2e: Run all Playwright E2E tests (wallet-connect, holder-proof, sdk-gating, functional)
+## Requires a production build in frontend/.next (run `make build-frontend` first).
+## Pass BROWSER=chromium|firefox|webkit to target a single browser (default: all).
+test-e2e:
+	cd frontend && pnpm exec playwright test \
+		e2e/wallet-connect.spec.ts \
+		e2e/holder-proof.spec.ts \
+		e2e/sdk-gating.spec.ts \
+		e2e/functional.spec.ts \
+		$(if $(BROWSER),--project=$(BROWSER),)
 
 # ------------------------------------------------------------------------------
 # Indexer Service (Node.js / Express)
