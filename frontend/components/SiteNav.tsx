@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/verify",  label: "Verify",  id: "nav-verify" },
   { href: "/issuer",  label: "Issuer" },
   { href: "/apps",    label: "Apps",    id: "nav-apps" },
+  { href: "/login",   label: "Login",   id: "nav-login" },
 ];
 
 function ShieldIcon() {

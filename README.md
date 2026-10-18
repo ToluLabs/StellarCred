@@ -97,6 +97,7 @@ circuits/               Noir circuits (UltraHonk · Noir 1.0.0-beta.9 / bb 0.87.
   commit/                 issuer helper: returns Poseidon2([value, salt], 2)
   kyc_proof/              "I hold a credential the issuer committed to"
   age_proof/              "I am over N" without revealing date of birth
+  date_range/             "my credential was issued in this window" without revealing the date
   income_proof/           "my income exceeds T" without revealing it
   jurisdiction_proof/     "my country is not restricted" without revealing it
   funds_proof/            "my balance exceeds T" without revealing it

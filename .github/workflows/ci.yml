@@ -1,3 +1,5 @@
+---
+---
 name: CI
 
 on:
@@ -232,7 +234,7 @@ jobs:
       - name: Compile circuits
         run: |
           export PATH="$HOME/.nargo/bin:$PATH"
-          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership; do
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership date_range; do
             echo "=== $dir ==="
             (cd "$dir" && nargo compile)
           done
@@ -257,7 +259,7 @@ jobs:
           VK_TMP="/tmp/vk_check"
           rm -rf "$VK_TMP"
 
-          for dir in kyc_proof age_proof income_proof jurisdiction_proof funds_proof employment_proof aggregate_proof accreditation_proof set_membership; do
+          for dir in kyc_proof age_proof income_proof jurisdiction_proof funds_proof employment_proof aggregate_proof accreditation_proof set_membership date_range; do
             type=$(type_of "$dir")
             json="target/${dir}.json"
             out="$VK_TMP/$type"
@@ -324,7 +326,7 @@ jobs:
       - name: Run Noir unit tests (nargo test)
         run: |
           export PATH="$HOME/.nargo/bin:$PATH"
-          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership range_proof; do
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership range_proof date_range; do
             echo "=== nargo test $dir ==="
             (cd "$dir" && nargo test)
           done
@@ -445,7 +447,7 @@ jobs:
       # can consume it without rebuilding. Retention is short — this is a
       # transient CI artifact, not a release artifact.
       - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build-${{ github.sha }}
           path: |
@@ -455,6 +457,14 @@ jobs:
 
       - name: Test frontend SDK
         run: pnpm test
+
+      - name: Typecheck SDK tests (catch syntax errors before running)
+        working-directory: frontend/packages/sdk
+        run: pnpm exec tsc --noEmit -p tsconfig.test.json || pnpm exec tsc --noEmit
+
+      - name: Test SDK barrel exports
+        working-directory: frontend/packages/sdk
+        run: pnpm test:barrel
 
       # Required privacy gate (issue #627). Runs the flow-level identity-leak
       # test on its own so a new persistence path that reintroduces identity
@@ -475,6 +485,14 @@ jobs:
       - name: Build SDK distribution
         working-directory: frontend/packages/sdk
         run: npx --yes -p tsup -p typescript@5 tsup src/index.ts src/server.ts --format cjs,esm --dts --clean
+
+      - name: Verify SDK tree-shaking (bundle check)
+        working-directory: frontend/packages/sdk
+        run: pnpm check:bundle
+
+      - name: Verify SDK public API surface unchanged
+        working-directory: frontend/packages/sdk
+        run: pnpm check:api-surface
 
       - name: Typecheck SDK
         working-directory: frontend/packages/sdk
@@ -576,6 +594,10 @@ jobs:
         working-directory: frontend/packages/sdk
         run: pnpm typecheck
 
+      - name: Test SDK barrel exports
+        working-directory: frontend/packages/sdk
+        run: pnpm test:barrel
+
       - name: Run integration tests
         working-directory: frontend/packages/sdk
         run: pnpm test:integration
@@ -632,7 +654,7 @@ jobs:
       # rebuilding. The artifact is scoped to the current SHA so it is always
       # the exact output from the frontend job above.
       - name: Download frontend build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-build-${{ github.sha }}
           path: frontend

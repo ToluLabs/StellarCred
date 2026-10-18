@@ -1,1 +1,204 @@
-IyEvdXNyL2Jpbi9lbnYgYmFzaAojIEJ1aWxkIFN0ZWxsYXJDcmVkIGNpcmN1aXRzIHdpdGggdGhlIHBpbm5lZCBwcm92aW5nIHN0YWNrIGFuZCBzdGFnZSBhcnRpZmFjdHMuCiMKIyBGb3IgZWFjaCBjaXJjdWl0IGl0IHByb2R1Y2VzIChpbiBjaXJjdWl0cy88bmFtZT4vdGFyZ2V0Lyk6CiMgICA8bmFtZT4uanNvbiAgICAgIGNvbXBpbGVkIEFDSVIgIC0+IGNvcGllZCB0byBmcm9udGVuZC9wdWJsaWMvY2lyY3VpdHMvPHR5cGU+Lmpzb24KIyAgIHZrLCBwcm9vZiwgcHVibGljX2lucHV0cyAgIHRoZSBVbHRyYUhvbmthIGFydGlmYWN0cyAoYmIpCiMgVGhlIHZrIGlzIHdoYXQgeW91IGRlcGxveSBpbnRvIENyZWRlbnRpYWxWZXJpZmllci5zZXRfdmsoczx0eXBlPiwgdmspLgojCiMgRWFjaCBzdGFnZWQgYXJ0aWZhY3QgaXMgYWxzbyBzdGFtcGVkIHdpdGggdGhlIGNpcmN1aXQgdmVyc2lvbiBkZWNsYXJlZCBpbiBjaXJjdWl0cy9jaXJjdWl0LXZlcnNpb25zLmpzb24sIHNvIHRoZSBicm93c2VyIGNhbiB0ZWxsIHdoaWNoIGNpcmN1aXQgYQojIGNyZWRlbnRpYWwgd2FzIGlzc3VlZCBhZ2FpbnN0ICgjNjMzKS4gVGhlIGNyZWRlbnRpYWwtdHlwZSBmaWxlbmFtZSBhbmQgdGhlCiMgdmVyc2lvbiB0YWJsZSBhcmUgYm90aCByZXNvbHZlZCB0aHJvdWdoIGNpcmN1aXRzL3NjcmlwdHMvY2lyY3VpdC12ZXJzaW9ucy5qcwojIHNvIHRoZXkgY2Fubm90IGRyaWZ0IGFwYXJ0LgojCiMgUmVxdWlyZXMgdGhlIEVYQUNUIHZlcnNpb25zIHRoZSBvbi1jaGFpbiB2ZXJpZmllciB3YXMgYnVpbHQgYWdhaW5zdCwgb3IgdGhlIFZLCiMgd2lsbCBub3QgdmFsaWRhdGUgcHJvb2ZzOgojICAgbm9pcnVwIC12IDEuMC4wLWJldGEuOSAgICAgICAgKE5vaXIgLyBuYXJnbykKIyAgIGJidXAgICAtdiAwLjg3LjAgICAgICAgICAgICAgKEJhcnJldGVuYmVyZyAvIGJiKQpzZXQgLWV1byBwaXBlZmFpbAoKTk9JUl9WRVJTSU9OPSIxLjAuMC1iZXRhLjkiCkJCX1ZFUlNJT049IjAuODcuMCIKCiMgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KIyBMb2dnaW5nIGhlbHBlcnM6IHRpbWVzdGFtcGVkIGxpbmVzLCBzdGRvdXQvc3RkZXJyIGNhcHR1cmUsIGFuZCBmYWlsdXJlCiMgY29udGV4dCBzbyBkZXBsb3kgZmFpbHVyZXMgYXJlIG5ldmVyIHNpbGVudC4KIyAtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLQp0cygpIHsgZGF0ZSAtdSAnKyVZLSVtLSVkVCVIOiVNOiVTLiUzTlonIDI+L2Rldi9udWxsIHx8IGRhdGUgLXU7IH0KbG9nKCkgeyBwcmludGYgJ1slc10gW2J1aWxkXSBbJXNdICVzXG4nICIkKHRzKSIgIiR7TE9HX0xFVkVMIC0taW5mb30iICIkKiIgPiYyOyB9CmluZm8oKSB7IExPR19MRVZFTD1pbmZvIGxvZyAiJC@iOyB9Cndhcm4oKSB7IExPR19MRVZFTD13YXJuIGxvZyAiJC@iOyB9CmVycm9yKCkgeyBMT0dfTEVWRUw9ZXJyb3IgbG9nICIkQCI7IH0KCiMgUnVuIGEgY29tbWFuZCwgY2FwdHVyaW5nIHN0ZG91dC9zdGRlcnIgdG8gZmlsZXMgYW5kIHJlcGxheWluZyB0aGVtIHdpdGgKIyB0aW1lc3RhbXBzLiBFeGl0cyBub24temVybyB3aXRoIHRoZSBmYWlsaW5nIGNvbW1hbmQgYW5kIGl0cyBleGl0IGNvZGUuCnJ1bl9sb2dnZWQoKSB7CiAgbG9jYWwgZGVzYz0iJDEiOyBzaGlmdAogIGxvY2FsIG91dCBlcnIgcmMKICBvdXQ9IiQobWt0ZW1wKSI7IGVycj0iJChta3RlbXApIgogIGluZm8gIi0+ICRkZXNjOiAkKiIKICBpZiAiJCRAIiA+IiRvdXQiIDI+IiRlcnIiOyB0aGVuCiAgICByYz0wCiAgZWxzZQogICAgcmM9JD8KICBmaQogIHdoaWxlIElGUz0gcmVhZCAtciBsaW5lIHx8IFsgLW4gIiRsaW5lIiBdOyBkbyBwcmludGYgJ1slc10gW2J1aWxkXSBbc3Rkb3V0XSAlc1xuJyAiJCh0cykiICIkbGluZSIgPiYyOyBkb25lIDwiJG91dCIKICB3aGlsZSBJRlM9IHJlYWQgLXIgbGluZSB8fCBbIC1uICIkbGluZSIgXTsgZG8gcHJpbnRmICdbJXNdIFtidWlsZF0gW3N0ZGVycl0gJXNcbicgIiQodHMpIiAiJGxpbmUiID4mMjsgZG9uZSA8IiRlcnIiCiAgaWYgWyAiJHJjIiAtbmUgMCBdOyB0aGVuCiAgICBlcnJvciAiY29tbWFuZCBmYWlsZWQgKGV4aXQgJHJjKTogJGRlc2M6ICQqIgogICAgcm0gLWYgIiRvdXQiICIkZXJyIgogICAgZXhpdCAiJHJjIgogIGZpCiAgcm0gLWYgIiRvdXQiICIkZXJyIgp9Cgp0cmFwICdlcnJvciAidW5leHBlY3RlZCBmYWlsdXJlIGF0IGxpbmUgJExJTk9cIiAoZXhpdCBjb2RlICQ/KVwiJyBFUlIKCk5PSVJfVkVSU0lPTj0iMS4wLjAtYmV0YS45IgpCQl9WRVJTSU9OPSIwLjg3LjAiCgpST09UPSIkKGNkICIkKGRpcm5hbWUgIiR7QkFTSF9TT1VSQ0VbMF19IikvLi4iICYmIHB3ZCkiCkZST05URU5EX0NJUkNVSVRTPSIkKGNkICIkUk9PVC8uLiIgJiYgcHdkKS9mcm9udGVuZC9wdWJsaWMvY2lyY3VpdHMiCmV4cG9ydCBQQVRIPSIkSE9NRS8ubmFyZ28vYmluOiRIT01FLy5iYi9iaW46JFBBVEgiCgpjb21tYW5kIC12IG5hcmdvID4vZGV2L251bGwgfHwgeyBlcnJvciAibmFyZ28gbm90IGZvdW5kIOKAlCBydW46IG5vaXJ1cCAtdiAkTk9JUl9WRVJTSU9OIjsgZXhpdCAxOyB9CmNvbW1hbmQgLXYgYmIgPi9kZXYvbnVsbCAgICB8fCB7IGVycm9yICJiYiBub3QgZm91bmQg4oCUIHJ1bjogYmJ1cCAtdiAkQkJfVkVSU0lPTiI7IGV4aXQgMTsgfQoKIyBNYXAgY2lyY3VpdCBkaXJlY3RvcnkgLT4gZnJvbnRlbmQgY3JlZGVudGlhbC10eXBlIGZpbGVuYW1lLiBSZXNvbHZlZCBmcm9tIHRoZQojIHNoYXJlZCB2ZXJzaW9uIG1vZHVsZSByYXRoZXIgdGhhbiBkdXBsaWNhdGVkIGhlcmUsIHNvIHRoZSB0d28gbmV2ZXIgZGlzYWdyZWUKIyAoZS5nLiBhIG5ldyBjaXJjdWl0IHdvdWxkIG90aGVyd2lzZSBnZXQgYSBmaWxlbmFtZSBub2JvZHkgdmVyc2lvbmVkKS4KdHlwZV9vZigpIHsKICAjIEFic29sdXRlIHBhdGg6IGJ1aWxkKCkgcnVucyBmcm9tIHRoZSBjaXJjdWl0J3Mgb3duIGRpcmVjdG9yeSB2aWEgcHVzaGQuCiAgbm9kZSAtZSAncHJvY2Vzcy5zdGRvdXQud3JpdGUocmVxdWlyZShwcm9jZXNzLmFyZ3ZbMV0pLnR5cGVPZkNpcmN1aXQocHJvY2Vzcy5hcmd2WzJdKSknIFwKICAgICIkUk9PVC9zY3JpcHRzL2NpcmN1aXQtdmVyc2lvbnMuanMiICIkMSIKfQoKIyBTdGFtcCB0aGUgZGVjbGFyZWQgY2lyY3VpdCB2ZXJzaW9uIGludG8gYSBzdGFnZWQgY29tcGlsZWQgYXJ0aWZhY3QuCnN0YW1wX3ZlcnNpb24oKSB7CiAgbm9kZSAiJFJPT1Qvc2NyaXB0cy9zdGFtcC1jaXJjdWl0LXZlcnNpb24uanMiIHN0YW1wICIkMSIgIiQyIgp9CgpSRVBPPSIkKGNkICIkUk9PVC8uLiIgJiYgcHdkKSIKRklJVFVSRVM9IiRSRVBPL2ZpeHR1cmVzIgpta2RpciAtcCAiJEZST05URU5EX0NJUkNVSVRTIgoKIyBWYWxpZGF0ZSByZXF1aXJlZCBlbnZpcm9ubWVudCB2YXJpYWJsZXMgYmVmb3JlIHJ1bm5pbmcgYW55IGJ1aWxkIHN0ZXAuCiMgQSBtaXNzaW5nIHJlcXVpcmVkIHZhciBpcyBhIGhhcmQgZmFpbHVyZSAobm9uLXplcm8gZXhpdCkgd2l0aCBhIGNsZWFyIHJlYXNvbi4KcmVxdWlyZV9lbnYoKSB7CiAgbG9jYWwgdmFyPSIkMSIKICBpZiBbIC16ICIkeyF2YXItfSIgXTsgdGhlbgogICAgZXJyb3IgInJlcXVpcmVkIGVudmlyb25tZW50IHZhcmlhYmxlICR2YXIgaXMgbm90IHNldCIKICAgIGV4aXQgMQogIGZpCn0KCnJlcXVpcmVfZW52IEhPTUUKcmVxdWlyZV9lbnYgUEFUSAoKIyBFbnN1cmUgdGhlIHBpbm5lZCB0b29sY2hhaW4gaXMgYWN0dWFsbHkgdGhlIG9uZSBvbiBQQVRILiBUaGlzIGlzIGEgc21va2UKIyBjaGVjayB0aGF0IHN1cmZhY2VzIGEgbWlzbWF0Y2ggYmVmb3JlIGFueSBhcnRpZmFjdHMgYXJlIHN0YWdlZC4KY2hlY2tfdG9vbF92ZXJzaW9ucygpIHsKICBsb2NhbCBuYXJnbyB2ZXJzaW9uIGJiX3ZlcnNpb24KICBuYXJnbyB2ZXJzaW9uPSIkKG5hcmdvIC0tdmVyc2lvbiAyPiYxIHwgaGVhZCAtbjEgfHwgdHJ1ZSkiCiAgYmJfdmVyc2lvbj0iJChiYiAtLXZlcnNpb24gMj4mMSB8IGhlYWQgLW4xIHx8IHRydWUpIgogIGluZm8gIm5hcmdvOiAkbmFyZ28gdmVyc2lvbiAoZXhwZWN0ZWQgJE5PSVJfVkVSU0lPTikiCiAgaW5mbyAiYmI6ICRiYl92ZXJzaW9uIChleHBlY3RlZCAkQkJfVkVSU0lPTikiCiAgaWYgISBncmVwIC1xICIkTk9JUl9WRVJTSU9OIiA8PDwiJG5hcmdvIHZlcnNpb24iOyB0aGVuCiAgICB3YXJuICJuYXJnbyB2ZXJzaW9uIGRvZXMgbm90IG1hdGNoICRJT0lSX1ZFUlNJT04iCiAgZmkKICBpZiAhIGdyZXAgLXEgIiRCQl9WRVJTSU9OIiA8PDwiJGJiX3ZlcnNpb24iOyB0aGVuCiAgICB3YXJuICJiYiB2ZXJzaW9uIGRvZXMgbm90IG1hdGNoICRCQl9WRVJTSU9OIgogIGZpCn0KCmNoZWNrX3Rvb2xfdmVyc2lvbnMKCmlmIFsgLWYgIiRST09UL3NjcmlwdHMvZ2VuX2lucHV0cy5zaCIgXTsgdGhlbgogIGluZm8gIkdlbmVyYXRpbmcgY2lyY3VpdCBwcm92ZXIgaW5wdXRzLi4uIgogIHJ1bl9sb2dnZWQgImdlbiBpbnB1dHMiIGJhc2ggIiRST09UL3NjcmlwdHMvZ2VuX2lucHV0cy5zaCIKZmkKCmJ1aWxkKCkgewogIGxvY2FsIG5hbWU9IiQxIgogIGxvY2FsIGRpcj0iJFJPT1QvJG5hbWUiCiAgWyAtZiAiJGRpci9OYXJnby50b21sIiBdIHx8IHsgd2FybiAic2tpcCAkbmFtZSAobm8gTmFyZ28udG9tbCkiOyByZXR1cm47IH0KICBpbmZvICI9PT0gJG5hbWUgPT09IgogIHB1c2hkICIkZGlyIiA+L2Rldi9udWxsCgogIGxvY2FsIHR5cGUKICB0eXBlPSIkKHR5cGVfb2YgIiRuYW1lIikiCiAgIyBuYXJnbyByZXNvbHZlcyB0aGUgb3V0cHV0IGRpciB0byB0aGUgKndvcmtzcGFjZSogcm9vdCAoY2lyY3VpdHMvdGFyZ2V0LyksCiAgIyBub3QgYSBwZXItbWVtYmVyIHRhcmdldC8sIHNpbmNlIHRoZXNlIGFyZSB3b3Jrc3BhY2UgbWVtYmVycyDigJQgbm90IGJiJ3MKIyB0YXJnZXQsIHdoaWNoIGlzIGFsd2F5cyByZWxhdGl2ZSB0byAtLW91dHB1dF9wYXRoIGJlbG93LgogIGxvY2FsIGpzb249IiRST09UL3RhcmdldC8ke25hbWV9Lmpzb24iCiAgbG9jYWwgZ3o9IiRST09UL3RhcmdldC8ke25hbWV9Lmd6IgoKICAjIFRoZSBjb21taXQgaGVscGVycyBhcmUgb25seSBldmVyIGV4ZWN1dGVkICh0byBkZXJpdmUgY29tbWl0bWVudHMpLCBuZXZlcgojIHByb3ZlbiBhbmQgbmV2ZXIgcmVnaXN0ZXJlZCBvbi1jaGFpbiwgc28gdGhleSBoYXZlIG5vIFZLIHRvIHZlcnNpb24gYWdhaW5zdAogICMgYW5kIGFyZSBkZWxpYmVyYXRlbHkgbm90IHN0YW1wZWQuIEV2ZXJ5IG90aGVyIGNpcmN1aXQgSVMgcHJvdmVuLCBhbmQKICAjIHN0YW1wX3ZlcnNpb24gYmVsb3cgZmFpbHMgbG91ZGx5IGlmIGl0IGhhcyBubyBkZWNsYXJlZCB2ZXJzaW9uLgogIGNhc2UgIiRuYW1lIiBpbgogICAgY29tbWl0fGNvbW1pdDMpCiAgICAgIHJ1bl9sb2dnZWQgIm5hcmdvIGNvbXBpbGUgKCRuYW1lKSIgbmFyZ28gY29tcGlsZQogICAgICBjcCAiJGpzb24iICIkRlJPTlRFTkRfQ0lSQ1VJVFMvJHtuYW1lfS5qc29uIgogICAgICBpbmZvICIgIC0+IGZyb250ZW5kL3B1YmxpYy9jaXJjdWl0cy8ke25hbWV9Lmpzb24iCiAgICAgIHBvcGQgPi9kZXYvbnVsbAogICAgICByZXR1cm4KICAgICAgOzsKICBlc2FjCgogICMgQ29tcGlsZSArIFZLIGFyZSBhbHdheXMgcG9zc2libGUgKHdyaXRlX3ZrIG5lZWRzIG9ubHkgdGhlIGJ5dGVjb2RlKS4KICBydW5fbG9nZ2VkICJuYXJnbyBjb21waWxlICgkbmFtZSkiIG5hcmdvIGNvbXBpbGUKICBydW5fbG9nZ2VkICJiYiB3cml0ZV92ayAoJG5hbWUpIiBiYiB3cml0ZV92ayAtLXNjaGVtZSB1bHRyYV9ob25rIC0tb3JhY2xlX2hhc2gga2VjY2FrIFwKICAgIC0tYnl0ZWNvZGVfcGF0aCAiJGpzb24iIFwKICAgIC0tb3V0cHV0X3BhdGggdGFyZ2V0IC0tb3V0cHV0X2Zvcm1hdCBieXRlc19hbmRfZmllbGRzCiAgIyBiYiBtYXkgZW1pdCB2ayBhcyB0YXJnZXQvdmsvdmsg4oCUIG5vcm1hbGlzZSB0byB0YXJnZXQvdmsuCiAgWyAtZiB0YXJnZXQvdmsvdmsgXSAmJiBtdiB0YXJnZXQvdmsvdmsgdGFyZ2V0L3ZrLnRtcCAmJiBybWRpciB0YXJnZXQvdmsgJiYgbXYgdGFyZ2V0L3ZrLnRtcCB0YXJnZXQvdmsgfHwgdHJ1ZQoKICAjIENvbW1pdCB0aGUgVksgKGRlcGxveWVkIGludG8gQ3JlZGVudGlhbFZlcmlmaWVyKSBhbmQgc3RhZ2UgdGhlIGNpcmN1aXQgSlNPTi4KICBta2RpciAtcCAiJEZJWFRVUkVTLyR0eXBlIgogIGNwIHRhcmdldC92ayAiJEZJWFRVUkVTLyR0eXBlL3ZrIgogIGNwICIKanNvbiIgIiRGUk9OVEVORF9DSVJDSVZJVFMvJHt0eXBlfS5qc29uIgogIHN0YW1wX3ZlcnNpb24gIiRuYW1lIiAiJEZST05URU5EX0NJUkNVSVRTLyR7dHlwZX0uanNvbiIKICBpbmZvICIgIC0+IGZpeHR1cmVzLyR0eXBlL3ZrIgogIGluZm8gIiAgLT4gZnJvbnRlbmQvcHVibGljL2NpcmN1aXRzLyR7dHlwZX0uanNvbiIKCiAgIyBBIHNhbXBsZSBwcm9vZiBuZWVkcyBjb25jcmV0ZSBpbnB1dHM7IG9ubHkgYnVpbGQgaXQgd2hlbiBQcm92ZXIudG9tbCBleGlzdHMuCiAgaWYgWyAtZiBQcm92ZXIudG9tbCBdOyB0aGVuCiAgICBydW5fbG9nZ2VkICJuYXJnbyBleGVjdXRlICgkbmFtZSkiIG5hcmdvIGV4ZWN1dGUKICAgIHJ1bl9sb2dnZWQgImJiIHByb3ZlICgkbmFtZSkiIGJiIHByb3ZlIC0tc2NoZW1lIHVsdHJhX2hvbmsgLS1vcmFjbGVfaGFzaCBrZWNjYWsgXAogICAgICAtLWJ5dGVjb2RlX3BhdGggIiRqc29uIiAtLXdpdG5lc3NfcGF0aCAiJGd6IiBcCiAgICAgIC0tb3V0cHV0X3BhdGggdGFyZ2V0IC0tb3V0cHV0X2Zvcm1hdCBieXRlc19hbmRfZmllbGRzCiAgICBjcCB0YXJnZXQvcHJvb2YgIiRGSVhUVVJFUy8kdHlwZS9wcm9vZiIKICAgIGNwIHRhcmdldC9wdWJsaWNfaW5wdXRzICIkRklYVFVSRVMvJHR5cGUvcHVibGljX2lucHV0cyIKICAgIGluZm8gIiAgLT4gZml4dHVyZXMvJHR5cGUve3Byb29mLHB1YmxpY19pbnB1dHN9IgogIGZpCgogICMgRm9yIGp1cmlzZGljdGlvbl9wcm9vZjogYWxzbyBidWlsZCBhbiBhbGxvd2xpc3QgZml4dHVyZSBpZiBQcm92ZXJfYWxsb3dsaXN0LnRvbWwgZXhpc3RzLgogIGlmIFsgIiRuYW1lIiA9ICJqdXJpc2RpY3Rpb25fcHJvb2YiIF0gJiYgWyAtZiBQcm92ZXJfYWxsb3dsaXN0LnRvbWwgXTsgdGhlbgogICAgaW5mbyAiICAtLS0gYWxsb3dsaXN0IGZpeHR1cmUgLS0tIgogICAgY3AgUHJvdmVyLnRvbWwgUHJvdmVyLnRvbWwuYmFrCiAgICBjcCBQcm92ZXJfYWxsb3dsaXN0LnRvbWwgUHJvdmVyLnRvbWwKICAgIHJ1bl9sb2dnZWQgIm5hcmdvIGV4ZWN1dGUgKCRuYW1lIGFsbG93bGlzdCkiIG5hcmdvIGV4ZWN1dGUKICAgIHJ1bl9sb2dnZWQgImJiIHByb3ZlICgkbmFtZSBhbGxvd2xpc3QpIiBiYiBwcm92ZSAtLXNjaGVtZSB1bHRyYV9ob25rIC0tb3JhY2xlX2hhc2gga2VjY2FrIFwKICAgICAgLS1ieXRlY29kZV9wYXRoICIKanNvbiIgLS13aXRuZXNzX3BhdGggIiRneiIgXAogICAgICAtLW91dHB1dF9wYXRoIHRhcmdldCAtLW91dHB1dF9mb3JtYXQgYnl0ZXNfYW5kX2ZpZWxkcwogICAgbWtkaXIgLXAgIiRGSVhUVVJFUy9qdXJpc2RpY3Rpb25fYWxsb3ciCiAgICBjcCB0YXJnZXQvdmsgIiRGSVhUVVJFUy9qdXJpc2RpY3Rpb25fYWxsb3cvdmsiCiAgICBjcCB0YXJnZXQvcHJvb2YgIiRGSVhUVVJFUy9qdXJpc2RpY3Rpb25fYWxsb3cvcHJvb2YiCiAgICBjcCB0YXJnZXQvcHVibGljX2lucHV0cyAiJEZJWFRVUkVTL2p1cmlzZGljdGlvbl9hbGxvdy9wdWJsaWNfaW5wdXRzIgogICAgaW5mbyAiICAtPiBmaXh0dXJlcy9qdXJpc2RpY3Rpb25fYWxsb3cve3ZrLHByb29mLHB1YmxpY19pbnB1dHN9IgogICAgbXYgUHJvdmVyLnRvbWwuYmFrIFByb3Zlci50b21sCiAgZmkKCiAgcG9wZCA+L2Rldi9udWxsCn0KCmlmIFsgIiQjIiAtZ3QgMCBdOyB0aGVuCiAgZm9yIG4gaW4gIiRAIjsgZG8gYnVpbGQgIiRuIjsgZG9uZQplbHNlCiAgZm9yIG4gaW4gY29tbWl0IGNvbW1pdDMga3ljX3Byb29mIGFnZV9wcm9vZiBpbmNvbWVfcHJvb2YganVyaXNkaWN0aW9uX3Byb29mIGZ1bmRzX3Byb29mIGFjY3JlZGl0YXRpb25fcHJvb2YgcmFuZ2VfcHJvb2YgZW1wbG95bWVudF9wcm9vZiBhZ2dyZWdhdGVfcHJvb2Ygc2V0X21lbWJlcnNoaXA7IGRvIGJ1aWxkICIkbiI7IGRvbmUKZmkKCmluZm8gImJ1aWxkIGNvbXBsZXRlZCBzdWNjZXNzZnVsbHkiCg==
+#!/usr/bin/env bash
+# Build StellarCred circuits with the pinned proving stack and stage artifacts.
+#
+# For each circuit it produces (in circuits/<name>/target/):
+#   <name>.json      compiled ACIR  -> copied to frontend/public/circuits/<type>.json
+#   vk, proof, public_inputs   the UltraHonk artifacts (bb)
+# The vk is what you deploy into CredentialVerifier.set_vk(<type>, vk).
+#
+# Each staged artifact is also stamped with the circuit version declared in
+# circuits/circuit-versions.json, so the browser can tell which circuit a
+# credential was issued against (#633). The credential-type filename and the
+# version table are both resolved through circuits/scripts/circuit-versions.js
+# so they cannot drift apart.
+#
+# Requires the EXACT versions the on-chain verifier was built against, or the VK
+# will not validate proofs:
+#   noirup -v 1.0.0-beta.9        (Noir / nargo)
+#   bbup   -v 0.87.0              (Barretenberg / bb)
+set -euo pipefail
+
+NOIR_VERSION="1.0.0-beta.9"
+BB_VERSION="0.87.0"
+
+# ---------------------------------------------------------------------------
+# Logging helpers: timestamped lines, stdout/stderr capture, and failure
+# context so deploy failures are never silent.
+# ---------------------------------------------------------------------------
+ts() { date -u '+%Y-%m-%dT%H:%M:%S.%3NZ' 2>/dev/null || date -u; }
+log() { printf '[%s] [build] [%s] %s\n' "$(ts)" "${LOG_LEVEL:-info}" "$*" >&2; }
+info() { LOG_LEVEL=info log "$@"; }
+warn() { LOG_LEVEL=warn log "$@"; }
+error() { LOG_LEVEL=error log "$@"; }
+
+# Run a command, capturing stdout/stderr to files and replaying them with
+# timestamps. Exits non-zero with the failing command and its exit code.
+run_logged() {
+  local desc="$1"; shift
+  local out err rc
+  out="$(mktemp)"; err="$(mktemp)"
+  info "-> $desc: $*"
+  if "$@" >"$out" 2>"$err"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do printf '[%s] [build] [stdout] %s\n' "$(ts)" "$line" >&2; done <"$out"
+  while IFS= read -r line || [ -n "$line" ]; do printf '[%s] [build] [stderr] %s\n' "$(ts)" "$line" >&2; done <"$err"
+  if [ "$rc" -ne 0 ]; then
+    error "command failed (exit $rc): $desc: $*"
+    rm -f "$out" "$err"
+    exit "$rc"
+  fi
+  rm -f "$out" "$err"
+}
+
+trap 'error "unexpected failure at line $LINENO\" (exit code $?)\""' ERR
+
+NOIR_VERSION="1.0.0-beta.9"
+BB_VERSION="0.87.0"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FRONTEND_CIRCUITS="$(cd "$ROOT/.." && pwd)/frontend/public/circuits"
+export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+
+command -v nargo >/dev/null || { error "nargo not found — run: noirup -v $NOIR_VERSION"; exit 1; }
+command -v bb >/dev/null    || { error "bb not found — run: bbup -v $BB_VERSION"; exit 1; }
+
+# Map circuit directory -> frontend credential-type filename. Resolved from the
+# shared version module rather than duplicated here, so the two never disagree
+# (e.g. a new circuit would otherwise get a filename nobody versioned).
+type_of() {
+  # Absolute path: build() runs from the circuit's own directory via pushd.
+  node -e 'process.stdout.write(require(process.argv[1]).typeOfCircuit(process.argv[2]))' \
+    "$ROOT/scripts/circuit-versions.js" "$1"
+}
+
+# Stamp the declared circuit version into a staged compiled artifact.
+stamp_version() {
+  node "$ROOT/scripts/stamp-circuit-version.js" stamp "$1" "$2"
+}
+
+REPO="$(cd "$ROOT/.." && pwd)"
+FIXTURES="$REPO/fixtures"
+mkdir -p "$FRONTEND_CIRCUITS"
+
+# Validate required environment variables before running any build step.
+# A missing required var is a hard failure (non-zero exit) with a clear reason.
+require_env() {
+  local var="$1"
+  if [ -z "${!var-}" ]; then
+    error "required environment variable $var is not set"
+    exit 1
+  fi
+}
+
+require_env HOME
+require_env PATH
+
+# Ensure the pinned toolchain is actually the one on PATH. This is a smoke
+# check that surfaces a mismatch before any artifacts are staged.
+check_tool_versions() {
+  local nargo_version bb_version
+  nargo_version="$(nargo --version 2>&1 | head -n1 || true)"
+  bb_version="$(bb --version 2>&1 | head -n1 || true)"
+  info "nargo: $nargo_version (expected $NOIR_VERSION)"
+  info "bb: $bb_version (expected $BB_VERSION)"
+  if ! grep -q "$NOIR_VERSION" <<<"$nargo_version"; then
+    warn "nargo version does not match $NOIR_VERSION"
+  fi
+  if ! grep -q "$BB_VERSION" <<<"$bb_version"; then
+    warn "bb version does not match $BB_VERSION"
+  fi
+}
+
+check_tool_versions
+
+if [ -f "$ROOT/scripts/gen_inputs.sh" ]; then
+  info "Generating circuit prover inputs..."
+  run_logged "gen inputs" bash "$ROOT/scripts/gen_inputs.sh"
+fi
+
+build() {
+  local name="$1"
+  local dir="$ROOT/$name"
+  [ -f "$dir/Nargo.toml" ] || { warn "skip $name (no Nargo.toml)"; return; }
+  info "=== $name ==="
+  pushd "$dir" >/dev/null
+
+  local type
+  type="$(type_of "$name")"
+  # nargo resolves the output dir to the *workspace* root (circuits/target/),
+  # not a per-member target/, since these are workspace members — not bb's
+  # target, which is always relative to --output_path below.
+  local json="$ROOT/target/${name}.json"
+  local gz="$ROOT/target/${name}.gz"
+
+  # The commit helpers are only ever executed (to derive commitments), never
+  # proven and never registered on-chain, so they have no VK to version against
+  # and are deliberately not stamped. Every other circuit IS proven, and
+  # stamp_version below fails loudly if it has no declared version.
+  case "$name" in
+    commit|commit3)
+      run_logged "nargo compile ($name)" nargo compile
+      cp "$json" "$FRONTEND_CIRCUITS/${name}.json"
+      info "  -> frontend/public/circuits/${name}.json"
+      popd >/dev/null
+      return
+      ;;
+  esac
+
+  # Compile + VK are always possible (write_vk needs only the bytecode).
+  run_logged "nargo compile ($name)" nargo compile
+  run_logged "bb write_vk ($name)" bb write_vk --scheme ultra_honk --oracle_hash keccak \
+    --bytecode_path "$json" \
+    --output_path target --output_format bytes_and_fields
+  # bb may emit vk as target/vk/vk — normalise to target/vk.
+  [ -f target/vk/vk ] && mv target/vk/vk target/vk.tmp && rmdir target/vk && mv target/vk.tmp target/vk || true
+
+  # Commit the VK (deployed into CredentialVerifier) and stage the circuit JSON.
+  mkdir -p "$FIXTURES/$type"
+  cp target/vk "$FIXTURES/$type/vk"
+  cp "$json" "$FRONTEND_CIRCUITS/${type}.json"
+  stamp_version "$name" "$FRONTEND_CIRCUITS/${type}.json"
+  info "  -> fixtures/$type/vk"
+  info "  -> frontend/public/circuits/${type}.json"
+
+  # A sample proof needs concrete inputs; only build it when Prover.toml exists.
+  if [ -f Prover.toml ]; then
+    run_logged "nargo execute ($name)" nargo execute
+    run_logged "bb prove ($name)" bb prove --scheme ultra_honk --oracle_hash keccak \
+      --bytecode_path "$json" --witness_path "$gz" \
+      --output_path target --output_format bytes_and_fields
+    cp target/proof "$FIXTURES/$type/proof"
+    cp target/public_inputs "$FIXTURES/$type/public_inputs"
+    info "  -> fixtures/$type/{proof,public_inputs}"
+  fi
+
+  # For jurisdiction_proof: also build an allowlist fixture if Prover_allowlist.toml exists.
+  if [ "$name" = "jurisdiction_proof" ] && [ -f Prover_allowlist.toml ]; then
+    info "  --- allowlist fixture ---"
+    cp Prover.toml Prover.toml.bak
+    cp Prover_allowlist.toml Prover.toml
+    run_logged "nargo execute ($name allowlist)" nargo execute
+    run_logged "bb prove ($name allowlist)" bb prove --scheme ultra_honk --oracle_hash keccak \
+      --bytecode_path "$json" --witness_path "$gz" \
+      --output_path target --output_format bytes_and_fields
+    mkdir -p "$FIXTURES/jurisdiction_allow"
+    cp target/vk "$FIXTURES/jurisdiction_allow/vk"
+    cp target/proof "$FIXTURES/jurisdiction_allow/proof"
+    cp target/public_inputs "$FIXTURES/jurisdiction_allow/public_inputs"
+    info "  -> fixtures/jurisdiction_allow/{vk,proof,public_inputs}"
+    mv Prover.toml.bak Prover.toml
+  fi
+
+  popd >/dev/null
+}
+
+if [ "$#" -gt 0 ]; then
+  for n in "$@"; do build "$n"; done
+else
+  for n in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof range_proof date_range employment_proof aggregate_proof set_membership; do build "$n"; done
+fi
+
+info "build completed successfully"
