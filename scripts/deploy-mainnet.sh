@@ -9,12 +9,19 @@
 #
 # Requires stellar CLI v26+ (the verifier uses BN254 host functions / protocol
 # 23). Registers the deployer as a trusted issuer and installs all VKs.
+#
+# Safe to rerun: contract IDs are recorded in .deploy-state/ and reused while
+# still live, and an already-registered issuer or VK is skipped. Set
+# DEPLOY_FRESH=1 to ignore recorded state and deploy a new set.
 set -euo pipefail
 
 SOURCE="${SOURCE:-deployer}"
 RPC_URL="${RPC_URL:-https://mainnet.sorobanrpc.com}"
 NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Public Global Stellar Network ; September 2015}"
 WASM_DIR="target/wasm32v1-none/release"
+NET_ARGS=(--rpc-url "$RPC_URL" --network-passphrase "$NETWORK_PASSPHRASE")
+# shellcheck source=lib/deploy-state.sh
+source "$(dirname "$0")/lib/deploy-state.sh"
 
 # Verify that ISSUER_PRIVATE_KEY is set before proceeding
 # secp256k1 public key (x || y, 64 bytes) derived from ISSUER_PRIVATE_KEY.
@@ -37,33 +44,20 @@ if ! ADMIN="$(stellar keys address "$SOURCE" 2>/dev/null)"; then
 fi
 
 echo "Admin / deployer: $ADMIN"
+state_init mainnet "$ADMIN"
 
-deploy() {
-  # $1 = wasm name (no extension); remaining args = constructor args
-  local name="$1"; shift
-  stellar contract deploy     --wasm "$WASM_DIR/$name.wasm"     --source "$SOURCE"     --rpc-url "$RPC_URL"     --network-passphrase "$NETWORK_PASSPHRASE"     -- "$@"
-}
+ISSUER_REGISTRY_ID="$(ensure_contract issuer_registry --admin "$ADMIN")"
+CREDENTIAL_VERIFIER_ID="$(ensure_contract credential_verifier --admin "$ADMIN")"
+PROOF_REGISTRY_ID="$(ensure_contract proof_registry --verifier "$CREDENTIAL_VERIFIER_ID" --issuer_registry "$ISSUER_REGISTRY_ID")"
+GATED_POOL_ID="$(ensure_contract gated_pool --registry "$PROOF_REGISTRY_ID")"
 
-echo "Deploying issuer_registry..."
-ISSUER_REGISTRY_ID="$(deploy issuer_registry --admin "$ADMIN")"
-
-echo "Deploying credential_verifier..."
-CREDENTIAL_VERIFIER_ID="$(deploy credential_verifier --admin "$ADMIN")"
-
-echo "Deploying proof_registry (-> verifier, issuer_registry)..."
-PROOF_REGISTRY_ID="$(deploy proof_registry --verifier "$CREDENTIAL_VERIFIER_ID" --issuer_registry "$ISSUER_REGISTRY_ID")"
-
-echo "Deploying gated_pool (-> registry)..."
-GATED_POOL_ID="$(deploy gated_pool --registry "$PROOF_REGISTRY_ID")"
-
-echo "Registering deployer as a trusted issuer for all credential types..."
-stellar contract invoke   --id "$ISSUER_REGISTRY_ID"   --source "$SOURCE"   --rpc-url "$RPC_URL"   --network-passphrase "$NETWORK_PASSPHRASE"   --send yes   -- register_issuer   --issuer_id "$ADMIN"   --pubkey "$ISSUER_PUBKEY"   --credential_types '["kyc","age","income","jurisdiction","funds"]'
+ensure_issuer "$ISSUER_REGISTRY_ID" "$ADMIN" "$ISSUER_PUBKEY" \
+  kyc age income jurisdiction funds
 
 for type in kyc age income jurisdiction funds; do
   vk="fixtures/$type/vk"
   [ -f "$vk" ] || { echo "skip $type (no VK — run circuits/scripts/build.sh)"; continue; }
-  echo "Registering $type verification key..."
-  stellar contract invoke     --id "$CREDENTIAL_VERIFIER_ID"     --source "$SOURCE"     --rpc-url "$RPC_URL"     --network-passphrase "$NETWORK_PASSPHRASE"     --send yes     -- set_vk     --credential_type "$type"     --version 1     --vk-file-path "$vk"
+  ensure_vk "$CREDENTIAL_VERIFIER_ID" "$type" "$vk"
 done
 
 cat <<EOF

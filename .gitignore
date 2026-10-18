@@ -18,6 +18,7 @@ coverage
 
 # Deployment artifacts (local; use git for version control)
 deployment-manifests/
+.deploy-state/
 *.wasm.hash
 
 # Benchmark output (local results; see BENCHMARKS.md for documented figures)

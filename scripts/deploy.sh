@@ -14,11 +14,17 @@
 # - Records WASM hashes for verification (SHA-256)
 # - Creates a deployment manifest with version info
 # - Validates WASM files before deployment
+# - Is safe to rerun: contract IDs are recorded in .deploy-state/ and reused
+#   while still live, and an already-registered issuer or VK is skipped. Set
+#   DEPLOY_FRESH=1 to ignore recorded state and deploy a new set.
 set -euo pipefail
 
 SOURCE="${SOURCE:-deployer}"
 NETWORK="${NETWORK:-testnet}"
 WASM_DIR="target/wasm32-unknown-unknown/release"
+NET_ARGS=(--network "$NETWORK")
+# shellcheck source=lib/deploy-state.sh
+source "$(dirname "$0")/lib/deploy-state.sh"
 
 # Create deployment manifest directory
 MANIFEST_DIR="deployment-manifests"
@@ -45,6 +51,7 @@ if ! ADMIN="$(stellar keys address "$SOURCE" 2>/dev/null)"; then
   exit 1
 fi
 echo "Admin / deployer: $ADMIN"
+state_init "$NETWORK" "$ADMIN"
 
 # Record the exact source commit so verifiers can git-checkout the same tree.
 SOURCE_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo 'unknown')"
@@ -97,51 +104,19 @@ CREDENTIAL_VERIFIER_VERSION=$(get_contract_version "credential_verifier")
 PROOF_REGISTRY_VERSION=$(get_contract_version "proof_registry")
 GATED_POOL_VERSION=$(get_contract_version "gated_pool")
 
-deploy() {
-  # $1 = wasm name (no extension); remaining args = constructor args
-  local name="$1"; shift
-  stellar contract deploy \
-    --wasm "$WASM_DIR/$name.wasm" \
-    --source "$SOURCE" --network "$NETWORK" \
-    -- "$@"
-}
-
-echo "Deploying issuer_registry..."
-ISSUER_REGISTRY_ID="$(deploy issuer_registry --admin "$ADMIN")"
-
-echo "Deploying credential_verifier..."
-CREDENTIAL_VERIFIER_ID="$(deploy credential_verifier --admin "$ADMIN")"
-
-echo "Deploying proof_registry (-> verifier, issuer_registry)..."
-PROOF_REGISTRY_ID="$(deploy proof_registry --admin "$ADMIN" --verifier "$CREDENTIAL_VERIFIER_ID" --issuer_registry "$ISSUER_REGISTRY_ID")"
-
-echo "Deploying gated_pool (-> registry)..."
-GATED_POOL_ID="$(deploy gated_pool --registry "$PROOF_REGISTRY_ID")"
-
-echo "Registering deployer as a trusted issuer for all credential types..."
+ISSUER_REGISTRY_ID="$(ensure_contract issuer_registry --admin "$ADMIN")"
+CREDENTIAL_VERIFIER_ID="$(ensure_contract credential_verifier --admin "$ADMIN")"
+PROOF_REGISTRY_ID="$(ensure_contract proof_registry --admin "$ADMIN" --verifier "$CREDENTIAL_VERIFIER_ID" --issuer_registry "$ISSUER_REGISTRY_ID")"
+GATED_POOL_ID="$(ensure_contract gated_pool --registry "$PROOF_REGISTRY_ID")"
 
 ISSUER_PUBKEY="$(node circuits/scripts/sign.js --pubkey-hex)"
-stellar contract invoke \
-  --id "$ISSUER_REGISTRY_ID" \
-  --source "$SOURCE" --network "$NETWORK" \
-  --send yes \
-  -- register_issuer \
-  --issuer_id "$ADMIN" \
-  --pubkey "$ISSUER_PUBKEY" \
-  --credential_types '["kyc","age","income","jurisdiction","funds","accreditation","employment"]'
+ensure_issuer "$ISSUER_REGISTRY_ID" "$ADMIN" "$ISSUER_PUBKEY" \
+  kyc age income jurisdiction funds accreditation employment
 
 for type in kyc age income jurisdiction funds accreditation employment; do
   vk="fixtures/$type/vk"
   [ -f "$vk" ] || { echo "skip $type (no VK — run circuits/scripts/build.sh)"; continue; }
-  echo "Registering $type verification key..."
-  stellar contract invoke \
-    --id "$CREDENTIAL_VERIFIER_ID" \
-    --source "$SOURCE" --network "$NETWORK" \
-    --send yes \
-    -- set_vk \
-    --credential_type "$type" \
-    --version 1 \
-    --vk-file-path "$vk"
+  ensure_vk "$CREDENTIAL_VERIFIER_ID" "$type" "$vk"
 done
 
 export NEXT_PUBLIC_STELLAR_NETWORK=$NETWORK

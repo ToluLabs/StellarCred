@@ -17,8 +17,9 @@ echo "Funding $SOURCE on testnet..."
 stellar keys fund "$SOURCE" --network testnet
 
 echo "Deploying contracts..."
-# Capture the output of deploy.sh
-DEPLOY_OUTPUT=$(./scripts/deploy.sh)
+# Capture the output of deploy.sh. A reset wants new contracts, so skip the
+# reuse of recorded deploy state.
+DEPLOY_OUTPUT=$(DEPLOY_FRESH=1 ./scripts/deploy.sh)
 
 echo "$DEPLOY_OUTPUT"
 
