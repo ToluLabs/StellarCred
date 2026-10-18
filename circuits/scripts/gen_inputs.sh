@@ -9,76 +9,105 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS="$ROOT/scripts"
 COMMIT="$ROOT/commit"
 
+# Serialize all nargo executions that share a circuit directory. Concurrent
+# proof jobs otherwise race on the shared Prover.toml / target artifacts.
+LOCKDIR="${TMHDIR:-/tmp}/circuit-prover-locks"
+mkdir -p "$LOCKDIR"
+
+with_lock() { # lockname cmd... -> run cmd while holding an exclusive lock
+  local name="$1"; shift
+  local lockfile="$LOCKDIR/$name.lock"
+  (
+    if command -v flock >/dev/null 2>&1; then
+      exec 9>"$lockfile"
+      flock 9
+      "$@"
+    else
+      # Portable fallback: atomic mkdir-based mutex with retry.
+      local d="$lockfile.d"
+      until mkdir "$d" 2>/dev/null; do sleep 0.05; done
+      trap 'rmdir "$d" 2>/dev/null || true' EXIT
+      "$@"
+      rmdir "$d" 2>/dev/null || true
+      trap - EXIT
+    fi
+  )
+}
+
 commit() { # value salt -> canonical decimal commitment (2-arity)
-  printf 'value = "%s"\nsalt = "%s"\n' "$1" "$2" > "$COMMIT/Prover.toml"
   local raw
-  raw=$(cd "$COMMIT" && nargo execute 2>&1 | grep "Circuit output" | sed -E 's/.*Field\((-?[0-9]+)\).*/\1/')
-  RAW="$raw" node -e 'const r=21888242871839275222246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
+  raw=$(with_lock commit bash -c '
+    printf '\''value = "%s"\nsalt = "%s"\n'\'' "$1" "$2" > "$3/Prover.toml"
+    cd "$3" && nargo execute 2>&1 | grep "Circuit output" | sed -E '\''s/.*Field\((-?[0-9]+)\).*/\1/\''
+  ' _ "$1" "$2" "$COMMIT")
+  RAW="$raw" node -e 'const r=2188824287183927522246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
 }
 
 commit3() { # value1 value2 salt -> canonical decimal commitment (3-arity, for employment)
-  printf 'status = "%s"\nseniority = "%s"\nsalt = "%s"\n' "$1" "$2" "$3" > "$ROOT/commit3/Prover.toml"
   local raw
-  raw=$(cd "$ROOT/commit3" && nargo execute 2>&1 | grep "Circuit output" | sed -E 's/.*Field\((-?[0-9]+)\).*/\1/')
-  RAW="$raw" node -e 'const r=21888242871839275222246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
+  raw=$(with_lock commit3 bash -c '
+    printf '\''status = "%s"\nseniority = "%s"\nsalt = "%s"\n'\'' "$1" "$2" "$3" > "$4/Prover.toml"
+    cd "$4" && nargo execute 2>&1 | grep "Circuit output" | sed -E '\''s/.*Field\((-?[0-9]+)\).*/\1/\''
+  ' _ "$1" "$2" "$3" "$ROOT/commit3")
+  RAW="$raw" node -e 'const r=2188824287183927522246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
 }
 
 echo "kyc_proof..."
 C=$(commit 42 7)
-{ echo "secret = \"42\""; echo "salt = \"7\""; echo "commitment = \"$C\""; node "$SCRIPTS/sign.js" "$C"; } \
+{ echo "secret = \"42\""; echo "salt = \"7\""; echo "commitment = \"$C\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/kyc_proof/Prover.toml"
 
 echo "age_proof..."
 C=$(commit 3650 12345)
 { echo "date_of_birth = \"3650\""; echo "salt = \"12345\""; echo "commitment = \"$C\""; \
-  echo "current_date = \"20000\""; echo "threshold_years = \"18\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "current_date = \"20000\""; echo "threshold_years = \"18\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/age_proof/Prover.toml"
 
 echo "income_proof..."
 C=$(commit 250000 99)
 { echo "income = \"250000\""; echo "salt = \"99\""; echo "commitment = \"$C\""; \
-  echo "threshold = \"200000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "threshold = \"200000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/income_proof/Prover.toml"
 
 echo "accreditation_proof..."
 C=$(commit 1500000 99)
 { echo "net_worth = \"1500000\""; echo "salt = \"99\""; echo "commitment = \"$C\""; \
-  echo "threshold = \"1000000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "threshold = \"1000000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/accreditation_proof/Prover.toml"
 
 echo "funds_proof..."
 C=$(commit 250000 99)
 { echo "balance = \"250000\""; echo "salt = \"99\""; echo "commitment = \"$C\""; \
-  echo "threshold = \"200000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "threshold = \"200000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/funds_proof/Prover.toml"
 
 echo "range_proof..."
 C=$(commit 40000 2024)
 { echo "value = \"40000\""; echo "salt = \"2024\""; echo "commitment = \"$C\""; \
-  echo "min = \"30000\""; echo "max = \"50000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "min = \"30000\""; echo "max = \"50000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/range_proof/Prover.toml"
 
 echo "date_range..."
 C=$(commit 3650 12345)
 { echo "issued_at = \"3650\""; echo "salt = \"12345\""; echo "commitment = \"$C\""; \
-  echo "window_start = \"3000\""; echo "window_end = \"4000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "window_start = \"3000\""; echo "window_end = \"4000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/date_range/Prover.toml"
 
 echo "jurisdiction_proof (denylist)..."
 C=$(commit 566 77)
 { echo "jurisdiction = \"566\""; echo "salt = \"77\""; echo "commitment = \"$C\""; \
-  echo "denylist = \"true\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "denylist = \"true\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/jurisdiction_proof/Prover.toml"
 { echo "country_code = \"566\""; echo "salt = \"77\""; echo "commitment = \"$C\""; \
   echo "restricted = [\"840\", \"364\", \"408\", \"0\", \"0\", \"0\", \"0\", \"0\"]"; \
-  echo "mode = \"0\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "mode = \"0\""; node "$SCRIPTS"/sign.js "$C"; } \
  > "$ROOT/jurisdiction_proof/Prover.toml"
 
 echo "jurisdiction_proof (allowlist)..."
 C=$(commit 566 77)
 { echo "country_code = \"566\""; echo "salt = \"77\""; echo "commitment = \"$C\""; \
   echo "restricted = [\"566\", \"276\", \"356\", \"0\", \"0\", \"0\", \"0\", \"0\"]"; \
-  echo "mode = \"1\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "mode = \"1\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/jurisdiction_proof/Prover_allowlist.toml"
 
 echo "employment_proof..."
@@ -87,7 +116,7 @@ echo "employment_proof..."
 # binary "is employed" tag.
 C=$(commit3 1 5 11)
 { echo "employment_status = \"1\""; echo "seniority = \"5\""; echo "salt = \"11\""; \
-  echo "commitment = \"$C\""; echo "min_seniority = \"3\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "commitment = \"$C\""; echo "min_seniority = \"3\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/employment_proof/Prover.toml"
 
 echo "set_membership..."
@@ -99,16 +128,15 @@ SM_MEMBER="840"
 SM_SALT="42"
 C=$(commit $SM_MEMBER $SM_SALT)
 # Compute merkle_root and the Merkle path lines for the member value.
-MERKLE_ROOT=$(node "$SCRIPTS/merkle_tree.js" root $SM_VALUES)
-MERKLE_LINES=$(node "$SCRIPTS/merkle_tree.js" path $SM_VALUES --for $SM_MEMBER)
+MERKLLE_ROOT=$(node "$SCRIPTS"/merkle_tree.js" root $SM_VALUES)
+MERKLE_LINES=$(node "$SCRIPTS"/merkle_tree.js path $SM_VALUES --for $SM_MEMBER)
 {
   echo "value = \"$SM_MEMBER\""
   echo "salt = \"$SM_SALT\""
   echo "commitment = \"$C\""
   echo "$MERKLE_LINES"
-  node "$SCRIPTS/sign.js" "$C"
+  node "$SCRIPTS"/sign.js "$C"
 } > "$ROOT/set_membership/Prover.toml"
 
 echo "done. demo issuer public key:"
-node "$SCRIPTS/sign.js" --pubkey
-
+node "$SCRIPTS"/sign.js --pubkey

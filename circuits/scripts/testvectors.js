@@ -9,18 +9,21 @@
 //
 // See circuits/README.md ("Test Vectors") for how to regenerate on purpose.
 //
+// Proof generation goes through circuits/scripts/prover-queue.js so that
+// concurrent invocations (e.g. CI shards) cannot race on the shared Nargo
+// workspace target dir.
+//
 // Usage:
 //   node circuits/scripts/testvectors.js check    # default; exit 1 on drift
 //   node circuits/scripts/testvectors.js update   # regenerate committed vectors
 
 "use strict";
 
-const { execFileSync } = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const { versionOf } = require("./circuit-versions");
+const { withProverLock, runProofJob } = require("./prover-queue");
 
 const NOIR_VERSION = "1.0.0-beta.9";
 const BB_VERSION = "0.87.0";
@@ -40,12 +43,13 @@ const CIRCUITS = [
 ];
 
 function run(cmd, args, cwd) {
+  const { execFileSync } = require("child_process");
   return execFileSync(cmd, args, { cwd, encoding: "utf8" });
 }
 
 function toolVersions() {
-  const nargoOut = run("nargo", ["--version"]);
-  const bbOut = run("bb", ["--version"]);
+  const nargoOut = run("nargo", ["--version"], ROOT);
+  const bbOut = run("bb", ["--version"], ROOT);
   const nargoVersion = (nargoOut.match(/nargo version = (\S+)/) || [])[1] || nargoOut.trim();
   return { nargoVersion, bbVersion: bbOut.trim() };
 }
@@ -77,39 +81,15 @@ function parseProverToml(text) {
 
 function buildVector(name, toolchain) {
   const dir = path.join(ROOT, name);
-  const target = path.join(ROOT, "target"); // shared Nargo workspace target dir
-  fs.mkdirSync(target, { recursive: true });
 
-  run("nargo", ["compile", "--package", name], ROOT);
-  run("nargo", ["execute", "--package", name], ROOT);
-
-  const bytecodePath = path.join(target, `${name}.json`);
-  const witnessPath = path.join(target, `${name}.gz`);
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), `${name}-testvector-`));
+  // Serialize proof generation through the prover queue so concurrent
+  // invocations cannot clobber the shared workspace target dir.
+  const job = withProverLock(() => runProofJob({ circuit: name }));
 
   try {
-    run(
-      "bb",
-      [
-        "write_vk", "--scheme", "ultra_honk", "--oracle_hash", "keccak",
-        "--bytecode_path", bytecodePath, "--output_path", outDir,
-        "--output_format", "bytes_and_fields",
-      ],
-      ROOT,
-    );
-    run(
-      "bb",
-      [
-        "prove", "--scheme", "ultra_honk", "--oracle_hash", "keccak",
-        "--bytecode_path", bytecodePath, "--witness_path", witnessPath,
-        "--output_path", outDir, "--output_format", "bytes_and_fields",
-      ],
-      ROOT,
-    );
-
-    const vkBytes = fs.readFileSync(path.join(outDir, "vk"));
+    const vkBytes = fs.readFileSync(job.vk);
     const publicInputs = JSON.parse(
-      fs.readFileSync(path.join(outDir, "public_inputs_fields.json"), "utf8"),
+      fs.readFileSync(path.join(job.outDir, "public_inputs_fields.json"), "utf8"),
     );
     const witness = parseProverToml(fs.readFileSync(path.join(dir, "Prover.toml"), "utf8"));
     // The declared circuit version is part of what these vectors pin. A VK hash
@@ -136,7 +116,7 @@ function buildVector(name, toolchain) {
       vk_hash: crypto.createHash("sha256").update(vkBytes).digest("hex"),
     };
   } finally {
-    fs.rmSync(outDir, { recursive: true, force: true });
+    fs.rmSync(job.outDir, { recursive: true, force: true });
   }
 }
 
