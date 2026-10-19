@@ -13,6 +13,31 @@ scripts/      deploy.sh — wires all contracts on testnet
 fixtures/     real vk / proof / public_inputs used by contract tests
 ```
 
+### Where a markdown file belongs
+
+The repository tracks documentation in two places, and the split has one rule:
+
+- **Repository root** — the entry points a person or a tool is expected to find
+  without looking: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`,
+  `ROADMAP.md`, `LICENSE`. A component directory keeps its own `README.md`
+  (`services/indexer/README.md`, `frontend/packages/sdk/README.md`) as that
+  component's entry point.
+- **`docs/`** — everything else: specifications, integration guides, runbooks,
+  operational references (`docs/EVENTS.md`, `docs/THREAT_MODEL.md`,
+  `docs/ISSUER_ONBOARDING.md`, …), with decision records in `docs/adr/`.
+
+Two rules follow. The first is the one whose absence produced the duplicated
+`EVENTS.md` (issue #687):
+
+1. **One topic, one file.** Never mirror a document into a second path for
+   visibility. If it must stay reachable from the root `README.md`, link it from
+   there — a contract such as the event schema read by indexers and integrators
+   cannot exist in two copies, because one of them will go stale and its readers
+   will decode events wrong with no error to show them.
+2. **Link with a path that resolves from the file you are editing.** From the
+   root, `docs/EVENTS.md`; from another file in `docs/`, the sibling `EVENTS.md`;
+   from a component, the full walk up (`../../docs/EVENTS.md`).
+
 ### Writing a contract test
 
 Contract suites share one harness, `contracts/test_support`, so a test body is
@@ -167,6 +192,34 @@ in [#606](https://github.com/ToluLabs/StellarCred/issues/606).
 4. For circuit changes: run `./circuits/scripts/build.sh` and update the relevant `fixtures/<type>/` artifacts, then regenerate the regression test vectors with `node circuits/scripts/testvectors.js update` (see `circuits/README.md` — "Test Vectors") and commit the result. CI runs `node circuits/scripts/testvectors.js check` and fails if a circuit or toolchain change silently altered proof output without the vectors being updated.
 5. For frontend changes: run `pnpm tsc --noEmit` (zero errors required) and `pnpm build`.
 6. Open a pull request against `main` with a clear description of what changed and why.
+
+### Process documents belong in the PR description
+
+An implementation summary, review checklist, status report, test summary or
+"final verification" write-up is a **PR artifact, not a repository file**. Put it
+in the pull request description (or a PR comment), where it is read once, stays
+attached to the diff it describes, and is searchable from the PR. Do not commit it.
+
+- **Why:** such a document describes a change, and a change ends at merge. In the
+  tree it is wrong within days — every later edit to the code it documents makes
+  its claims stale while its file name still asserts authority — and it is never
+  updated, only re-created by the next contributor. It also buries the documents
+  that stay true: the root directory is where a newcomer looks for `README`,
+  `CONTRIBUTING`, `SETUP`, `ROADMAP`, `SECURITY`.
+- **What to do instead:** if something in your summary is worth keeping after the
+  merge, it is documentation, so move that part into the doc that owns the topic
+  (`circuits/README.md` for a circuit, `docs/` for a subsystem, the component's
+  own `README.md`) and let the rest live in the PR.
+- **Enforced:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) fails a PR
+  that *adds* a file whose name matches a process-artifact pattern
+  (`*IMPLEMENTATION_SUMMARY`, `*IMPLEMENTATION_DETAILS`, `*IMPLEMENTATION_NOTES`,
+  `*REVIEW_SUMMARY`, `*STATUS_REPORT`, `PR_DESCRIPTION*`, `*_COMPLETE`,
+  `START_HERE`, `FILES_MODIFIED`, `CRITICAL_FIX_NEEDED`, `READY_FOR_BUILD` — any
+  extension). Only new files are checked; the legacy ones still in the tree are
+  being removed separately. If you genuinely mean to add a durable document under
+  one of those names, add it with a reason to the allowlist in
+  [`.github/scripts/check-process-docs.mjs`](.github/scripts/check-process-docs.mjs)
+  and justify it in the PR.
 
 ## Picking up an issue
 
@@ -363,12 +416,16 @@ CODEOWNERS routes the *request*; it does not change branch protection. To make a
 
 Please do **not** open a public issue for security vulnerabilities. See [SECURITY.md](SECURITY.md).
 
-## Code style
+## Code style & Linting
 
 - **Rust**: `cargo fmt` before committing. Follow the existing contract structure — cross-contract calls use `#[contractclient]` interface traits, not crate dependencies.
-- **TypeScript**: ESLint + Prettier (enforced by `pnpm lint`). No `NEXT_PUBLIC_` prefix on server-only env vars.
-- **Noir**: keep circuits as simple as possible — constraint count directly affects browser proving time.
-- **Comments**: only when the *why* is non-obvious (a constraint, a workaround, a subtle invariant). Don't explain what the code does.
+- **TypeScript & Web**: ESLint and Prettier are configured across the repository.
+  - Run linting: `pnpm --dir frontend lint` (or `pnpm --dir frontend/packages/sdk lint` for SDK).
+  - Check formatting: `pnpm --dir frontend format:check`.
+  - Auto-format code: `pnpm --dir frontend format`.
+- **Pre-commit hooks**: Husky and `lint-staged` run automatically on staged TypeScript, JavaScript, CSS, and JSON files on `git commit` to maintain format and lint standards.
+- **Noir**: Keep circuits as simple as possible — constraint count directly affects browser proving time.
+- **Comments**: Only when the *why* is non-obvious (a constraint, a workaround, a subtle invariant). Don't explain what the code does.
 
 ## Commit messages
 
@@ -396,6 +453,23 @@ chore: bump soroban-sdk to 26.0.1
 Breaking changes: add `BREAKING CHANGE:` in the commit footer, or append `!` after the type (`feat!:`).
 
 Commit messages are linted automatically on pull requests via `commitlint`.
+
+## Automated Dependency Updates & Auto-Merge Policy
+
+To keep dependencies secure and current without manual overhead, minor and patch dependency updates are automatically merged when all test suites pass.
+
+### Auto-Merge Criteria
+Pull requests are automatically evaluated and merged when:
+1. The PR carries the configured auto-merge label (default: `deps` or `dependencies`).
+2. All CI workflows and status checks pass (green build).
+3. The PR only modifies dependency manifests and lockfiles (`package.json`, `pnpm-lock.yaml`, `Cargo.toml`, `Cargo.lock`, etc.).
+
+### Safeguards & Threshold Rules
+To prevent breaking changes and supply chain regressions, strict threshold rules are enforced:
+- **Major Version Bumps Blocked:** Any update that increments the major semver version (e.g. `v1.2.0` → `v2.0.0`, or breaking `0.x` transitions such as `0.1.0` → `0.2.0`) is **strictly barred** from auto-merging. Major version upgrades require manual maintainer review, audit, and approval.
+- **Pinned Core Dependencies:** Cryptographic and zero-knowledge toolchain dependencies (`@aztec/bb.js`, `@noir-lang/*`, `soroban-sdk`, `ultrahonk_soroban_verifier`) are explicitly pinned in `.github/dependabot.yml` and cannot be bumped automatically.
+- **Source Code Protection:** If a dependency PR contains modifications to application source files (e.g. `src/`, `lib/`, `contracts/`, `circuits/`), auto-merge is immediately rejected.
+- **Configurable Label:** The required label can be configured via repository variable `AUTOMERGE_DEPS_LABEL` (defaulting to `deps`).
 
 ## Releasing
 

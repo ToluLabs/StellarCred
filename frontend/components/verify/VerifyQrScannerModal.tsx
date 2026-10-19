@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconQrcode } from "@tabler/icons-react";
-import { QrScanner } from "@/components/QrScanner";
+import dynamic from "next/dynamic";
+
+const QrScanner = dynamic(
+  () => import("@/components/QrScanner").then((m) => m.QrScanner),
+  { ssr: false },
+);
 import { useToast } from "@/components/Toast";
 
 export interface VerifyQrScannerModalProps {

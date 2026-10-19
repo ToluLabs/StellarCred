@@ -17,3 +17,28 @@ export function truncatePubkey(hex: string): string {
   if (!hex || hex.length <= 16) return hex;
   return `${hex.slice(0, 8)}…${hex.slice(-8)}`;
 }
+
+/**
+ * Generic middle-truncation used when a shared helper's cut points don't fit:
+ * keeps `head` leading + `tail` trailing characters separated by `separator`
+ * ("…" by default). Values that fit whole are returned unchanged.
+ */
+export function truncateMiddle(
+  value: string,
+  head: number,
+  tail: number,
+  separator = "…",
+): string {
+  if (!value || value.length <= head + tail + separator.length) return value;
+  return `${value.slice(0, head)}${separator}${value.slice(-tail)}`;
+}
+
+/**
+ * Truncated transaction-hash label used for explorer links
+ * ("ABCDEF12...XYZWXY", first 8 + last 6, ASCII "..."). One canonical
+ * rendering instead of the per-component `slice` formulas it replaced.
+ */
+export function truncateTxHash(hash: string): string {
+  if (!hash) return hash;
+  return truncateMiddle(hash, 8, 6, "...");
+}

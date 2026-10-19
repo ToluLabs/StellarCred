@@ -40,8 +40,11 @@
     "build": "tsup src/index.ts src/server.ts --format cjs,esm --dts --clean",
     "test": "vitest run",
     "test:integration": "vitest run test/integration.test.ts",
+    "test:retry": "vitest run src/submit-retry.test.ts",
     "typecheck": "tsc --noEmit",
     "docs:api": "typedoc",
+    "lint": "eslint src test",
+    "format:check": "prettier --check src test",
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {

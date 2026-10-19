@@ -1,3 +1,5 @@
+---
+---
 name: CI
 
 on:
@@ -29,6 +31,9 @@ jobs:
   dependency-check:
     name: Dependency review
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v7
@@ -103,6 +108,32 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Check API reference against contract source
         run: node .github/scripts/check-api-reference.mjs
+
+  # ── Docs: no new process artifacts (issue #684) ──────────────────────────
+  # Implementation summaries, status reports and PR descriptions document how a
+  # change was made rather than how the system works, go stale at merge, and bury
+  # the docs that stay true. They belong in the PR description. Only files ADDED by
+  # the PR are checked, so the legacy documents still in the tree don't fail every
+  # build. Fails fast — no toolchain or dependencies needed.
+  process-docs:
+    name: Process artifact check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check for new process-artifact documents
+        run: node .github/scripts/check-process-docs.mjs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
   # ── Contracts: Rust / WASM / Clippy ────────────────────────────────────────
   # Runs in parallel with circuits, frontend, and indexer.
@@ -232,7 +263,7 @@ jobs:
       - name: Compile circuits
         run: |
           export PATH="$HOME/.nargo/bin:$PATH"
-          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership; do
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership date_range; do
             echo "=== $dir ==="
             (cd "$dir" && nargo compile)
           done
@@ -257,7 +288,7 @@ jobs:
           VK_TMP="/tmp/vk_check"
           rm -rf "$VK_TMP"
 
-          for dir in kyc_proof age_proof income_proof jurisdiction_proof funds_proof employment_proof aggregate_proof accreditation_proof set_membership; do
+          for dir in kyc_proof age_proof income_proof jurisdiction_proof funds_proof employment_proof aggregate_proof accreditation_proof set_membership date_range; do
             type=$(type_of "$dir")
             json="target/${dir}.json"
             out="$VK_TMP/$type"
@@ -330,7 +361,7 @@ jobs:
       - name: Run Noir unit tests (nargo test)
         run: |
           export PATH="$HOME/.nargo/bin:$PATH"
-          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership range_proof; do
+          for dir in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof employment_proof aggregate_proof set_membership range_proof date_range; do
             echo "=== nargo test $dir ==="
             (cd "$dir" && nargo test)
           done
@@ -422,6 +453,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: frontend
@@ -445,6 +479,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Check code formatting (Prettier)
+        run: pnpm format:check
 
       - name: Guard HolderPageClient size (#606)
         # Fails if HolderPageClient.tsx grows past the line-count ceiling.
@@ -476,7 +513,7 @@ jobs:
       # can consume it without rebuilding. Retention is short — this is a
       # transient CI artifact, not a release artifact.
       - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build-${{ github.sha }}
           path: |
@@ -486,6 +523,24 @@ jobs:
 
       - name: Test frontend SDK
         run: pnpm test
+
+      - name: Test with coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-${{ github.sha }}
+          path: frontend/coverage
+          retention-days: 7
+
+      - name: Typecheck SDK tests (catch syntax errors before running)
+        working-directory: frontend/packages/sdk
+        run: pnpm exec tsc --noEmit -p tsconfig.test.json || pnpm exec tsc --noEmit
+
+      - name: Test SDK barrel exports
+        working-directory: frontend/packages/sdk
+        run: pnpm test:barrel
 
       # Required privacy gate (issue #627). Runs the flow-level identity-leak
       # test on its own so a new persistence path that reintroduces identity
@@ -497,6 +552,16 @@ jobs:
       - name: Identity data leak gate (#627)
         run: pnpm exec vitest run app/api/issue/__tests__/identity-leakage.test.ts
 
+      - name: Report coverage summary on PR
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: frontend/coverage/coverage-summary.json
+          json-final-path: frontend/coverage/coverage-final.json
+          working-directory: frontend
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Test theme helpers (node:test)
         run: pnpm test:theme
 
@@ -506,6 +571,25 @@ jobs:
       - name: Build SDK distribution
         working-directory: frontend/packages/sdk
         run: npx --yes -p tsup -p typescript@5 tsup src/index.ts src/server.ts --format cjs,esm --dts --clean
+
+      # Issue #751: the TypeScript example is documentation, but it has to keep
+      # compiling. A renamed export or changed type in the SDK breaks this step
+      # before it reaches a user's project. Runs directly after the SDK build
+      # above, which the example's file: dependency resolves its types from.
+      - name: Typecheck TypeScript SDK example (#751)
+        working-directory: examples/typescript-quickstart
+        run: |
+          npm ci
+          npm run typecheck
+          npm start
+
+      - name: Verify SDK tree-shaking (bundle check)
+        working-directory: frontend/packages/sdk
+        run: pnpm check:bundle
+
+      - name: Verify SDK public API surface unchanged
+        working-directory: frontend/packages/sdk
+        run: pnpm check:api-surface
 
       - name: Typecheck SDK
         working-directory: frontend/packages/sdk
@@ -523,6 +607,9 @@ jobs:
   indexer:
     # The indexer's DB layer supports BOTH SQLite and Postgres, so the same
     # test matrix must run against both backends or one silently rots. This job
+    permissions:
+      contents: read
+      pull-requests: write
     # spins up a Postgres 16 service container so the parameterized DB suite
     # (services/indexer/src/db.test.ts) exercises migrations, upserts, revokes,
     # cursor updates, etc. on Postgres while also still running the SQLite leg.
@@ -570,6 +657,20 @@ jobs:
           # Point the Postgres leg of the DB matrix at the service container.
           TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
 
+      - name: Run tests with coverage
+        run: npm run test:coverage
+        env:
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+          TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
+
+      - name: Upload indexer coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: indexer-coverage-${{ github.sha }}
+          path: services/indexer/coverage
+          retention-days: 7
+
   # ── SDK integration tests ───────────────────────────────────────────────────
   sdk-integration:
     name: SDK integration tests (testnet)
@@ -578,6 +679,9 @@ jobs:
     # repo variables. Skipped entirely on forks where they are not configured
     # (the suite also skips gracefully if they are unset at runtime).
     if: vars.SC_TEST_WALLET != '' && vars.STELLARCRED_REGISTRY_ID != ''
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: frontend
@@ -607,6 +711,10 @@ jobs:
         working-directory: frontend/packages/sdk
         run: pnpm typecheck
 
+      - name: Test SDK barrel exports
+        working-directory: frontend/packages/sdk
+        run: pnpm test:barrel
+
       - name: Run integration tests
         working-directory: frontend/packages/sdk
         run: pnpm test:integration
@@ -614,6 +722,13 @@ jobs:
           SC_TEST_WALLET: ${{ vars.SC_TEST_WALLET }}
           STELLARCRED_REGISTRY_ID: ${{ vars.STELLARCRED_REGISTRY_ID }}
           STELLARCRED_RPC_URL: ${{ vars.STELLARCRED_RPC_URL || 'https://soroban-testnet.stellar.org' }}
+
+      - name: Upload SDK coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-coverage-${{ github.sha }}
+          path: frontend/packages/sdk/coverage
+          retention-days: 7
 
   # ── Accessibility (axe-core) ────────────────────────────────────────────────
   # Downloads the pre-built frontend artifact from the `frontend` job instead
@@ -623,6 +738,9 @@ jobs:
     if: false # Skip a11y checks until pre-existing violations are fixed
     runs-on: ubuntu-latest
     needs: frontend
+    permissions:
+      contents: read
+      pull-requests: write
     permissions:
       contents: read
       pull-requests: write
@@ -663,7 +781,7 @@ jobs:
       # rebuilding. The artifact is scoped to the current SHA so it is always
       # the exact output from the frontend job above.
       - name: Download frontend build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-build-${{ github.sha }}
           path: frontend
@@ -684,3 +802,43 @@ jobs:
           script: pnpm size --json
           package_manager: pnpm
           directory: frontend
+
+  # ── Coverage gate: aggregate reports and enforce thresholds ────────────────
+  # Downloads every coverage artifact produced by the jobs above, merges them
+  # into a single summary, and fails the workflow when coverage drops below
+  # the configured thresholds. The merged report is uploaded as a final
+  # artifact so reviewers can inspect the full picture from the PR checks.
+  coverage-gate:
+    name: Coverage gate
+    runs-on: ubuntu-latest
+    needs: [frontend, indexer]
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-coverage-${{ github.sha }}"
+          path: coverage-artifacts
+          merge-multiple: false
+
+      - name: Enforce coverage thresholds
+        run: node .github/scripts/check-coverage.mjs
+        env:
+          COVERAGE_DIR: coverage-artifacts
+          MIN_LINES: "80"
+          MIN_FUNCTIONS: "75"
+          MIN_BRANCHES: "70"
+          MIN_STATEMENTS: "80"
+
+      - name: Upload merged coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary-${{ github.sha }}
+          path: coverage-artifacts
+          retention-days: 14

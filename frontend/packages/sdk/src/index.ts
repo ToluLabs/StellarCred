@@ -32,6 +32,8 @@ export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
 export * from "./errors"; // Typed error taxonomy (#404)
+export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
+export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
@@ -54,13 +56,24 @@ import {
   parseReturnParams,
   watchClaim,
   withRetry,
+  normalizeRpcError,
+  classifyTransientFailure,
   CLAIM_TYPES,
   TimeoutError,
   ConfigError,
   InvalidAddressError,
 } from "./claims";
 
-import { RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError } from "./errors";
+import {
+  RpcError,
+  IndexerError,
+  ContractError,
+  ContractErrorCode,
+  parseContractError,
+  TransactionSubmissionError,
+} from "./errors";
+
+import { submitTransaction } from "./submit";
 
 import {
   bootstrap,
@@ -96,6 +109,9 @@ export const StellarCred = {
   parseReturnParams,
   watchClaim,
   withRetry,
+  normalizeRpcError,
+  classifyTransientFailure,
+  submitTransaction,
   subscribeClaims,
   createWalletChallenge,
   verifyWalletSignature,
@@ -108,6 +124,7 @@ export const StellarCred = {
   IndexerError,
   ContractError,
   ContractErrorCode,
+  TransactionSubmissionError,
   parseContractError,
 };
 export default StellarCred;

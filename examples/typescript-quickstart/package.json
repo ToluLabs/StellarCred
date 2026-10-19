@@ -1,0 +1,20 @@
+{
+  "name": "stellarcred-typescript-quickstart",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal, compile-checked TypeScript example for @stellarcred/sdk: typed claim checks, a signed Stellar transaction, and a wallet challenge.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^13.3.0",
+    "@stellarcred/sdk": "file:../../frontend/packages/sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}

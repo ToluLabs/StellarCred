@@ -14,7 +14,11 @@ const SCRIPT_NAME = basename(fileURLToPath(import.meta.url));
 const SYSTEM_ENV_VARS = new Set(["NODE_ENV", "NEXT_RUNTIME", "DEBUG"]);
 
 const EXCLUDE_DIRS = new Set(["node_modules", ".next", "dist", "build", "coverage", ".git", "public/bb"]);
-const EXCLUDE_FILE_PATTERNS = [/\.test\.(ts|tsx|js|mjs|jsx)$/, /\.spec\.(ts|tsx|js|mjs|jsx)$/];
+const EXCLUDE_FILE_PATTERNS = [
+  /\.test\.(ts|tsx|js|mjs|jsx)$/,
+  /\.spec\.(ts|tsx|js|mjs|jsx)$/,
+  /validate-deploy-env\.mjs$/,
+];
 
 function stripComments(line) {
   return line.replace(/\r?$/, "").replace(/(^|[^:])\/\/.*$/g, '$1');

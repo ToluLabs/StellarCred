@@ -55,18 +55,35 @@ You can also verify the committed artifacts at any time:
 node circuits/scripts/stamp-circuit-version.js check-all ../frontend/public/circuits
 ```
 
-### Test Vectors
+### Test Vectors & Toolchain Drift Check
 
-`circuits/testvectors/<circuit>.json` pins, per circuit, the exact witness in its committed `Prover.toml`, the public inputs it derives, and a `sha256` hash of the resulting Barretenberg VK — captured with the pinned toolchain above. `circuits/scripts/testvectors.js check` (run in CI on every push/PR) recompiles and re-proves each circuit from its committed `Prover.toml` and fails the build if any of those three drift from what's committed, so a circuit-logic change, a witness edit, or a toolchain bump that silently changes proof output gets caught instead of surfacing later as an on-chain verification failure.
+`circuits/testvectors/<circuit>.json` pins, per circuit, the exact witness in its committed `Prover.toml`, the public inputs it derives, and a `sha256` hash of the resulting Barretenberg VK — captured with the pinned toolchain above (`nargo 1.0.0-beta.9` and `bb 0.87.0`).
 
-To regenerate the vectors intentionally (after a deliberate circuit change or a pinned toolchain bump — update `NOIR_VERSION`/`BB_VERSION` in `circuits/scripts/testvectors.js` first if it's the latter):
+In CI and local verification:
+- A focused check runs against a representative circuit (`kyc_proof`), which contains the smallest full cryptographic pipeline (Poseidon2 commitment + secp256k1 ECDSA):
+  ```bash
+  export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+  node circuits/scripts/testvectors.js check kyc_proof
+  ```
+- **Toolchain Drift Fail-Fast**: If the installed toolchain version differs from the pinned versions, the check halts immediately with `[TOOLCHAIN MISMATCH]` before running expensive proof generation, ensuring toolchain drift is clearly differentiated from circuit code regressions.
+- **Circuit Code Drift**: If the toolchain matches but compiled output differs from `circuits/testvectors/<circuit>.json`, the check reports `[CIRCUIT DRIFT]`.
 
-```bash
-export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
-node circuits/scripts/testvectors.js update
-```
-
-Review the diff before committing — every field changing except `witness` usually means something other than the intended change moved. Each vector also pins the circuit's declared `circuit_version` / `circuit_vk_version`, so regenerating vectors for a circuit whose version was not bumped in `circuits/circuit-versions.json` is reported as drift. See [Circuit Versions](#circuit-versions).
+#### Updating Toolchain Pins & Test Vectors (Intentional Changes)
+When intentionally upgrading the toolchain or changing circuit logic:
+1. Update `NOIR_VERSION` and `BB_VERSION` in:
+   - `circuits/scripts/testvectors.js`
+   - `circuits/scripts/build.sh`
+   - `.github/workflows/proving-perf.yml`
+   - `circuits/README.md`
+2. Bump the corresponding circuit version in `circuits/circuit-versions.json`.
+3. Re-generate test vectors:
+   ```bash
+   export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+   node circuits/scripts/testvectors.js update
+   # Or for a specific circuit:
+   node circuits/scripts/testvectors.js update kyc_proof
+   ```
+4. Review git diff and commit the updated fixtures and test vectors. See [Circuit Versions](#circuit-versions).
 
 ---
 
@@ -76,6 +93,7 @@ To securely commit to human-readable attributes, issuers must map them to `Field
 
 - **KYC (`kyc_proof`)**: The value is a random `Field` element acting as a secret, representing a successful KYC verification.
 - **Age (`age_proof`)**: The value is the holder's Date of Birth (DOB) represented as **days since the Unix epoch** (e.g., `Jan 1 1990` = `7305`).
+- **Date range (`date_range`)**: The private value is the issuer-signed credential issuance date in **days since the Unix epoch**. The proof reveals only the inclusive public window, not the exact issuance date.
 - **Income (`income_proof`)**: The value is the holder's annual income represented as a `u64` in whole currency units (e.g., whole USD).
 - **Funds (`funds_proof`)**: The value is the holder's account balance represented as a `u64` in whole currency units.
 - **Accreditation (`accreditation_proof`)**: The value is the holder's net worth represented as a `u64` in whole currency units.
@@ -102,6 +120,71 @@ The following tables define the ABI order of public inputs for each credential c
 | 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
 | 3 | `current_date` | `u64` | Current date as days since Unix epoch |
 | 4 | `threshold_years` | `u64` | Minimum required age in years |
+
+### `date_range`
+| Index | Name | Type | Description |
+|-------|------|------|-------------|
+| 0 | `commitment` | `Field` | `Poseidon2([issued_at, salt], 2)` |
+| 1 | `issuer_x` | `[u8; 32]` | Issuer secp256k1 public key X coordinate |
+| 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
+| 3 | `window_start` | `u64` | Inclusive start of the accepted issuance window, in days since Unix epoch |
+| 4 | `window_end` | `u64` | Inclusive end of the accepted issuance window, in days since Unix epoch |
+
+Constructing a date-range proof: the issuer commits to and signs the real
+issuance date, the holder picks the widest window their verifier will accept, and
+the holder proves the private date falls inside it. The date, salt and signature
+never leave the witness.
+
+```bash
+# 1. Issuer commits to the real date: commitment = Poseidon2([3650, 12345], 2),
+#    computed with the commit helper circuit.
+printf 'value = "3650"\nsalt = "12345"\n' > circuits/commit/Prover.toml
+(cd circuits/commit && nargo execute)               # prints the commitment
+
+# 2. Issuer signs it (prehash:false; DEMO key — a real issuer keeps its SK private).
+node circuits/scripts/sign.js <commitment-decimal>   # issuer_x / issuer_y / sig
+
+# 3. Holder writes issued_at, salt, sig, commitment plus the chosen window_start and
+#    window_end into date_range/Prover.toml, then compiles, derives the VK and proves.
+export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+bash circuits/scripts/build.sh date_range
+```
+
+`scripts/gen_inputs.sh` performs steps 1 and 2 for every circuit, including
+`date_range`, and `build.sh` runs it first, so the committed sample witness is
+reproducible. The VK goes to `CredentialVerifier.set_vk("date_range", version, vk)`;
+`date_range` is declared in [circuit-versions.json](circuit-versions.json) as
+`1.0.0` / `vkVersion` 1, and `build.sh` stamps both into the artifact it stages.
+The proving half of `build.sh`, step by step:
+
+```bash
+cd circuits
+nargo compile --package date_range
+nargo execute --package date_range           # writes target/date_range.gz
+bb write_vk --scheme ultra_honk --oracle_hash keccak \
+  --bytecode_path target/date_range.json --output_path date_range/target \
+  --output_format bytes_and_fields           # VK at date_range/target/vk/vk
+bb prove --scheme ultra_honk --oracle_hash keccak \
+  --bytecode_path target/date_range.json --witness_path target/date_range.gz \
+  --output_path date_range/target --output_format bytes_and_fields
+```
+
+`nargo test --package date_range` runs the circuit's unit tests (window
+boundaries, off-by-one, inverted window, zero salt).
+
+`build.sh` stages `fixtures/date_range/{vk,proof,public_inputs}` and
+`frontend/public/circuits/date_range.json`; commit them so the on-chain tests can
+load the same artifacts the contract expects (see `fixtures/set_membership/README.md`
+for the layout), then register a `date_range` credential end to end through
+`ProofRegistry.submit_proof` the way `contracts/proof_registry/src/test.rs` does for
+`kyc`.
+
+The sample `date_range/Prover.toml` proves that the signed date `3650` lies between
+the inclusive bounds `3000` and `4000`. Both bounds are prover-supplied public
+inputs, so the circuit proves the relation, not the policy: a verifier must check
+`window_start` / `window_end` against its own permitted range and ledger time, and
+reject a window wider than its policy allows, since an unbounded window is
+trivially satisfiable and proves nothing.
 
 ### `income_proof`
 | Index | Name | Type | Description |
@@ -135,3 +218,17 @@ The following tables define the ABI order of public inputs for each credential c
 | 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
 | 3 | `restricted` | `[u64; 8]` | List of up to 8 ISO 3166-1 numeric codes (padded with `0`s) |
 | 4 | `mode` | `u64` | Proof mode: `0` = denylist (country NOT in list), `1` = allowlist (country IS in list) |
+
+`mode` is a public input, not a second circuit: one compiled `jurisdiction_proof`
+serves both modes, so denylist and allowlist proofs verify against the *same* VK
+(`fixtures/jurisdiction/vk` and `fixtures/jurisdiction_allow/vk` are byte-identical).
+`circuits/scripts/build.sh` generates the second fixture set from
+`jurisdiction_proof/Prover_allowlist.toml` purely to have a real allowlist proof on
+hand for contract tests.
+
+Because both the list and the mode travel with the proof and are prover-supplied, the
+circuit only proves the *relation* — it cannot tell a verifier whether the accepted
+jurisdictions were the intended ones. A verifier that means "not sanctioned" must
+reject a proof presenting `mode = 1`, and one that means "region exclusive" must
+reject `mode = 0`; checking the mode alongside the list is the integrator's job.
+The witness API defaults to `mode = "0"` (`frontend/app/api/witness/route.ts`).

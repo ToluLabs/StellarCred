@@ -111,8 +111,8 @@ This requirement is enforced at two independent points:
 
 1. **In-circuit floor.** Every credential circuit (`kyc_proof`, `age_proof`,
    `income_proof`, `jurisdiction_proof`, `funds_proof`, `accreditation_proof`,
-   `employment_proof`, `range_proof`, `aggregate_proof`) and both commitment
-   helpers (`commit`, `commit3`) assert `salt != 0` before using it. This is a
+   `employment_proof`, `range_proof`, `date_range`, `aggregate_proof`) and both
+   commitment helpers (`commit`, `commit3`) assert `salt != 0` before using it. This is a
    cheap, unconditional check that blocks the degenerate zero-salt case. It
    is **not** sufficient on its own - a salt of `1` or `2` also satisfies
    `salt != 0` while remaining brute-forceable - so this is a floor, not the

@@ -18,6 +18,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { EXPLORER_TX } from "@/lib/stellar";
+import { truncateTxHash } from "@/lib/format";
 
 type ToastVariant = "info" | "success" | "error";
 
@@ -174,7 +175,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastEntry; onDismiss: () => v
             rel="noreferrer"
             className="toast-link"
           >
-            {toast.txHash.slice(0, 8)}...{toast.txHash.slice(-6)}
+            {truncateTxHash(toast.txHash)}
             <IconExternalLink size={11} />
           </a>
         )}

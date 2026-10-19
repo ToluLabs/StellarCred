@@ -1608,3 +1608,241 @@ textarea:focus-visible {
   margin-top: var(--spacing-xs, 0.25rem);
   line-height: 1.5;
 }
+
+/* ===========================================================================
+   Login Page Accessible Styles (Issue #756)
+   WCAG 2.1 AA Compliant Contrast, Focus Indicators, and Semantic Semantics
+   =========================================================================== */
+
+.login-page-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(85vh - 4rem);
+  padding: 2rem 1rem;
+}
+
+.login-card-wrapper {
+  width: 100%;
+  max-width: 460px;
+  padding: 2.25rem 2rem;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.login-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-glow);
+  margin-bottom: 1rem;
+}
+
+.login-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.login-subtitle {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.login-tablist {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.5rem;
+}
+
+.login-tabpanel {
+  display: flex;
+  flex-direction: column;
+}
+
+.wallet-login-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.25rem;
+  padding: 1rem 0;
+}
+
+.wallet-instructions {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.wallet-button-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.wallet-status-connected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  width: 100%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-glow);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.wallet-supported-hint {
+  font-size: 0.75rem;
+  color: var(--faint);
+  margin-top: 0.5rem;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  text-align: left;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+}
+
+.required-star {
+  color: var(--danger);
+  margin-left: 0.25rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  background: var(--input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.form-hint {
+  font-size: 0.775rem;
+  color: #a0a0b2;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.form-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.form-checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.checkbox-label {
+  font-size: 0.8125rem;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-error-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  background: rgba(240, 96, 77, 0.12);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: #ff9999;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.login-success-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  background: rgba(62, 207, 142, 0.12);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: #52e3a4;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.submit-btn {
+  width: 100%;
+  margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.login-card-footer {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.login-footer-link {
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.login-footer-link:hover,
+.login-footer-link:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}

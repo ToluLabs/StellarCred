@@ -34,18 +34,51 @@ const NEGATIVE_KYC_WRONG_CIRCUIT_PUBLIC_INPUTS: &[u8] =
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-fn get_test_wasm(env: &Env) -> Bytes {
-    let paths = [
-        "target/wasm32v1-none/release/proof_registry.wasm",
-        "../../target/wasm32v1-none/release/proof_registry.wasm",
-        "../target/wasm32v1-none/release/proof_registry.wasm",
-    ];
-    for path in paths.iter() {
-        if let Ok(wasm) = std::fs::read(path) {
-            return Bytes::from_slice(env, &wasm);
-        }
+// ── Upgrade-test WASM harness ───────────────────────────────────────────────
+//
+// `upgrade` must be handed a real contract WASM blob, so the upgrade tests
+// read the release artifact `target/wasm32v1-none/release/proof_registry.wasm`.
+// CI and the Makefiles build that artifact *before* `cargo test`, but a plain
+// `cargo test` / `make test-contracts` from a clean checkout does not — the
+// helper used to panic and fail every upgrade test (#742). Resolve the path
+// from this crate's manifest (cwd-independent) and build the artifact on
+// demand when it is missing, so the suite is self-contained.
+fn test_wasm_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/wasm32v1-none/release/proof_registry.wasm")
+}
+
+/// Returns the compiled proof_registry WASM bytes, building the release
+/// wasm artifact first if it does not exist yet (no-op cost when CI or the
+/// Makefiles already built it). Uses the exact command CI and
+/// `make build-contracts` run, so the uploaded artifact matches the one the
+/// pipeline produces — a narrower `-p proof_registry` build resolves features
+/// differently and yields different bytes.
+fn read_test_wasm() -> std::vec::Vec<u8> {
+    let path = test_wasm_path();
+    if !path.exists() {
+        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let output = std::process::Command::new(env!("CARGO"))
+            .args(["build", "--release", "--locked", "--target", "wasm32v1-none"])
+            .current_dir(workspace_root)
+            .output()
+            .expect("failed to spawn `cargo build` for the proof_registry wasm");
+        assert!(
+            output.status.success(),
+            "`cargo build --release --locked --target wasm32v1-none` failed:\n{}",
+            std::string::String::from_utf8_lossy(&output.stderr)
+        );
     }
-    panic!("Could not find target/wasm32v1-none/release/proof_registry.wasm. Please run 'cargo build --target wasm32v1-none --release' first.");
+    std::fs::read(&path).unwrap_or_else(|err| {
+        panic!(
+            "Could not read {} ({err}). Run 'cargo build --release --target wasm32v1-none' first.",
+            path.display()
+        )
+    })
+}
+
+fn get_test_wasm(env: &Env) -> Bytes {
+    Bytes::from_slice(env, &read_test_wasm())
 }
 
 /// The wired stack plus the KYC issuer, both made ready in one harness call.
@@ -1381,6 +1414,27 @@ fn upgrade_requires_upgrader_role() {
         }])
         .try_upgrade(&new_wasm_hash);
     assert!(res.is_err());
+}
+
+// Regression (#742): the upgrade tests read the release WASM artifact out of
+// the workspace target directory. The harness must resolve that artifact (and
+// build it on demand on a clean checkout) instead of panicking when no prior
+// wasm build has run — otherwise every upgrade test fails before exercising
+// the contract at all.
+#[test]
+fn upgrade_wasm_artifact_resolves() {
+    let wasm = read_test_wasm();
+    assert!(
+        wasm.len() > 8,
+        "proof_registry.wasm looks truncated ({} bytes)",
+        wasm.len()
+    );
+    assert_eq!(&wasm[..4], b"\0asm", "artifact is not a WebAssembly module");
+    assert_eq!(
+        &wasm[4..8],
+        &1u32.to_le_bytes(),
+        "artifact is not a version-1 WebAssembly module"
+    );
 }
 
 #[test]

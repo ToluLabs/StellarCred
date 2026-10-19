@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "fix/issue-764-fix-typo-in-deploy-script-causing-failed",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "fix/issue-764-fix-typo-in-deploy-script-causing-failed": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "fix/issue-764-fix-typo-in-deploy-script-causing-failed",
+    "origin"
+  ]
+}
