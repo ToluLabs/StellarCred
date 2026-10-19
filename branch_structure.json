@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "main",
+    "origin",
+    "security/issue-857-add-backup-and-restore-guide-for-credential"
+  ],
+  "parent": {
+    "main": null,
+    "origin": "main",
+    "security/issue-857-add-backup-and-restore-guide-for-credential": "main"
+  },
+  "order": [
+    "main",
+    "origin",
+    "security/issue-857-add-backup-and-restore-guide-for-credential"
+  ]
+}
