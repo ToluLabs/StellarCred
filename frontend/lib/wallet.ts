@@ -30,7 +30,7 @@ import { getLedgerModule, kitNetworkForPassphrase, LEDGER_ID } from "./ledger-mo
 // inputs (app selector name vs. passphrase equality).
 const APP_NETWORK = kitNetworkForPassphrase(NETWORK_PASSPHRASE);
 
-const CONNECT_TIMEOUT_MS = 30_000;
+const CONNECT_TIMEOUT_MS = 60_000;
 const APP_BASE_URL = process.env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? "https://stellarcred.xyz";
 // Get a free project ID at https://cloud.reown.com — WalletConnect is omitted
 // from the wallet-picker modal entirely when unset (see getKit() below), it
@@ -235,16 +235,28 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
       );
     }
   }
+  // Classify timeout errors from wallet extension / kit / network
+  if (/timed?\s*out|timeout/i.test(message)) {
+    return new WalletConnectError(
+      "timeout",
+      "Request timed out while waiting for wallet approval",
+      wallet ? { walletName: wallet.name, installUrl: wallet.url } : undefined,
+    );
+  }
   return new WalletConnectError("rejected", "Connection cancelled");
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message = "Request timed out while waiting for wallet approval",
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(
         new WalletConnectError(
           "timeout",
-          "Connection timed out. Check your wallet extension and try again.",
+          message,
         ),
       );
     }, ms);
@@ -275,20 +287,30 @@ export interface Connection {
 export async function connect(): Promise<Connection> {
   const k = getKit();
   const attempt = new Promise<Connection>((resolve, reject) => {
+    let resolved = false;
     k.openModal({
       onWalletSelected: async (option) => {
         try {
           k.setWallet(option.id);
-          const { address } = await k.getAddress();
+          const { address } = await withTimeout(
+            k.getAddress(),
+            CONNECT_TIMEOUT_MS,
+            "Request timed out while waiting for wallet approval",
+          );
+          resolved = true;
           resolve({ address, walletId: option.id });
         } catch (e) {
           reject(toWalletError(e, { id: option.id, name: option.name, url: option.url }));
         }
       },
-      onClosed: () => reject(new WalletConnectError("dismissed", "Connection cancelled")),
+      onClosed: () => {
+        if (!resolved) {
+          reject(new WalletConnectError("dismissed", "Connection cancelled"));
+        }
+      },
     });
   });
-  return withTimeout(attempt, CONNECT_TIMEOUT_MS);
+  return attempt;
 }
 
 // Restore a previously-selected wallet (no modal) after a full page reload.

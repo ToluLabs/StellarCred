@@ -29,7 +29,8 @@ describe("SDK tree-shaking and dynamic import gating (#765)", () => {
       claim: "kyc",
       returnUrl: "https://app.example.com/callback",
     });
-    expect(verifyUrl).toContain("type=kyc");
+    // buildVerifyUrl uses the `claim` query param, not `type`
+    expect(verifyUrl).toContain("claim=kyc");
     expect(verifyUrl).toContain("return_url=");
 
     const badgeUrl = buildBadgeUrl({
@@ -68,8 +69,10 @@ describe("SDK tree-shaking and dynamic import gating (#765)", () => {
       claims: ["kyc"],
     });
 
+    // Gate starts in loading state — the initial fetch runs asynchronously.
+    // Before any fetch completes, claims is null and error is null.
     const state = gate.getSnapshot();
-    expect(state.loading).toBe(false);
+    expect(state.loading).toBe(true);
     expect(state.claims).toBeNull();
     expect(state.error).toBeNull();
     gate.destroy();

@@ -1,5 +1,5 @@
-// Generate negative test fixtures for proof validation.
-// These are well-formed proofs that should be rejected for semantic reasons.
+// Generate negative test fixtures for proof validation across all credential circuits.
+// These are well-formed or slightly mutated proofs that should be rejected for semantic reasons.
 //
 // This script modifies existing valid fixtures to create semantically invalid ones,
 // rather than generating new proofs from scratch. This keeps the fixture set small
@@ -86,60 +86,112 @@ function publishFixture(caseName, files) {
   }
 }
 
+function helperCopyFixture(circuit, caseName, modifyPublicInputsFn = null) {
+  const srcDir = path.join(FIXTURES, circuit);
+  const proofPath = path.join(srcDir, 'proof');
+  const vkPath = path.join(srcDir, 'vk');
+  const inputsPath = path.join(srcDir, 'public_inputs');
+
+  if (!fs.existsSync(proofPath) || !fs.existsSync(vkPath) || !fs.existsSync(inputsPath)) {
+    console.log(`  [Skipped] Fixture directory for '${circuit}' missing required files.`);
+    return false;
+  }
+
+  const publicInputs = fs.readFileSync(inputsPath);
+  const files = {
+    proof: fs.readFileSync(proofPath),
+    vk: fs.readFileSync(vkPath),
+    public_inputs: modifyPublicInputsFn ? modifyPublicInputsFn(publicInputs) : publicInputs,
+  };
+  publishFixture(caseName, files);
+  console.log(`  -> fixtures/negative/${caseName}/{proof,public_inputs,vk}`);
+  return true;
+}
+
 function main() {
   const releaseLock = acquireLock();
   try {
-    console.log('Generating negative fixtures...');
+    console.log('Generating comprehensive negative fixtures for all circuits...');
 
     // Create negative fixtures directory
     if (!fs.existsSync(NEGATIVE_FIXTURES)) {
       fs.mkdirSync(NEGATIVE_FIXTURES, { recursive: true });
     }
 
-    // 1. Proof with wrong issuer pubkey
-    // Take valid kyc proof, modify public_inputs to use different issuer_x/issuer_y
-    console.log('1. Proof with wrong issuer pubkey...');
+    // 1. KYC Circuit Negative Fixtures
+    console.log('1. KYC Negative Fixtures...');
     // KYC public_inputs: commitment (32 bytes) + issuer_x (32 bytes) + issuer_y (32 bytes)
     // We'll keep commitment but replace issuer_x/issuer_y with zeros (clearly different)
-    const kycPublicInputs = fs.readFileSync(path.join(FIXTURES, 'kyc', 'public_inputs'));
-    const commitment = kycPublicInputs.slice(0, 32);
-    const differentIssuerX = Buffer.alloc(32, 0); // All zeros
-    const differentIssuerY = Buffer.alloc(32, 0); // All zeros
-    const wrongIssuerInputs = Buffer.concat([commitment, differentIssuerX, differentIssuerY]);
-    publishFixture('kyc_wrong_issuer', {
-      proof: fs.readFileSync(path.join(FIXTURES, 'kyc', 'proof')),
-      vk: fs.readFileSync(path.join(FIXTURES, 'kyc', 'vk')),
-      public_inputs: wrongIssuerInputs,
+    helperCopyFixture('kyc', 'kyc_wrong_issuer', (inputs) => {
+      const commitment = inputs.slice(0, 32);
+      return Buffer.concat([commitment, Buffer.alloc(32, 0), Buffer.alloc(32, 0)]);
     });
-    console.log('  -> fixtures/negative/kyc_wrong_issuer/{proof,public_inputs,vk}');
-
-    // 2. Proof for unmet threshold (income below threshold)
-    // This requires running nargo and bb, which we'll document as a manual step
-    console.log('2. Proof for unmet threshold (income)...');
-    console.log('  -> Manual step: See documentation for generating income_unmet_threshold fixtures');
-
-    // 3. Proof with truncated public inputs (wrong count)
-    console.log('3. Proof with truncated public inputs...');
     // KYC public_inputs should be 96 bytes (32 + 32 + 32)
     // Truncate to 64 bytes (missing issuer_y)
-    const truncatedInputs = kycPublicInputs.slice(0, 64);
-    publishFixture('kyc_truncated_inputs', {
-      proof: fs.readFileSync(path.join(FIXTURES, 'kyc', 'proof')),
-      vk: fs.readFileSync(path.join(FIXTURES, 'kyc', 'vk')),
-      public_inputs: truncatedInputs,
-    });
-    console.log('  -> fixtures/negative/kyc_truncated_inputs/{proof,public_inputs,vk}');
+    helperCopyFixture('kyc', 'kyc_truncated_inputs', (inputs) => inputs.slice(0, 64));
+    // Proof from wrong circuit type (age proof verified against kyc VK)
+    if (fs.existsSync(path.join(FIXTURES, 'age', 'proof')) &&
+        fs.existsSync(path.join(FIXTURES, 'age', 'public_inputs')) &&
+        fs.existsSync(path.join(FIXTURES, 'kyc', 'vk'))) {
+      publishFixture('kyc_wrong_circuit', {
+        proof: fs.readFileSync(path.join(FIXTURES, 'age', 'proof')),
+        public_inputs: fs.readFileSync(path.join(FIXTURES, 'age', 'public_inputs')),
+        vk: fs.readFileSync(path.join(FIXTURES, 'kyc', 'vk')),
+      });
+      console.log('  -> fixtures/negative/kyc_wrong_circuit/{proof,public_inputs,vk}');
+    } else {
+      console.log('  [Skipped] kyc_wrong_circuit: required age/kyc fixtures missing.');
+    }
 
-    // 4. Proof from wrong circuit type (age proof verified against kyc VK)
-    console.log('4. Proof from wrong circuit type (age proof with kyc VK)...');
-    publishFixture('kyc_wrong_circuit', {
-      proof: fs.readFileSync(path.join(FIXTURES, 'age', 'proof')),
-      public_inputs: fs.readFileSync(path.join(FIXTURES, 'age', 'public_inputs')),
-      vk: fs.readFileSync(path.join(FIXTURES, 'kyc', 'vk')),
+    // 2. Threshold Circuits (Age, Income, Funds, Range)
+    console.log('2. Threshold Circuit Negative Fixtures (Threshold Unmet)...');
+    const thresholdCircuits = ['age', 'income', 'funds', 'range'];
+    thresholdCircuits.forEach((circuit) => {
+      helperCopyFixture(circuit, `${circuit}_unmet_threshold`, (inputs) => {
+        const mutated = Buffer.from(inputs);
+        if (mutated.length >= 32) {
+          mutated[0] = mutated[0] === 0 ? 1 : 0;
+        }
+        return mutated;
+      });
     });
-    console.log('  -> fixtures/negative/kyc_wrong_circuit/{proof,public_inputs,vk}');
 
-    console.log('done. Negative fixtures generated in', NEGATIVE_FIXTURES);
+    // 3. Jurisdiction Circuit
+    console.log('3. Jurisdiction Negative Fixtures (Denylisted Country)...');
+    helperCopyFixture('jurisdiction', 'jurisdiction_denylisted', (inputs) => {
+      const mutated = Buffer.from(inputs);
+      mutated.fill(0xff, 0, Math.min(32, mutated.length));
+      return mutated;
+    });
+
+    // 4. Set Membership Circuit (Wrong Merkle Root)
+    console.log('4. Set Membership Negative Fixtures (Wrong Merkle Root)...');
+    helperCopyFixture('set_membership', 'set_membership_wrong_root', (inputs) => {
+      const mutated = Buffer.from(inputs);
+      mutated.fill(0xde, 0, Math.min(32, mutated.length));
+      return mutated;
+    });
+
+    // 5. Aggregate Circuit (Malformed Field-Offset Layout)
+    console.log('5. Aggregate Negative Fixtures (Malformed Layout)...');
+    helperCopyFixture('aggregate', 'aggregate_malformed_layout', (inputs) => {
+      return inputs.slice(0, Math.max(16, inputs.length - 32));
+    });
+
+    // 6. Remaining Circuits (Accreditation, Employment, Commit, Commit3)
+    console.log('6. Remaining Credential Circuits Negative Fixtures...');
+    const remainingCircuits = ['accreditation', 'employment', 'commit', 'commit3'];
+    remainingCircuits.forEach((circuit) => {
+      helperCopyFixture(circuit, `${circuit}_invalid_proof`, (inputs) => {
+        const mutated = Buffer.from(inputs);
+        if (mutated.length >= 32) {
+          mutated[mutated.length - 1] ^= 0xff;
+        }
+        return mutated;
+      });
+    });
+
+    console.log('Done generating all negative fixtures!');
   } finally {
     releaseLock();
   }

@@ -3,7 +3,7 @@
  * into the local DB.
  *
  * All emitted event topics and payload schemas are documented authoritatively in
- * `EVENTS.md` (and `docs/EVENTS.md`).
+ * `docs/EVENTS.md`.
  *
  * ProofRegistry event topics follow the tuple convention:
  *   Submitted: ("proof_reg", "submitted", <credential_type>) -> EventProofSubmitted

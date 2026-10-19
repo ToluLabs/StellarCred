@@ -71,6 +71,12 @@ jobs:
           source "$HOME/.bashrc" 2>/dev/null || true
           bbup -v ${{ env.BB_VERSION }}
 
+      - name: Verify pinned toolchain and representative circuit build (kyc_proof)
+        shell: bash
+        run: |
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$HOME/.bb/bin:$PATH"
+          node circuits/scripts/testvectors.js check kyc_proof
+
       - name: Measure proving stages (median of 5 runs) and gate counts
         id: measure
         shell: bash

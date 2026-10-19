@@ -147,6 +147,18 @@ describe("lib/wallet.ts", () => {
 
       await expect(connect()).rejects.toMatchObject({ kind: "rejected" });
     });
+
+    it("maps timeout error during approval to timeout kind with descriptive message", async () => {
+      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
+        kit.getAddress.mockRejectedValue(new Error("Request timed out while waiting for wallet approval"));
+        await onWalletSelected(wallet("freighter", "Freighter", "https://freighter.app"));
+      });
+
+      await expect(connect()).rejects.toMatchObject({
+        kind: "timeout",
+        message: expect.stringMatching(/timed out/i),
+      });
+    });
   });
 
   describe("restore", () => {

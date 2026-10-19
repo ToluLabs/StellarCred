@@ -1,235 +1,368 @@
 "use client";
 
-import { useEffect, useState } from "react";
+// Guided onboarding flow (#807). A single wizard walks first-time users
+// through the core loop — wallet setup, credential creation, issuer-trust
+// verification — with contextual guidance on every step. All copy and the
+// step-gating rules live in lib/onboarding-guidance.ts so they stay testable;
+// this file is presentation and side-effect wiring only.
+
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   IconWallet,
   IconArrowRight,
   IconArrowLeft,
   IconCheck,
-  IconRocket,
   IconLicense,
+  IconShieldCheck,
   IconCpu,
-  IconLock,
   IconX,
   IconLoader2,
   IconSparkles,
   IconHelp,
+  IconBulb,
+  IconAlertTriangle,
+  IconInfoCircle,
+  IconRefresh,
+  IconExternalLink,
 } from "@tabler/icons-react";
 import { truncateMiddle } from "@/lib/format";
 import { useWallet } from "@/lib/wallet-context";
+import { getWalletErrorInfo, getWalletReportUrl } from "@/lib/wallet";
+import { useOnboarding, ONBOARDING_STEPS, type OnboardingStep } from "@/lib/onboarding";
 import {
-  useOnboarding,
-  ONBOARDING_STEPS,
-  type OnboardingStep,
-} from "@/lib/onboarding";
-import { saveCredential, loadCredentials } from "@/lib/credential";
+  STEP_GUIDANCE,
+  TRUST_STATUS_GUIDANCE,
+  TRUST_CHECK_ERROR_GUIDANCE,
+  canProceed,
+  blockedReason,
+  trustChecklist,
+  type TrustSeverity,
+} from "@/lib/onboarding-guidance";
+import { saveCredential, loadCredentials, TYPE_META } from "@/lib/credential";
 import type { Credential } from "@/lib/credential";
+import { checkIssuerStatus } from "@/lib/issuer-registry";
+import type { IssuerStatus } from "@/lib/issuer-registry";
 import { useToast } from "@/components/Toast";
 
-/* ── Step icons ──────────────────────────────────────────────────────────── */
+const ACCENT = "var(--accent)";
 
 const STEP_ICONS: Record<OnboardingStep, React.ReactNode> = {
-  welcome: <IconRocket size={20} stroke={1.5} />,
+  welcome: <IconSparkles size={20} stroke={1.5} />,
   "connect-wallet": <IconWallet size={20} stroke={1.5} />,
   "get-credential": <IconLicense size={20} stroke={1.5} />,
+  "verify-trust": <IconShieldCheck size={20} stroke={1.5} />,
   "generate-proof": <IconCpu size={20} stroke={1.5} />,
-  unlock: <IconLock size={20} stroke={1.5} />,
+  unlock: <IconCheck size={20} stroke={2} />,
 };
 
-const STEP_TITLES: Record<OnboardingStep, string> = {
-  welcome: "Welcome to StellarCred",
-  "connect-wallet": "Connect your wallet",
-  "get-credential": "Get a demo credential",
-  "generate-proof": "Generate a proof",
-  unlock: "You're verified!",
+/* ── Shared presentation bits ────────────────────────────────────────────── */
+
+const SEVERITY_COLORS: Record<TrustSeverity, { fg: string; border: string; bg: string }> = {
+  success: { fg: ACCENT, border: "rgba(62, 207, 142, 0.25)", bg: "rgba(62, 207, 142, 0.07)" },
+  info: {
+    fg: "var(--info, #6aa6ff)",
+    border: "rgba(106, 166, 255, 0.3)",
+    bg: "rgba(106, 166, 255, 0.07)",
+  },
+  warning: {
+    fg: "var(--warn, #e8b04b)",
+    border: "rgba(232, 176, 75, 0.3)",
+    bg: "rgba(232, 176, 75, 0.07)",
+  },
+  danger: {
+    fg: "var(--danger)",
+    border: "rgba(240, 100, 90, 0.3)",
+    bg: "rgba(240, 100, 90, 0.07)",
+  },
 };
 
-const STEP_DESCRIPTIONS: Record<OnboardingStep, string> = {
-  welcome:
-    "Prove facts about yourself without revealing personal data. Let's walk through the core loop once.",
-  "connect-wallet":
-    "Connect a Stellar wallet on testnet. Your credentials live in this browser — never on a server.",
-  "get-credential":
-    "Request a demo age credential from the StellarCred Authority. This proves you're over 18.",
-  "generate-proof":
-    "Generate a zero-knowledge proof locally. Only the claim leaves; the data behind it never does.",
-  unlock:
-    "Your proof is on-chain. Any Stellar protocol can verify it in one contract call.",
-};
-
-/* ── Progress bar ────────────────────────────────────────────────────────── */
-
-function ProgressBar({ progress }: { progress: number }) {
+function StatusBox({
+  severity,
+  title,
+  children,
+}: {
+  severity: TrustSeverity;
+  title: string;
+  children?: React.ReactNode;
+}) {
+  const c = SEVERITY_COLORS[severity];
+  const Icon =
+    severity === "success" ? IconCheck : severity === "danger" ? IconAlertTriangle : IconInfoCircle;
   return (
     <div
       style={{
-        height: 3,
-        borderRadius: 2,
-        background: "var(--border)",
-        overflow: "hidden",
-        marginBottom: "1.5rem",
+        padding: "0.9rem 1rem",
+        borderRadius: "var(--radius)",
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        textAlign: "left",
       }}
     >
       <div
-        style={{
-          height: "100%",
-          width: `${Math.round(progress * 100)}%`,
-          background: "var(--accent)",
-          borderRadius: 2,
-          transition: "width 0.4s var(--ease)",
-        }}
-      />
-    </div>
-  );
-}
-
-/* ── Step indicators ─────────────────────────────────────────────────────── */
-
-function StepDots({
-  current,
-  total,
-}: {
-  current: number;
-  total: number;
-}) {
-  return (
-    <div
-      className="row"
-      style={{ gap: "0.4rem", justifyContent: "center", marginBottom: "1.25rem" }}
-    >
-      {Array.from({ length: total }, (_, i) => (
-        <div
-          key={i}
-          style={{
-            width: i === current ? 20 : 6,
-            height: 6,
-            borderRadius: 3,
-            background:
-              i < current
-                ? "var(--accent)"
-                : i === current
-                  ? "var(--accent)"
-                  : "var(--border)",
-            transition: "all 0.3s var(--ease)",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/* ── Individual step content ─────────────────────────────────────────────── */
-
-function WelcomeStep() {
-  return (
-    <div style={{ textAlign: "center", padding: "1rem 0" }}>
-      <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: "50%",
-          background: "rgba(62, 207, 142, 0.1)",
-          border: "1px solid rgba(62, 207, 142, 0.25)",
-          display: "grid",
-          placeItems: "center",
-          margin: "0 auto 1.25rem",
-          color: "var(--accent)",
-        }}
+        className="row"
+        style={{ gap: "0.5rem", alignItems: "center", marginBottom: children ? "0.4rem" : 0 }}
       >
-        <IconSparkles size={26} stroke={1.5} />
+        <Icon size={16} color={c.fg} stroke={2.2} aria-hidden />
+        <span style={{ fontWeight: 500, fontSize: "0.9rem" }}>{title}</span>
       </div>
-      <p
-        className="muted"
-        style={{
-          fontSize: "0.9rem",
-          lineHeight: 1.7,
-          maxWidth: 380,
-          margin: "0 auto",
-        }}
-      >
-        {STEP_DESCRIPTIONS.welcome}
-      </p>
-    </div>
-  );
-}
-
-function ConnectWalletStep() {
-  const { address, connecting, connect } = useWallet();
-
-  return (
-    <div style={{ textAlign: "center", padding: "1rem 0" }}>
-      {address ? (
-        <div
-          style={{
-            padding: "1rem",
-            borderRadius: "var(--radius)",
-            background: "rgba(62, 207, 142, 0.07)",
-            border: "1px solid rgba(62, 207, 142, 0.2)",
-          }}
-        >
-          <div
-            className="row"
-            style={{
-              gap: "0.5rem",
-              justifyContent: "center",
-              alignItems: "center",
-              marginBottom: "0.5rem",
-            }}
-          >
-            <IconCheck size={16} color="var(--accent)" stroke={2.5} />
-            <span style={{ fontWeight: 500, fontSize: "0.9rem" }}>
-              Wallet connected
-            </span>
-          </div>
-          <span
-            className="mono"
-            style={{ fontSize: "0.8rem", color: "var(--muted)" }}
-          >
-            {truncateMiddle(address, 6, 4)}
-          </span>
-        </div>
-      ) : (
-        <div>
-          <p
-            className="muted"
-            style={{
-              fontSize: "0.875rem",
-              lineHeight: 1.6,
-              marginBottom: "1.25rem",
-            }}
-          >
-            {STEP_DESCRIPTIONS["connect-wallet"]}
-          </p>
-          <button
-            className="btn btn-primary"
-            onClick={connect}
-            disabled={connecting}
-          >
-            <IconWallet size={14} />
-            {connecting ? "Connecting…" : "Connect wallet"}
-          </button>
+      {children && (
+        <div style={{ fontSize: "0.8125rem", lineHeight: 1.6, color: "var(--muted)" }}>
+          {children}
         </div>
       )}
     </div>
   );
 }
 
-function GetCredentialStep() {
-  const { address } = useWallet();
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState("");
+/** Contextual "good to know" guidance shown under every step. */
+function GuidanceTip({ text }: { text: string }) {
+  return (
+    <div
+      className="row"
+      style={{
+        gap: "0.55rem",
+        alignItems: "flex-start",
+        marginTop: "1.1rem",
+        padding: "0.7rem 0.85rem",
+        borderRadius: "var(--radius-sm)",
+        border: "1px dashed var(--border)",
+        background: "rgba(128,128,128,0.04)",
+      }}
+    >
+      <IconBulb
+        size={15}
+        stroke={1.6}
+        style={{ marginTop: 2, color: "var(--faint)", flexShrink: 0 }}
+        aria-hidden
+      />
+      <p style={{ fontSize: "0.76rem", lineHeight: 1.6, color: "var(--muted)", margin: 0 }}>
+        {text}
+      </p>
+    </div>
+  );
+}
 
-  // Check if user already has a credential
-  useEffect(() => {
-    loadCredentials().then((creds) => {
-      if (creds.some((c) => c.type === "age")) {
-        setDone(true);
-      }
-    });
-  }, []);
+/** Horizontal roadmap: one chip per step, visited ones are clickable. */
+function StepRail({ current, onJump }: { current: number; onJump: (index: number) => void }) {
+  return (
+    <div
+      className="row"
+      style={{ gap: "0.25rem", justifyContent: "space-between", marginBottom: "1.1rem" }}
+      aria-label="Onboarding progress"
+    >
+      {ONBOARDING_STEPS.map((step, i) => {
+        const done = i < current;
+        const active = i === current;
+        const reachable = i <= current;
+        return (
+          <button
+            key={step}
+            type="button"
+            onClick={() => reachable && onJump(i)}
+            disabled={!reachable}
+            aria-current={active ? "step" : undefined}
+            aria-label={`Step ${i + 1}: ${STEP_GUIDANCE[step].railLabel}${done ? " (done)" : ""}`}
+            title={done ? `Back to: ${STEP_GUIDANCE[step].title}` : undefined}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "0.3rem",
+              background: "none",
+              border: "none",
+              padding: "0.2rem 0",
+              cursor: reachable ? "pointer" : "default",
+              color: active ? ACCENT : done ? "var(--muted)" : "var(--faint)",
+            }}
+          >
+            <span
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                display: "grid",
+                placeItems: "center",
+                fontSize: "0.62rem",
+                fontWeight: 600,
+                background: active || done ? "rgba(62, 207, 142, 0.12)" : "transparent",
+                border: `1.5px solid ${active ? ACCENT : done ? "rgba(62, 207, 142, 0.5)" : "var(--border)"}`,
+                transition: "all 0.25s var(--ease)",
+              }}
+            >
+              {done ? <IconCheck size={12} stroke={2.5} /> : i + 1}
+            </span>
+            <span
+              style={{
+                fontSize: "0.6rem",
+                letterSpacing: "0.02em",
+                textTransform: "uppercase",
+                color: active ? ACCENT : "var(--faint)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {STEP_GUIDANCE[step].railLabel}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Step content ────────────────────────────────────────────────────────── */
+
+function WelcomeStep() {
+  const coreSteps: OnboardingStep[] = ["connect-wallet", "get-credential", "verify-trust"];
+  return (
+    <div>
+      <p className="muted" style={{ fontSize: "0.875rem", lineHeight: 1.65 }}>
+        {STEP_GUIDANCE.welcome.summary}
+      </p>
+      <div style={{ display: "grid", gap: "0.5rem", marginTop: "1rem" }}>
+        {coreSteps.map((step, i) => (
+          <div
+            key={step}
+            className="row"
+            style={{
+              gap: "0.7rem",
+              alignItems: "center",
+              padding: "0.6rem 0.75rem",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <span style={{ color: ACCENT, flexShrink: 0 }}>{STEP_ICONS[step]}</span>
+            <div>
+              <div style={{ fontSize: "0.84rem", fontWeight: 500 }}>
+                {i + 1}. {STEP_GUIDANCE[step].title}
+              </div>
+              <div className="muted" style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
+                {STEP_GUIDANCE[step].railLabel === "Trust"
+                  ? "Confirm the registry trusts the issuer who signed your credential."
+                  : step === "connect-wallet"
+                    ? "A Stellar wallet is the identity your credentials are sealed to."
+                    : "Hold a signed, privacy-preserving attestation in your browser."}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConnectWalletStep() {
+  const { address, connecting, error, networkMismatch, connect } = useWallet();
+  const guidance = STEP_GUIDANCE["connect-wallet"];
+
+  return (
+    <div>
+      <p
+        className="muted"
+        style={{ fontSize: "0.875rem", lineHeight: 1.65, marginBottom: "1.1rem" }}
+      >
+        {guidance.summary}
+      </p>
+
+      {address ? (
+        <StatusBox severity="success" title="Wallet connected">
+          <span className="mono" style={{ fontSize: "0.8rem" }}>
+            {truncateMiddle(address, 8, 6)}
+          </span>
+          {networkMismatch && (
+            <div style={{ marginTop: "0.5rem" }}>
+              <StatusBox severity="warning" title="Wrong network detected">
+                Your wallet is not on the network StellarCred is configured for. Switch networks in
+                your wallet — onboarding can continue, but proofs will fail until it matches.
+              </StatusBox>
+            </div>
+          )}
+        </StatusBox>
+      ) : (
+        <div style={{ textAlign: "center" }}>
+          <button className="btn btn-primary" onClick={connect} disabled={connecting}>
+            <IconWallet size={14} />
+            {connecting ? "Connecting…" : "Connect wallet"}
+          </button>
+          <p className="faint" style={{ fontSize: "0.75rem", marginTop: "0.7rem" }}>
+            Freighter, Albedo, xBull, Lobstr, Ledger, WalletConnect and more are supported.
+          </p>
+        </div>
+      )}
+
+      {/* Contextual guidance for whatever went wrong, per error kind. */}
+      {error &&
+        !address &&
+        (() => {
+          const info = getWalletErrorInfo(error);
+          const severity: TrustSeverity = info.benign ? "info" : "danger";
+          return (
+            <div style={{ marginTop: "1rem" }}>
+              <StatusBox severity={severity} title={info.title}>
+                {info.message}
+              </StatusBox>
+              <div
+                className="row"
+                style={{
+                  gap: "0.6rem",
+                  marginTop: "0.7rem",
+                  justifyContent: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={connect}
+                  disabled={connecting}
+                >
+                  <IconRefresh size={13} />
+                  Try again
+                </button>
+                {info.action === "install" && error.installUrl && (
+                  <a
+                    className="btn btn-secondary btn-sm"
+                    href={error.installUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Install {error.walletName ?? "a wallet"}
+                    <IconExternalLink size={12} />
+                  </a>
+                )}
+                {info.action === "retry-report" && (
+                  <a
+                    className="btn btn-ghost btn-sm"
+                    href={getWalletReportUrl()}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Report this
+                    <IconExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+    </div>
+  );
+}
+
+function GetCredentialStep({
+  address,
+  credential,
+  onIssued,
+}: {
+  address: string;
+  credential: Credential | null;
+  onIssued: () => void;
+}) {
+  const toast = useToast();
+  const guidance = STEP_GUIDANCE["get-credential"];
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   async function onRequest() {
     if (!address) return;
@@ -253,7 +386,9 @@ function GetCredentialStep() {
       });
       if (res.status === 202) {
         // Persona redirect — skip for onboarding, show message
-        setError("Identity verification required — this step needs a non-KYC credential type for the demo.");
+        setError(
+          "Identity verification required — this step needs a non-KYC credential type for the demo.",
+        );
         return;
       }
       if (!res.ok) {
@@ -262,7 +397,7 @@ function GetCredentialStep() {
       }
       const { credentials } = (await res.json()) as { credentials: Credential[] };
       credentials.forEach((c) => saveCredential(c));
-      setDone(true);
+      onIssued();
       toast.success("Demo credential issued!");
     } catch (e) {
       const message = (e as Error).message;
@@ -273,132 +408,241 @@ function GetCredentialStep() {
     }
   }
 
-  return (
-    <div style={{ textAlign: "center", padding: "1rem 0" }}>
-      {!address ? (
-        <p className="muted" style={{ fontSize: "0.875rem" }}>
-          Please connect your wallet first.
-        </p>
-      ) : done ? (
-        <div
-          style={{
-            padding: "1rem",
-            borderRadius: "var(--radius)",
-            background: "rgba(62, 207, 142, 0.07)",
-            border: "1px solid rgba(62, 207, 142, 0.2)",
-          }}
-        >
-          <div
-            className="row"
-            style={{
-              gap: "0.5rem",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <IconCheck size={16} color="var(--accent)" stroke={2.5} />
-            <span style={{ fontWeight: 500, fontSize: "0.9rem" }}>
-              Credential held
-            </span>
-          </div>
+  if (!address) {
+    return (
+      <p className="muted" style={{ fontSize: "0.875rem" }}>
+        Connect your wallet first — then the credential is sealed to that address.
+      </p>
+    );
+  }
+
+  if (credential) {
+    return (
+      <StatusBox severity="success" title="Credential in your wallet">
+        <div style={{ display: "grid", gap: "0.25rem" }}>
+          <span>
+            <strong>{credential.title || TYPE_META[credential.type].title}</strong> — attests{" "}
+            &ldquo;{credential.claim || TYPE_META[credential.type].claim}&rdquo; from{" "}
+            {credential.issuer}.
+          </span>
+          <span className="mono" style={{ fontSize: "0.72rem" }}>
+            commitment {truncateMiddle(credential.commitment, 10, 8)} · expires in{" "}
+            {credential.expiry}
+          </span>
         </div>
-      ) : (
-        <div>
-          <p
-            className="muted"
-            style={{
-              fontSize: "0.875rem",
-              lineHeight: 1.6,
-              marginBottom: "1.25rem",
-            }}
-          >
-            {STEP_DESCRIPTIONS["get-credential"]}
-          </p>
-          <button
-            className="btn btn-primary"
-            onClick={onRequest}
-            disabled={busy}
-          >
-            {busy ? (
-              <>
-                <IconLoader2 size={14} className="spin" />
-                Creating…
-              </>
+      </StatusBox>
+    );
+  }
+
+  return (
+    <div>
+      <p
+        className="muted"
+        style={{ fontSize: "0.875rem", lineHeight: 1.65, marginBottom: "1.1rem" }}
+      >
+        {guidance.summary}
+      </p>
+      <div style={{ textAlign: "center" }}>
+        <button className="btn btn-primary" onClick={onRequest} disabled={busy}>
+          {busy ? (
+            <>
+              <IconLoader2 size={14} className="spin" />
+              Creating…
+            </>
+          ) : (
+            <>
+              Get age credential
+              <IconArrowRight size={14} />
+            </>
+          )}
+        </button>
+        {error && (
+          <div style={{ marginTop: "1rem", textAlign: "left" }}>
+            <StatusBox severity="danger" title="Couldn't issue the credential">
+              {error}
+            </StatusBox>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TrustVerifyStep({
+  credential,
+  address,
+  status,
+  failed,
+  busy,
+  onRun,
+}: {
+  credential: Credential | null;
+  address: string;
+  status: IssuerStatus | null;
+  failed: boolean;
+  busy: boolean;
+  onRun: () => void;
+}) {
+  const guidance = STEP_GUIDANCE["verify-trust"];
+
+  if (!address || !credential) {
+    return (
+      <p className="muted" style={{ fontSize: "0.875rem" }}>
+        Finish the wallet and credential steps first — the trust check runs against the issuer of
+        the credential you hold.
+      </p>
+    );
+  }
+
+  // The check result drives the badge, message and checklist. A hard failure
+  // of the check itself gets its own guidance (distinct from "unknown").
+  const result = failed
+    ? TRUST_CHECK_ERROR_GUIDANCE
+    : status
+      ? TRUST_STATUS_GUIDANCE[status]
+      : null;
+  const rows = trustChecklist(status);
+
+  return (
+    <div>
+      <p className="muted" style={{ fontSize: "0.875rem", lineHeight: 1.65, marginBottom: "1rem" }}>
+        {guidance.summary}
+      </p>
+
+      <div
+        className="mono"
+        style={{
+          fontSize: "0.74rem",
+          color: "var(--muted)",
+          padding: "0.5rem 0.7rem",
+          borderRadius: "var(--radius-sm)",
+          border: "1px solid var(--border)",
+          marginBottom: "1rem",
+          overflowWrap: "break-word",
+        }}
+      >
+        {credential.issuer} ← {truncateMiddle(credential.commitment, 8, 6)} ({credential.type})
+      </div>
+
+      <div style={{ display: "grid", gap: "0.45rem", marginBottom: "1.1rem" }}>
+        {rows.map((row) => (
+          <div key={row.label} className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
+            {row.ok === null ? (
+              busy ? (
+                <IconLoader2
+                  size={14}
+                  className="spin"
+                  style={{ color: "var(--faint)", marginTop: 2, flexShrink: 0 }}
+                  aria-hidden
+                />
+              ) : (
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    border: "1.5px solid var(--border)",
+                    marginTop: 1,
+                    flexShrink: 0,
+                    display: "inline-block",
+                  }}
+                  aria-hidden
+                />
+              )
+            ) : row.ok ? (
+              <IconCheck
+                size={14}
+                stroke={2.5}
+                color={ACCENT}
+                style={{ marginTop: 2, flexShrink: 0 }}
+                aria-hidden
+              />
             ) : (
-              <>
-                Get age credential
-                <IconArrowRight size={14} />
-              </>
+              <IconX
+                size={14}
+                stroke={2.5}
+                color="var(--danger)"
+                style={{ marginTop: 2, flexShrink: 0 }}
+                aria-hidden
+              />
             )}
-          </button>
-          {error && (
-            <p
+            <span
               style={{
-                marginTop: "0.75rem",
-                fontSize: "0.8125rem",
-                color: "var(--danger)",
+                fontSize: "0.8rem",
+                lineHeight: 1.5,
+                color: row.ok === false ? "var(--danger)" : "var(--text)",
               }}
             >
-              {error}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+              {row.label}
+            </span>
+          </div>
+        ))}
+      </div>
 
-function GenerateProofStep() {
-  const { address } = useWallet();
-  const [hasCredential, setHasCredential] = useState(false);
-
-  useEffect(() => {
-    loadCredentials().then((creds) =>
-      setHasCredential(creds.some((c) => c.type === "age")),
-    );
-  }, []);
-
-  return (
-    <div style={{ textAlign: "center", padding: "1rem 0" }}>
-      {!address ? (
-        <p className="muted" style={{ fontSize: "0.875rem" }}>
-          Please connect your wallet first.
-        </p>
-      ) : !hasCredential ? (
-        <p className="muted" style={{ fontSize: "0.875rem" }}>
-          Please get a credential first.
-        </p>
+      {result ? (
+        <StatusBox severity={result.severity} title={result.label}>
+          {result.message}
+        </StatusBox>
       ) : (
-        <div>
-          <p
-            className="muted"
-            style={{
-              fontSize: "0.875rem",
-              lineHeight: 1.6,
-              marginBottom: "1.25rem",
-            }}
-          >
-            {STEP_DESCRIPTIONS["generate-proof"]}
-          </p>
-          <Link href="/holder" className="btn btn-primary">
-            Go to dashboard
-            <IconArrowRight size={14} />
-          </Link>
-          <p
-            className="faint"
-            style={{ fontSize: "0.75rem", marginTop: "0.75rem" }}
-          >
-            Click &ldquo;Generate proof&rdquo; on your credential card.
-          </p>
-        </div>
+        <p className="faint" style={{ fontSize: "0.75rem", marginBottom: "0.6rem" }}>
+          {busy ? "Checking the on-chain registry…" : "The registry check hasn't run yet."}
+        </p>
       )}
+
+      <div style={{ textAlign: "center", marginTop: "0.9rem" }}>
+        <button className="btn btn-secondary btn-sm" onClick={onRun} disabled={busy}>
+          {busy ? (
+            <>
+              <IconLoader2 size={13} className="spin" />
+              Checking…
+            </>
+          ) : (
+            <>
+              <IconRefresh size={13} />
+              {result ? "Run the check again" : "Run trust check"}
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
 
-function UnlockStep() {
+function GenerateProofStep({ credential }: { credential: Credential | null }) {
+  const guidance = STEP_GUIDANCE["generate-proof"];
   return (
-    <div style={{ textAlign: "center", padding: "1rem 0" }}>
+    <div>
+      <p
+        className="muted"
+        style={{ fontSize: "0.875rem", lineHeight: 1.65, marginBottom: "1.1rem" }}
+      >
+        {guidance.summary}
+      </p>
+      <div style={{ textAlign: "center" }}>
+        <Link href="/holder" className="btn btn-primary">
+          {credential
+            ? `Prove “${credential.claim || TYPE_META[credential.type].claim}”`
+            : "Go to dashboard"}
+          <IconArrowRight size={14} />
+        </Link>
+        <p className="faint" style={{ fontSize: "0.75rem", marginTop: "0.75rem" }}>
+          Click &ldquo;Generate proof&rdquo; on your credential card, then submit it on-chain.
+        </p>
+        <p style={{ marginTop: "0.9rem" }}>
+          <Link href="/verify" className="btn btn-ghost btn-sm">
+            Or earn a real credential first
+            <IconArrowRight size={13} />
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function UnlockStep({ trustStatus }: { trustStatus: IssuerStatus | null }) {
+  const guidance = STEP_GUIDANCE.unlock;
+  return (
+    <div style={{ textAlign: "center" }}>
       <div
         style={{
           width: 56,
@@ -408,22 +652,20 @@ function UnlockStep() {
           border: "1px solid rgba(62, 207, 142, 0.25)",
           display: "grid",
           placeItems: "center",
-          margin: "0 auto 1.25rem",
-          color: "var(--accent)",
+          margin: "0 auto 1.1rem",
+          color: ACCENT,
         }}
       >
         <IconCheck size={28} stroke={2} />
       </div>
       <p
         className="muted"
-        style={{
-          fontSize: "0.9rem",
-          lineHeight: 1.7,
-          maxWidth: 380,
-          margin: "0 auto 1.5rem",
-        }}
+        style={{ fontSize: "0.9rem", lineHeight: 1.7, margin: "0 auto 1.1rem", maxWidth: 400 }}
       >
-        {STEP_DESCRIPTIONS.unlock}
+        {guidance.summary}
+        {trustStatus === "active" || trustStatus === "key_retired"
+          ? " Your issuer is confirmed trusted on-chain, so those proofs will be accepted."
+          : ""}
       </p>
       <div className="row" style={{ gap: "0.6rem", justifyContent: "center", flexWrap: "wrap" }}>
         <Link href="/apps" className="btn btn-primary btn-sm">
@@ -438,52 +680,84 @@ function UnlockStep() {
   );
 }
 
-/* ── Step content router ─────────────────────────────────────────────────── */
+/* ── Main wizard ─────────────────────────────────────────────────────────── */
 
-function StepContent({ step }: { step: OnboardingStep }) {
-  switch (step) {
-    case "welcome":
-      return <WelcomeStep />;
-    case "connect-wallet":
-      return <ConnectWalletStep />;
-    case "get-credential":
-      return <GetCredentialStep />;
-    case "generate-proof":
-      return <GenerateProofStep />;
-    case "unlock":
-      return <UnlockStep />;
-  }
+interface TrustState {
+  checked: boolean;
+  running: boolean;
+  status: IssuerStatus | null;
+  failed: boolean;
 }
 
-/* ── Main wizard component ───────────────────────────────────────────────── */
+const INITIAL_TRUST: TrustState = { checked: false, running: false, status: null, failed: false };
 
 export function OnboardingWizard() {
-  const {
-    currentStep,
-    isVisible,
-    progress,
-    mounted,
-    nextStep,
-    prevStep,
-    dismiss,
-  } = useOnboarding();
+  const { currentStep, isVisible, mounted, nextStep, prevStep, goToStep, dismiss } =
+    useOnboarding();
   const { address } = useWallet();
   const [mounted2, setMounted2] = useState(false);
+  const [credential, setCredential] = useState<Credential | null>(null);
+  const [trust, setTrust] = useState<TrustState>(INITIAL_TRUST);
 
   useEffect(() => setMounted2(true), []);
 
-  const [hasAgeCredential, setHasAgeCredential] = useState(false);
-
-  useEffect(() => {
-    loadCredentials().then((creds) =>
-      setHasAgeCredential(creds.some((c) => c.type === "age")),
-    );
+  const refreshCredential = useCallback(() => {
+    loadCredentials().then((creds) => {
+      setCredential(creds.find((c) => c.type === "age") ?? creds[0] ?? null);
+    });
   }, []);
 
-  // Auto-dismiss after completing the unlock step
+  // (Re)read the store whenever the wizard shows or the step changes, so
+  // issuance done here — or on the dashboard — is reflected in the gates.
+  useEffect(() => {
+    if (isVisible) refreshCredential();
+  }, [isVisible, currentStep, refreshCredential]);
+
+  // A new credential supersedes any earlier trust result.
+  const commitment = credential?.commitment;
+  useEffect(() => {
+    setTrust(INITIAL_TRUST);
+  }, [commitment]);
+
+  const runTrustCheck = useCallback(async () => {
+    if (!credential || !address) return;
+    setTrust((t) => ({ ...t, running: true, failed: false }));
+    let status: IssuerStatus | null = null;
+    let failed = false;
+    try {
+      status = await checkIssuerStatus(
+        credential.issuerId,
+        credential.type,
+        credential.issuerPubX,
+        credential.issuerPubY,
+        address,
+      );
+    } catch {
+      failed = true;
+    }
+    setTrust({ checked: true, running: false, status, failed });
+  }, [credential, address]);
+
+  // Walk the user through the check: run it automatically once when the step
+  // opens, so the guidance is about a real result, not an empty screen.
+  useEffect(() => {
+    if (
+      currentStep === "verify-trust" &&
+      credential &&
+      address &&
+      !trust.checked &&
+      !trust.running
+    ) {
+      void runTrustCheck();
+    }
+    // trust.checked/running are intentionally not deps: this fires on entry only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, credential, address, runTrustCheck]);
+
+  // Auto-dismiss after completing the final step
   useEffect(() => {
     if (currentStep === "unlock" && isVisible) {
-      const timer = setTimeout(dismiss, 8000);
+      const timer = setTimeout(dismiss, 10_000);
       return () => clearTimeout(timer);
     }
   }, [currentStep, isVisible, dismiss]);
@@ -493,14 +767,15 @@ export function OnboardingWizard() {
   const stepIndex = ONBOARDING_STEPS.indexOf(currentStep);
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === ONBOARDING_STEPS.length - 1;
+  const guidance = STEP_GUIDANCE[currentStep];
 
-  // Determine if the "Next" button should be disabled
-  const canProceed =
-    currentStep === "welcome" ||
-    currentStep === "unlock" ||
-    (currentStep === "connect-wallet" && !!address) ||
-    (currentStep === "get-credential" && hasAgeCredential) ||
-    currentStep === "generate-proof";
+  const signals = {
+    walletConnected: !!address,
+    hasCredential: !!credential,
+    trustChecked: trust.checked,
+  };
+  const proceed = canProceed(currentStep, signals);
+  const whyBlocked = blockedReason(currentStep, signals);
 
   return (
     <div
@@ -514,7 +789,8 @@ export function OnboardingWizard() {
         background: "rgba(0, 0, 0, 0.6)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
-        animation: "fadeIn 0.25s var(--ease)",
+        animation: "obFadeIn 0.25s var(--ease)",
+        padding: "1rem",
       }}
       role="dialog"
       aria-modal="true"
@@ -524,11 +800,12 @@ export function OnboardingWizard() {
         className="card"
         style={{
           width: "100%",
-          maxWidth: 440,
-          margin: "1rem",
+          maxWidth: 600,
+          maxHeight: "92vh",
+          overflowY: "auto",
           padding: "1.75rem",
           position: "relative",
-          animation: "slideUp 0.3s var(--ease)",
+          animation: "obSlideUp 0.3s var(--ease)",
         }}
       >
         {/* Close button */}
@@ -547,51 +824,72 @@ export function OnboardingWizard() {
           <IconX size={15} />
         </button>
 
-        {/* Step indicator */}
-        <StepDots current={stepIndex} total={ONBOARDING_STEPS.length} />
-        <ProgressBar progress={progress} />
+        <StepRail current={stepIndex} onJump={goToStep} />
 
-        {/* Step icon */}
         <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "var(--radius-sm)",
-            background: "rgba(62, 207, 142, 0.08)",
-            border: "1px solid rgba(62, 207, 142, 0.18)",
-            display: "grid",
-            placeItems: "center",
-            margin: "0 auto 1rem",
-            color: "var(--accent)",
-          }}
+          className="row"
+          style={{ gap: "0.7rem", alignItems: "center", marginBottom: "0.5rem" }}
         >
-          {STEP_ICONS[currentStep]}
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: "var(--radius-sm)",
+              background: "rgba(62, 207, 142, 0.08)",
+              border: "1px solid rgba(62, 207, 142, 0.18)",
+              display: "grid",
+              placeItems: "center",
+              color: ACCENT,
+              flexShrink: 0,
+            }}
+          >
+            {STEP_ICONS[currentStep]}
+          </div>
+          <div>
+            <div
+              className="faint"
+              style={{ fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.06em" }}
+            >
+              Step {stepIndex + 1} of {ONBOARDING_STEPS.length}
+            </div>
+            <h2 style={{ fontSize: "1.2rem", lineHeight: 1.3 }}>{guidance.title}</h2>
+          </div>
         </div>
 
-        {/* Title */}
-        <h2
-          style={{
-            fontSize: "1.25rem",
-            textAlign: "center",
-            marginBottom: "0.5rem",
-          }}
-        >
-          {STEP_TITLES[currentStep]}
-        </h2>
+        {currentStep === "welcome" ? (
+          <WelcomeStep />
+        ) : currentStep === "connect-wallet" ? (
+          <ConnectWalletStep />
+        ) : currentStep === "get-credential" ? (
+          <GetCredentialStep
+            address={address}
+            credential={credential}
+            onIssued={refreshCredential}
+          />
+        ) : currentStep === "verify-trust" ? (
+          <TrustVerifyStep
+            credential={credential}
+            address={address}
+            status={trust.status}
+            failed={trust.failed}
+            busy={trust.running}
+            onRun={runTrustCheck}
+          />
+        ) : currentStep === "generate-proof" ? (
+          <GenerateProofStep credential={credential} />
+        ) : (
+          <UnlockStep trustStatus={trust.status} />
+        )}
 
-        {/* Step content */}
-        <StepContent step={currentStep} />
+        <GuidanceTip text={guidance.tip} />
 
         {/* Navigation */}
         <div
           className="between"
-          style={{ marginTop: "1.75rem", gap: "0.5rem" }}
+          style={{ marginTop: "1.5rem", gap: "0.5rem", alignItems: "center" }}
         >
           {!isFirst ? (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={prevStep}
-            >
+            <button className="btn btn-ghost btn-sm" onClick={prevStep}>
               <IconArrowLeft size={14} />
               Back
             </button>
@@ -605,33 +903,32 @@ export function OnboardingWizard() {
             </button>
           )}
 
-          {!isLast ? (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={nextStep}
-              disabled={!canProceed}
-              title={
-                !canProceed
-                  ? currentStep === "connect-wallet"
-                    ? "Connect a wallet first"
-                    : currentStep === "get-credential"
-                      ? "Get a credential first"
-                      : undefined
-                  : undefined
-              }
-            >
-              Next
-              <IconArrowRight size={14} />
-            </button>
-          ) : (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={dismiss}
-            >
-              Get started
-              <IconArrowRight size={14} />
-            </button>
-          )}
+          <div className="row" style={{ gap: "0.7rem", alignItems: "center" }}>
+            {!proceed && whyBlocked && (
+              <span
+                className="faint"
+                style={{ fontSize: "0.72rem", maxWidth: 200, textAlign: "right" }}
+              >
+                {whyBlocked}
+              </span>
+            )}
+            {!isLast ? (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={nextStep}
+                disabled={!proceed}
+                title={whyBlocked}
+              >
+                Next
+                <IconArrowRight size={14} />
+              </button>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={dismiss}>
+                Get started
+                <IconArrowRight size={14} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Help link */}
@@ -654,13 +951,12 @@ export function OnboardingWizard() {
         </div>
       </div>
 
-      {/* Inline keyframes for animations */}
       <style>{`
-        @keyframes fadeIn {
+        @keyframes obFadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
         }
-        @keyframes slideUp {
+        @keyframes obSlideUp {
           from { opacity: 0; transform: translateY(16px); }
           to { opacity: 1; transform: translateY(0); }
         }

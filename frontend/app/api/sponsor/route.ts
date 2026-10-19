@@ -116,9 +116,13 @@ export async function POST(req: NextRequest) {
 
     // Wrap in a fee-bump: the outer transaction pays the fee, the inner
     // transaction carries the holder's authorisation.
+    // Fee-bump fee must be >= innerTx.fee + BASE_FEE
+    const innerFee = BigInt(innerTx.fee || 0);
+    const baseFee = BigInt(BASE_FEE);
+    const bumpFee = (innerFee + baseFee * 2n).toString();
     const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
       sponsorKeypair,
-      BASE_FEE,
+      bumpFee,
       innerTx,
       process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015",
     );

@@ -1,48 +1,48 @@
-name: Auto-label dependency PRs
+name: Auto-label Dependency PRs
 
 on:
   pull_request:
-    branches: [main]
-    paths:
-      - '**/package.json'
-      - '**/package-lock.json'
-      - '**/pnpm-lock.yaml'
-      - '**/yarn.lock'
-      - '**/Cargo.lock'
-      - '**/requirements.txt'
+    types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
   pull-requests: write
+  issues: write
+
+env:
+  LABEL_NAME: ${{ vars.DEPENDENCY_LABEL_NAME || 'deps' }}
 
 jobs:
-  label:
-    name: Label dependency update PRs
+  auto-label:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
+      - name: Check author and apply label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const author = pr.user.login;
+            const title = pr.title.toLowerCase();
+            const branch = pr.head.ref;
+            
+            const isDependabot = author === 'dependabot[bot]' || branch.startsWith('dependabot/');
+            const isRenovate = author === 'renovate[bot]' || branch.startsWith('renovate/');
+            const isDependencyBump = title.includes('bump') || title.includes('deps') || title.includes('dependency');
 
-      - name: Read dependency PR criteria
-        id: criteria
-        run: |
-          LABEL="${{ github.event.pull_request.user.login }}"
-          if [ "${LABEL}" = "dependabot[bot]" ] || [ "${LABEL}" = "renovate[bot]" ] || [ "${LABEL}" = "github-actions[bot]" ]; then
-            LABEL="dependabot"
-          fi
-          echo "source=${LABEL}" >> "$GITHUB_OUTPUT"
-
-      - name: Label PR
-        if: steps.criteria.outputs.source != ''
-        run: |
-          LABEL="${{ steps.criteria.outputs.source }}"
-          if [ -z "${LABEL}" ]; then
-            echo "No dependency signal found"
-            exit 0
-          fi
-          gh pr edit --add-label "${LABEL}" "${PR_NUMBER}" || \
-          gh pr comment --body "Auto-labeling skipped: could not add label '${LABEL}'." || true
-
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+            if (isDependabot || isRenovate || isDependencyBump) {
+              const labelName = process.env.LABEL_NAME || 'deps';
+              console.log(`Applying label '${labelName}' to PR #${pr.number} (author: ${author}, branch: ${branch})`);
+              
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  labels: [labelName]
+                });
+                console.log('Successfully applied dependency label.');
+              } catch (error) {
+                console.error('Failed to add label:', error);
+              }
+            } else {
+              console.log('PR is not recognized as a dependency update.');
+            }

@@ -109,6 +109,32 @@ jobs:
       - name: Check API reference against contract source
         run: node .github/scripts/check-api-reference.mjs
 
+  # ── Docs: no new process artifacts (issue #684) ──────────────────────────
+  # Implementation summaries, status reports and PR descriptions document how a
+  # change was made rather than how the system works, go stale at merge, and bury
+  # the docs that stay true. They belong in the PR description. Only files ADDED by
+  # the PR are checked, so the legacy documents still in the tree don't fail every
+  # build. Fails fast — no toolchain or dependencies needed.
+  process-docs:
+    name: Process artifact check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check for new process-artifact documents
+        run: node .github/scripts/check-process-docs.mjs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
   # ── Contracts: Rust / WASM / Clippy ────────────────────────────────────────
   # Runs in parallel with circuits, frontend, and indexer.
   contracts:

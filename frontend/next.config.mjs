@@ -16,6 +16,8 @@ const processPath = require.resolve("process/browser");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Don't advertise the framework/version to scanners (#800 audit).
+  poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["@tabler/icons-react"],
   },
@@ -100,6 +102,11 @@ const nextConfig = {
 
     const csp = [
       "default-src 'self'",
+      // Audit hardening (#800): no plugins, no <base> hijacking, no
+      // cross-origin form posts.
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
       "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       // Wallet icons for the Stellar Wallets Kit picker: stellar.creit.tech hosts

@@ -81,7 +81,7 @@ proof once and caches the result; every protocol afterwards reads
 ## Architecture & Overview
 
 For a detailed architectural description with diagrams, see the [Architecture Documentation](docs/ARCHITECTURE.md).
-For the authoritative specification of contract events, topic schemas, and indexer integration, see [EVENTS.md](EVENTS.md).
+For the authoritative specification of contract events, topic schemas, and indexer integration, see [docs/EVENTS.md](docs/EVENTS.md).
 
 ---
 
@@ -114,7 +114,7 @@ services/
 scripts/deploy.sh       deploy + wire + register issuer + install all VKs on testnet
 scripts/benchmark.sh    measure instruction budget for every public function on testnet
 BENCHMARKS.md           per-function instruction counts, ledger I/O, and fee estimates
-EVENTS.md               authoritative contract event topic & payload schemas
+docs/EVENTS.md          authoritative contract event topic & payload schemas
 docs/STORAGE_TTL.md     contract storage lifetime model, rent fees, and archival behavior
 ```
 

@@ -7,3 +7,4 @@ export {
   type SdkErrorBody,
   type SdkFetch,
 } from './types';
+export { normalizeStellarAddress } from './address';
