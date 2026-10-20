@@ -368,7 +368,7 @@ Recommended alerts:
   signing key happened before the window closes.
 - **`key_rot` for an issuer you did not schedule** — treat as `key_revk`.
 
-Full event schemas: [EVENTS.md](../EVENTS.md).
+Full event schemas: [EVENTS.md](EVENTS.md).
 
 ---
 

@@ -21,3 +21,8 @@ jobs:
       - name: Check environment variable documentation
         working-directory: frontend
         run: node scripts/check-env-sync.mjs
+
+      - name: Validate pre-deploy environment check
+        working-directory: frontend
+        run: node scripts/validate-deploy-env.mjs --smoke-test
+

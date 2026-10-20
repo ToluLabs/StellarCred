@@ -20,7 +20,7 @@
 //!
 //! # Event mapping (documented sequence in the issue → actual events)
 //!
-//! The codebase's authoritative event catalog is `EVENTS.md`. The issue's
+//! The codebase's authoritative event catalog is `docs/EVENTS.md`. The issue's
 //! example sequence maps onto the real event names as follows:
 //!
 //! | Issue example name    | Actual event (topics)                                  |

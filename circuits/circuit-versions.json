@@ -33,6 +33,7 @@
     "funds_proof": { "version": "1.0.0", "vkVersion": 1 },
     "accreditation_proof": { "version": "1.0.0", "vkVersion": 1 },
     "range_proof": { "version": "1.0.0", "vkVersion": 1 },
+    "date_range": { "version": "1.0.0", "vkVersion": 1 },
     "employment_proof": { "version": "1.0.0", "vkVersion": 1 },
     "aggregate_proof": { "version": "1.0.0", "vkVersion": 1 },
     "set_membership": { "version": "1.0.0", "vkVersion": 1 }

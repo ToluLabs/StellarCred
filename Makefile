@@ -20,8 +20,8 @@ PNPM_MAJOR      := 9
 .PHONY: help all build test lint fmt clean check-api-reference doctor \
         build-contracts test-contracts lint-contracts \
         compile-circuits check-circuits \
-        build-frontend test-frontend lint-frontend test-sdk test-example test-a11y test-e2e \
-        build-indexer test-indexer run-indexer
+        build-frontend test-frontend lint-frontend test-sdk test-example test-a11y \
+        build-indexer test-indexer lint-indexer run-indexer
 
 # ------------------------------------------------------------------------------
 # Top-Level Orchestration Targets
@@ -38,7 +38,7 @@ help:
 	@echo "  make all             - Run build, test, and lint across all workspaces"
 	@echo "  make build           - Build contracts, circuits, frontend, and indexer"
 	@echo "  make test            - Run all unit, integration, and contract test suites"
-	@echo "  make lint            - Run clippy, commitlint, and frontend linters"
+	@echo "  make lint            - Run clippy, commitlint, frontend and indexer ESLint"
 	@echo "  make fmt             - Check or apply formatting across Rust and TS"
 	@echo "  make clean           - Remove build artifacts and caches"
 	@echo "  make check-api-reference - Check docs/PROOF_REGISTRY_API.md against the contract source (issue #525)"
@@ -57,6 +57,7 @@ help:
 	@echo "  make test-e2e        - Run Playwright E2E tests: wallet-connect, holder-proof, sdk-gating, functional"
 	@echo "  make build-indexer   - Compile TypeScript indexer service"
 	@echo "  make test-indexer    - Run Jest test suite for indexer"
+	@echo "  make lint-indexer    - Run ESLint on indexer service code"
 	@echo "  make run-indexer     - Start local indexer service"
 
 ## all: Run build, test, and lint across all workspaces (CI mirror)
@@ -68,8 +69,8 @@ build: build-contracts build-frontend build-indexer
 ## test: Run all unit and integration test suites
 test: test-contracts test-frontend test-indexer test-example
 
-## lint: Run clippy and frontend linters
-lint: lint-contracts lint-frontend
+## lint: Run clippy, ESLint on the frontend, and ESLint on the indexer
+lint: lint-contracts lint-frontend lint-indexer
 
 ## fmt: Check Rust formatting
 fmt:
@@ -272,6 +273,15 @@ build-indexer:
 ## test-indexer: Run Jest tests for indexer
 test-indexer:
 	cd services/indexer && npm test
+
+## lint-indexer: Run ESLint on indexer source
+# ESLint is not in the indexer's package-lock.json (see the Install ESLint
+# toolchain step in .github/workflows/lint.yml for why), so a fresh clone needs
+# the lint-only toolchain once:
+#   cd services/indexer && npm install --no-save --no-package-lock \
+#     eslint@9 @eslint/js@9 typescript-eslint@8
+lint-indexer:
+	cd services/indexer && npm run lint
 
 ## run-indexer: Start the indexer service locally
 run-indexer:

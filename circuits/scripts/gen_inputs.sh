@@ -58,6 +58,12 @@ C=$(commit 40000 2024)
   echo "min = \"30000\""; echo "max = \"50000\""; node "$SCRIPTS/sign.js" "$C"; } \
   > "$ROOT/range_proof/Prover.toml"
 
+echo "date_range..."
+C=$(commit 3650 12345)
+{ echo "issued_at = \"3650\""; echo "salt = \"12345\""; echo "commitment = \"$C\""; \
+  echo "window_start = \"3000\""; echo "window_end = \"4000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  > "$ROOT/date_range/Prover.toml"
+
 echo "jurisdiction_proof (denylist)..."
 C=$(commit 566 77)
 { echo "jurisdiction = \"566\""; echo "salt = \"77\""; echo "commitment = \"$C\""; \

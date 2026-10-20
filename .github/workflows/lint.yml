@@ -1,0 +1,102 @@
+name: Lint
+
+# ── ESLint gate (#855) ──────────────────────────────────────────────────────
+# Runs ESLint for every TypeScript workspace in the monorepo, on its own job so
+# a style or unused-variable error fails in ~1 minute instead of after the Rust
+# toolchain, Noir toolchain and circuit compilation in ci.yml. Rules live next
+# to the code they lint:
+#   frontend/eslint.config.mjs   — Next.js 16 + React + TypeScript
+#   services/indexer/eslint.config.mjs — Node + TypeScript
+# Both are ESLint 9 flat configs; .eslintrc.* files are not read by ESLint 9.
+#
+# Severity contract: errors fail this workflow, documented warnings do not
+# (see the rationale headers in each config). Warnings are still printed, so a
+# new one is visible in the job log.
+#
+# The `frontend` job deliberately does not replace the Lint step inside the
+# ci.yml frontend job — that step keeps the existing gate intact for the build
+# path; this one makes lint a first-class, fast, greppable check.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Read-only: linting source never needs write access or secrets.
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+
+jobs:
+  # ── Frontend app: Next.js core-web-vitals + TypeScript rules ───────────────
+  frontend:
+    name: Frontend ESLint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm lint` = eslint over app, components, lib and i18n. ESLint exits
+      # non-zero on any error-level rule, which is what blocks the job.
+      - name: Lint
+        run: pnpm lint
+
+  # ── Indexer service: Node + TypeScript rules ──────────────────────────────
+  indexer:
+    name: Indexer ESLint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/indexer
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/indexer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # eslint and typescript-eslint are intentionally NOT in this package's
+      # devDependencies. This service's package-lock.json is committed without
+      # them, and the build/test jobs install with `npm ci`, which hard-fails
+      # the moment package.json and the lockfile disagree. Adding the deps here
+      # without a regenerated lockfile would therefore break every indexer job
+      # — so the lint-only toolchain is installed with --no-save (no
+      # package.json write) and --no-package-lock (no lockfile write), keeping
+      # the committed lockfile authoritative for the jobs that ship code.
+      # Contributors running `npm run lint` locally need the same one-liner.
+      # Runs after `npm ci`, which wipes node_modules and installs exactly the
+      # committed lockfile; this layer only adds the linter on top.
+      - name: Install ESLint toolchain (lint job only)
+        run: npm install --no-save --no-package-lock --no-audit --no-fund eslint@9 @eslint/js@9 typescript-eslint@8
+
+      - name: Lint
+        run: npm run lint

@@ -1,0 +1,181 @@
+name: Auto-merge Minor Dependencies
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, ready_for_review]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to evaluate and auto-merge"
+        required: false
+        type: number
+
+# Least-privilege permissions required for automated pull request merging
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+env:
+  AUTOMERGE_LABEL: ${{ vars.AUTOMERGE_DEPS_LABEL || 'deps' }}
+
+jobs:
+  auto-merge-deps:
+    name: Evaluate & Auto-merge Minor Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Evaluate Dependency Bump & Auto-merge
+        uses: actions/github-script@v9
+        env:
+          CONFIGURED_LABEL: ${{ env.AUTOMERGE_LABEL }}
+          PR_NUMBER_INPUT: ${{ inputs.pr_number }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { evaluateDepBumpSafety } = await import(
+              `${process.env.GITHUB_WORKSPACE}/.github/scripts/check-dep-bump-threshold.mjs`
+            );
+
+            // Determine target pull request
+            let prNumber;
+            if (context.eventName === 'workflow_dispatch' && process.env.PR_NUMBER_INPUT) {
+              prNumber = parseInt(process.env.PR_NUMBER_INPUT, 10);
+            } else if (context.eventName === 'pull_request_target') {
+              prNumber = context.payload.pull_request.number;
+            } else if (context.eventName === 'workflow_run') {
+              const prs = context.payload.workflow_run.pull_requests;
+              if (prs && prs.length > 0) {
+                prNumber = prs[0].number;
+              } else {
+                console.log("No linked pull request found for this workflow run. Exiting.");
+                return;
+              }
+            }
+
+            if (!prNumber) {
+              console.log("No pull request target determined. Exiting.");
+              return;
+            }
+
+            console.log(`Evaluating PR #${prNumber} for safe dependency auto-merge...`);
+
+            // Fetch pull request details
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_request_number: prNumber,
+              pull_number: prNumber,
+            });
+
+            if (pr.state !== 'open') {
+              console.log(`PR #${prNumber} is not open (state: ${pr.state}). Skipping.`);
+              return;
+            }
+
+            if (pr.draft) {
+              console.log(`PR #${prNumber} is a draft. Skipping.`);
+              return;
+            }
+
+            // Fetch list of modified files in the PR
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            const changedFiles = files.map((f) => f.filename);
+
+            const prLabels = (pr.labels || []).map((l) => l.name);
+
+            // Run safety threshold evaluation
+            const evaluation = evaluateDepBumpSafety({
+              title: pr.title,
+              body: pr.body || '',
+              labels: prLabels,
+              changedFiles,
+              configuredLabel: process.env.CONFIGURED_LABEL,
+              author: pr.user ? pr.user.login : undefined,
+            });
+
+            console.log("Evaluation result:", JSON.stringify(evaluation, null, 2));
+
+            if (!evaluation.eligible) {
+              console.log(`PR #${prNumber} is not eligible for auto-merge: ${evaluation.reason}`);
+              core.notice(`PR #${prNumber} skipped auto-merge: ${evaluation.reason}`);
+              return;
+            }
+
+            console.log(
+              `PR #${prNumber} qualified for auto-merge! (Bump type: ${evaluation.bumpType}, Reason: ${evaluation.reason})`
+            );
+
+            // Check if CI is green or pending
+            const commitSha = pr.head.sha;
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: commitSha,
+            });
+
+            const failingChecks = checkRuns.check_runs.filter(
+              (run) => run.conclusion === 'failure' || run.conclusion === 'timed_out'
+            );
+
+            if (failingChecks.length > 0) {
+              console.log(
+                `PR #${prNumber} has failing checks (${failingChecks.map((c) => c.name).join(', ')}). Aborting auto-merge.`
+              );
+              return;
+            }
+
+            // Enable auto-merge via GraphQL or execute merge if checks succeeded
+            const inProgressChecks = checkRuns.check_runs.filter(
+              (run) => run.status !== 'completed'
+            );
+
+            try {
+              // Attempt to enable auto-merge via GraphQL
+              const mutation = `
+                mutation ($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId, mergeMethod: SQUASH }) {
+                    pullRequest {
+                      id
+                      autoMergeRequest {
+                        enabledAt
+                      }
+                    }
+                  }
+                }
+              `;
+              await github.graphql(mutation, { pullRequestId: pr.node_id });
+              console.log(`Auto-merge enabled for PR #${prNumber} via GitHub autoMergeRequest.`);
+            } catch (err) {
+              console.log(`Could not set GraphQL auto-merge (${err.message}). Checking direct merge eligibility...`);
+
+              if (inProgressChecks.length === 0 && checkRuns.check_runs.length > 0) {
+                // All checks completed and green; perform merge directly
+                console.log(`All CI checks green for PR #${prNumber}. Merging pull request...`);
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  merge_method: 'squash',
+                  commit_title: `${pr.title} (#${prNumber})`,
+                });
+                console.log(`PR #${prNumber} successfully auto-merged.`);
+              } else {
+                console.log(`CI checks still in progress for PR #${prNumber}. Auto-merge will trigger once checks complete.`);
+              }
+            }

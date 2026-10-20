@@ -132,6 +132,27 @@ export class ContractError extends Error {
     ];
     return terminalCodes.includes(this.code);
   }
+
+  /**
+   * Normalize an arbitrary thrown value into a structured {@link ContractError}
+   * when it looks like a ProofRegistry contract panic, and otherwise return
+   * null so callers can fall back to RpcError / generic handling.
+   *
+   * This is the preferred entry point for submission paths that receive raw
+   * thrown values from the RPC/contract layer and want a consistent error
+   * object with a `code` and human-readable `friendlyMessage`.
+   */
+  static fromRaw(raw: unknown): ContractError | null {
+    if (raw instanceof ContractError) return raw;
+    if (typeof raw === "string") return parseContractError(raw);
+    if (raw && typeof raw === "object") {
+      const candidate = raw as Record<string, unknown>;
+      if (typeof candidate.message === "string") {
+        return parseContractError(candidate.message);
+      }
+    }
+    return null;
+  }
 }
 
 /**
@@ -209,3 +230,221 @@ export class RpcError extends Error {
  * Already exists in indexer.ts; re-exported here for completeness.
  */
 export { IndexerError } from "./indexer";
+
+// ---------------------------------------------------------------------------
+// TransactionSubmissionError — dedicated error for submit_proof path (#744)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stable machine-readable codes for transaction submission failures.
+ *
+ * Callers can branch on `code` without parsing string messages:
+ * - `"rate_limited"` — HTTP 429; safe to retry after a backoff.
+ * - `"server_error"` — HTTP 5xx from the RPC host; safe to retry.
+ * - `"network_error"` — socket/timeout failure; safe to retry.
+ * - `"contract_error"` — on-chain contract panic; check `contractCode`
+ *    against {@link ContractErrorCode} to decide if retryable.
+ * - `"validation_error"` — bad input (invalid address, unknown claim type);
+ *    never retryable.
+ * - `"unknown"` — any other error not matching the categories above.
+ */
+export type TransactionSubmissionErrorCode =
+  | "rate_limited"
+  | "server_error"
+  | "network_error"
+  | "contract_error"
+  | "validation_error"
+  | "unknown";
+
+/**
+ * Thrown by {@link submitTransaction} when a `submit_proof` transaction fails.
+ *
+ * Unlike raw `RpcError` / `ContractError`, this error always carries:
+ * - `code` — a stable {@link TransactionSubmissionErrorCode} string for
+ *   programmatic branching.
+ * - `message` — a human-readable summary safe to display to users.
+ * - optional `contractCode` — the numeric ProofRegistry error code when the
+ *   failure was a contract panic, to allow fine-grained UI decisions.
+ * - optional `httpStatus` — the HTTP status code from the RPC response.
+ * - optional `retryable` — whether the caller can safely retry.
+ *
+ * @example
+ * ```ts
+ * import { submitTransaction, TransactionSubmissionError, ContractErrorCode } from "@stellarcred/sdk";
+ *
+ * try {
+ *   await submitTransaction(myOperation);
+ * } catch (err) {
+ *   if (err instanceof TransactionSubmissionError) {
+ *     if (err.retryable) {
+ *       // Back off and try again
+ *     } else if (err.code === "contract_error" && err.contractCode === ContractErrorCode.IssuerNotTrusted) {
+ *       // Show "issuer not registered" UI
+ *     } else {
+ *       // Surface err.message to the user
+ *     }
+ *   }
+ * }
+ * ```
+ */
+export class TransactionSubmissionError extends Error {
+  /**
+   * Stable machine-readable code. Use this to branch without parsing strings.
+   */
+  readonly code: TransactionSubmissionErrorCode;
+
+  /**
+   * Human-readable summary of what failed. Safe to display to users.
+   */
+  override readonly message: string;
+
+  /**
+   * Whether the submission can be safely retried (e.g. 429, 5xx, network
+   * error) vs. requires user action (validation error, terminal contract panic).
+   */
+  readonly retryable: boolean;
+
+  /**
+   * Numeric contract error code from {@link ContractErrorCode} when
+   * `code === "contract_error"`. Undefined otherwise.
+   */
+  readonly contractCode?: number;
+
+  /**
+   * HTTP status code from the RPC response when available.
+   */
+  readonly httpStatus?: number;
+
+  /**
+   * Original thrown value before normalization. Useful for debugging.
+   */
+  readonly cause?: unknown;
+
+  constructor(opts: {
+    code: TransactionSubmissionErrorCode;
+    message: string;
+    retryable: boolean;
+    contractCode?: number;
+    httpStatus?: number;
+    cause?: unknown;
+  }) {
+    super(opts.message);
+    this.name = "TransactionSubmissionError";
+    this.code = opts.code;
+    this.message = opts.message;
+    this.retryable = opts.retryable;
+    this.contractCode = opts.contractCode;
+    this.httpStatus = opts.httpStatus;
+    this.cause = opts.cause;
+  }
+
+  /**
+   * Normalize an arbitrary thrown value from a submission path into a
+   * {@link TransactionSubmissionError} with a stable `code`, `message`, and
+   * `retryable` flag.
+   *
+   * Handles `RpcError`, `ContractError`, `ConfigError`, `InvalidAddressError`,
+   * `InvalidClaimTypeError` and plain `Error` / unknown values.
+   */
+  static fromRaw(raw: unknown): TransactionSubmissionError {
+    if (raw instanceof TransactionSubmissionError) return raw;
+
+    // Already-typed RpcError — map HTTP status to a code.
+    if (raw instanceof RpcError) {
+      const status = raw.status;
+      if (raw.contractError) {
+        const ce = raw.contractError;
+        return new TransactionSubmissionError({
+          code: "contract_error",
+          message: ce.friendlyMessage,
+          retryable: ce.isRetryable(),
+          contractCode: ce.code,
+          httpStatus: status,
+          cause: raw,
+        });
+      }
+      if (status === 429) {
+        return new TransactionSubmissionError({
+          code: "rate_limited",
+          message: "Request rate-limited by the RPC host. Please wait and try again.",
+          retryable: true,
+          httpStatus: status,
+          cause: raw,
+        });
+      }
+      if (status !== undefined && status >= 500 && status < 600) {
+        return new TransactionSubmissionError({
+          code: "server_error",
+          message: `RPC server error (HTTP ${status}). The network may be degraded — please try again.`,
+          retryable: true,
+          httpStatus: status,
+          cause: raw,
+        });
+      }
+      return new TransactionSubmissionError({
+        code: "network_error",
+        message: raw.message || "Network error during transaction submission.",
+        retryable: true,
+        httpStatus: status,
+        cause: raw,
+      });
+    }
+
+    // Already-typed ContractError.
+    if (raw instanceof ContractError) {
+      return new TransactionSubmissionError({
+        code: "contract_error",
+        message: raw.friendlyMessage,
+        retryable: raw.isRetryable(),
+        contractCode: raw.code,
+        cause: raw,
+      });
+    }
+
+    // Validation errors from the SDK itself — never retryable.
+    if (raw instanceof Error) {
+      const validationNames = [
+        "ConfigError",
+        "InvalidAddressError",
+        "InvalidClaimTypeError",
+        "InvalidIssuerError",
+        "InvalidThresholdError",
+      ];
+      if (validationNames.includes(raw.name)) {
+        return new TransactionSubmissionError({
+          code: "validation_error",
+          message: raw.message,
+          retryable: false,
+          cause: raw,
+        });
+      }
+
+      // Try to parse a raw contract-panic string out of the message.
+      const parsed = parseContractError(raw.message);
+      if (parsed) {
+        return new TransactionSubmissionError({
+          code: "contract_error",
+          message: parsed.friendlyMessage,
+          retryable: parsed.isRetryable(),
+          contractCode: parsed.code,
+          cause: raw,
+        });
+      }
+
+      return new TransactionSubmissionError({
+        code: "network_error",
+        message: raw.message || "An unexpected error occurred during transaction submission.",
+        retryable: true,
+        cause: raw,
+      });
+    }
+
+    // Unknown/non-Error thrown values.
+    return new TransactionSubmissionError({
+      code: "unknown",
+      message: String(raw),
+      retryable: false,
+      cause: raw,
+    });
+  }
+}

@@ -16,6 +16,8 @@
 # - Validates WASM files before deployment
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 SOURCE="${SOURCE:-deployer}"
 NETWORK="${NETWORK:-testnet}"
 WASM_DIR="target/wasm32-unknown-unknown/release"
@@ -27,10 +29,28 @@ mkdir -p "$MANIFEST_DIR"
 # Generate deployment manifest filename with timestamp
 MANIFEST_FILE="$MANIFEST_DIR/deployment-$(date +%Y%m%d-%H%M%S).json"
 
+# Verify that ISSUER_PRIVATE_KEY is set before proceeding
+# secp256k1 public key (x || y, 64 bytes) derived from ISSUER_PRIVATE_KEY.
+# The same key must be in frontend/.env.local so /api/issue signs with it.
+if [ -z "${ISSUER_PRIVATE_KEY:-}" ]; then
+  echo "Error: ISSUER_PRIVATE_KEY is not set. Export it before running deploy.sh." >&2
+  exit 1
+fi
+
+# Run the same environment validation CI uses before touching the network, so
+# a malformed key or deprecated variable name fails loudly instead of silently
+# producing a broken deployment.
+"$ROOT/scripts/validate-deploy-env.sh" --target=contracts
+
 echo "Building contracts..."
 stellar contract build >/dev/null
 
-ADMIN="$(stellar keys address "$SOURCE")"
+if ! ADMIN="$(stellar keys address "$SOURCE" 2>/dev/null)"; then
+  echo "Error: Source account '$SOURCE' not found in stellar CLI keys." >&2
+  echo "Please generate or import the key first. Example:" >&2
+  echo "  stellar keys generate --global $SOURCE --network $NETWORK --fund" >&2
+  exit 1
+fi
 echo "Admin / deployer: $ADMIN"
 
 # Record the exact source commit so verifiers can git-checkout the same tree.
@@ -106,13 +126,7 @@ echo "Deploying gated_pool (-> registry)..."
 GATED_POOL_ID="$(deploy gated_pool --registry "$PROOF_REGISTRY_ID")"
 
 echo "Registering deployer as a trusted issuer for all credential types..."
-# secp256k1 public key (x || y, 64 bytes) derived from ISSUER_PRIVATE_KEY.
-# Set ISSUER_PRIVATE_KEY in the environment before running this script.
-# The same key must be in frontend/.env.local so /api/issue signs with it.
-if [ -z "${ISSUER_PRIVATE_KEY:-}" ]; then
-  echo "Error: ISSUER_PRIVATE_KEY is not set. Export it before running deploy.sh." >&2
-  exit 1
-fi
+
 ISSUER_PUBKEY="$(node circuits/scripts/sign.js --pubkey-hex)"
 stellar contract invoke \
   --id "$ISSUER_REGISTRY_ID" \
@@ -137,6 +151,7 @@ for type in kyc age income jurisdiction funds accreditation employment; do
     --vk-file-path "$vk"
 done
 
+export NEXT_PUBLIC_STELLAR_NETWORK=$NETWORK
 export NEXT_PUBLIC_ISSUER_ADDRESS=$ADMIN
 export NEXT_PUBLIC_ISSUER_REGISTRY_ID=$ISSUER_REGISTRY_ID
 export NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID=$CREDENTIAL_VERIFIER_ID
@@ -194,6 +209,7 @@ cat <<EOF
 
 Deployed. Copy into frontend/.env.local:
 
+NEXT_PUBLIC_STELLAR_NETWORK=$NETWORK
 NEXT_PUBLIC_ISSUER_ADDRESS=$ADMIN
 NEXT_PUBLIC_ISSUER_REGISTRY_ID=$ISSUER_REGISTRY_ID
 NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID=$CREDENTIAL_VERIFIER_ID

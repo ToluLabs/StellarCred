@@ -210,5 +210,5 @@ Full table: [contract-error-codes.md](contract-error-codes.md).
 
 - [ISSUER_KEY_ROTATION.md](ISSUER_KEY_ROTATION.md) — operational procedure for
   key rotation and emergency revocation
-- [EVENTS.md](../EVENTS.md) — event schemas for `iss_reg.revoked`,
+- [EVENTS.md](EVENTS.md) — event schemas for `iss_reg.revoked`,
   `iss_reg.key_revk`, `iss_reg.key_rot`
