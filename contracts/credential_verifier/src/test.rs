@@ -49,10 +49,10 @@ fn test_negative_fixtures_all_circuits() {
         let vk_path = format!("{base}/{case}/vk");
         let inputs_path = format!("{base}/{case}/public_inputs");
 
-        let proof_bytes = std::fs::read(&proof_path)
-            .unwrap_or_else(|_| panic!("Failed to read {}", proof_path));
-        let vk_bytes = std::fs::read(&vk_path)
-            .unwrap_or_else(|_| panic!("Failed to read {}", vk_path));
+        let proof_bytes =
+            std::fs::read(&proof_path).unwrap_or_else(|_| panic!("Failed to read {}", proof_path));
+        let vk_bytes =
+            std::fs::read(&vk_path).unwrap_or_else(|_| panic!("Failed to read {}", vk_path));
         let inputs_bytes = std::fs::read(&inputs_path)
             .unwrap_or_else(|_| panic!("Failed to read {}", inputs_path));
 
@@ -63,6 +63,10 @@ fn test_negative_fixtures_all_circuits() {
         let public_inputs = Bytes::from_slice(&env, &inputs_bytes);
 
         let res = client.try_verify_proof(&credential_type, &proof, &public_inputs, &None);
-        assert!(res.is_err(), "Expected negative fixture {} to be rejected", case);
+        assert!(
+            res.is_err(),
+            "Expected negative fixture {} to be rejected",
+            case
+        );
     }
 }

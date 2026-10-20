@@ -70,7 +70,9 @@ fn gate_config_is_stored_and_threshold_gated_deposit_is_enforced() {
 
     let strict_h = deploy_with_gate(&env, "funds", Some(250_000));
     let strict_user = Address::generate(&env);
-    strict_h.c.submit(&env, &strict_user, &strict_h.issuer, &FUNDS, 9999);
+    strict_h
+        .c
+        .submit(&env, &strict_user, &strict_h.issuer, &FUNDS, 9999);
     let res = strict_h.pool.try_deposit(&strict_user, &100);
     assert!(res.is_err());
     assert_eq!(strict_h.pool.get_balance(&strict_user), 0);
@@ -144,7 +146,8 @@ fn withdraw_remains_available_after_kyc_is_revoked() {
 
     h.c.submit(&env, &user, &h.issuer, &KYC, 1_000_000);
     h.pool.deposit(&user, &100);
-    h.c.registry.revoke(&h.issuer, &user, &symbol_short!("kyc"), &None);
+    h.c.registry
+        .revoke(&h.issuer, &user, &symbol_short!("kyc"), &None);
     assert!(!h.c.verify(&env, &user, &KYC));
 
     h.pool.withdraw(&user, &100);
@@ -419,5 +422,3 @@ fn test_real_token_withdraw_fails_when_pool_has_insufficient_tokens() {
     // User attempts to withdraw: should fail because pool doesn't have the tokens
     th.pool.withdraw(&user, &100);
 }
-
-

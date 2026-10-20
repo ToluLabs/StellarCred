@@ -59,6 +59,9 @@ import {
   normalizeRpcError,
   classifyTransientFailure,
   CLAIM_TYPES,
+  deriveNullifier,
+  isNullifierUsed,
+  verifyUniquePersonhood,
   TimeoutError,
   ConfigError,
   InvalidAddressError,
@@ -75,17 +78,9 @@ import {
 
 import { submitTransaction } from "./submit";
 
-import {
-  bootstrap,
-  fetchCapabilities,
-  validateCapabilitiesDescriptor,
-} from "./capabilities";
+import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 
-import {
-  createWalletChallenge,
-  verifyWalletSignature,
-  verifyWalletClaim,
-} from "./challenge";
+import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
 
 import { subscribeClaims } from "./subscriptions";
 

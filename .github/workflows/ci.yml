@@ -347,6 +347,9 @@ jobs:
       - name: Check verify-wasm.sh syntax
         run: bash -n ../scripts/verify-wasm.sh
 
+      - name: Check verify-deployment.sh syntax
+        run: bash -n ../scripts/verify-deployment.sh
+
       - name: Check deploy.sh syntax
         run: bash -n ../scripts/deploy.sh
 
