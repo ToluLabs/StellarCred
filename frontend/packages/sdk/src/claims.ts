@@ -63,17 +63,13 @@ export function __resetBoundaryWarningForTesting(): void {
   _warnedBoundaryViolation = false;
 }
 
-function warnOnClientServerBoundaryViolation(opts: {
-  registryId?: string;
-  rpcUrl?: string;
-}): void {  if (!isBrowser()) return;
+function warnOnClientServerBoundaryViolation(opts: { registryId?: string; rpcUrl?: string }): void {
+  if (!isBrowser()) return;
   if (!isDev()) return;
   if (_warnedBoundaryViolation) return;
 
   const proc =
-    typeof process !== "undefined"
-      ? (process.env as Record<string, string | undefined>)
-      : {};
+    typeof process !== "undefined" ? (process.env as Record<string, string | undefined>) : {};
 
   const leakedServerVar =
     !!proc["STELLARCRED_REGISTRY_ID"] ||
@@ -82,21 +78,18 @@ function warnOnClientServerBoundaryViolation(opts: {
     !!proc["STELLARCRED_BASE_URL"] ||
     !!proc["STELLARCRED_NETWORK"];
 
-  const serverEnvRegistryId =
-    proc["STELLARCRED_REGISTRY_ID"] ?? proc["PROOF_REGISTRY_ID"];
+  const serverEnvRegistryId = proc["STELLARCRED_REGISTRY_ID"] ?? proc["PROOF_REGISTRY_ID"];
   const serverEnvRpcUrl = proc["STELLARCRED_RPC_URL"];
   const configMatchesServerVar =
     (opts.registryId !== undefined &&
       opts.registryId !== "" &&
       opts.registryId === serverEnvRegistryId) ||
-    (opts.rpcUrl !== undefined &&
-      opts.rpcUrl !== "" &&
-      opts.rpcUrl === serverEnvRpcUrl);
+    (opts.rpcUrl !== undefined && opts.rpcUrl !== "" && opts.rpcUrl === serverEnvRpcUrl);
 
   if (!leakedServerVar && !configMatchesServerVar) return;
 
   _warnedBoundaryViolation = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     "[StellarCred] configure() was called in a browser context with values that " +
       "appear to come from server-only environment variables (e.g. STELLARCRED_REGISTRY_ID " +
@@ -126,7 +119,7 @@ function warnOnIndexerKeyInBrowser(indexerApiKey?: string): void {
   if (!indexerApiKey) return;
 
   _warnedIndexerKeyInBrowser = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     "[StellarCred] configure() was called in a browser context with an " +
       "`indexerApiKey`. That key is a secret and is now exposed to every visitor " +
@@ -181,9 +174,7 @@ function parseNetwork(raw: string | undefined): StellarNetwork {
 }
 
 const _preset =
-  NETWORK_PRESETS[
-    parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))
-  ];
+  NETWORK_PRESETS[parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))];
 
 export interface RetryOptions {
   retries?: number;
@@ -249,8 +240,7 @@ const DEFAULT_CONFIG: Required<SDKConfig> = {
     env("STELLARCRED_NETWORK_PASSPHRASE", "NEXT_PUBLIC_NETWORK_PASSPHRASE") ||
     _preset.networkPassphrase,
   baseUrl:
-    env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") ||
-    "https://stellarcred.xyz",
+    env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") || "https://stellarcred.xyz",
   requestTimeoutMs: 10_000,
   retries: 3,
   baseDelayMs: 500,
@@ -348,7 +338,7 @@ function warnIfMissingRegistryIdOnce(): void {
     (process.env as Record<string, string | undefined>)?.NODE_ENV !== "production";
   if (!isDevMode) return;
   _warnedMissingRegistryId = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     "[StellarCred] hasClaim()/getClaim()/getClaims() called with no `registryId` configured. " +
       "Every check will silently return false/[] until you set STELLARCRED_REGISTRY_ID " +
@@ -499,11 +489,7 @@ export interface PresetVerificationResult {
 }
 
 export type CredentialFailureReason =
-  | "not_verified"
-  | "expired"
-  | "revoked"
-  | "wrong_issuer"
-  | "unmet_threshold";
+  "not_verified" | "expired" | "revoked" | "wrong_issuer" | "unmet_threshold";
 
 export interface ProofRecordDetails {
   verifiedAt: number;
@@ -521,7 +507,6 @@ export interface CredentialStatusResult {
   record?: ProofRecordDetails | null;
   error?: string;
 }
-
 
 // ---------------------------------------------------------------------------
 // Low-level read: ProofRegistry.is_verified via simulation
@@ -739,10 +724,7 @@ export interface NormalizedRpcErrorOptions {
  * Callers that want a code/message union should still inspect `contractError`
  * (for contract panics) or `status` (for transport errors).
  */
-export function normalizeRpcError(
-  raw: unknown,
-  opts: NormalizedRpcErrorOptions,
-): RpcError {
+export function normalizeRpcError(raw: unknown, opts: NormalizedRpcErrorOptions): RpcError {
   let contractError: ContractError | undefined;
   let status: number | undefined;
 
@@ -771,10 +753,7 @@ export function normalizeRpcError(
   });
 }
 
-export async function withRetry<T>(
-  operation: () => Promise<T>,
-  opts?: RetryOptions,
-): Promise<T> {
+export async function withRetry<T>(operation: () => Promise<T>, opts?: RetryOptions): Promise<T> {
   const retries = opts?.retries ?? _config.retries;
   const baseDelayMs = opts?.baseDelayMs ?? _config.baseDelayMs;
   const maxDelayMs = opts?.maxDelayMs ?? _config.maxDelayMs;
@@ -839,9 +818,9 @@ function warnIfMissingIndexerUrlOnce(): void {
   }
   if (_warnedMissingIndexerUrl || !isDev()) return;
   _warnedMissingIndexerUrl = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
-    "[StellarCred] A claim read used `source: \"indexer\"` or \"indexer-verified\" " +
+    '[StellarCred] A claim read used `source: "indexer"` or "indexer-verified" ' +
       "but no `indexerUrl` is configured, so it fell back to returning " +
       "false/null. Set STELLARCRED_INDEXER_URL (or NEXT_PUBLIC_INDEXER_URL) or call " +
       "StellarCred.configure({ indexerUrl }). This warning only logs in development.",
@@ -865,7 +844,7 @@ function warnOnIndexerDrift(
   if (indexerValid === chainValid) return;
   if (_warnedIndexerDrift) return;
   _warnedIndexerDrift = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     `[StellarCred] Indexer disagreed with the chain for claim "${claimType}": ` +
       `indexer said ${indexerValid}, ProofRegistry said ${chainValid}. The chain ` +
@@ -884,9 +863,7 @@ async function readIndexerRows(
 
   if (!indexerUrl) {
     if (throwOnError) {
-      throw new ConfigError(
-        "StellarCred is not configured for indexer reads: missing indexerUrl",
-      );
+      throw new ConfigError("StellarCred is not configured for indexer reads: missing indexerUrl");
     }
     warnIfMissingIndexerUrlOnce();
     return null;
@@ -942,12 +919,7 @@ async function readIsVerifiedFromIndexer(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
-  const rows = await readIndexerRows(
-    wallet,
-    throwOnError,
-    requestTimeoutMs,
-    retryOptions,
-  );
+  const rows = await readIndexerRows(wallet, throwOnError, requestTimeoutMs, retryOptions);
   if (!rows) return null;
 
   const row = findClaimRow(rows, claimType);
@@ -974,12 +946,7 @@ async function readCheckClaimFromIndexer(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<boolean> {
-  const rows = await readIndexerRows(
-    wallet,
-    throwOnError,
-    requestTimeoutMs,
-    retryOptions,
-  );
+  const rows = await readIndexerRows(wallet, throwOnError, requestTimeoutMs, retryOptions);
   if (!rows) return false;
 
   const row = findClaimRow(rows, claimType);
@@ -1216,7 +1183,6 @@ async function readRecord(
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -1282,7 +1248,10 @@ export async function hasClaim(
 export async function getClaim(
   wallet: string,
   claimType: string,
-  opts?: Pick<ClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
+  opts?: Pick<
+    ClaimOptions,
+    "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source"
+  >,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
   if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
 
@@ -1441,7 +1410,6 @@ export async function checkClaimStatus(
   };
 }
 
-
 /**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.
  */
@@ -1512,7 +1480,10 @@ export async function hasClaims(
 export async function verifyPreset(
   wallet: string,
   claims: readonly PresetClaim[],
-  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
+  opts?: Pick<
+    BatchClaimOptions,
+    "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source"
+  >,
 ): Promise<PresetVerificationResult> {
   const types = claims.map((c) => c.type);
   const minThresholds: Partial<Record<ClaimType, number>> = {};
@@ -1586,87 +1557,15 @@ export async function getClaims(
 // URL builders & helpers
 // ---------------------------------------------------------------------------
 
-export function buildVerifyUrl(opts: {
-  returnUrl: string;
-  claim?: ClaimType;
-  claims?: ClaimType[];
-  wallet?: string;
-  state?: string;
-  baseUrl?: string;
-  expiresInMinutes?: number;
-  /**
-   * When true, generate a URL-safe single-use token id (`jti`) and embed it
-   * in the link. The verify page consumes it on first successful use and
-   * rejects subsequent visits in the same browser session.
-   */
-  singleUse?: boolean;
-  claimParams?: {
-    threshold?: string;
-    threshold_years?: string;
-    restricted?: string | string[];
-  };
-}): string {
-  const base = opts.baseUrl ?? _config.baseUrl;
-  const url = new URL("/verify", base);
-  url.searchParams.set("return_url", opts.returnUrl);
-
-  if (opts.claim) {
-    url.searchParams.set("claim", opts.claim);
-  }
-  if (opts.claims && opts.claims.length > 0) {
-    url.searchParams.set("claims", opts.claims.join(","));
-  }
-  if (opts.wallet) {
-    url.searchParams.set("wallet", opts.wallet);
-  }
-  if (opts.state) {
-    url.searchParams.set("state", opts.state);
-  }
-  if (opts.claimParams) {
-    if (opts.claimParams.threshold) {
-      url.searchParams.set("param_threshold", opts.claimParams.threshold);
-    }
-    if (opts.claimParams.threshold_years) {
-      url.searchParams.set("param_threshold_years", opts.claimParams.threshold_years);
-    }
-    if (opts.claimParams.restricted) {
-      const restricted = Array.isArray(opts.claimParams.restricted)
-        ? opts.claimParams.restricted.join(",")
-        : opts.claimParams.restricted;
-      url.searchParams.set("param_restricted", restricted);
-    }
-  }
-
-  if (opts.expiresInMinutes !== undefined) {
-    if (
-      !Number.isFinite(opts.expiresInMinutes) ||
-      opts.expiresInMinutes <= 0
-    ) {
-      throw new Error("expiresInMinutes must be a positive number");
-    }
-    const exp =
-      Math.floor(Date.now() / 1000) + Math.floor(opts.expiresInMinutes * 60);
-    url.searchParams.set("exp", String(exp));
-  }
-
-  if (opts.singleUse) {
-    let jti: string;
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      jti = crypto.randomUUID().replace(/-/g, "");
-    } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-      const bytes = new Uint8Array(16);
-      crypto.getRandomValues(bytes);
-      jti = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    } else {
-      throw new Error(
-        "singleUse requires a crypto implementation with randomUUID or getRandomValues",
-      );
-    }
-    url.searchParams.set("jti", jti);
-  }
-
-  return url.toString();
-}
+export { buildVerifyUrl } from "./buildVerifyUrl";
+export type {
+  BuildVerifyUrlOptions,
+  BuildVerifyUrlClaimParams,
+  KycVerifyUrlOptions,
+  AgeVerifyUrlOptions,
+  ThresholdVerifyUrlOptions,
+  JurisdictionVerifyUrlOptions,
+} from "./buildVerifyUrl";
 
 export function buildIssuerUrl(opts: {
   returnUrl: string;
@@ -1882,10 +1781,10 @@ export async function isNullifierUsed(
   nullifier: string,
   opts?: { requestTimeoutMs?: number; throwOnError?: boolean },
 ): Promise<boolean> {
-  const client = getRegistryClient();
+  const client = (await getClient(opts?.throwOnError)) as any;
   if (!client) {
     if (opts?.throwOnError) {
-      throw new ConfigurationError("ProofRegistry client is not configured");
+      throw new ConfigError("ProofRegistry client is not configured");
     }
     return false;
   }

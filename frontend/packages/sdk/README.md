@@ -23,6 +23,7 @@ npm install @stellarcred/sdk
 > # Link or import directly into your project:
 > pnpm link ./frontend/packages/sdk
 > ```
+
 ## API Reference
 
 Generate the SDK API documentation locally:
@@ -36,6 +37,7 @@ The generated documentation is written to:
 ```
 docs/api/
 ```
+
 ## Quick start
 
 ```ts
@@ -62,11 +64,11 @@ Call `configure()` once before any other call, or set environment variables — 
 
 ```ts
 StellarCred.configure({
-  registryId: "C...",                              // ProofRegistry contract ID
-  rpcUrl: "https://soroban-testnet.stellar.org",   // defaults to testnet
+  registryId: "C...", // ProofRegistry contract ID
+  rpcUrl: "https://soroban-testnet.stellar.org", // defaults to testnet
   networkPassphrase: "Test SDF Network ; September 2015",
-  baseUrl: "https://stellarcred.xyz",              // used by buildVerifyUrl
-  requestTimeoutMs: 10000,                         // max time for each RPC read
+  baseUrl: "https://stellarcred.xyz", // used by buildVerifyUrl
+  requestTimeoutMs: 10000, // max time for each RPC read
 });
 ```
 
@@ -79,14 +81,14 @@ behavior: it returns `false` or an empty result by default, and throws
 
 **Environment variables** (auto-read at import time, no `configure()` needed):
 
-| Variable | Next.js alias |
-|---|---|
-| `STELLARCRED_REGISTRY_ID` | `NEXT_PUBLIC_PROOF_REGISTRY_ID` |
-| `STELLARCRED_RPC_URL` | `NEXT_PUBLIC_RPC_URL` |
-| `STELLARCRED_NETWORK_PASSPHRASE` | `NEXT_PUBLIC_NETWORK_PASSPHRASE` |
-| `STELLARCRED_BASE_URL` | `NEXT_PUBLIC_STELLARCRED_BASE_URL` |
-| `STELLARCRED_INDEXER_URL` | `NEXT_PUBLIC_INDEXER_URL` |
-| `STELLARCRED_INDEXER_API_KEY` | *(no browser alias — it is a secret)* |
+| Variable                         | Next.js alias                         |
+| -------------------------------- | ------------------------------------- |
+| `STELLARCRED_REGISTRY_ID`        | `NEXT_PUBLIC_PROOF_REGISTRY_ID`       |
+| `STELLARCRED_RPC_URL`            | `NEXT_PUBLIC_RPC_URL`                 |
+| `STELLARCRED_NETWORK_PASSPHRASE` | `NEXT_PUBLIC_NETWORK_PASSPHRASE`      |
+| `STELLARCRED_BASE_URL`           | `NEXT_PUBLIC_STELLARCRED_BASE_URL`    |
+| `STELLARCRED_INDEXER_URL`        | `NEXT_PUBLIC_INDEXER_URL`             |
+| `STELLARCRED_INDEXER_API_KEY`    | _(no browser alias — it is a secret)_ |
 
 Setting `STELLARCRED_INDEXER_URL` alone changes nothing: reads still go to the
 chain until you pass `source` explicitly. See
@@ -128,7 +130,6 @@ Use the deployment registry when configuring the SDK for a specific network
 rather than relying on `.env.example` placeholders or undocumented contract
 IDs.
 
-
 ## API
 
 ### `hasClaim(wallet, claimType, opts?)`
@@ -139,13 +140,13 @@ For parameterised claims (age, income, funds), pass `minThreshold` to enforce th
 
 ```ts
 // Binary claims — no threshold needed
-const kycOk   = await StellarCred.hasClaim(wallet, "kyc");
+const kycOk = await StellarCred.hasClaim(wallet, "kyc");
 const jurisOk = await StellarCred.hasClaim(wallet, "jurisdiction");
 
 // Threshold claims — enforced on-chain, fully trustless
-const ageOk   = await StellarCred.hasClaim(wallet, "age",    { minThreshold: 21 });
-const incOk   = await StellarCred.hasClaim(wallet, "income", { minThreshold: 200000 });
-const fundsOk = await StellarCred.hasClaim(wallet, "funds",  { minThreshold: 50000 });
+const ageOk = await StellarCred.hasClaim(wallet, "age", { minThreshold: 21 });
+const incOk = await StellarCred.hasClaim(wallet, "income", { minThreshold: 200000 });
+const fundsOk = await StellarCred.hasClaim(wallet, "funds", { minThreshold: 50000 });
 ```
 
 Pass `trustedIssuers` to restrict which issuer(s) a proof must come from — e.g. accept `kyc` only from Persona or Jumio, not a self-attested issuer. This is enforced on-chain by `ProofRegistry`; omit it (or leave it `undefined`) to accept a proof from any registered issuer, matching current behaviour. An empty array rejects every issuer.
@@ -186,10 +187,10 @@ Fetches the low-level on-chain `ProofRecord` containing `verifiedAt`, `expiry`, 
 ```ts
 const record = await StellarCred.getClaimRecord(wallet, "age");
 if (record) {
-  console.log(record.revoked);   // false
-  console.log(record.expiry);    // 1780000000n
+  console.log(record.revoked); // false
+  console.log(record.expiry); // 1780000000n
   console.log(record.threshold); // 21n
-  console.log(record.issuer);    // "G..."
+  console.log(record.issuer); // "G..."
 }
 ```
 
@@ -198,6 +199,7 @@ if (record) {
 Performs diagnostic analysis of a credential claim, returning the granular failure or success state. Useful for presenting actionable feedback to users.
 
 Possible statuses:
+
 - `"valid"`: Active, unrevoked, unexpired credential satisfying threshold and issuer requirements
 - `"not_verified"`: No on-chain proof record found for this wallet and claim type
 - `"expired"`: Record found, but its expiry timestamp is in the past
@@ -233,11 +235,11 @@ switch (result.status) {
 
 By default `hasClaim` / `getClaims` are **fail-soft**: a missing `registryId` or an RPC/simulation failure returns `false` / `[]`, which is indistinguishable from "not verified." Pass `{ throwOnError: true }` to surface a typed error instead:
 
-| Failure | Error class |
-|---|---|
-| Missing `registryId` | `ConfigError` |
-| Network / simulation failure | `RpcError` |
-| Holder not verified | still returns `false` (not an error) |
+| Failure                      | Error class                          |
+| ---------------------------- | ------------------------------------ |
+| Missing `registryId`         | `ConfigError`                        |
+| Network / simulation failure | `RpcError`                           |
+| Holder not verified          | still returns `false` (not an error) |
 
 ```ts
 import StellarCred, { ConfigError, RpcError } from "@stellarcred/sdk";
@@ -281,9 +283,9 @@ A polling helper that checks `hasClaim` on an interval. It either resolves a Pro
 
 ```ts
 try {
-  await StellarCred.watchClaim(wallet, 'kyc', { 
-    pollMs: 3000, 
-    timeoutMs: 120_000 
+  await StellarCred.watchClaim(wallet, "kyc", {
+    pollMs: 3000,
+    timeoutMs: 120_000,
   });
   console.log("Verified!");
 } catch (err) {
@@ -294,11 +296,11 @@ try {
 **Callback form** — fires `onChange` whenever the status changes. Returns a `stop()` function to cancel polling:
 
 ```ts
-const stop = StellarCred.watchClaim(wallet, 'funds', {
+const stop = StellarCred.watchClaim(wallet, "funds", {
   minThreshold: 50000,
   pollMs: 3000,
   timeoutMs: 120_000,
-  onChange: (verified) => console.log('verified:', verified),
+  onChange: (verified) => console.log("verified:", verified),
 });
 
 // Cancel polling manually (e.g. on component unmount)
@@ -311,10 +313,10 @@ A push-style subscription helper for protocol backends: watch a **set of wallets
 
 It consumes the indexer HTTP API (`services/indexer`) rather than ProofRegistry RPC:
 
-| Indexer endpoint | Used for | Cadence |
-|---|---|---|
-| `GET /recent?limit=100[&cursor=…]` | the cursor-ordered verified-claims feed — every row newer than the previous `(ledger_sequence, id)` cursor is a potential `gained` for a watched wallet | every `pollMs` (default 10 s) |
-| `GET /claims?wallet=G…` | authoritative per-wallet snapshots (`revoked` flag + `expiry`) — detects `lost (revoked)` and reconciles state after downtime or reorg rollback | every `resyncMs` (default 60 s) |
+| Indexer endpoint                   | Used for                                                                                                                                                | Cadence                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `GET /recent?limit=100[&cursor=…]` | the cursor-ordered verified-claims feed — every row newer than the previous `(ledger_sequence, id)` cursor is a potential `gained` for a watched wallet | every `pollMs` (default 10 s)   |
+| `GET /claims?wallet=G…`            | authoritative per-wallet snapshots (`revoked` flag + `expiry`) — detects `lost (revoked)` and reconciles state after downtime or reorg rollback         | every `resyncMs` (default 60 s) |
 
 Expiry losses need no request at all: the indexer stores each proof's `expiry` timestamp, so a claim that lapses is reported as `lost` within one `pollMs` window. Event topic semantics match the on-chain `proof_reg.submitted` / `proof_reg.revoked` events documented in [docs/EVENTS.md](../../../docs/EVENTS.md); the subscription is eventually consistent with the indexer's configured `FINALITY_LAG` (≈30 s on defaults).
 
@@ -322,8 +324,8 @@ Expiry losses need no request at all: the indexer stores each proof's `expiry` t
 import { subscribeClaims } from "@stellarcred/sdk/server";
 
 const stop = subscribeClaims({
-  wallets: ["GABC…", "GDEF…"],          // any number of wallets
-  claims: ["kyc", "accreditation"],      // defaults to all known claim types
+  wallets: ["GABC…", "GDEF…"], // any number of wallets
+  claims: ["kyc", "accreditation"], // defaults to all known claim types
   // baseUrl: "https://indexer.yourdomain.xyz", // or configure({ indexerUrl }) / STELLARCRED_INDEXER_URL
   pollMs: 10_000,
   onGained: (e) => grantAccess(e.wallet, e.claim),
@@ -375,47 +377,82 @@ Notes:
 
 ### `buildVerifyUrl(options)`
 
-Builds a StellarCred verification URL to redirect users to. After verifying, StellarCred returns the user to `returnUrl` with `?sc_verified=true&sc_wallet=<address>&sc_claims=<claim-types>` appended. `sc_claims` is a comma-separated list of the claim types issued in the current session (not all-time claims), allowing protocols to optimistically update their UI before an on-chain read completes.
+Builds a strongly typed StellarCred verification URL to redirect users to. After verifying, StellarCred returns the user to `returnUrl` with `?sc_verified=true&sc_wallet=<address>&sc_claims=<claim-types>` appended. `sc_claims` is a comma-separated list of the claim types issued in the current session (not all-time claims), allowing protocols to optimistically update their UI before an on-chain read completes.
 
 ```ts
-// Basic — redirect to verify KYC
-const url = StellarCred.buildVerifyUrl({
+import {
+  buildVerifyUrl,
+  type BuildVerifyUrlOptions,
+  type AgeVerifyUrlOptions,
+  type ThresholdVerifyUrlOptions,
+  type JurisdictionVerifyUrlOptions,
+} from "@stellarcred/sdk";
+
+// 1. Basic — redirect to verify KYC (absolute or relative returnUrl)
+const kycUrl = buildVerifyUrl({
   returnUrl: "https://yourapp.xyz/deposit",
   claim: "kyc",
 });
 
-// With threshold — user proves balance >= $50,000
-const url = StellarCred.buildVerifyUrl({
+// Relative returnUrl is also supported
+const localUrl = buildVerifyUrl({
+  returnUrl: "/dashboard",
+  claim: "kyc",
+});
+
+// 2. Financial claims with threshold — number or string accepted
+const fundsUrl = buildVerifyUrl({
   returnUrl: "https://yourapp.xyz/vault",
   claim: "funds",
-  claimParams: { threshold: "50000" },
-});
+  claimParams: { threshold: 50_000 }, // proves balance >= $50,000
+} satisfies ThresholdVerifyUrlOptions);
 
-// Age gate — require 21+
-const url = StellarCred.buildVerifyUrl({
+// 3. Age gate — minimum age in years (number or string)
+const ageUrl = buildVerifyUrl({
   returnUrl: "https://yourapp.xyz/markets",
   claim: "age",
-  claimParams: { threshold_years: "21" },
-});
+  claimParams: { threshold_years: 21 }, // require 21+
+} satisfies AgeVerifyUrlOptions);
 
-// Jurisdiction — block specific countries (ISO 3166-1 numeric codes)
-const url = StellarCred.buildVerifyUrl({
+// 4. Jurisdiction — block specific countries (array or comma-separated string)
+const geoUrl = buildVerifyUrl({
   returnUrl: "https://yourapp.xyz/app",
   claim: "jurisdiction",
-  claimParams: { restricted: ["840", "364"] },
+  claimParams: { restricted: ["840", "364"] }, // ISO 3166-1 numeric codes
+} satisfies JurisdictionVerifyUrlOptions);
+
+// 5. Multi-claim verification request
+const multiUrl = buildVerifyUrl({
+  returnUrl: "https://yourapp.xyz/onboarding",
+  claims: ["kyc", "funds"],
+  claimParams: { threshold: "10000" },
+});
+
+// 6. Security options: expiry, single-use token (jti), and CSRF state
+const secureUrl = buildVerifyUrl({
+  returnUrl: "https://yourapp.xyz/callback",
+  claim: "kyc",
+  wallet: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVWGS",
+  state: "opaque_csrf_session_id",
+  expiresInMinutes: 15, // link expires in 15 minutes
+  singleUse: true, // embeds unique jti consumed on first visit
+  trustedIssuers: ["GCFXHS4GMXBYRBAPOH2KZIGNDQBMV5DNZD5WT6VHGQ3M7N2TRB664BXO"],
 });
 ```
 
+> ⚠️ **Security Notice (Issue #543):**
+> Query parameters in the return URL (`sc_verified`, `sc_wallet`) are **untrusted hints**. Never grant access solely based on `sc_verified=true` or `sc_wallet`. Always require the holder to sign a challenge via `verifyWalletClaim` to prove key control and confirm on-chain credentials.
+
 ## Claim types
 
-| Type | Proves | Threshold parameter |
-|---|---|---|
-| `kyc` | Identity verified by a KYC provider | — |
-| `age` | Holder is at least N years old | `threshold_years` (years) |
-| `income` | Annual income exceeds threshold | `threshold` (USD) |
-| `jurisdiction` | Country is not in a restricted list | `restricted` (country codes) |
-| `funds` | Liquid balance exceeds threshold | `threshold` (USD) |
-| `accreditation` | Holder meets an accredited-investor threshold | `threshold` (USD) |
+| Type            | Proves                                        | Threshold parameter          |
+| --------------- | --------------------------------------------- | ---------------------------- |
+| `kyc`           | Identity verified by a KYC provider           | —                            |
+| `age`           | Holder is at least N years old                | `threshold_years` (years)    |
+| `income`        | Annual income exceeds threshold               | `threshold` (USD)            |
+| `jurisdiction`  | Country is not in a restricted list           | `restricted` (country codes) |
+| `funds`         | Liquid balance exceeds threshold              | `threshold` (USD)            |
+| `accreditation` | Holder meets an accredited-investor threshold | `threshold` (USD)            |
 
 ## Types
 
@@ -424,7 +461,12 @@ duplicating the union. They appear in `dist/index.d.ts` after `pnpm build` and
 are available from `@stellarcred/sdk` directly.
 
 ```ts
-import type { ClaimType, ClaimOptions } from "@stellarcred/sdk";
+import type {
+  ClaimType,
+  ClaimOptions,
+  BuildVerifyUrlOptions,
+  BuildVerifyUrlClaimParams,
+} from "@stellarcred/sdk";
 
 // `ClaimType` is exactly the credential union published with the SDK.
 // `ClaimOptions.minThreshold` / `.trustedIssuers` are forwarded to `hasClaim`'s
@@ -434,12 +476,15 @@ function gate(wallet: string, claim: ClaimType, opts?: ClaimOptions) {
 }
 ```
 
-| Export | Kind | Description |
-|---|---|---|
-| `ClaimType` | `"kyc" \| "age" \| "income" \| "jurisdiction" \| "funds" \| "accreditation"` | The credential types StellarCred supports. Mirrors the on-chain `CLAIM_TYPES` constant. |
-| `ClaimOptions` | `{ minThreshold?: number; trustedIssuers?: string[]; requestTimeoutMs?: number }` | Optional settings for `hasClaim`. `minThreshold` is forwarded to the on-chain `check_claim` for parameterised claim types and ignored for binary claims (`kyc`, `jurisdiction`). `trustedIssuers` restricts which issuer(s) the proof must come from, for any claim type — omit to accept any registered issuer. `requestTimeoutMs` bounds the individual read and defaults to 10 seconds. |
-| `Claim` | `{ type: string; verifiedAt: number; expiry: number }` | Shape returned by `getClaims`. |
-| `CLAIM_TYPES` | `readonly ClaimType[]` | The runtime constant. Use `as const` strings for compile-time narrowing. |
+| Export                      | Kind                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ClaimType`                 | `"kyc" \| "age" \| "income" \| "jurisdiction" \| "funds" \| "accreditation"`                                                       | The credential types StellarCred supports. Mirrors the on-chain `CLAIM_TYPES` constant.                                                                                                                                                                                                                                                                                                    |
+| `ClaimOptions`              | `{ minThreshold?: number; trustedIssuers?: string[]; requestTimeoutMs?: number }`                                                  | Optional settings for `hasClaim`. `minThreshold` is forwarded to the on-chain `check_claim` for parameterised claim types and ignored for binary claims (`kyc`, `jurisdiction`). `trustedIssuers` restricts which issuer(s) the proof must come from, for any claim type — omit to accept any registered issuer. `requestTimeoutMs` bounds the individual read and defaults to 10 seconds. |
+| `Claim`                     | `{ type: string; verifiedAt: number; expiry: number }`                                                                             | Shape returned by `getClaims`.                                                                                                                                                                                                                                                                                                                                                             |
+| `CLAIM_TYPES`               | `readonly ClaimType[]`                                                                                                             | The runtime constant. Use `as const` strings for compile-time narrowing.                                                                                                                                                                                                                                                                                                                   |
+| `BuildVerifyUrlOptions`     | `{ returnUrl: string; claim?: ClaimType; ... }`                                                                                    | Strongly typed options accepted by `buildVerifyUrl`.                                                                                                                                                                                                                                                                                                                                       |
+| `BuildVerifyUrlClaimParams` | `{ threshold?: string \| number; threshold_years?: string \| number; restricted?: string \| number \| (string \| number)[]; ... }` | Strongly typed claim parameters for `buildVerifyUrl`.                                                                                                                                                                                                                                                                                                                                      |
+| `UntrustedReturnParams`     | `{ verified: boolean; wallet: string \| null; claims: string[]; state: string \| null }`                                           | Shape of parsed return-URL parameters returned by `parseReturnParams`.                                                                                                                                                                                                                                                                                                                     |
 
 ## Full integration example
 
@@ -459,11 +504,13 @@ async function handleDeposit(wallet: string) {
     // Redirect to verify the missing claim
     const missing = !kycOk ? "kyc" : "funds";
     const opts = missing === "funds" ? { claimParams: { threshold: "50000" } } : {};
-    return redirect(StellarCred.buildVerifyUrl({
-      returnUrl: "https://yourapp.xyz/deposit",
-      claim: missing,
-      ...opts,
-    }));
+    return redirect(
+      StellarCred.buildVerifyUrl({
+        returnUrl: "https://yourapp.xyz/deposit",
+        claim: missing,
+        ...opts,
+      }),
+    );
   }
 
   // All claims verified — proceed
@@ -487,12 +534,12 @@ config. Understanding this boundary prevents accidental secret leakage.
 
 ### What is safe to expose to the client
 
-| Config | Safe for browser? | Why |
-|---|---|---|
-| `registryId` (ProofRegistry contract ID) | ✅ Yes | A public Stellar contract address — no secret |
-| `rpcUrl` | ✅ Yes | A public RPC endpoint — no secret |
-| `networkPassphrase` | ✅ Yes | A well-known network identifier — no secret |
-| `baseUrl` | ✅ Yes | The StellarCred public URL — no secret |
+| Config                                   | Safe for browser? | Why                                           |
+| ---------------------------------------- | ----------------- | --------------------------------------------- |
+| `registryId` (ProofRegistry contract ID) | ✅ Yes            | A public Stellar contract address — no secret |
+| `rpcUrl`                                 | ✅ Yes            | A public RPC endpoint — no secret             |
+| `networkPassphrase`                      | ✅ Yes            | A well-known network identifier — no secret   |
+| `baseUrl`                                | ✅ Yes            | The StellarCred public URL — no secret        |
 
 Pass these via `NEXT_PUBLIC_*` (Next.js) or `VITE_*` (Vite) env vars so they
 are available in browser bundles:
@@ -505,11 +552,11 @@ NEXT_PUBLIC_RPC_URL=https://soroban-testnet.stellar.org
 
 ### What must stay server-side only
 
-| Config / Package | Server-only? | Why |
-|---|---|---|
-| `ISSUER_PRIVATE_KEY` | ✅ Server-only | Signs credentials — exposure lets anyone forge credentials |
-| `@stellarcred/issuer` | ✅ Server-only | Contains the signing key; throws if imported in a browser |
-| Server-side `hasClaim` checks | ✅ Server-only for access control | Client-side checks are optimistic UI only (see below) |
+| Config / Package              | Server-only?                      | Why                                                        |
+| ----------------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `ISSUER_PRIVATE_KEY`          | ✅ Server-only                    | Signs credentials — exposure lets anyone forge credentials |
+| `@stellarcred/issuer`         | ✅ Server-only                    | Contains the signing key; throws if imported in a browser  |
+| Server-side `hasClaim` checks | ✅ Server-only for access control | Client-side checks are optimistic UI only (see below)      |
 
 Never use `NEXT_PUBLIC_` on `ISSUER_PRIVATE_KEY` or any other secret.
 
@@ -595,7 +642,7 @@ can read from one, **off by default and only when you ask for it per call**.
 >
 > An indexer is an **off-chain cache of public chain data, operated by someone**.
 > It can be stale, lagging, misconfigured, or dishonest. A claim read with
-> `source: "indexer"` is *not* a proof.
+> `source: "indexer"` is _not_ a proof.
 >
 > **Never use `source: "indexer"` as the sole basis for a security decision.**
 > Gate access with `source: "chain"` (the default) or `source: "indexer-verified"`.
@@ -650,12 +697,12 @@ development is not much use.
 SDK re-evaluates them from the raw claim row using the same predicates the
 contract uses, so a call is drop-in compatible across sources:
 
-| Contract rule | Indexer equivalent |
-|---|---|
-| `!revoked` | `row.revoked === 0` |
-| `expiry > ledger.timestamp()` | `expiry > Date.now()/1000` |
+| Contract rule                     | Indexer equivalent                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `!revoked`                        | `row.revoked === 0`                                                                                     |
+| `expiry > ledger.timestamp()`     | `expiry > Date.now()/1000`                                                                              |
 | `issuer_is_trusted(list, issuer)` | same, with an empty issuer treated as the contract's `None` and therefore rejected when a filter is set |
-| `threshold.unwrap_or(0) >= min` | `(row.threshold ?? 0) >= min` |
+| `threshold.unwrap_or(0) >= min`   | `(row.threshold ?? 0) >= min`                                                                           |
 
 ### Known divergences
 
@@ -674,7 +721,7 @@ These are inherent to reading a cache rather than the chain, and are the reason
 
 ### Fan-out and caching
 
-`GET /claims?wallet=…` returns *all* of a wallet's claims in one response, so a
+`GET /claims?wallet=…` returns _all_ of a wallet's claims in one response, so a
 `getClaims` fan-out over the six credential types issues **one** HTTP request,
 not six. To do that the SDK memoises indexer rows per wallet for
 `indexerCacheMs` (default `2000`, set `0` to disable).
@@ -725,7 +772,7 @@ import { createClaimGate } from "@stellarcred/sdk";
 
 const gate = createClaimGate({ wallet: "G…" });
 gate.subscribe((state) => {
-  console.log(state.claims);  // { kyc: true, age: true, ... }
+  console.log(state.claims); // { kyc: true, age: true, ... }
   console.log(state.loading); // false
 });
 
@@ -742,13 +789,13 @@ gate.destroy();
 createClaimGate(config: ClaimGateConfig): ClaimGate
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `subscribe(fn)` | `(ClaimGateState) => void` | Subscribe to state changes; returns unsubscribe |
-| `unsubscribe(fn)` | `void` | Remove a listener |
-| `getSnapshot()` | `ClaimGateState` | Get current state synchronously |
-| `refetch()` | `void` | Re-run all claim checks |
-| `destroy()` | `void` | Stop polling, clear listeners |
+| Field             | Type                       | Description                                     |
+| ----------------- | -------------------------- | ----------------------------------------------- |
+| `subscribe(fn)`   | `(ClaimGateState) => void` | Subscribe to state changes; returns unsubscribe |
+| `unsubscribe(fn)` | `void`                     | Remove a listener                               |
+| `getSnapshot()`   | `ClaimGateState`           | Get current state synchronously                 |
+| `refetch()`       | `void`                     | Re-run all claim checks                         |
+| `destroy()`       | `void`                     | Stop polling, clear listeners                   |
 
 ### TypeScript
 
@@ -781,7 +828,9 @@ let gate;
 
 onMounted(() => {
   gate = createClaimGate({ wallet: props.wallet });
-  gate.subscribe((s) => { state.value = s; });
+  gate.subscribe((s) => {
+    state.value = s;
+  });
 });
 onUnmounted(() => gate?.destroy());
 </script>
@@ -821,7 +870,7 @@ See [`examples/svelte-gate/ClaimGate.svelte`](./examples/svelte-gate/ClaimGate.s
 >
 > **Do NOT use `hasClaim(wallet, ...)` alone to gate server-side resources or create authenticated sessions.**
 >
-> Anyone can look up a verified public key on-chain and pass it in a request body, query parameter, or header. Checking `hasClaim(untrustedAddress, "kyc")` only proves that *someone* owns credentials for that address, **not** that the current HTTP caller controls that address!
+> Anyone can look up a verified public key on-chain and pass it in a request body, query parameter, or header. Checking `hasClaim(untrustedAddress, "kyc")` only proves that _someone_ owns credentials for that address, **not** that the current HTTP caller controls that address!
 >
 > To securely gate access, your server must issue a cryptographic challenge, have the client sign it with their Stellar wallet (Freighter, Albedo, etc.), and verify both the signature and on-chain credential claim.
 
@@ -889,6 +938,7 @@ A complete, runnable application implementing this entire pattern end-to-end (re
 The SDK follows [Semantic Versioning](https://semver.org/). Releases are fully automated through `.github/workflows/release.yml`.
 
 ### How Releases Work:
+
 1. **Version Declaration**: The canonical version is maintained in `frontend/packages/sdk/package.json` (e.g. `"version": "0.1.1"`).
 2. **Cutting a Release**:
    - Update `package.json` version and document changes in `frontend/packages/sdk/CHANGELOG.md` and root `CHANGELOG.md`.
@@ -918,4 +968,3 @@ The SDK follows [Semantic Versioning](https://semver.org/). Releases are fully a
 - **Dynamic On-Demand Module Loading**:
   - Heavy RPC modules and Soroban contract bindings (`@stellar/stellar-sdk` and `proof-registry`) are loaded on-demand via dynamic `import()` only when on-chain contract queries (`hasClaim`, `getClaim`) are executed.
   - Offline helpers like `buildVerifyUrl()`, `buildBadgeUrl()`, `buildBadgeEmbedCode()`, `CLAIM_TYPES`, `TimeoutError`, and `createClaimGate()` execute with zero network overhead and without loading heavy Soroban dependencies.
-
