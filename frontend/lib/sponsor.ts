@@ -75,8 +75,9 @@ export async function buildSignedInnerXdr(params: {
   const account = await srv.getAccount(holder);
   const contract = new Contract(CONTRACTS.proofRegistry);
 
+  const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
   const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
+    fee: inclusionFee,
     networkPassphrase: NETWORK_PASSPHRASE,
   })
     .addOperation(
@@ -97,6 +98,8 @@ export async function buildSignedInnerXdr(params: {
     .build();
 
   const prepared = await srv.prepareTransaction(tx);
+  const feeNum = BigInt(prepared.fee || 0);
+  prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
   return signTx(prepared.toXDR(), holder);
 }
 
@@ -167,8 +170,9 @@ export async function buildSignedBatchInnerXdr(params: {
     ]);
   });
 
+  const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
   const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
+    fee: inclusionFee,
     networkPassphrase: NETWORK_PASSPHRASE,
   })
     .addOperation(
@@ -182,6 +186,8 @@ export async function buildSignedBatchInnerXdr(params: {
     .build();
 
   const prepared = await srv.prepareTransaction(tx);
+  const feeNum = BigInt(prepared.fee || 0);
+  prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
   return signTx(prepared.toXDR(), holder);
 }
 

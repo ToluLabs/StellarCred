@@ -217,6 +217,18 @@ This system exists because:
 4. **License compliance is necessary**: Copyleft licenses (GPL, AGPL) are incompatible with Apache-2.0 and create legal risk.
 5. **Explicit decisions are auditable**: Recording exceptions in code allows security reviews to trace why a risky dependency was accepted.
 
+## What These Checks Do *Not* Catch
+
+This is defense-in-depth, not a complete supply-chain solution. In particular:
+
+- **Compromised or malicious code in an already-approved package** — advisories are checked at add-time only; Dependabot handles later updates.
+- **Zero-day vulnerabilities** — they exist before the advisory database knows about them.
+- **Behavioral malware** — no package code is statically analysed here.
+- **Typosquatting** — a misspelled package name with a clean license and no advisory passes every check; it is caught only in review.
+- **A private registry compromise** — the checks assume npm registry integrity.
+
+Keep reading dependency diffs, not just green checks.
+
 ## References
 
 - GitHub Advisory Database: https://github.com/advisories

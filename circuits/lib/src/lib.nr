@@ -86,3 +86,41 @@ pub fn assert_committed_and_signed(
     // are required, and neither is sufficient alone.
     assert(verify_signature(issuer_x, issuer_y, sig, z));
 }
+
+/// Derives a deterministic per-app-context nullifier: Poseidon2([secret, app_context], 2).
+/// Unlocks Sybil-resistant, one-per-human gating within an `app_context`
+/// without linking identities across different applications (#395).
+pub fn derive_nullifier(secret: Field, app_context: Field) -> Field {
+    Poseidon2::hash([secret, app_context], 2)
+}
+
+// --- Tests -------------------------------------------------------------------
+
+#[test]
+fn test_nullifier_deterministic_within_context() {
+    let secret: Field = 0xabcdef1234567890;
+    let app_context: Field = 0x42;
+    let n1 = derive_nullifier(secret, app_context);
+    let n2 = derive_nullifier(secret, app_context);
+    assert(n1 == n2);
+}
+
+#[test]
+fn test_nullifier_unlinkable_across_contexts() {
+    let secret: Field = 0xabcdef1234567890;
+    let context_a: Field = 0x1;
+    let context_b: Field = 0x2;
+    let n_a = derive_nullifier(secret, context_a);
+    let n_b = derive_nullifier(secret, context_b);
+    assert(n_a != n_b);
+}
+
+#[test]
+fn test_nullifier_different_secrets_in_same_context() {
+    let secret_1: Field = 0x11111111;
+    let secret_2: Field = 0x22222222;
+    let app_context: Field = 0x42;
+    let n1 = derive_nullifier(secret_1, app_context);
+    let n2 = derive_nullifier(secret_2, app_context);
+    assert(n1 != n2);
+}

@@ -3,7 +3,7 @@
  * into the local DB.
  *
  * All emitted event topics and payload schemas are documented authoritatively in
- * `EVENTS.md` (and `docs/EVENTS.md`).
+ * `docs/EVENTS.md`.
  *
  * ProofRegistry event topics follow the tuple convention:
  *   Submitted: ("proof_reg", "submitted", <credential_type>) -> EventProofSubmitted
@@ -247,6 +247,13 @@ function isTransientError(err: unknown): boolean {
  * @param retries   Remaining retries (internal, do not pass)
  * @param attempt   Current attempt number (1-based, internal)
  */
+// Lint suppression (#855): dead since the tick path was rewritten around the
+// plain `fetchEvents` helper below, which has no backoff. Keeping it because it
+// is the only bounded-retry implementation in the service and `isTransientError`
+// above still documents that Horizon status codes are handled here. Wiring the
+// tick path onto it — or deleting it — changes ingestion behaviour, so that is a
+// call for the ingester owner, not a linting PR.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function fetchEventsWithRetry(
   url: string,
   signal: AbortSignal,
@@ -504,6 +511,12 @@ export interface Ingester {
 }
 
 export function createIngester(config: Config, db: Db): Ingester {
+  // Lint suppression (#855): the tick path builds Horizon REST URLs and calls
+  // fetch() directly, so this SDK client instance is never read. It is also the
+  // only consumer of the `Horizon` import above, which is why removing it would
+  // just move the error. Unused as of today, not wrong — leaving the decision to
+  // whoever next touches ingestion.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const server = new Horizon.Server(config.horizonUrl, {
     allowHttp: config.horizonUrl.startsWith("http://"),
   });
@@ -538,6 +551,12 @@ export function createIngester(config: Config, db: Db): Ingester {
   let cachedHeadTime = 0;
   const HEAD_CACHE_MS = 30_000;
 
+  // Lint suppression (#855): the tick reads the head ledger from `getLedgerHead`
+  // below instead, so this 30s-cached variant is never called. It is the only
+  // writer of `cachedHeadLedger` / `cachedHeadTime` / `HEAD_CACHE_MS` above, so
+  // deleting it would strand that state; picking one head-ledger path is an
+  // ingestion change, not a linting one.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function fetchHeadLedger(): Promise<number> {
     const now = Date.now();
     if (cachedHeadLedger > 0 && now - cachedHeadTime < HEAD_CACHE_MS) {
@@ -759,6 +778,12 @@ export function createIngester(config: Config, db: Db): Ingester {
     await processWebhookQueue();
 
     const tickEnd = Date.now();
+    // Lint suppression (#855): the exported `dbWriteLatencySeconds` metric is
+    // reported from `lastTickDurationSec` in getMetrics(), not from this
+    // tickStart/tickEnd pair, so this measurement is currently a no-op. Removing
+    // it would also strand both timestamps; deciding which duration the metric
+    // should carry is a metrics change, not a linting one.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const dbWriteLatencySec = (tickEnd - tickStart) / 1000;
 
     // Update health on success.

@@ -8,16 +8,13 @@ const RESET_EVENT = "stellarcred:onboarding:reset";
 const LEGACY_STORAGE_KEY = "stellarcred_onboarding_seen";
 
 export type OnboardingStep =
-  | "welcome"
-  | "connect-wallet"
-  | "get-credential"
-  | "generate-proof"
-  | "unlock";
+  "welcome" | "connect-wallet" | "get-credential" | "verify-trust" | "generate-proof" | "unlock";
 
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   "welcome",
   "connect-wallet",
   "get-credential",
+  "verify-trust",
   "generate-proof",
   "unlock",
 ];
@@ -74,38 +71,6 @@ export function resetOnboarding(): void {
   saveState(DEFAULT_STATE);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(RESET_EVENT));
-  }
-}
-
-// Legacy API for OnboardingTour component
-export function hasSeenTour(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    if (localStorage.getItem(STORAGE_KEY)) {
-      const state = loadState();
-      return state.dismissed || state.completed;
-    }
-    return localStorage.getItem(LEGACY_STORAGE_KEY) === "1";
-  } catch {
-    return true;
-  }
-}
-
-export function markTourSeen(): void {
-  try {
-    localStorage.setItem(LEGACY_STORAGE_KEY, "1");
-    saveState({ ...DEFAULT_STATE, dismissed: true });
-  } catch {
-    // Silently fail
-  }
-}
-
-export function resetTour(): void {
-  try {
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
-    resetOnboarding();
-  } catch {
-    // Silently fail
   }
 }
 

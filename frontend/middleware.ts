@@ -5,6 +5,7 @@ import { getCorsHeaders, getPublicCorsHeaders, isOriginAllowed, isPublicCorsPath
 import { logger, stripSensitiveFields } from "@/lib/logger";
 import { plaidAccessTokens } from "@/lib/plaid";
 import { reportError } from "@/lib/error-reporting";
+import { captureServerException } from "@/lib/monitoring/sentry";
 import { locales, defaultLocale, type Locale } from "@/i18n.config";
 
 function resolveRequestId(inbound: string | null | undefined): string {
@@ -108,8 +109,15 @@ export function middleware(request: NextRequest) {
   response.headers.set("x-request-id", requestId);
   logRequest(request, response.status, startTime, requestId, isDemoIssuer, isPlaidMock, isPersonaDemo);
 
-  // Report unexpected 500 errors to error sink if configured
+  // Report unexpected 500 errors to error sink and Sentry if configured
   if (response.status === 500) {
+    captureServerException(new Error(`Server error 500 on ${request.method} ${request.nextUrl.pathname}`), {
+      requestId,
+      method: request.method,
+      path: request.nextUrl.pathname,
+      status: response.status,
+    }).catch(() => {});
+
     reportError({
       method: request.method,
       path: request.nextUrl.pathname,

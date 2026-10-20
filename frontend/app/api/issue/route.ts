@@ -4,11 +4,7 @@ import { fetchIssuerPubkey } from "@/lib/issuer-registry";
 import { currentDeploymentRef } from "@/lib/deployment";
 import { circuitVersionStampFor } from "@/lib/circuit-versions";
 import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
-import {
-  logger,
-  stripSensitiveFields,
-  resolveRequestId,
-} from "@/lib/logger";
+import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
 import { reportError } from "@/lib/error-reporting";
 import { env } from "@/lib/env";
 import { fetchPlaidBalance } from "@/lib/plaid";
@@ -31,15 +27,15 @@ import {
   personaPendingIdempotencyRecord,
   type IdempotencyRecord,
 } from "@/lib/idempotency";
-import {
-  createPersonaInquiry,
-  resolvePersonaKYC,
-} from "@/lib/persona";
+import { createPersonaInquiry, resolvePersonaKYC } from "@/lib/persona";
 import { registerPendingInquiry } from "@/lib/persona-webhook";
 import {
   issueAndAuditCredentials,
   localIssuerPubkeyBytes,
+  resolveIssuerSigningKey,
+  createIssuerClient,
 } from "@/lib/issuer-service";
+import { resolveTenant, validateTenantCredentialTypes } from "@/lib/tenancy";
 
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -53,17 +49,14 @@ export async function POST(req: NextRequest) {
 
   // ── Idempotency-Key support ────────────────────────────────────────────────
   const rawKey = req.headers.get("Idempotency-Key")?.trim() || undefined;
-  const idempotencyKey =
-    rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
+  const idempotencyKey = rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
   if (rawKey && !idempotencyKey) {
     logger.warn(
       stripSensitiveFields({
         event: "idempotency_key_rejected",
         requestId,
         reason:
-          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES
-            ? "too_long"
-            : "invalid",
+          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES ? "too_long" : "invalid",
       }),
     );
   }
@@ -79,9 +72,7 @@ export async function POST(req: NextRequest) {
       const inFlight = idempotencyInFlightBegin(idempotencyKey);
       if (!inFlight) break;
 
-      logger.info(
-        stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }),
-      );
+      logger.info(stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }));
       try {
         return replayIdempotencyRecord(await inFlight, requestId);
       } catch {
@@ -119,10 +110,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function replayIdempotencyRecord(
-  record: IdempotencyRecord,
-  requestId: string,
-): NextResponse {
+function replayIdempotencyRecord(record: IdempotencyRecord, requestId: string): NextResponse {
   const headers = new Headers({
     "x-request-id": requestId,
     "X-Idempotent": "true",
@@ -143,8 +131,7 @@ function replayIdempotencyRecord(
   return NextResponse.json(
     {
       code: "IDEMPOTENCY_RESPONSE_REDACTED",
-      error:
-        "This Idempotency-Key already completed; credential data is not retained for replay.",
+      error: "This Idempotency-Key already completed; credential data is not retained for replay.",
     },
     { status: 409, headers },
   );
@@ -173,6 +160,17 @@ async function executeRequest(
     returnUrl?: string;
   };
 
+  const tenantRes = await resolveTenant(req);
+  if (tenantRes.error) {
+    if (idempotencyKey) {
+      idempotencyInFlightFail(idempotencyKey, new Error(tenantRes.error));
+    }
+    const res = NextResponse.json({ error: tenantRes.error }, { status: tenantRes.status ?? 401 });
+    res.headers.set("x-request-id", requestId);
+    return res;
+  }
+  const tenant = tenantRes.tenant;
+
   const parsed = await readJsonBody<BodyType>(req);
   if (!parsed.ok) {
     if (idempotencyKey) {
@@ -184,10 +182,13 @@ async function executeRequest(
   }
   const body = parsed.body;
 
+  const rawIssuerId = body.issuerId;
+  const rawIssuerName = body.issuerName;
+  const issuerId = rawIssuerId ?? tenant?.config.issuerId;
+  const issuerName = rawIssuerName ?? tenant?.config.issuerName ?? "StellarCred Authority";
+
   const {
     holder,
-    issuerId,
-    issuerName = "StellarCred Authority",
     expiry = "90 days",
     claimParams,
     persona_inquiry_id: personaInquiryId,
@@ -195,10 +196,7 @@ async function executeRequest(
   } = body;
   const walletAddress = holder;
 
-  const sendResponse = async (
-    response: NextResponse,
-    record?: IdempotencyRecord,
-  ) => {
+  const sendResponse = async (response: NextResponse, record?: IdempotencyRecord) => {
     const durationMs = Date.now() - startTime;
     response.headers.set("x-request-id", requestId);
 
@@ -207,10 +205,7 @@ async function executeRequest(
         const completedRecord =
           record ??
           (response.status === 200
-            ? completedIdempotencyRecord(
-                response.status,
-                await response.clone().text(),
-              )
+            ? completedIdempotencyRecord(response.status, await response.clone().text())
             : undefined);
         if (completedRecord) {
           await idempotencySetAsync(idempotencyKey, completedRecord);
@@ -281,10 +276,8 @@ async function executeRequest(
   if (body.attribute !== undefined && body.type) {
     if (body.type === "age") attributes.date_of_birth ??= body.attribute;
     else if (body.type === "income") attributes.income ??= body.attribute;
-    else if (body.type === "jurisdiction")
-      attributes.country_code ??= body.attribute;
-    else if (body.type === "employment")
-      attributes.seniority ??= body.attribute;
+    else if (body.type === "jurisdiction") attributes.country_code ??= body.attribute;
+    else if (body.type === "employment") attributes.seniority ??= body.attribute;
   }
 
   if (credentialTypes.length === 0) {
@@ -310,24 +303,49 @@ async function executeRequest(
       );
     }
     return sendResponse(
-      NextResponse.json(
-        { error: `Invalid credential type: ${invalid}` },
-        { status: 400 },
-      ),
+      NextResponse.json({ error: `Invalid credential type: ${invalid}` }, { status: 400 }),
     );
   }
   if (!holder) {
     return sendResponse(
-      NextResponse.json(
-        { error: "holder address is required" },
-        { status: 400 },
-      ),
+      NextResponse.json({ error: "holder address is required" }, { status: 400 }),
     );
   }
   if (!issuerId) {
+    return sendResponse(NextResponse.json({ error: "issuerId is required" }, { status: 400 }));
+  }
+
+  // Cross-tenant issuer restriction
+  if (tenant && rawIssuerId && rawIssuerId !== tenant.config.issuerId) {
     return sendResponse(
-      NextResponse.json({ error: "issuerId is required" }, { status: 400 }),
+      NextResponse.json(
+        {
+          error: `Unauthorized issuerId for tenant '${tenant.id}'. Configured issuerId is '${tenant.config.issuerId}'.`,
+        },
+        { status: 403 },
+      ),
     );
+  }
+
+  // Tenant allowed credential types verification
+  if (tenant) {
+    const typeCheck = validateTenantCredentialTypes(tenant, credentialTypes);
+    if (!typeCheck.allowed) {
+      return sendResponse(
+        NextResponse.json(
+          {
+            error: `Tenant '${tenant.id}' is not authorized to issue credential type '${typeCheck.disallowedType}'.`,
+          },
+          { status: 403 },
+        ),
+      );
+    }
+  }
+
+  let customIssuerClient: ReturnType<typeof createIssuerClient> | undefined;
+  if (tenant) {
+    const signingKey = await resolveIssuerSigningKey(tenant.config.signingKeySecretRef);
+    customIssuerClient = createIssuerClient(signingKey);
   }
 
   if (env.NEXT_PUBLIC_ISSUER_REGISTRY_ID) {
@@ -340,7 +358,7 @@ async function executeRequest(
         ),
       );
     }
-    const localKey = localIssuerPubkeyBytes();
+    const localKey = localIssuerPubkeyBytes(customIssuerClient);
     if (!Buffer.from(registered).equals(localKey)) {
       return sendResponse(
         NextResponse.json(
@@ -376,15 +394,13 @@ async function executeRequest(
         return sendResponse(
           NextResponse.json(
             {
-              error:
-                "PERSONA_KYC_TEMPLATE_ID is required when PERSONA_API_KEY is set",
+              error: "PERSONA_KYC_TEMPLATE_ID is required when PERSONA_API_KEY is set",
             },
             { status: 500 },
           ),
         );
       }
-      const baseUrl =
-        env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? req.nextUrl.origin;
+      const baseUrl = env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? req.nextUrl.origin;
       // Every Persona call in this block is wrapped so a provider failure
       // cannot escape the handler. lib/persona.ts embeds Persona's raw error
       // body in the thrown message, and Persona error bodies routinely echo
@@ -470,8 +486,7 @@ async function executeRequest(
         return sendResponse(
           NextResponse.json(
             {
-              error:
-                "Identity verification service is unavailable. Please try again.",
+              error: "Identity verification service is unavailable. Please try again.",
             },
             { status: 502 },
           ),
@@ -502,10 +517,7 @@ async function executeRequest(
         }),
       );
       return sendResponse(
-        NextResponse.json(
-          { error: plaid.error, code: plaid.code },
-          { status: plaid.status },
-        ),
+        NextResponse.json({ error: plaid.error, code: plaid.code }, { status: plaid.status }),
       );
     }
     logger.info(
@@ -531,6 +543,7 @@ async function executeRequest(
       attributes,
       claimParams,
       requestId,
+      issuerClient: customIssuerClient,
     });
     // Stamp the deployment and the circuit version on every credential at mint
     // time (#545, #633). The circuit version is what lets the holder's device
@@ -568,8 +581,6 @@ async function executeRequest(
       status: 500,
       exception: e,
     });
-    return sendResponse(
-      NextResponse.json({ error: (e as Error).message }, { status: 500 }),
-    );
+    return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 500 }));
   }
 }

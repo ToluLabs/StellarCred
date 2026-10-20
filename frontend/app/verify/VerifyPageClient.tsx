@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { IconArrowRight, IconLoader2 } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
+import { truncateMiddle } from "@/lib/format";
 import { useWallet } from "@/lib/wallet-context";
 import { useToast } from "@/components/Toast";
 import VerifyLinkError from "./VerifyLinkError";
@@ -215,7 +216,7 @@ function VerifyInner() {
                     className="mono"
                     style={{ fontSize: "0.8125rem", color: "var(--muted)" }}
                   >
-                    {address.slice(0, 6)}…{address.slice(-4)}
+                    {truncateMiddle(address, 6, 4)}
                   </span>
                 </div>
 

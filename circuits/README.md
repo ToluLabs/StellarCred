@@ -55,18 +55,35 @@ You can also verify the committed artifacts at any time:
 node circuits/scripts/stamp-circuit-version.js check-all ../frontend/public/circuits
 ```
 
-### Test Vectors
+### Test Vectors & Toolchain Drift Check
 
-`circuits/testvectors/<circuit>.json` pins, per circuit, the exact witness in its committed `Prover.toml`, the public inputs it derives, and a `sha256` hash of the resulting Barretenberg VK — captured with the pinned toolchain above. `circuits/scripts/testvectors.js check` (run in CI on every push/PR) recompiles and re-proves each circuit from its committed `Prover.toml` and fails the build if any of those three drift from what's committed, so a circuit-logic change, a witness edit, or a toolchain bump that silently changes proof output gets caught instead of surfacing later as an on-chain verification failure.
+`circuits/testvectors/<circuit>.json` pins, per circuit, the exact witness in its committed `Prover.toml`, the public inputs it derives, and a `sha256` hash of the resulting Barretenberg VK — captured with the pinned toolchain above (`nargo 1.0.0-beta.9` and `bb 0.87.0`).
 
-To regenerate the vectors intentionally (after a deliberate circuit change or a pinned toolchain bump — update `NOIR_VERSION`/`BB_VERSION` in `circuits/scripts/testvectors.js` first if it's the latter):
+In CI and local verification:
+- A focused check runs against a representative circuit (`kyc_proof`), which contains the smallest full cryptographic pipeline (Poseidon2 commitment + secp256k1 ECDSA):
+  ```bash
+  export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+  node circuits/scripts/testvectors.js check kyc_proof
+  ```
+- **Toolchain Drift Fail-Fast**: If the installed toolchain version differs from the pinned versions, the check halts immediately with `[TOOLCHAIN MISMATCH]` before running expensive proof generation, ensuring toolchain drift is clearly differentiated from circuit code regressions.
+- **Circuit Code Drift**: If the toolchain matches but compiled output differs from `circuits/testvectors/<circuit>.json`, the check reports `[CIRCUIT DRIFT]`.
 
-```bash
-export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
-node circuits/scripts/testvectors.js update
-```
-
-Review the diff before committing — every field changing except `witness` usually means something other than the intended change moved. Each vector also pins the circuit's declared `circuit_version` / `circuit_vk_version`, so regenerating vectors for a circuit whose version was not bumped in `circuits/circuit-versions.json` is reported as drift. See [Circuit Versions](#circuit-versions).
+#### Updating Toolchain Pins & Test Vectors (Intentional Changes)
+When intentionally upgrading the toolchain or changing circuit logic:
+1. Update `NOIR_VERSION` and `BB_VERSION` in:
+   - `circuits/scripts/testvectors.js`
+   - `circuits/scripts/build.sh`
+   - `.github/workflows/proving-perf.yml`
+   - `circuits/README.md`
+2. Bump the corresponding circuit version in `circuits/circuit-versions.json`.
+3. Re-generate test vectors:
+   ```bash
+   export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+   node circuits/scripts/testvectors.js update
+   # Or for a specific circuit:
+   node circuits/scripts/testvectors.js update kyc_proof
+   ```
+4. Review git diff and commit the updated fixtures and test vectors. See [Circuit Versions](#circuit-versions).
 
 ---
 
@@ -201,3 +218,17 @@ trivially satisfiable and proves nothing.
 | 2 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate |
 | 3 | `restricted` | `[u64; 8]` | List of up to 8 ISO 3166-1 numeric codes (padded with `0`s) |
 | 4 | `mode` | `u64` | Proof mode: `0` = denylist (country NOT in list), `1` = allowlist (country IS in list) |
+
+`mode` is a public input, not a second circuit: one compiled `jurisdiction_proof`
+serves both modes, so denylist and allowlist proofs verify against the *same* VK
+(`fixtures/jurisdiction/vk` and `fixtures/jurisdiction_allow/vk` are byte-identical).
+`circuits/scripts/build.sh` generates the second fixture set from
+`jurisdiction_proof/Prover_allowlist.toml` purely to have a real allowlist proof on
+hand for contract tests.
+
+Because both the list and the mode travel with the proof and are prover-supplied, the
+circuit only proves the *relation* — it cannot tell a verifier whether the accepted
+jurisdictions were the intended ones. A verifier that means "not sanctioned" must
+reject a proof presenting `mode = 1`, and one that means "region exclusive" must
+reject `mode = 0`; checking the mode alongside the list is the integrator's job.
+The witness API defaults to `mode = "0"` (`frontend/app/api/witness/route.ts`).

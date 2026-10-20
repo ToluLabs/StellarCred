@@ -81,7 +81,7 @@ proof once and caches the result; every protocol afterwards reads
 ## Architecture & Overview
 
 For a detailed architectural description with diagrams, see the [Architecture Documentation](docs/ARCHITECTURE.md).
-For the authoritative specification of contract events, topic schemas, and indexer integration, see [EVENTS.md](EVENTS.md).
+For the authoritative specification of contract events, topic schemas, and indexer integration, see [docs/EVENTS.md](docs/EVENTS.md).
 
 ---
 
@@ -114,7 +114,7 @@ services/
 scripts/deploy.sh       deploy + wire + register issuer + install all VKs on testnet
 scripts/benchmark.sh    measure instruction budget for every public function on testnet
 BENCHMARKS.md           per-function instruction counts, ledger I/O, and fee estimates
-EVENTS.md               authoritative contract event topic & payload schemas
+docs/EVENTS.md          authoritative contract event topic & payload schemas
 docs/STORAGE_TTL.md     contract storage lifetime model, rent fees, and archival behavior
 ```
 
@@ -136,6 +136,8 @@ npm install @stellarcred/sdk
 > Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
 >
 > **Canonical Integration Example**: Looking for a complete, runnable end-to-end integration with wallet control challenge proof and server-side route gating? See [`examples/canonical-integration`](examples/canonical-integration).
+>
+> **TypeScript example**: A minimal, CI-typechecked walkthrough — typed claim reads, a signed Stellar transaction, and the challenge flow — is in [`docs/SDK_TYPESCRIPT_EXAMPLE.md`](docs/SDK_TYPESCRIPT_EXAMPLE.md) and [`examples/typescript-quickstart`](examples/typescript-quickstart).
 
 Protocols never handle credential data - they ask the on-chain registry one
 question: _has this wallet proven the claim I require?_
