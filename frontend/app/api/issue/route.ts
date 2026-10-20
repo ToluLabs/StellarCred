@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CREDENTIAL_TYPES, type ClaimParams, type CredentialType } from "@stellarcred/issuer";
 import { fetchIssuerPubkey } from "@/lib/issuer-registry";
+import { previewIssue } from "@stellarcred/issuer";
 import { currentDeploymentRef } from "@/lib/deployment";
 import { circuitVersionStampFor } from "@/lib/circuit-versions";
 import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
@@ -158,6 +159,7 @@ async function executeRequest(
     claimParams?: ClaimParams;
     persona_inquiry_id?: string;
     returnUrl?: string;
+    preview?: boolean;
   };
 
   const tenantRes = await resolveTenant(req);
@@ -193,6 +195,7 @@ async function executeRequest(
     claimParams,
     persona_inquiry_id: personaInquiryId,
     returnUrl,
+    preview,
   } = body;
   const walletAddress = holder;
 
@@ -313,6 +316,32 @@ async function executeRequest(
   }
   if (!issuerId) {
     return sendResponse(NextResponse.json({ error: "issuerId is required" }, { status: 400 }));
+  }
+
+  // ── Preview mode ─────────────────────────────────────────────────────────
+  // Returns deterministic unsigned credential metadata (commitment, public
+  // inputs, attribute mapping) without touching signing keys or external
+  // providers. See docs/ISSUER_PREVIEW.md.
+  if (preview === true) {
+    try {
+      const previews = credentialTypes.map((type) =>
+        previewIssue({
+          type: type as CredentialType,
+          holder,
+          issuerId,
+          issuerName,
+          expiry,
+          attributes,
+          claimParams,
+        }),
+      );
+      outcome = "success";
+      return sendResponse(
+        NextResponse.json({ preview: true, credentials: previews }, { status: 200 }),
+      );
+    } catch (e) {
+      return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 400 }));
+    }
   }
 
   // Cross-tenant issuer restriction
