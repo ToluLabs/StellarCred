@@ -54,7 +54,6 @@ import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
 import { usePreviewMode } from "@/lib/wallet-context";
 import CopyButton from "@/components/CopyButton";
 import dynamic from "next/dynamic";
-import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { IMPORT_PARAM } from "@/lib/transfer";
 
@@ -67,6 +66,12 @@ const TransferExportModal = dynamic(
 );
 const TransferImportModal = dynamic(
   () => import("@/components/TransferImportModal").then((m) => m.TransferImportModal),
+  { ssr: false },
+);
+// CredentialDetailModal includes several Tabler icons — lazy-load so they
+// only ship when the user actually clicks "Inspect" on a credential.
+const CredentialDetailModal = dynamic(
+  () => import("@/components/CredentialDetailModal"),
   { ssr: false },
 );
 

@@ -10,7 +10,7 @@ import { Footer } from "@/components/Footer";
 import { LocaleMetaTags } from "@/components/LocaleMetaTags";
 import { WalletProvider } from "@/lib/wallet-context";
 import { ToastProvider } from "@/components/Toast";
-import { OnboardingWizard } from "@/components/OnboardingWizard";
+import OnboardingWizard from "@/components/OnboardingWizardLazy";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import type { Locale } from "@/i18n.config";
 
