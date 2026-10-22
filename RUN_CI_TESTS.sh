@@ -3,7 +3,7 @@
 # CI Test Script - Admin Rotation Implementation (Issue #342)
 # This script runs all CI tests as configured in .github/workflows/ci.yml
 
-set -e  # Exit on error
+set -euo pipefail  # Exit on error, undefined vars, and pipe failures
 
 echo "=========================================================================="
 echo "StellarCred CI Test Suite - Issue #342: Admin Rotation"
@@ -15,6 +15,37 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Function to print timestamped log lines
+log() {
+    local level="$1"
+    shift
+    printf '[%s] [%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$level" "$*"
+}
+
+# Function to run a command, capturing stdout/stderr with timestamps,
+# and exit non-zero with error context on failure.
+run_cmd() {
+    local description="$1"
+    shift
+    log INFO "Running: $description"
+    log INFO "Command: $*"
+    local output
+    local status
+    set +e
+    output=$("$@" 2>&1)
+    status=$?
+    set -e
+    while IFS= read -r line; do
+        printf '[%s] [OUT] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$line"
+    done <<< "$output"
+    if [ "$status" -ne 0 ]; then
+        log ERROR "Command failed with exit code $status: $description"
+        log ERROR "Command: $*"
+        exit "$status"
+    fi
+    log INFO "Command succeeded: $description"
+}
 
 # Function to print section headers
 print_section() {
@@ -40,6 +71,15 @@ print_info() {
     echo -e "${YELLOW}ℹ️  $1${NC}"
 }
 
+# Validate required environment variables before running
+REQUIRED_ENV_VARS=()
+for var in "${REQUIRED_ENV_VARS[@]}"; do
+    if [ -z "${!var:-}" ]; then
+        log ERROR "Required environment variable is not set: $var"
+        exit 1
+    fi
+done
+
 # Check if cargo is installed
 if ! command -v cargo &> /dev/null; then
     print_error "Cargo is not installed. Please install Rust: https://rustup.rs/"
@@ -52,7 +92,7 @@ print_success "Rust found: $(rustc --version)"
 # Test 1: Update Cargo.lock
 print_section "Step 1: Update Cargo Lock"
 print_info "Running: cargo update --aggressive"
-cargo update --aggressive
+run_cmd "cargo update --aggressive" cargo update --aggressive
 print_success "Cargo lock updated"
 
 # Test 2: Run Contract Tests
@@ -64,14 +104,8 @@ print_info "  - 6 CredentialVerifier admin rotation tests"
 print_info "  - All existing contract tests"
 echo ""
 
-cargo test --locked
-
-if [ $? -eq 0 ]; then
-    print_success "All tests passed!"
-else
-    print_error "Tests failed!"
-    exit 1
-fi
+run_cmd "cargo test --locked" cargo test --locked
+print_success "All tests passed!"
 
 # Test 3: Build WASM Artifacts
 print_section "Step 3: Build WASM Artifacts"
@@ -79,15 +113,9 @@ print_info "Running: cargo build --release --target wasm32v1-none --locked"
 print_info "This will generate WASM artifacts for deployment"
 echo ""
 
-cargo build --release --target wasm32v1-none --locked
-
-if [ $? -eq 0 ]; then
-    print_success "WASM artifacts built successfully"
-    print_info "Artifacts location: target/wasm32v1-none/release/"
-else
-    print_error "WASM build failed!"
-    exit 1
-fi
+run_cmd "cargo build --release --target wasm32v1-none --locked" cargo build --release --target wasm32v1-none --locked
+print_success "WASM artifacts built successfully"
+print_info "Artifacts location: target/wasm32v1-none/release/"
 
 # Test 4: Lint with Clippy
 print_section "Step 4: Lint Check (Clippy)"
@@ -95,14 +123,8 @@ print_info "Running: cargo clippy --all-targets -- -D warnings"
 print_info "This checks code quality and treats warnings as errors"
 echo ""
 
-cargo clippy --all-targets -- -D warnings
-
-if [ $? -eq 0 ]; then
-    print_success "No clippy warnings found"
-else
-    print_error "Clippy warnings or errors found!"
-    exit 1
-fi
+run_cmd "cargo clippy --all-targets -- -D warnings" cargo clippy --all-targets -- -D warnings
+print_success "No clippy warnings found"
 
 # Test 5: Run Specific Admin Rotation Tests
 print_section "Step 5: Run Specific Admin Rotation Tests"

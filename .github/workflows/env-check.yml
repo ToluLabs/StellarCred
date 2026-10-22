@@ -18,6 +18,17 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Validate required environment variables
+        run: |
+          set -euo pipefail
+          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Validating required env vars"
+          for var in NODE_ENV CI; do
+            if [ -z "${!var:-}" ]; then
+              echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: required env var '$var' is not set" >&2
+              exit 1
+            fi
+          done
+
       - name: Check environment variable documentation
         working-directory: frontend
         run: node scripts/check-env-sync.mjs

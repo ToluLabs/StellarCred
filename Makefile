@@ -9,6 +9,22 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 # ------------------------------------------------------------------------------
+# Logging helpers — timestamped stdout/stderr capture for deploy scripts
+# ------------------------------------------------------------------------------
+LOG_TS      := date -u +"%Y-%m-%dT%H:%M:%SZ"
+LOG_PREFIX  := [stellarcred]
+RUN_LOGGED  := set -o pipefail; \
+               log() { printf "%s %s %s\n" "$$($(LOG_TS))" "$(LOG_PREFIX)" "$$*"; }; \
+               err() { printf "%s %s ERROR: %s\n" "$$($(LOG_TS))" "$(LOG_PREFIX)" "$$*" >&2; }; \
+               run() { \
+                 log "RUN: $$*"; \
+                 "$$@" 2> >(while IFS= read -r line; do printf "%s %s STDERR: %s\n" "$$($(LOG_TS))" "$(LOG_PREFIX)" "$$line" >&2; done) \
+                       | while IFS= read -r line; do printf "%s %s STDOUT: %s\n" "$$($(LOG_TS))" "$(LOG_PREFIX)" "$$line"; done; \
+                 rc=$${PIPESTATUS[0]}; \
+                 if [ "$$rc" -ne 0 ]; then err "command failed (exit $$rc): $$*"; return "$$rc"; fi; \
+               }
+
+# ------------------------------------------------------------------------------
 # Pinned toolchain versions (single source of truth — mirrors .github/workflows/ci.yml)
 # ------------------------------------------------------------------------------
 RUST_VERSION    := 1.93.1

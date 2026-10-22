@@ -21,12 +21,49 @@ set -euo pipefail
 NOIR_VERSION="1.0.0-beta.9"
 BB_VERSION="0.87.0"
 
+# ---------------------------------------------------------------------------
+# Logging helpers: timestamped lines, stdout/stderr capture, and failure
+# context so deploy failures are never silent.
+# ---------------------------------------------------------------------------
+ts() { date -u '+%Y-%m-%dT%H:%M:%S.%3NZ' 2>/dev/null || date -u; }
+log() { printf '[%s] [build] [%s] %s\n' "$(ts)" "${LOG_LEVEL:-info}" "$*" >&2; }
+info() { LOG_LEVEL=info log "$@"; }
+warn() { LOG_LEVEL=warn log "$@"; }
+error() { LOG_LEVEL=error log "$@"; }
+
+# Run a command, capturing stdout/stderr to files and replaying them with
+# timestamps. Exits non-zero with the failing command and its exit code.
+run_logged() {
+  local desc="$1"; shift
+  local out err rc
+  out="$(mktemp)"; err="$(mktemp)"
+  info "-> $desc: $*"
+  if "$@" >"$out" 2>"$err"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do printf '[%s] [build] [stdout] %s\n' "$(ts)" "$line" >&2; done <"$out"
+  while IFS= read -r line || [ -n "$line" ]; do printf '[%s] [build] [stderr] %s\n' "$(ts)" "$line" >&2; done <"$err"
+  if [ "$rc" -ne 0 ]; then
+    error "command failed (exit $rc): $desc: $*"
+    rm -f "$out" "$err"
+    exit "$rc"
+  fi
+  rm -f "$out" "$err"
+}
+
+trap 'error "unexpected failure at line $LINENO\" (exit code $?)\""' ERR
+
+NOIR_VERSION="1.0.0-beta.9"
+BB_VERSION="0.87.0"
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_CIRCUITS="$(cd "$ROOT/.." && pwd)/frontend/public/circuits"
 export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
 
-command -v nargo >/dev/null || { echo "nargo not found — run: noirup -v $NOIR_VERSION"; exit 1; }
-command -v bb >/dev/null    || { echo "bb not found — run: bbup -v $BB_VERSION"; exit 1; }
+command -v nargo >/dev/null || { error "nargo not found — run: noirup -v $NOIR_VERSION"; exit 1; }
+command -v bb >/dev/null    || { error "bb not found — run: bbup -v $BB_VERSION"; exit 1; }
 
 # Map circuit directory -> frontend credential-type filename. Resolved from the
 # shared version module rather than duplicated here, so the two never disagree
@@ -46,16 +83,47 @@ REPO="$(cd "$ROOT/.." && pwd)"
 FIXTURES="$REPO/fixtures"
 mkdir -p "$FRONTEND_CIRCUITS"
 
+# Validate required environment variables before running any build step.
+# A missing required var is a hard failure (non-zero exit) with a clear reason.
+require_env() {
+  local var="$1"
+  if [ -z "${!var-}" ]; then
+    error "required environment variable $var is not set"
+    exit 1
+  fi
+}
+
+require_env HOME
+require_env PATH
+
+# Ensure the pinned toolchain is actually the one on PATH. This is a smoke
+# check that surfaces a mismatch before any artifacts are staged.
+check_tool_versions() {
+  local nargo_version bb_version
+  nargo_version="$(nargo --version 2>&1 | head -n1 || true)"
+  bb_version="$(bb --version 2>&1 | head -n1 || true)"
+  info "nargo: $nargo_version (expected $NOIR_VERSION)"
+  info "bb: $bb_version (expected $BB_VERSION)"
+  if ! grep -q "$NOIR_VERSION" <<<"$nargo_version"; then
+    warn "nargo version does not match $NOIR_VERSION"
+  fi
+  if ! grep -q "$BB_VERSION" <<<"$bb_version"; then
+    warn "bb version does not match $BB_VERSION"
+  fi
+}
+
+check_tool_versions
+
 if [ -f "$ROOT/scripts/gen_inputs.sh" ]; then
-  echo "Generating circuit prover inputs..."
-  bash "$ROOT/scripts/gen_inputs.sh"
+  info "Generating circuit prover inputs..."
+  run_logged "gen inputs" bash "$ROOT/scripts/gen_inputs.sh"
 fi
 
 build() {
   local name="$1"
   local dir="$ROOT/$name"
-  [ -f "$dir/Nargo.toml" ] || { echo "skip $name"; return; }
-  echo "=== $name ==="
+  [ -f "$dir/Nargo.toml" ] || { warn "skip $name (no Nargo.toml)"; return; }
+  info "=== $name ==="
   pushd "$dir" >/dev/null
 
   local type
@@ -72,17 +140,17 @@ build() {
   # stamp_version below fails loudly if it has no declared version.
   case "$name" in
     commit|commit3)
-      nargo compile
+      run_logged "nargo compile ($name)" nargo compile
       cp "$json" "$FRONTEND_CIRCUITS/${name}.json"
-      echo "  -> frontend/public/circuits/${name}.json"
+      info "  -> frontend/public/circuits/${name}.json"
       popd >/dev/null
       return
       ;;
   esac
 
   # Compile + VK are always possible (write_vk needs only the bytecode).
-  nargo compile
-  bb write_vk --scheme ultra_honk --oracle_hash keccak \
+  run_logged "nargo compile ($name)" nargo compile
+  run_logged "bb write_vk ($name)" bb write_vk --scheme ultra_honk --oracle_hash keccak \
     --bytecode_path "$json" \
     --output_path target --output_format bytes_and_fields
   # bb may emit vk as target/vk/vk — normalise to target/vk.
@@ -93,34 +161,34 @@ build() {
   cp target/vk "$FIXTURES/$type/vk"
   cp "$json" "$FRONTEND_CIRCUITS/${type}.json"
   stamp_version "$name" "$FRONTEND_CIRCUITS/${type}.json"
-  echo "  -> fixtures/${type}/vk"
-  echo "  -> frontend/public/circuits/${type}.json"
+  info "  -> fixtures/$type/vk"
+  info "  -> frontend/public/circuits/${type}.json"
 
   # A sample proof needs concrete inputs; only build it when Prover.toml exists.
   if [ -f Prover.toml ]; then
-    nargo execute
-    bb prove --scheme ultra_honk --oracle_hash keccak \
+    run_logged "nargo execute ($name)" nargo execute
+    run_logged "bb prove ($name)" bb prove --scheme ultra_honk --oracle_hash keccak \
       --bytecode_path "$json" --witness_path "$gz" \
       --output_path target --output_format bytes_and_fields
     cp target/proof "$FIXTURES/$type/proof"
     cp target/public_inputs "$FIXTURES/$type/public_inputs"
-    echo "  -> fixtures/${type}/{proof,public_inputs}"
+    info "  -> fixtures/$type/{proof,public_inputs}"
   fi
 
   # For jurisdiction_proof: also build an allowlist fixture if Prover_allowlist.toml exists.
   if [ "$name" = "jurisdiction_proof" ] && [ -f Prover_allowlist.toml ]; then
-    echo "  --- allowlist fixture ---"
+    info "  --- allowlist fixture ---"
     cp Prover.toml Prover.toml.bak
     cp Prover_allowlist.toml Prover.toml
-    nargo execute
-    bb prove --scheme ultra_honk --oracle_hash keccak \
+    run_logged "nargo execute ($name allowlist)" nargo execute
+    run_logged "bb prove ($name allowlist)" bb prove --scheme ultra_honk --oracle_hash keccak \
       --bytecode_path "$json" --witness_path "$gz" \
       --output_path target --output_format bytes_and_fields
     mkdir -p "$FIXTURES/jurisdiction_allow"
     cp target/vk "$FIXTURES/jurisdiction_allow/vk"
     cp target/proof "$FIXTURES/jurisdiction_allow/proof"
     cp target/public_inputs "$FIXTURES/jurisdiction_allow/public_inputs"
-    echo "  -> fixtures/jurisdiction_allow/{vk,proof,public_inputs}"
+    info "  -> fixtures/jurisdiction_allow/{vk,proof,public_inputs}"
     mv Prover.toml.bak Prover.toml
   fi
 
@@ -133,3 +201,4 @@ else
   for n in commit commit3 kyc_proof age_proof income_proof jurisdiction_proof funds_proof accreditation_proof range_proof date_range employment_proof aggregate_proof set_membership; do build "$n"; done
 fi
 
+info "build completed successfully"

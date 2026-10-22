@@ -1,0 +1,21 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "fix/issue-754-improve-logging-for-deployment-scripts",
+    "fix/issue-870-expose-contribution-score-via-public-api",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "fix/issue-754-improve-logging-for-deployment-scripts": "main",
+    "fix/issue-870-expose-contribution-score-via-public-api": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "fix/issue-754-improve-logging-for-deployment-scripts",
+    "fix/issue-870-expose-contribution-score-via-public-api",
+    "origin"
+  ]
+}
