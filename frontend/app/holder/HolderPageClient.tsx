@@ -37,6 +37,7 @@ import { SponsorBanner } from "@/components/holder/SponsorBanner";
 import { GuardianRecoveryControl } from "@/components/holder/GuardianRecoveryControl";
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
 import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
+import { OnboardingNudge } from "@/components/OnboardingNudge";
 
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer — load
@@ -187,6 +188,8 @@ function HolderInner() {
           <WalletButton />
         </div>
       </div>
+
+      <OnboardingNudge />
 
       <ConfigBanner />
 

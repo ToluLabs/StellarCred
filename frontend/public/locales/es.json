@@ -137,5 +137,115 @@
       "medium": "d MMM yyyy H:mm",
       "long": "EEEE, d MMMM yyyy"
     }
+  },
+  "onboarding": {
+    "steps": {
+      "welcome": {
+        "title": "Bienvenido a StellarCred",
+        "summary": "Demuestra hechos sobre ti mismo sin revelar datos personales. Este recorrido te guía por el ciclo completo una vez: una cartera, una credencial y una prueba que cualquiera puede verificar.",
+        "tip": "Tus credenciales viven solo en este navegador — nunca en un servidor. Puedes repetir este recorrido en cualquier momento con el botón "Tour" del encabezado.",
+        "railLabel": "Bienvenida"
+      },
+      "connect-wallet": {
+        "title": "Configura tu cartera",
+        "summary": "Conecta una cartera Stellar en testnet. Tu dirección de cartera es la identidad a la que están vinculadas tus credenciales — las pruebas siempre se envían con su clave.",
+        "tip": "Las credenciales están selladas a la dirección que las recibió, así que usa siempre la misma cartera. No se nos envía nada al conectar; la cartera solo comparte su dirección pública.",
+        "railLabel": "Cartera"
+      },
+      "get-credential": {
+        "title": "Crea tu credencial",
+        "summary": "Solicita una credencial de edad de demostración a la Autoridad StellarCred. Certifica «edad ≥ 18» sin incluir tu fecha de nacimiento — solo se almacena un compromiso criptográfico.",
+        "tip": "La credencial se cifra en reposo en tu navegador con una clave derivada de tu contraseña de desbloqueo. Haz una copia de seguridad desde el panel antes de borrar los datos del sitio.",
+        "railLabel": "Credencial"
+      },
+      "verify-trust": {
+        "title": "Verificar la confianza del emisor",
+        "summary": "Los protocolos solo aceptan pruebas de emisores registrados en cadena. Esta comprobación lee el emisor de tu nueva credencial del contrato IssuerRegistry y confirma que su clave de firma sigue siendo de confianza.",
+        "tip": "Un emisor de confianza es lo que hace que una prueba sea significativa: cualquiera que verifique en cadena vuelve a ejecutar esta misma comprobación, así que ver «Confiable» aquí significa que tus pruebas futuras serán aceptadas.",
+        "railLabel": "Confianza"
+      },
+      "generate-proof": {
+        "title": "Generar una prueba",
+        "summary": "Genera una prueba de conocimiento cero localmente. Solo el reclamo («edad ≥ 18») y la prueba salen de tu dispositivo — los datos detrás de él nunca lo hacen.",
+        "tip": "La generación de pruebas se ejecuta completamente en tu navegador, por lo que la primera prueba tarda unos segundos en cargar el circuito. El proceso de incorporación permanece disponible hasta que termines.",
+        "railLabel": "Prueba"
+      },
+      "unlock": {
+        "title": "Estás listo",
+        "summary": "Cartera, credencial, confianza — el ciclo principal está completo. Cualquier protocolo de Stellar puede ahora verificar tus pruebas en una sola llamada de contrato.",
+        "tip": "Explora las aplicaciones que aceptan pruebas de StellarCred, o abre tu panel para generar una prueba real en cadena.",
+        "railLabel": "Finalizar"
+      }
+    },
+    "trust": {
+      "active": {
+        "label": "Confiable",
+        "message": "El emisor está registrado en cadena y su clave de firma es aceptada. Las pruebas de esta credencial pasarán el control de emisor de confianza del protocolo."
+      },
+      "key_retired": {
+        "label": "Confiable (clave en retiro)",
+        "message": "El emisor rotó a una nueva clave de firma, pero la clave de esta credencial aún está dentro de su ventana de validez. Las pruebas funcionan ahora; las credenciales más nuevas del emisor usan la nueva clave."
+      },
+      "key_revoked": {
+        "label": "Clave revocada",
+        "message": "La clave de firma de este emisor fue revocada de emergencia, por lo que las pruebas de esta credencial pueden ser rechazadas. Espera a que el emisor instale una clave de reemplazo, o obtén una nueva credencial."
+      },
+      "issuer_revoked": {
+        "label": "Emisor revocado",
+        "message": "Este emisor fue eliminado permanentemente del registro, por lo que los protocolos rechazarán sus credenciales. Obtén una nueva credencial de un emisor de confianza para continuar."
+      },
+      "unknown": {
+        "label": "No se pudo comprobar",
+        "message": "No se pudo acceder al registro en este momento. Esto no bloquea el proceso de incorporación — la misma comprobación se ejecuta automáticamente cada vez que pruebes, y puedes reintentarlo aquí."
+      },
+      "checkError": {
+        "label": "Comprobación fallida",
+        "message": "La comprobación de confianza encontró un error. Inténtalo de nuevo — si la red no está disponible, seguirá funcionando una vez que se restablezca la conectividad."
+      }
+    },
+    "buttons": {
+      "next": "Siguiente",
+      "back": "Atrás",
+      "skipTour": "Omitir recorrido",
+      "getStarted": "Comenzar",
+      "openProofDashboard": "Abrir Panel de Pruebas",
+      "skipForNow": "Omitir por ahora",
+      "getNewCredential": "Obtener nueva credencial",
+      "connectWallet": "Conectar cartera",
+      "connecting": "Conectando…",
+      "getAgeCredential": "Obtener credencial de edad",
+      "creating": "Creando…",
+      "runTrustCheck": "Ejecutar comprobación de confianza",
+      "runAgain": "Ejecutar la comprobación de nuevo",
+      "checking": "Comprobando…",
+      "tryAgain": "Intentar de nuevo"
+    },
+    "nav": {
+      "stepOf": "Paso {current} de {total}",
+      "stepAriaLabel": "Paso {num}: {label}",
+      "stepDone": "(hecho)",
+      "backToStep": "Volver a: {title}"
+    },
+    "wizard": {
+      "title": "Guía de configuración",
+      "skipAriaLabel": "Omitir incorporación",
+      "helpLink": "Más información en la documentación",
+      "stepCounter": "Paso {current} de {total}"
+    },
+    "proofGuide": {
+      "step1": "Selecciona una credencial en el panel",
+      "step2": "Elige la aplicación verificadora que quieres usar",
+      "step3": "Haz clic en Generar prueba — el circuito se ejecuta localmente",
+      "step4": "Envía la prueba en cadena"
+    },
+    "revokedGuidance": {
+      "title": "Credencial de una clave revocada",
+      "message": "Tu credencial fue emitida por una clave revocada. Para continuar usando StellarCred, obtén una nueva credencial de un emisor de confianza."
+    },
+    "nudge": {
+      "message": "Completa tu configuración — genera tu primera prueba para finalizar el proceso de incorporación",
+      "continueSetup": "Continuar configuración",
+      "dismiss": "Descartar aviso"
+    }
   }
 }
