@@ -6,6 +6,7 @@
   "scripts": {
     "test": "nyc pnpm run test:unit",
     "test:unit": "node --test test/**/*.test.js",
+    "start": "node src/server.js",
     "coverage": "nyc pnpm run test:unit",
     "coverage:report": "nyc report --reporter=text-summary --reporter=lcov"
   },
