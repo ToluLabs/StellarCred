@@ -219,6 +219,13 @@ describe("shared query layer drives both backends identically", () => {
     });
     expect(byIssuer.postgres).toBe(byIssuer.sqlite);
     expect(byIssuer.params).toEqual(["GISSUER"]);
+
+    const byIssuerLimited = await statementsFor(async (db) => {
+      await db.claimsByIssuer("GISSUER", 25);
+    });
+    expect(byIssuerLimited.postgres).toBe(byIssuerLimited.sqlite);
+    expect(byIssuerLimited.sqlite).toContain("LIMIT ?");
+    expect(byIssuerLimited.params).toEqual(["GISSUER", 25]);
   });
 
   it("aggregates", async () => {
@@ -432,6 +439,17 @@ describe("schema", () => {
     expect(buildSchema(postgres).indexes).toContain(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_claims_id",
     );
+  });
+
+  it("indexes the issuer column used by per-issuer listings", () => {
+    for (const dialect of [
+      createSqliteDialect(fakeSqlite().db),
+      createPostgresDialect(fakePostgres().conn),
+    ]) {
+      expect(buildSchema(dialect).indexes).toContain(
+        "CREATE INDEX IF NOT EXISTS idx_claims_issuer ON claims (issuer)",
+      );
+    }
   });
 
   it("names every column it declares", () => {

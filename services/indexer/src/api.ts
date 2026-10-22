@@ -635,8 +635,9 @@ export function buildApp(
     })
   );
 
-  // ── GET /issuers/:issuer/credentials ──────────────────────────────────────
-  // Returns all credentials issued by this issuer, for the revocation dashboard (#540).
+  // ── GET /issuers/:issuer/credentials?limit= ───────────────────────────────
+  // Returns credentials issued by this issuer, for the revocation dashboard (#540).
+  // `limit` is optional and capped at MAX_LIMIT; omit it for the full set.
   app.get(
     "/issuers/:issuer/credentials",
     asyncHandler(async (req, res) => {
@@ -645,7 +646,17 @@ export function buildApp(
         res.status(400).json({ error: "issuer path parameter is required" });
         return;
       }
-      const rawClaims = await db.claimsByIssuer(issuer.trim());
+      const rawLimit = req.query["limit"];
+      let limit: number | undefined;
+      if (rawLimit != null && String(rawLimit).trim() !== "") {
+        const parsed = parseInt(String(rawLimit), 10);
+        if (isNaN(parsed) || parsed < 1) {
+          res.status(400).json({ error: "limit must be a positive integer" });
+          return;
+        }
+        limit = Math.min(parsed, MAX_LIMIT);
+      }
+      const rawClaims = await db.claimsByIssuer(issuer.trim(), limit);
       res.json({
         issuer: issuer.trim(),
         credentials: rawClaims.map((row) => serializeClaim(row)),
