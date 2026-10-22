@@ -7,6 +7,7 @@
 // or opens.
 
 import { parseCredential, type Credential } from "./credential";
+import { filterCredentialForExport } from "./export-visibility";
 import {
   encryptWithPassphrase,
   decryptWithPassphrase,
@@ -30,7 +31,8 @@ export async function buildTransferUrl(
   passphrase: string,
   origin: string = BASE_URL,
 ): Promise<string> {
-  const payload = await encryptWithPassphrase(JSON.stringify(cred), passphrase);
+  const exportableCredential = filterCredentialForExport(cred);
+  const payload = await encryptWithPassphrase(JSON.stringify(exportableCredential), passphrase);
   const url = new URL("/holder", origin);
   url.searchParams.set(IMPORT_PARAM, payload);
   return url.toString();

@@ -434,9 +434,29 @@ npm test
 # Build TypeScript to dist/
 npm run build
 
+# Lint (see the note below the block)
+npm run lint
+
 # Start the indexer
 npm start
 ```
+
+`npm run lint` runs ESLint 9 over `src/` using [eslint.config.mjs](eslint.config.mjs),
+which replaces the legacy `.eslintrc.json` that sat here unread: ESLint was never
+added to this service's dependencies, so the config never ran. It is still not in
+`package-lock.json`, because the build and test jobs install with `npm ci` and that
+fails as soon as `package.json` and the lockfile disagree. Install the lint
+toolchain once per clone:
+
+```bash
+npm install --no-save --no-package-lock eslint@9 @eslint/js@9 typescript-eslint@8
+```
+
+`.github/workflows/lint.yml` installs the same toolchain in CI and fails the run on
+any error-level rule; the only warning-level rule is
+`@typescript-eslint/no-explicit-any`, held back by seven pre-existing uses at XDR,
+API and SDK-resolver boundaries. See CONTRIBUTING.md §Linting for the monorepo-wide
+contract.
 
 ---
 

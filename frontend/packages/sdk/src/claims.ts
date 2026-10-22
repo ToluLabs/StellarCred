@@ -63,17 +63,13 @@ export function __resetBoundaryWarningForTesting(): void {
   _warnedBoundaryViolation = false;
 }
 
-function warnOnClientServerBoundaryViolation(opts: {
-  registryId?: string;
-  rpcUrl?: string;
-}): void {  if (!isBrowser()) return;
+function warnOnClientServerBoundaryViolation(opts: { registryId?: string; rpcUrl?: string }): void {
+  if (!isBrowser()) return;
   if (!isDev()) return;
   if (_warnedBoundaryViolation) return;
 
   const proc =
-    typeof process !== "undefined"
-      ? (process.env as Record<string, string | undefined>)
-      : {};
+    typeof process !== "undefined" ? (process.env as Record<string, string | undefined>) : {};
 
   const leakedServerVar =
     !!proc["STELLARCRED_REGISTRY_ID"] ||
@@ -82,21 +78,18 @@ function warnOnClientServerBoundaryViolation(opts: {
     !!proc["STELLARCRED_BASE_URL"] ||
     !!proc["STELLARCRED_NETWORK"];
 
-  const serverEnvRegistryId =
-    proc["STELLARCRED_REGISTRY_ID"] ?? proc["PROOF_REGISTRY_ID"];
+  const serverEnvRegistryId = proc["STELLARCRED_REGISTRY_ID"] ?? proc["PROOF_REGISTRY_ID"];
   const serverEnvRpcUrl = proc["STELLARCRED_RPC_URL"];
   const configMatchesServerVar =
     (opts.registryId !== undefined &&
       opts.registryId !== "" &&
       opts.registryId === serverEnvRegistryId) ||
-    (opts.rpcUrl !== undefined &&
-      opts.rpcUrl !== "" &&
-      opts.rpcUrl === serverEnvRpcUrl);
+    (opts.rpcUrl !== undefined && opts.rpcUrl !== "" && opts.rpcUrl === serverEnvRpcUrl);
 
   if (!leakedServerVar && !configMatchesServerVar) return;
 
   _warnedBoundaryViolation = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     "[StellarCred] configure() was called in a browser context with values that " +
       "appear to come from server-only environment variables (e.g. STELLARCRED_REGISTRY_ID " +
@@ -126,7 +119,7 @@ function warnOnIndexerKeyInBrowser(indexerApiKey?: string): void {
   if (!indexerApiKey) return;
 
   _warnedIndexerKeyInBrowser = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     "[StellarCred] configure() was called in a browser context with an " +
       "`indexerApiKey`. That key is a secret and is now exposed to every visitor " +
@@ -181,9 +174,7 @@ function parseNetwork(raw: string | undefined): StellarNetwork {
 }
 
 const _preset =
-  NETWORK_PRESETS[
-    parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))
-  ];
+  NETWORK_PRESETS[parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))];
 
 export interface RetryOptions {
   retries?: number;
@@ -249,8 +240,7 @@ const DEFAULT_CONFIG: Required<SDKConfig> = {
     env("STELLARCRED_NETWORK_PASSPHRASE", "NEXT_PUBLIC_NETWORK_PASSPHRASE") ||
     _preset.networkPassphrase,
   baseUrl:
-    env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") ||
-    "https://stellarcred.xyz",
+    env("STELLARCRED_BASE_URL", "NEXT_PUBLIC_STELLARCRED_BASE_URL") || "https://stellarcred.xyz",
   requestTimeoutMs: 10_000,
   retries: 3,
   baseDelayMs: 500,
@@ -348,7 +338,7 @@ function warnIfMissingRegistryIdOnce(): void {
     (process.env as Record<string, string | undefined>)?.NODE_ENV !== "production";
   if (!isDevMode) return;
   _warnedMissingRegistryId = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     "[StellarCred] hasClaim()/getClaim()/getClaims() called with no `registryId` configured. " +
       "Every check will silently return false/[] until you set STELLARCRED_REGISTRY_ID " +
@@ -462,6 +452,14 @@ export interface ClaimOptions {
    * Requires `indexerUrl` to be configured. See {@link ClaimSource}.
    */
   source?: ClaimSource;
+  /**
+   * Application context identifier for unique-personhood / Sybil resistance (#395).
+   * Protocols pass `appContext` to enforce one-per-person verification per app
+   * without linking identities across apps.
+   */
+  appContext?: string;
+  /** Optional pre-derived nullifier. When omitted with appContext, derived from witness if available. */
+  nullifier?: string;
 }
 
 export interface Claim {
@@ -491,11 +489,7 @@ export interface PresetVerificationResult {
 }
 
 export type CredentialFailureReason =
-  | "not_verified"
-  | "expired"
-  | "revoked"
-  | "wrong_issuer"
-  | "unmet_threshold";
+  "not_verified" | "expired" | "revoked" | "wrong_issuer" | "unmet_threshold";
 
 export interface ProofRecordDetails {
   verifiedAt: number;
@@ -513,7 +507,6 @@ export interface CredentialStatusResult {
   record?: ProofRecordDetails | null;
   error?: string;
 }
-
 
 // ---------------------------------------------------------------------------
 // Low-level read: ProofRegistry.is_verified via simulation
@@ -731,10 +724,7 @@ export interface NormalizedRpcErrorOptions {
  * Callers that want a code/message union should still inspect `contractError`
  * (for contract panics) or `status` (for transport errors).
  */
-export function normalizeRpcError(
-  raw: unknown,
-  opts: NormalizedRpcErrorOptions,
-): RpcError {
+export function normalizeRpcError(raw: unknown, opts: NormalizedRpcErrorOptions): RpcError {
   let contractError: ContractError | undefined;
   let status: number | undefined;
 
@@ -763,10 +753,7 @@ export function normalizeRpcError(
   });
 }
 
-export async function withRetry<T>(
-  operation: () => Promise<T>,
-  opts?: RetryOptions,
-): Promise<T> {
+export async function withRetry<T>(operation: () => Promise<T>, opts?: RetryOptions): Promise<T> {
   const retries = opts?.retries ?? _config.retries;
   const baseDelayMs = opts?.baseDelayMs ?? _config.baseDelayMs;
   const maxDelayMs = opts?.maxDelayMs ?? _config.maxDelayMs;
@@ -831,9 +818,9 @@ function warnIfMissingIndexerUrlOnce(): void {
   }
   if (_warnedMissingIndexerUrl || !isDev()) return;
   _warnedMissingIndexerUrl = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
-    "[StellarCred] A claim read used `source: \"indexer\"` or \"indexer-verified\" " +
+    '[StellarCred] A claim read used `source: "indexer"` or "indexer-verified" ' +
       "but no `indexerUrl` is configured, so it fell back to returning " +
       "false/null. Set STELLARCRED_INDEXER_URL (or NEXT_PUBLIC_INDEXER_URL) or call " +
       "StellarCred.configure({ indexerUrl }). This warning only logs in development.",
@@ -857,7 +844,7 @@ function warnOnIndexerDrift(
   if (indexerValid === chainValid) return;
   if (_warnedIndexerDrift) return;
   _warnedIndexerDrift = true;
-  // eslint-disable-next-line no-console
+
   console.warn(
     `[StellarCred] Indexer disagreed with the chain for claim "${claimType}": ` +
       `indexer said ${indexerValid}, ProofRegistry said ${chainValid}. The chain ` +
@@ -876,9 +863,7 @@ async function readIndexerRows(
 
   if (!indexerUrl) {
     if (throwOnError) {
-      throw new ConfigError(
-        "StellarCred is not configured for indexer reads: missing indexerUrl",
-      );
+      throw new ConfigError("StellarCred is not configured for indexer reads: missing indexerUrl");
     }
     warnIfMissingIndexerUrlOnce();
     return null;
@@ -934,12 +919,7 @@ async function readIsVerifiedFromIndexer(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
-  const rows = await readIndexerRows(
-    wallet,
-    throwOnError,
-    requestTimeoutMs,
-    retryOptions,
-  );
+  const rows = await readIndexerRows(wallet, throwOnError, requestTimeoutMs, retryOptions);
   if (!rows) return null;
 
   const row = findClaimRow(rows, claimType);
@@ -966,12 +946,7 @@ async function readCheckClaimFromIndexer(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<boolean> {
-  const rows = await readIndexerRows(
-    wallet,
-    throwOnError,
-    requestTimeoutMs,
-    retryOptions,
-  );
+  const rows = await readIndexerRows(wallet, throwOnError, requestTimeoutMs, retryOptions);
   if (!rows) return false;
 
   const row = findClaimRow(rows, claimType);
@@ -1208,7 +1183,6 @@ async function readRecord(
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -1274,7 +1248,10 @@ export async function hasClaim(
 export async function getClaim(
   wallet: string,
   claimType: string,
-  opts?: Pick<ClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
+  opts?: Pick<
+    ClaimOptions,
+    "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source"
+  >,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
   if (opts?.source !== "indexer") warnIfMissingRegistryIdOnce();
 
@@ -1433,7 +1410,6 @@ export async function checkClaimStatus(
   };
 }
 
-
 /**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.
  */
@@ -1504,7 +1480,10 @@ export async function hasClaims(
 export async function verifyPreset(
   wallet: string,
   claims: readonly PresetClaim[],
-  opts?: Pick<BatchClaimOptions, "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source">,
+  opts?: Pick<
+    BatchClaimOptions,
+    "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source"
+  >,
 ): Promise<PresetVerificationResult> {
   const types = claims.map((c) => c.type);
   const minThresholds: Partial<Record<ClaimType, number>> = {};
@@ -1630,14 +1609,10 @@ export function buildVerifyUrl(opts: {
   }
 
   if (opts.expiresInMinutes !== undefined) {
-    if (
-      !Number.isFinite(opts.expiresInMinutes) ||
-      opts.expiresInMinutes <= 0
-    ) {
+    if (!Number.isFinite(opts.expiresInMinutes) || opts.expiresInMinutes <= 0) {
       throw new Error("expiresInMinutes must be a positive number");
     }
-    const exp =
-      Math.floor(Date.now() / 1000) + Math.floor(opts.expiresInMinutes * 60);
+    const exp = Math.floor(Date.now() / 1000) + Math.floor(opts.expiresInMinutes * 60);
     url.searchParams.set("exp", String(exp));
   }
 
@@ -1838,4 +1813,88 @@ export function watchClaim(
       poll();
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Nullifier / Unique Personhood (#395)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derives a deterministic per-app nullifier for cross-app unlinkable Sybil resistance (#395).
+ * Generates a 32-byte hex string representing the hash of secret and appContext.
+ */
+export function deriveNullifier(secret: string | bigint, appContext: string | bigint): string {
+  const payload = `${secret.toString()}::${appContext.toString()}`;
+  let h1 = 0xdeadbeef ^ 42;
+  let h2 = 0x41c6ce57 ^ 42;
+  for (let i = 0; i < payload.length; i++) {
+    const ch = payload.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const part1 = (h1 >>> 0).toString(16).padStart(8, "0");
+  const part2 = (h2 >>> 0).toString(16).padStart(8, "0");
+  const part3 = (Math.imul(h1, 31) >>> 0).toString(16).padStart(8, "0");
+  const part4 = (Math.imul(h2, 37) >>> 0).toString(16).padStart(8, "0");
+  return `${part1}${part2}${part3}${part4}`.padEnd(64, "0");
+}
+
+/**
+ * Checks on-chain whether a nullifier has already been recorded in a given application context.
+ */
+export async function isNullifierUsed(
+  appContext: string,
+  nullifier: string,
+  opts?: { requestTimeoutMs?: number; throwOnError?: boolean },
+): Promise<boolean> {
+  const client = (await getClient(opts?.throwOnError)) as any;
+  if (!client) {
+    return false;
+  }
+  if (typeof client.is_nullifier_used !== "function") {
+    return false;
+  }
+  try {
+    const res: any = await withRequestTimeout(
+      () =>
+        client.is_nullifier_used({
+          app_context: appContext,
+          nullifier,
+        }),
+      opts?.requestTimeoutMs ?? _config.requestTimeoutMs,
+    );
+    return typeof res?.result === "boolean" ? res.result : Boolean(res);
+  } catch (err) {
+    if (opts?.throwOnError) {
+      throw new RpcError(`Failed to check nullifier for context "${appContext}"`, { cause: err });
+    }
+    return false;
+  }
+}
+
+/**
+ * High-level unique personhood gating (#395).
+ * Validates that the holder has a valid credential claim AND has not already consumed
+ * their one-per-person grant in this application context.
+ */
+export async function verifyUniquePersonhood(params: {
+  wallet: string;
+  claim: ClaimType;
+  appContext: string;
+  nullifier: string;
+  opts?: ClaimOptions;
+}): Promise<{ verified: boolean; unique: boolean }> {
+  const verified = await hasClaim(params.wallet, params.claim, params.opts);
+  if (!verified) {
+    return { verified: false, unique: false };
+  }
+
+  const alreadyUsed = await isNullifierUsed(params.appContext, params.nullifier, {
+    requestTimeoutMs: params.opts?.requestTimeoutMs,
+    throwOnError: params.opts?.throwOnError,
+  });
+
+  return { verified: true, unique: !alreadyUsed };
 }

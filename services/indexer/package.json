@@ -6,10 +6,13 @@
   "scripts": {
     "check-env": "node scripts/check-env-sync.mjs",
     "check": "npm run check-env && npm run lint && npm run test",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "start": "node dist/index.js",
     "dev": "npm run build && npm start",
     "build": "tsc",
-    "test": "jest"
+    "test": "jest",
+    "test:coverage": "jest --coverage --coverageReporters=json-summary --coverageReporters=text"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^12.3.0",

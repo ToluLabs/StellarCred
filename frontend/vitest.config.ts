@@ -45,6 +45,11 @@ export default defineConfig({
       "components/**/*.test.{js,ts,tsx}",
     ],
     testTimeout: 30000,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      reportsDirectory: "./coverage",
+    },
     env: {
       // Module-scope constants (e.g. app/verify/page.tsx's DEMO_ISSUER_ID) read
       // this at import time, before any test file body runs — must be set here.

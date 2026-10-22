@@ -7,76 +7,113 @@
 // therefore not treated as connect-time failures here — wallet-context.tsx polls
 // getNetworkOk() live after connecting so the UI can show a persistent warning
 // that clears itself the moment the user switches networks, without reconnecting.
+//
+// The kit is a large dependency (stellar-wallets-kit, WalletConnect + pino, ~200
+// KB gzipped in the common chunk) that every page currently pays for, because it
+// is statically imported here. It is lazy-loaded on first use (connect/restore /
+// sign) so the root layout — and every page — avoids bundling it.
 
-import {
-  StellarWalletsKit,
-  allowAllModules,
-  FREIGHTER_ID,
-  type ModuleInterface,
-} from "@creit.tech/stellar-wallets-kit";
-// Not re-exported from the package root: unlike the browser-extension modules
-// allowAllModules() already covers, WalletConnect needs a projectId before it
-// can be constructed, so the kit excludes it from "modules that just work".
-import {
-  WalletConnectModule,
-  WalletConnectAllowedMethods,
-  WALLET_CONNECT_ID,
-} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { NETWORK_PASSPHRASE } from "./stellar";
-import { getLedgerModule, kitNetworkForPassphrase, LEDGER_ID } from "./ledger-module";
+import type {
+  StellarWalletsKit,
+  ModuleInterface,
+  WalletNetwork,
+} from "@creit.tech/stellar-wallets-kit";
+import type { LedgerModule } from "./ledger-module";
 
-// One shared network mapping (see kitNetworkForPassphrase in ledger-module.ts)
-// — previously duplicated here and in the Ledger module with subtly different
-// inputs (app selector name vs. passphrase equality).
-const APP_NETWORK = kitNetworkForPassphrase(NETWORK_PASSPHRASE);
+// One shared network mapping — previously via kitNetworkForPassphrase() in
+// ledger-module.ts. Inlined here as literals so this entry module never
+// statically imports the kit (or ledger-module): the WalletNetwork enum values
+// ARE the passphrases themselves ("Public Global Stellar Network ; …" for
+// PUBLIC, "Test SDF Network ; …" for TESTNET), so this stays in sync by
+// construction. The kit has no futurenet enum, so anything that isn't mainnet
+// signs as testnet.
+const APP_NETWORK = (
+  NETWORK_PASSPHRASE === "Public Global Stellar Network ; September 2015"
+    ? "Public Global Stellar Network ; September 2015"
+    : "Test SDF Network ; September 2015"
+) as WalletNetwork;
 
 const CONNECT_TIMEOUT_MS = 60_000;
-const APP_BASE_URL = process.env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? "https://stellarcred.xyz";
+const APP_BASE_URL =
+  process.env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? "https://stellarcred.xyz";
 // Get a free project ID at https://cloud.reown.com — WalletConnect is omitted
-// from the wallet-picker modal entirely when unset (see getKit() below), it
+// from the wallet-picker modal entirely when unset (see loadKit() below), it
 // isn't a hard error.
-const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+const WALLETCONNECT_PROJECT_ID =
+  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 
-function walletConnectModule(): ModuleInterface | null {
-  if (!WALLETCONNECT_PROJECT_ID) return null;
-  return new WalletConnectModule({
-    projectId: WALLETCONNECT_PROJECT_ID,
-    name: "StellarCred",
-    description: "Privacy-preserving on-chain credentials for Stellar",
-    url: APP_BASE_URL,
-    icons: [`${APP_BASE_URL}/icon.svg`],
-    method: WalletConnectAllowedMethods.SIGN,
-    network: APP_NETWORK,
-  });
-}
+let kitPromise: Promise<StellarWalletsKit> | null = null;
+let ledgerModule: LedgerModule | null = null;
 
-let kit: StellarWalletsKit | null = null;
-let ledgerModule: ReturnType<typeof getLedgerModule> | null = null;
+async function loadKit(): Promise<StellarWalletsKit> {
+  if (!kitPromise) {
+    kitPromise = (async () => {
+      const [kitModule, walletConnectModuleModule, ledgerModuleModule] =
+        await Promise.all([
+          import("@creit.tech/stellar-wallets-kit"),
+          import(
+            "@creit.tech/stellar-wallets-kit/modules/walletconnect.module"
+          ),
+          import("./ledger-module"),
+        ]);
 
-export function getKit(): StellarWalletsKit {
-  if (!kit) {
-    const wc = walletConnectModule();
-    ledgerModule = getLedgerModule();
-    const modules: ModuleInterface[] = [...allowAllModules()];
-    if (wc) modules.push(wc);
-    modules.push(ledgerModule);
-    kit = new StellarWalletsKit({
-      network: APP_NETWORK,
-      selectedWalletId: FREIGHTER_ID,
-      modules,
-    });
+      const { StellarWalletsKit, allowAllModules, FREIGHTER_ID } = kitModule;
+
+      const { WalletConnectModule, WalletConnectAllowedMethods } =
+        walletConnectModuleModule;
+
+      const { getLedgerModule } = ledgerModuleModule;
+
+      const walletConnectModule = (): ModuleInterface | null => {
+        if (!WALLETCONNECT_PROJECT_ID) return null;
+        return new WalletConnectModule({
+          projectId: WALLETCONNECT_PROJECT_ID,
+          name: "StellarCred",
+          description: "Privacy-preserving on-chain credentials for Stellar",
+          url: APP_BASE_URL,
+          icons: [`${APP_BASE_URL}/icon.svg`],
+          method: WalletConnectAllowedMethods.SIGN,
+          network: APP_NETWORK,
+        });
+      };
+
+      const wc = walletConnectModule();
+      ledgerModule = getLedgerModule();
+      const modules: ModuleInterface[] = [...allowAllModules()];
+      if (wc) modules.push(wc);
+      modules.push(ledgerModule);
+
+      return new StellarWalletsKit({
+        network: APP_NETWORK,
+        selectedWalletId: FREIGHTER_ID,
+        modules,
+      });
+    })();
   }
-  return kit;
+  return kitPromise;
 }
 
-export function getLedger(): ReturnType<typeof getLedgerModule> {
-  getKit();
-  return ledgerModule!;
+export function getKit(): Promise<StellarWalletsKit> {
+  return loadKit();
 }
 
-export { getLedgerModule };
+export async function getLedger(): Promise<LedgerModule> {
+  await loadKit();
+  if (!ledgerModule) {
+    // loadKit() always sets this; guard for a mocked/broken kit module.
+    const { getLedgerModule } = await import("./ledger-module");
+    ledgerModule = getLedgerModule();
+  }
+  return ledgerModule;
+}
 
-export type WalletErrorKind = "not-installed" | "dismissed" | "rejected" | "timeout" | "unknown";
+export type WalletErrorKind =
+  | "not-installed"
+  | "dismissed"
+  | "rejected"
+  | "timeout"
+  | "unknown";
 
 export class WalletConnectError extends Error {
   kind: WalletErrorKind;
@@ -202,7 +239,10 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
   // Its own "not connected" errors are relay/session failures (dropped
   // socket, expired session, peer rejection), so it's excluded from the
   // not-installed classification and falls through to "rejected" instead.
-  if (wallet?.id !== WALLET_CONNECT_ID && wallet?.id !== LEDGER_ID && /not connected|not available/i.test(message)) {
+  // IDs are inline literals ("wallet_connect" from the kit's
+  // walletconnect.module, "ledger" from our LedgerModule) so this pure
+  // error-mapping helper never needs a runtime kit/ledger import.
+  if (wallet?.id !== "wallet_connect" && wallet?.id !== "ledger" && /not connected|not available/i.test(message)) {
     return new WalletConnectError(
       "not-installed",
       wallet
@@ -212,7 +252,7 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
     );
   }
   // Ledger-specific errors: connection issues, device locked, app not open
-  if (wallet?.id === LEDGER_ID) {
+  if (wallet?.id === "ledger") {
     if (/locked|pin/i.test(message)) {
       return new WalletConnectError(
         "rejected",
@@ -272,7 +312,7 @@ function withTimeout<T>(
 // false-positive mismatch warning.
 export async function getNetworkOk(): Promise<boolean> {
   try {
-    const { networkPassphrase } = await getKit().getNetwork();
+    const { networkPassphrase } = await (await getKit()).getNetwork();
     return !networkPassphrase || networkPassphrase === NETWORK_PASSPHRASE;
   } catch {
     return true;
@@ -285,7 +325,7 @@ export interface Connection {
 }
 
 export async function connect(): Promise<Connection> {
-  const k = getKit();
+  const k = await getKit();
   const attempt = new Promise<Connection>((resolve, reject) => {
     let resolved = false;
     k.openModal({
@@ -315,7 +355,7 @@ export async function connect(): Promise<Connection> {
 
 // Restore a previously-selected wallet (no modal) after a full page reload.
 export async function restore(walletId: string): Promise<string> {
-  const k = getKit();
+  const k = await getKit();
   k.setWallet(walletId);
   const { address } = await k.getAddress();
   return address;
@@ -323,7 +363,7 @@ export async function restore(walletId: string): Promise<string> {
 
 /** Sign a transaction XDR with the connected wallet; returns the signed XDR. */
 export async function signTx(xdr: string, address: string): Promise<string> {
-  const k = getKit();
+  const k = await getKit();
   const { signedTxXdr } = await k.signTransaction(xdr, {
     address,
     networkPassphrase: NETWORK_PASSPHRASE,
