@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   IconWallet,
   IconArrowRight,
@@ -146,68 +147,78 @@ function GuidanceTip({ text }: { text: string }) {
 /** Horizontal roadmap: one chip per step, visited ones are clickable. */
 function StepRail({ current, onJump }: { current: number; onJump: (index: number) => void }) {
   return (
-    <div
-      className="row"
-      style={{ gap: "0.25rem", justifyContent: "space-between", marginBottom: "1.1rem" }}
-      aria-label="Onboarding progress"
-    >
-      {ONBOARDING_STEPS.map((step, i) => {
-        const done = i < current;
-        const active = i === current;
-        const reachable = i <= current;
-        return (
-          <button
-            key={step}
-            type="button"
-            onClick={() => reachable && onJump(i)}
-            disabled={!reachable}
-            aria-current={active ? "step" : undefined}
-            aria-label={`Step ${i + 1}: ${STEP_GUIDANCE[step].railLabel}${done ? " (done)" : ""}`}
-            title={done ? `Back to: ${STEP_GUIDANCE[step].title}` : undefined}
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "0.3rem",
-              background: "none",
-              border: "none",
-              padding: "0.2rem 0",
-              cursor: reachable ? "pointer" : "default",
-              color: active ? ACCENT : done ? "var(--muted)" : "var(--faint)",
-            }}
-          >
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                display: "grid",
-                placeItems: "center",
-                fontSize: "0.62rem",
-                fontWeight: 600,
-                background: active || done ? "rgba(62, 207, 142, 0.12)" : "transparent",
-                border: `1.5px solid ${active ? ACCENT : done ? "rgba(62, 207, 142, 0.5)" : "var(--border)"}`,
-                transition: "all 0.25s var(--ease)",
-              }}
-            >
-              {done ? <IconCheck size={12} stroke={2.5} /> : i + 1}
-            </span>
-            <span
-              style={{
-                fontSize: "0.6rem",
-                letterSpacing: "0.02em",
-                textTransform: "uppercase",
-                color: active ? ACCENT : "var(--faint)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {STEP_GUIDANCE[step].railLabel}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <>
+      <div className="ob-step-rail">
+        <div
+          className="row"
+          style={{ gap: "0.25rem", justifyContent: "space-between", marginBottom: "1.1rem" }}
+          aria-label="Onboarding progress"
+        >
+          {ONBOARDING_STEPS.map((step, i) => {
+            const done = i < current;
+            const active = i === current;
+            const reachable = i <= current;
+            return (
+              <button
+                key={step}
+                type="button"
+                onClick={() => reachable && onJump(i)}
+                disabled={!reachable}
+                aria-current={active ? "step" : undefined}
+                aria-label={`Step ${i + 1}: ${STEP_GUIDANCE[step].railLabel}${done ? " (done)" : ""}`}
+                title={done ? `Back to: ${STEP_GUIDANCE[step].title}` : undefined}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "0.3rem",
+                  background: "none",
+                  border: "none",
+                  padding: "0.2rem 0",
+                  cursor: reachable ? "pointer" : "default",
+                  color: active ? ACCENT : done ? "var(--muted)" : "var(--faint)",
+                }}
+              >
+                <span
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: "0.62rem",
+                    fontWeight: 600,
+                    background: active || done ? "rgba(62, 207, 142, 0.12)" : "transparent",
+                    border: `1.5px solid ${active ? ACCENT : done ? "rgba(62, 207, 142, 0.5)" : "var(--border)"}`,
+                    transition: "all 0.25s var(--ease)",
+                  }}
+                >
+                  {done ? <IconCheck size={12} stroke={2.5} /> : i + 1}
+                </span>
+                <span
+                  style={{
+                    fontSize: "0.6rem",
+                    letterSpacing: "0.02em",
+                    textTransform: "uppercase",
+                    color: active ? ACCENT : "var(--faint)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {STEP_GUIDANCE[step].railLabel}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div
+        className="ob-step-counter"
+        aria-label={`Step ${current + 1} of ${ONBOARDING_STEPS.length}`}
+      >
+        Step {current + 1} of {ONBOARDING_STEPS.length}
+      </div>
+    </>
   );
 }
 
@@ -284,7 +295,7 @@ function ConnectWalletStep() {
         <div style={{ textAlign: "center" }}>
           <button className="btn btn-primary" onClick={connect} disabled={connecting}>
             <IconWallet size={14} />
-            {connecting ? "Connecting…" : "Connect wallet"}
+            {connecting ? "Connecting\u2026" : "Connect wallet"}
           </button>
           <p className="faint" style={{ fontSize: "0.75rem", marginTop: "0.7rem" }}>
             Freighter, Albedo, xBull, Lobstr, Ledger, WalletConnect and more are supported.
@@ -426,7 +437,7 @@ function GetCredentialStep({
             {credential.issuer}.
           </span>
           <span className="mono" style={{ fontSize: "0.72rem" }}>
-            commitment {truncateMiddle(credential.commitment, 10, 8)} · expires in{" "}
+            commitment {truncateMiddle(credential.commitment, 10, 8)} &middot; expires in{" "}
             {credential.expiry}
           </span>
         </div>
@@ -447,7 +458,7 @@ function GetCredentialStep({
           {busy ? (
             <>
               <IconLoader2 size={14} className="spin" />
-              Creating…
+              Creating&hellip;
             </>
           ) : (
             <>
@@ -458,7 +469,7 @@ function GetCredentialStep({
         </button>
         {error && (
           <div style={{ marginTop: "1rem", textAlign: "left" }}>
-            <StatusBox severity="danger" title="Couldn't issue the credential">
+            <StatusBox severity="danger" title="Couldn&apos;t issue the credential">
               {error}
             </StatusBox>
           </div>
@@ -475,6 +486,7 @@ function TrustVerifyStep({
   failed,
   busy,
   onRun,
+  onGoBack,
 }: {
   credential: Credential | null;
   address: string;
@@ -482,6 +494,7 @@ function TrustVerifyStep({
   failed: boolean;
   busy: boolean;
   onRun: () => void;
+  onGoBack: () => void;
 }) {
   const guidance = STEP_GUIDANCE["verify-trust"];
 
@@ -521,7 +534,7 @@ function TrustVerifyStep({
           overflowWrap: "break-word",
         }}
       >
-        {credential.issuer} ← {truncateMiddle(credential.commitment, 8, 6)} ({credential.type})
+        {credential.issuer} &larr; {truncateMiddle(credential.commitment, 8, 6)} ({credential.type})
       </div>
 
       <div style={{ display: "grid", gap: "0.45rem", marginBottom: "1.1rem" }}>
@@ -585,8 +598,22 @@ function TrustVerifyStep({
         </StatusBox>
       ) : (
         <p className="faint" style={{ fontSize: "0.75rem", marginBottom: "0.6rem" }}>
-          {busy ? "Checking the on-chain registry…" : "The registry check hasn't run yet."}
+          {busy ? "Checking the on-chain registry\u2026" : "The registry check hasn\u2019t run yet."}
         </p>
+      )}
+
+      {(status === "key_revoked" || status === "issuer_revoked") && (
+        <div style={{ marginTop: "1rem" }}>
+          <StatusBox severity="warning" title="Credential from a revoked key">
+            Your credential was issued by a revoked key. To continue using StellarCred, get a new
+            credential from a trusted issuer.
+            <div style={{ marginTop: "0.6rem" }}>
+              <button className="btn btn-secondary btn-sm" onClick={onGoBack}>
+                Get new credential
+              </button>
+            </div>
+          </StatusBox>
+        </div>
       )}
 
       <div style={{ textAlign: "center", marginTop: "0.9rem" }}>
@@ -594,7 +621,7 @@ function TrustVerifyStep({
           {busy ? (
             <>
               <IconLoader2 size={13} className="spin" />
-              Checking…
+              Checking&hellip;
             </>
           ) : (
             <>
@@ -608,7 +635,14 @@ function TrustVerifyStep({
   );
 }
 
-function GenerateProofStep({ credential }: { credential: Credential | null }) {
+function GenerateProofStep({
+  credential,
+  onNext,
+}: {
+  credential: Credential | null;
+  onNext: () => void;
+}) {
+  const router = useRouter();
   const guidance = STEP_GUIDANCE["generate-proof"];
   return (
     <div>
@@ -618,22 +652,34 @@ function GenerateProofStep({ credential }: { credential: Credential | null }) {
       >
         {guidance.summary}
       </p>
-      <div style={{ textAlign: "center" }}>
-        <Link href="/holder" className="btn btn-primary">
-          {credential
-            ? `Prove “${credential.claim || TYPE_META[credential.type].claim}”`
-            : "Go to dashboard"}
+      <ol style={{ paddingLeft: "1.2rem", margin: "0 0 1.1rem", display: "grid", gap: "0.5rem" }}>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
+          <span style={{ color: ACCENT }}>Select</span> a credential on the dashboard
+        </li>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
+          <span style={{ color: ACCENT }}>Choose</span> the verifier app you want to use
+        </li>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
+          Click <span style={{ color: ACCENT }}>Generate proof</span> &mdash; the circuit runs locally
+        </li>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
+          <span style={{ color: ACCENT }}>Submit</span> the proof on-chain
+        </li>
+      </ol>
+      <div style={{ textAlign: "center", display: "grid", gap: "0.6rem" }}>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            router.push("/holder");
+            onNext();
+          }}
+        >
+          Open Proof Dashboard
           <IconArrowRight size={14} />
-        </Link>
-        <p className="faint" style={{ fontSize: "0.75rem", marginTop: "0.75rem" }}>
-          Click &ldquo;Generate proof&rdquo; on your credential card, then submit it on-chain.
-        </p>
-        <p style={{ marginTop: "0.9rem" }}>
-          <Link href="/verify" className="btn btn-ghost btn-sm">
-            Or earn a real credential first
-            <IconArrowRight size={13} />
-          </Link>
-        </p>
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={onNext}>
+          Skip for now
+        </button>
       </div>
     </div>
   );
@@ -779,35 +825,12 @@ export function OnboardingWizard() {
 
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0, 0, 0, 0.6)",
-        backdropFilter: "blur(8px)",
-        WebkitBackdropFilter: "blur(8px)",
-        animation: "obFadeIn 0.25s var(--ease)",
-        padding: "1rem",
-      }}
+      className="ob-wizard-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Onboarding wizard"
     >
-      <div
-        className="card"
-        style={{
-          width: "100%",
-          maxWidth: 600,
-          maxHeight: "92vh",
-          overflowY: "auto",
-          padding: "1.75rem",
-          position: "relative",
-          animation: "obSlideUp 0.3s var(--ease)",
-        }}
-      >
+      <div className="card ob-wizard-card">
         {/* Close button */}
         <button
           className="btn btn-ghost btn-sm"
@@ -874,9 +897,10 @@ export function OnboardingWizard() {
             failed={trust.failed}
             busy={trust.running}
             onRun={runTrustCheck}
+            onGoBack={() => goToStep(2)}
           />
         ) : currentStep === "generate-proof" ? (
-          <GenerateProofStep credential={credential} />
+          <GenerateProofStep credential={credential} onNext={nextStep} />
         ) : (
           <UnlockStep trustStatus={trust.status} />
         )}
@@ -884,50 +908,52 @@ export function OnboardingWizard() {
         <GuidanceTip text={guidance.tip} />
 
         {/* Navigation */}
-        <div
-          className="between"
-          style={{ marginTop: "1.5rem", gap: "0.5rem", alignItems: "center" }}
-        >
-          {!isFirst ? (
-            <button className="btn btn-ghost btn-sm" onClick={prevStep}>
-              <IconArrowLeft size={14} />
-              Back
-            </button>
-          ) : (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={dismiss}
-              style={{ color: "var(--faint)" }}
-            >
-              Skip tour
-            </button>
-          )}
-
-          <div className="row" style={{ gap: "0.7rem", alignItems: "center" }}>
-            {!proceed && whyBlocked && (
-              <span
-                className="faint"
-                style={{ fontSize: "0.72rem", maxWidth: 200, textAlign: "right" }}
-              >
-                {whyBlocked}
-              </span>
-            )}
-            {!isLast ? (
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={nextStep}
-                disabled={!proceed}
-                title={whyBlocked}
-              >
-                Next
-                <IconArrowRight size={14} />
+        <div className="ob-nav-buttons">
+          <div
+            className="between"
+            style={{ marginTop: "1.5rem", gap: "0.5rem", alignItems: "center" }}
+          >
+            {!isFirst ? (
+              <button className="btn btn-ghost btn-sm" onClick={prevStep}>
+                <IconArrowLeft size={14} />
+                Back
               </button>
             ) : (
-              <button className="btn btn-primary btn-sm" onClick={dismiss}>
-                Get started
-                <IconArrowRight size={14} />
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={dismiss}
+                style={{ color: "var(--faint)" }}
+              >
+                Skip tour
               </button>
             )}
+
+            <div className="row" style={{ gap: "0.7rem", alignItems: "center" }}>
+              {!proceed && whyBlocked && (
+                <span
+                  className="faint"
+                  style={{ fontSize: "0.72rem", maxWidth: 200, textAlign: "right" }}
+                >
+                  {whyBlocked}
+                </span>
+              )}
+              {!isLast ? (
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={nextStep}
+                  disabled={!proceed}
+                  title={whyBlocked}
+                >
+                  Next
+                  <IconArrowRight size={14} />
+                </button>
+              ) : (
+                <button className="btn btn-primary btn-sm" onClick={dismiss}>
+                  Get started
+                  <IconArrowRight size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -950,17 +976,6 @@ export function OnboardingWizard() {
           </Link>
         </div>
       </div>
-
-      <style>{`
-        @keyframes obFadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes obSlideUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 }
