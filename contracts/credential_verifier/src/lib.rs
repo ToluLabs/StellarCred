@@ -69,6 +69,39 @@ pub struct EventContractUpgraded {
     pub upgraded_at: u64,
 }
 
+/// Payload emitted when a credential is verified with trust scoring.
+/// Topics: ("cred_ver", "verified", credential_type)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventCredentialVerified {
+    /// The credential type that was verified.
+    pub credential_type: Symbol,
+    /// The VK version used for verification.
+    pub version: u32,
+    /// Trust score in basis points (0-10000).
+    pub trust_score: u32,
+    /// Whether the proof was valid.
+    pub valid: bool,
+    /// Timestamp of verification.
+    pub verified_at: u64,
+}
+
+/// Trust scoring result returned by `verify_proof_with_trust`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrustScore {
+    /// Overall trust score in basis points (0-10000).
+    pub score: u32,
+    /// Confidence level: 0=rejected, 1=low, 2=medium, 3=high.
+    pub confidence: u32,
+    /// Whether the proof cryptographically verified.
+    pub proof_valid: bool,
+    /// Whether the VK version is current (not deprecated).
+    pub version_current: bool,
+    /// Human-readable explanation code for the score.
+    pub reason_code: u32,
+}
+
 // ── Contract versioning ──────────────────────────────────────────────────────
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
@@ -131,7 +164,15 @@ pub enum Error {
     RoleHolderMismatch = 8,
     /// `accept_admin` was called with no pending proposal (#342).
     NoPendingAdmin = 9,
+    /// The credential type has no registered VK at all.
+    NoVkRegistered = 10,
 }
+
+// Trust score constants (basis points, 10000 = 100%).
+const TRUST_SCORE_MAX: u32 = 10_000;
+const TRUST_SCORE_VALID_CURRENT: u32 = 10_000;
+const TRUST_SCORE_VALID_DEPRECATED: u32 = 4_000;
+const TRUST_SCORE_INVALID: u32 = 0;
 
 #[contract]
 pub struct CredentialVerifier;
@@ -417,6 +458,110 @@ impl CredentialVerifier {
             Ok(verifier) => verifier.verify(&env, &proof, &public_inputs).is_ok(),
             Err(_) => false,
         }
+    }
+
+    /// Verify an UltraHonk proof and return a trust score with explainability.
+    ///
+    /// Unlike `verify_proof`, this entry point never panics for a deprecated
+    /// version — instead it returns a reduced trust score with a reason code so
+    /// callers can decide how to handle a credential that was valid but is no
+    /// longer current. It still panics with `VkNotSet` if no VK exists for the
+    /// requested type/version, since there is nothing to score against.
+    ///
+    /// Reason codes:
+    ///   0 = valid proof against current VK (score 10000, confidence 3)
+    ///   1 = valid proof against deprecated VK (score 4000, confidence 2)
+    ///   2 = invalid proof (score 0, confidence 0)
+    ///   3 = malformed proof length (score 0, confidence 0)
+    pub fn verify_proof_with_trust(
+        env: Env,
+        credential_type: Symbol,
+        proof: Bytes,
+        public_inputs: Bytes,
+        vk_version: Option<u32>,
+    ) -> TrustScore {
+        // Malformed proof length: reject with an explicit reason code.
+        if proof.len() as usize != PROOF_BYTES {
+            return TrustScore {
+                score: TRUST_SCORE_INVALID,
+                confidence: 0,
+                proof_valid: false,
+                version_current: false,
+                reason_code: 3,
+            };
+        }
+
+        // Resolve the version, mirroring `verify_proof` semantics.
+        let version = match vk_version {
+            Some(0) => panic_with_error!(&env, Error::VkNotSet),
+            Some(v) => v,
+            None => env
+                .storage()
+                .persistent()
+                .get(&DataKey::LatestVersion(credential_type.clone()))
+                .unwrap_or_else(|| panic_with_error!(&env, Error::VkNotSet)),
+        };
+
+        // Determine whether the version is deprecated (affects the score, not
+        // whether we attempt verification).
+        let deprecated = env
+            .storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::DeprecatedVersion(
+                credential_type.clone(),
+                version,
+            ))
+            .unwrap_or(false);
+
+        let vk: Bytes = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Vk(credential_type.clone(), version))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::VkNotSet));
+
+        let proof_valid = match UltraHonkVerifier::new(&env, &vk) {
+            Ok(verifier) => verifier.verify(&env, &proof, &public_inputs).is_ok(),
+            Err(_) => false,
+        };
+
+        let (score, confidence, reason_code) = if !proof_valid {
+            (TRUST_SCORE_INVALID, 0u32, 2u32)
+        } else if deprecated {
+            (TRUST_SCORE_VALID_DEPRECATED, 2u32, 1u32)
+        } else {
+            (TRUST_SCORE_VALID_CURRENT, 3u32, 0u32)
+        };
+
+        // Emit an audit event so operators can observe trust decisions.
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("verified"),
+                credential_type.clone(),
+            ),
+            EventCredentialVerified {
+                credential_type,
+                version,
+                trust_score: score,
+                valid: proof_valid,
+                verified_at: env.ledger().timestamp(),
+            },
+        );
+
+        TrustScore {
+            score,
+            confidence,
+            proof_valid,
+            version_current: !deprecated,
+            reason_code,
+        }
+    }
+
+    /// Returns the maximum possible trust score (basis points), useful for
+    /// clients normalizing the score returned by `verify_proof_with_trust`.
+    pub fn max_trust_score(env: Env) -> u32 {
+        let _ = env;
+        TRUST_SCORE_MAX
     }
 
     /// Assign `address` as the holder of `role`, replacing any previous holder.

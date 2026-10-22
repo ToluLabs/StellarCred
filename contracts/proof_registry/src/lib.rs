@@ -178,6 +178,28 @@ pub struct EventNullifierUsed {
     pub recorded_at: u64,
 }
 
+/// Trust tier assigned to a cached credential, derived from the issuer's
+/// standing and the freshness of the verification. Ordered from least to most
+/// trusted so callers can compare with `>=`.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum TrustTier {
+    /// Record exists but is revoked, expired, or issued by an untrusted issuer.
+    Untrusted = 0,
+    /// Record is valid but was issued by an issuer not in the caller's
+    /// `trusted_issuers` allow-list (only when a filter is supplied).
+    Low = 1,
+    /// Record is valid and issued by a trusted issuer, but is close to expiry.
+    Medium = 2,
+    /// Record is valid, issued by a trusted issuer, and comfortably fresh.
+    High = 3,
+}
+
+/// Window (in seconds) before `expiry` within which a valid claim is
+/// downgraded from `TrustTier::High` to `TrustTier::Medium`.
+const TRUST_FRESHNESS_WINDOW_SECS: u64 = 7 * 86_400; // 7 days
+
 // Persistent-entry lifetime management
 const DAY_IN_LEDGERS: u32 = 17280;
 const SECONDS_PER_LEDGER: u64 = 5;
@@ -987,6 +1009,65 @@ impl ProofRegistry {
         env.storage()
             .persistent()
             .get::<_, ProofRecord>(&DataKey::Proof(holder, credential_type))
+    }
+
+    /// Explain why a cached credential is trusted or rejected, without
+    /// changing any state. Returns `(trusted, tier, reason_code)`:
+    /// - `trusted` mirrors `is_verified`'s validity for the same inputs.
+    /// - `tier` is the [`TrustTier`] the record currently falls into.
+    /// - `reason_code` is a stable machine-readable code (see below) so
+    ///   operators and UIs can render a human explanation:
+    ///   - 0: `NoRecord` — nothing cached for (holder, credential_type).
+    ///   - 1: `Revoked` — record was revoked by holder or issuer.
+    ///   - 2: `Expired` — record's `expiry` has passed.
+    ///   - 3: `IssuerUntrusted` — issuer not in the supplied allow-list.
+    ///   - 4: `ValidFresh` — valid and comfortably before expiry.
+    ///   - 5: `ValidNearExpiry` — valid but within the freshness window.
+    ///
+    /// `trusted_issuers` follows `is_verified`'s semantics: `None` accepts any
+    /// issuer registered at submission time; `Some(list)` restricts to those
+    /// addresses and rejects records with no stored issuer.
+    pub fn explain_verification(
+        env: Env,
+        holder: Address,
+        credential_type: Symbol,
+        trusted_issuers: Option<Vec<Address>>,
+    ) -> (bool, TrustTier, u32) {
+        let record = match env
+            .storage()
+            .persistent()
+            .get::<_, ProofRecord>(&DataKey::Proof(holder, credential_type))
+        {
+            Some(r) => r,
+            None => return (false, TrustTier::Untrusted, 0),
+        };
+        let now = env.ledger().timestamp();
+        if record.revoked {
+            return (false, TrustTier::Untrusted, 1);
+        }
+        if record.expiry <= now {
+            return (false, TrustTier::Untrusted, 2);
+        }
+        if !Self::issuer_is_trusted(&trusted_issuers, &record.issuer) {
+            return (false, TrustTier::Low, 3);
+        }
+        let near_expiry = record.expiry.saturating_sub(now) <= TRUST_FRESHNESS_WINDOW_SECS;
+        if near_expiry {
+            (true, TrustTier::Medium, 5)
+        } else {
+            (true, TrustTier::High, 4)
+        }
+    }
+
+    /// Convenience wrapper returning only the [`TrustTier`] for a cached
+    /// credential. See [`explain_verification`] for the full explanation.
+    pub fn trust_score(
+        env: Env,
+        holder: Address,
+        credential_type: Symbol,
+        trusted_issuers: Option<Vec<Address>>,
+    ) -> TrustTier {
+        Self::explain_verification(env, holder, credential_type, trusted_issuers).1
     }
 
     pub fn claim_expiry(env: Env, holder: Address, credential_type: Symbol) -> u64 {

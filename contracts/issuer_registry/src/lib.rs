@@ -48,6 +48,12 @@
 //! (`KeyChangeRequiresRotation`): that path is what used to invalidate
 //! outstanding credentials, and it must go through an explicit rotation.
 //! Key management is admin-role only, like registration itself.
+//!
+//! ── Trust scoring and explainability ───────────────────────────────────────
+//! [`IssuerRegistry::get_trust_score`] returns a numeric trust score plus a
+//! human-readable explanation of how it was computed, so users and operators
+//! can understand why a credential is trusted or rejected before it is used in
+//! a sensitive workflow.
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
@@ -124,6 +130,23 @@ pub struct EventIssuerKeyRevoked {
     /// Ledger timestamp at which the revocation took effect.
     pub revoked_at: u64,
 }
+
+/// A single factor contributing to an issuer's trust score.
+/// `weight` is the points this factor contributes (may be negative), and
+/// `reason` is a short human-readable explanation of why.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrustFactor {
+    /// Short identifier for the factor, e.g. `registered`, `revoked`.
+    pub kind: Symbol,
+    /// Signed contribution of this factor to the overall score.
+    pub weight: i32,
+    /// Human-readable explanation of the factor.
+    pub reason: String,
+}
+
+/// Maximum number of factors returned by `get_trust_score`.
+const MAX_TRUST_FACTORS: u32 = 8;
 
 // Persistent-entry lifetime management (~5s ledgers).
 const DAY_IN_LEDGERS: u32 = 17280;
@@ -234,6 +257,10 @@ pub enum Error {
     KeyChangeRequiresRotation = 12,
     /// `accept_admin` was called with no pending proposal (#342).
     NoPendingAdmin = 13,
+    /// `get_trust_score` was called for an issuer that is not registered.
+    IssuerNotRegistered = 14,
+    /// The requested trust-score explanation exceeded `MAX_TRUST_FACTORS`.
+    TooManyTrustFactors = 15,
 }
 
 /// Upper bound on retired keys retained per issuer. Retired keys are pruned
@@ -463,6 +490,111 @@ impl IssuerRegistry {
             }
             None => false,
         }
+    }
+
+    /// Compute a trust score (0..=100) for `issuer_id` together with a
+    /// breakdown of the factors that produced it.
+    ///
+    /// The score is a deterministic function of on-chain state only, so any
+    /// caller can reproduce it and audit the result. Each factor carries a
+    /// signed weight and a short human-readable reason, making it possible for
+    /// users and operators to understand *why* a credential is trusted or
+    /// rejected before it is used in a sensitive workflow.
+    ///
+    /// Scoring model (starting from 0, clamped to 0..=100):
+    /// * `registered`  +40 — issuer exists in the registry.
+    /// * `active`      +30 — issuer is not revoked.
+    /// * `key_ok`      +20 — current signing key is not emergency-revoked.
+    /// * `types`       +10 — issuer is trusted for at least one credential type.
+    /// * `revoked`     -100 — issuer is revoked (dominates, forces score 0).
+    /// * `key_revoked` -50 — current signing key was emergency-revoked.
+    ///
+    /// Panics with `IssuerNotRegistered` for an unknown issuer so callers
+    /// cannot mistake an unregistered issuer for a low-but-valid score.
+    pub fn get_trust_score(env: Env, issuer_id: Address) -> (u32, Vec<TrustFactor>) {
+        let issuer: Issuer = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Issuer(issuer_id.clone()))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::IssuerNotRegistered));
+
+        let mut factors: Vec<TrustFactor> = Vec::new(&env);
+        let mut score: i32 = 0;
+
+        // Registered: reaching this point means the issuer exists.
+        score += 40;
+        factors.push_back(TrustFactor {
+            kind: symbol_short!("reg"),
+            weight: 40,
+            reason: String::from_str(&env, "issuer is registered"),
+        });
+
+        if issuer.revoked {
+            score -= 100;
+            factors.push_back(TrustFactor {
+                kind: symbol_short!("revoked"),
+                weight: -100,
+                reason: String::from_str(&env, "issuer has been revoked"),
+            });
+        } else {
+            score += 30;
+            factors.push_back(TrustFactor {
+                kind: symbol_short!("active"),
+                weight: 30,
+                reason: String::from_str(&env, "issuer is active"),
+            });
+        }
+
+        if Self::current_key_revoked(&env, &issuer_id) {
+            score -= 50;
+            factors.push_back(TrustFactor {
+                kind: symbol_short!("key_rev"),
+                weight: -50,
+                reason: String::from_str(&env, "current signing key was revoked"),
+            });
+        } else {
+            score += 20;
+            factors.push_back(TrustFactor {
+                kind: symbol_short!("key_ok"),
+                weight: 20,
+                reason: String::from_str(&env, "current signing key is valid"),
+            });
+        }
+
+        if issuer.credential_types.len() > 0 {
+            score += 10;
+            factors.push_back(TrustFactor {
+                kind: symbol_short!("types"),
+                weight: 10,
+                reason: String::from_str(&env, "issuer is trusted for credential types"),
+            });
+        } else {
+            factors.push_back(TrustFactor {
+                kind: symbol_short!("types"),
+                weight: 0,
+                reason: String::from_str(&env, "issuer has no credential types"),
+            });
+        }
+
+        if factors.len() > MAX_TRUST_FACTORS {
+            panic_with_error!(&env, Error::TooManyTrustFactors);
+        }
+
+        let clamped: u32 = if score < 0 {
+            0
+        } else if score > 100 {
+            100
+        } else {
+            score as u32
+        };
+        (clamped, factors)
+    }
+
+    /// Convenience wrapper returning only the numeric trust score (0..=100).
+    /// See [`get_trust_score`] for the full explanation.
+    pub fn get_trust_score_value(env: Env, issuer_id: Address) -> u32 {
+        let (score, _factors) = Self::get_trust_score(env, issuer_id);
+        score
     }
 
     // ── Key set management ──────────────────────────────────────────────────

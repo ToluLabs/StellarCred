@@ -45,6 +45,17 @@ pub struct EventWithdraw {
     pub new_balance: i128,
 }
 
+/// Payload emitted when a credential's trust is evaluated for a deposit.
+/// Topics: (symbol_short!("gate_pool"), symbol_short!("trust"))
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventTrustEvaluated {
+    pub caller: Address,
+    pub verified: bool,
+    pub trust_score: u32,
+    pub reason: Symbol,
+}
+
 // Persistent-entry lifetime management (~5s ledgers).
 const DAY_IN_LEDGERS: u32 = 17280;
 const BALANCE_BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
@@ -69,6 +80,20 @@ pub trait RegistryInterface {
         min_threshold: Option<u64>,
         trusted_issuers: Option<Vec<Address>>,
     ) -> bool;
+
+    fn get_trust_score(
+        env: Env,
+        holder: Address,
+        credential_type: Symbol,
+    ) -> u32;
+
+    fn explain_claim(
+        env: Env,
+        holder: Address,
+        credential_type: Symbol,
+        min_threshold: Option<u64>,
+        trusted_issuers: Option<Vec<Address>>,
+    ) -> (bool, u32, Symbol);
 }
 
 #[contracttype]
@@ -140,6 +165,22 @@ impl GatedPool {
             &Self::required_type(&env),
             &Self::min_threshold(&env),
             &None,
+        );
+        let registry = RegistryClient::new(&env, &Self::registry(&env));
+        let (verified, trust_score, reason) = registry.explain_claim(
+            &caller,
+            &Self::required_type(&env),
+            &Self::min_threshold(&env),
+            &None,
+        );
+        env.events().publish(
+            (symbol_short!("gate_pool"), symbol_short!("trust")),
+            EventTrustEvaluated {
+                caller: caller.clone(),
+                verified,
+                trust_score,
+                reason,
+            },
         );
         if !verified {
             panic_with_error!(&env, Error::NotKycVerified);
@@ -220,6 +261,27 @@ impl GatedPool {
 
     pub fn gate(env: Env) -> (Symbol, Option<u64>) {
         (Self::required_type(&env), Self::min_threshold(&env))
+    }
+
+    /// Returns the trust score (0-100) for `holder`'s credential of the
+    /// configured required type, as reported by the ProofRegistry.
+    pub fn trust_score(env: Env, holder: Address) -> u32 {
+        let registry = RegistryClient::new(&env, &Self::registry(&env));
+        registry.get_trust_score(&holder, &Self::required_type(&env))
+    }
+
+    /// Returns a confidence explanation for whether `holder` currently passes
+    /// the configured gate: (verified, trust_score, reason).
+    /// `reason` is a short symbol describing the outcome (e.g. "ok",
+    /// "no_claim", "expired", "revoked", "low_score").
+    pub fn explain(env: Env, holder: Address) -> (bool, u32, Symbol) {
+        let registry = RegistryClient::new(&env, &Self::registry(&env));
+        registry.explain_claim(
+            &holder,
+            &Self::required_type(&env),
+            &Self::min_threshold(&env),
+            &None,
+        )
     }
 
     fn balance_of(env: &Env, account: &Address) -> i128 {
