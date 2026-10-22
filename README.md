@@ -278,6 +278,14 @@ no StellarCred account and no server-side credential database. This means:
   code whose payload is encrypted (AES-256-GCM, PBKDF2 key derivation) before
   leaving the device — scan it on the other device and enter the passphrase to
   import.
+- **Choose which PII fields exports include.** On the Holder page, **Export
+  field visibility** controls the sensitive credential attribute value and
+  holder wallet address. Both are included by default (including for existing
+  browser profiles). Turning either off omits that key from credential JSON
+  backups, encrypted transfers, and Guardian recovery exports; proof-history
+  JSON/CSV contain proof metadata only. An export with an omitted field cannot
+  fully restore or prove that credential. Preferences are local to this browser
+  profile, and no admin override exists for local exports.
 - **What reaches the server and chain.** The only server round-trip is
   `POST /api/witness` (rate-limited, never logged or persisted), which runs the
   Noir circuit and returns witness bytes for in-browser proving. On chain, only

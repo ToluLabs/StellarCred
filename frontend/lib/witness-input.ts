@@ -16,8 +16,29 @@ export const RESTRICTED_LEN = 8;
 const FIELD_MODULUS =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
+/** Largest value a Noir `u64` circuit input can hold. #803 — most credential
+ * circuits (`age`, `income`, `funds`, `accreditation`, `jurisdiction`,
+ * `employment`, and the age half of `aggregate`) declare their value and
+ * threshold inputs as `u64`, not `Field`. The proving system range-constrains
+ * every `u64`, so an input above this bound cannot be turned into a witness at
+ * all: witness generation aborts deep inside ACVM with an opaque range error
+ * ("witness generation exceeded memory limits" style failures) even though the
+ * request itself is well-formed. Rejecting the value here turns that prover
+ * crash into a precise 400 that names the field. */
+export const U64_MAX = 18446744073709551615n;
+
 const SIG_LEN = 64;
 const PUBKEY_COORD_LEN = 32;
+
+/**
+ * Cheap upper bound on a field string's length, checked BEFORE the regex and
+ * the `BigInt` parse. A BN254 scalar is at most 77 decimal digits (or 64 hex
+ * digits under `0x`), so any longer string is necessarily at or above the
+ * modulus. Cutting pathologically large strings off here keeps a megabyte-scale
+ * "value" from being regex-matched and parsed into a giant BigInt on the way to
+ * the same rejection.
+ */
+const MAX_FIELD_CHARS = 78;
 
 /** Decimal (`"1234"`) or hex (`"0x1a2b"`) — both are accepted by Noir. */
 const FIELD_STRING_RE = /^(0x[0-9a-fA-F]+|[0-9]+)$/;
@@ -52,11 +73,7 @@ export function normalizeRestricted(list: string[]): string[] {
 const err = (field: string, message: string): WitnessValidationError => ({ field, message });
 
 /** A byte array of exactly `len` entries, every entry an integer in [0,255]. */
-function checkByteArray(
-  value: unknown,
-  field: string,
-  len: number,
-): WitnessValidationError | null {
+function checkByteArray(value: unknown, field: string, len: number): WitnessValidationError | null {
   if (!Array.isArray(value)) return err(field, `must be an array of ${len} bytes`);
   if (value.length !== len) {
     return err(field, `must be exactly ${len} bytes, received ${value.length}`);
@@ -85,6 +102,10 @@ function checkField(value: unknown, field: string): WitnessValidationError | nul
   }
 
   if (typeof value !== "string") return err(field, "must be a numeric string");
+  // Length cut-off first: no regex, no BigInt, for strings that cannot fit.
+  if (value.length > MAX_FIELD_CHARS) {
+    return err(field, "exceeds the BN254 field modulus");
+  }
   if (!FIELD_STRING_RE.test(value)) {
     return err(field, "must be a decimal or 0x-prefixed hex numeric string");
   }
@@ -92,21 +113,37 @@ function checkField(value: unknown, field: string): WitnessValidationError | nul
   return null;
 }
 
-/** A threshold: an integer, given as a decimal string or a number. */
-function checkThreshold(value: unknown, field: string): WitnessValidationError | null {
-  if (value === undefined) return null; // optional — the route applies a default
+/**
+ * A `u64`-typed circuit input (a credential value or a threshold). Same shape
+ * rules as {@link checkField}, but bounded by {@link U64_MAX} instead of the
+ * field modulus, because the circuits range-constrain these inputs to 64 bits
+ * and witness generation fails outright on anything larger (#803).
+ *
+ * `undefined` is allowed — the route applies defaults for thresholds, and
+ * optional fields are checked only when present.
+ */
+function checkU64(value: unknown, field: string): WitnessValidationError | null {
+  if (value === undefined || value === null) return null; // optional — the route applies a default
+
+  const oversized = err(
+    field,
+    `must fit in the circuit's 64-bit (u64) range (max ${U64_MAX}); values above it cannot be turned into a witness`,
+  );
 
   if (typeof value === "number") {
     if (!Number.isInteger(value) || value < 0) {
       return err(field, "must be a non-negative integer");
     }
+    if (BigInt(value) > U64_MAX) return oversized;
     return null;
   }
 
-  if (typeof value !== "string" || !DIGITS_RE.test(value)) {
+  if (typeof value !== "string") return err(field, "must be a non-negative integer");
+  if (value.length > MAX_FIELD_CHARS) return oversized;
+  if (!FIELD_STRING_RE.test(value)) {
     return err(field, "must be a non-negative integer");
   }
-  if (BigInt(value) >= FIELD_MODULUS) return err(field, "exceeds the BN254 field modulus");
+  if (BigInt(value) > U64_MAX) return oversized;
   return null;
 }
 
@@ -118,9 +155,25 @@ function checkThreshold(value: unknown, field: string): WitnessValidationError |
 function checkAggregateCount(value: unknown): WitnessValidationError | null {
   const asString = typeof value === "number" ? String(value) : value;
   if (asString !== "2") {
-    return err("credential.num_credentials", "must be \"2\" for the N=2 aggregate circuit");
+    return err("credential.num_credentials", 'must be "2" for the N=2 aggregate circuit');
   }
   return null;
+}
+
+/**
+ * True when an error thrown by `noir.execute` (ACVM running the circuit to
+ * produce a witness) indicates the prover ran out of memory rather than the
+ * credential being invalid. WASM runtimes surface exhaustion in several ways
+ * depending on engine and version — "memory allocation failed", "Array buffer
+ * allocation failed", an "unreachable" trap, or a plain "out of memory" — so
+ * this matches on the stable vocabulary across those shapes. The route maps
+ * these to a 413 so a large payload fails gracefully and legibly instead of as
+ * an opaque 500 (#803).
+ */
+export function isProverResourceExhaustion(message: string): boolean {
+  return /out of memory|memory (allocation|exhaust)|allocation failed|Array buffer|unreachable/i.test(
+    message,
+  );
 }
 
 /** The restricted-country list: at most RESTRICTED_LEN numeric ISO 3166-1 codes. */
@@ -170,7 +223,7 @@ export function validateWitnessCredential(
       checkField(cred.kyc_commitment, "credential.kyc_commitment") ??
       checkByteArray(cred.kyc_issuer_x, "credential.kyc_issuer_x", PUBKEY_COORD_LEN) ??
       checkByteArray(cred.kyc_issuer_y, "credential.kyc_issuer_y", PUBKEY_COORD_LEN) ??
-      checkField(cred.age_date_of_birth, "credential.age_date_of_birth") ??
+      checkU64(cred.age_date_of_birth, "credential.age_date_of_birth") ??
       checkField(cred.age_salt, "credential.age_salt") ??
       checkByteArray(cred.age_sig, "credential.age_sig", SIG_LEN) ??
       checkField(cred.age_commitment, "credential.age_commitment") ??
@@ -179,7 +232,7 @@ export function validateWitnessCredential(
       // age_current_date is deliberately NOT required here: the route derives
       // it server-side (like the single-proof age path), so a client-supplied
       // value would only ever be discarded.
-      checkField(cred.age_threshold_years, "credential.age_threshold_years") ??
+      checkU64(cred.age_threshold_years, "credential.age_threshold_years") ??
       checkField(cred.num_credentials, "credential.num_credentials") ??
       checkAggregateCount(cred.num_credentials)
     );
@@ -197,20 +250,40 @@ export function validateWitnessCredential(
   if (common) return common;
 
   const rawParams = cred.claimParams;
-  if (rawParams !== undefined && (typeof rawParams !== "object" || rawParams === null || Array.isArray(rawParams))) {
+  if (
+    rawParams !== undefined &&
+    (typeof rawParams !== "object" || rawParams === null || Array.isArray(rawParams))
+  ) {
     return err("credential.claimParams", "must be an object");
   }
   const params = (rawParams ?? {}) as ClaimParams;
 
+  // u64-typed inputs: these circuits declare their value/threshold parameters
+  // as `u64`, so anything above U64_MAX fails witness generation with an opaque
+  // range error. Check each circuit's u64 inputs here so the failure is a
+  // precise 400 instead of a prover crash (#803). `kyc` keeps the plain Field
+  // check — its `secret` really is an arbitrary field element.
   switch (type) {
-    case "age":
-      return checkThreshold(params.threshold_years, "credential.claimParams.threshold_years");
-    case "income":
-    case "funds":
-    case "accreditation":
-      return checkThreshold(params.threshold, "credential.claimParams.threshold");
-    case "jurisdiction":
-      return checkRestricted(params.restricted);
+    case "age": // date_of_birth: u64, threshold_years: u64
+      return (
+        checkU64(cred.value, "credential.value") ??
+        checkU64(params.threshold_years, "credential.claimParams.threshold_years")
+      );
+    case "income": // income: u64, threshold: u64
+    case "funds": // balance: u64, threshold: u64
+    case "accreditation": // net_worth: u64, threshold: u64
+      return (
+        checkU64(cred.value, "credential.value") ??
+        checkU64(params.threshold, "credential.claimParams.threshold")
+      );
+    case "jurisdiction": // country_code: u64
+      return checkU64(cred.value, "credential.value") ?? checkRestricted(params.restricted);
+    case "employment": // employment_status: u64, seniority: u64, min_seniority: u64
+      return (
+        checkU64(cred.value, "credential.value") ??
+        checkU64(cred.seniority, "credential.seniority") ??
+        checkU64(params.threshold, "credential.claimParams.threshold")
+      );
     default:
       return null;
   }

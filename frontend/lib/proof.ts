@@ -210,6 +210,41 @@ export async function destroyAllBackends(): Promise<void> {
   await Promise.all(Array.from(backendCache.keys()).map(destroyBackend));
 }
 
+/**
+ * Decodes the hex-string witness returned by /api/witness into bytes.
+ *
+ * The old implementation called `parseInt(hex.slice(i*2, i*2+2), 16)` per
+ * byte — two temporary string allocations per byte. For the larger circuits
+ * (aggregate, set membership) that is tens of thousands of short-lived
+ * strings per proof inside the confined prover-worker heap, adding real GC
+ * pressure exactly when inputs are large (#803). This reads the same bytes in
+ * a single pass with a nibble lookup, allocating only the output buffer, and
+ * fails loudly on a malformed response instead of silently decoding garbage.
+ */
+export function decodeWitnessHex(hex: string): Uint8Array {
+  if (typeof hex !== "string" || hex.length % 2 !== 0) {
+    throw new Error("Witness response was malformed (odd-length hex)");
+  }
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0, j = 0; i < hex.length; i += 2, j++) {
+    const hi = nibble(hex.charCodeAt(i));
+    const lo = nibble(hex.charCodeAt(i + 1));
+    if (hi < 0 || lo < 0) {
+      throw new Error("Witness response was malformed (invalid hex)");
+    }
+    bytes[j] = (hi << 4) | lo;
+  }
+  return bytes;
+}
+
+/** Hex-digit value of a char code, or -1 when it is not a hex digit. */
+function nibble(code: number): number {
+  if (code >= 48 && code <= 57) return code - 48; // 0-9
+  if (code >= 97 && code <= 102) return code - 87; // a-f
+  if (code >= 65 && code <= 70) return code - 55; // A-F
+  return -1;
+}
+
 /** Pull the human-readable `error` out of a JSON API body, if it is one. */
 function extractErrorMessage(body: string): string | null {
   try {
@@ -257,11 +292,7 @@ export async function computeWitness(
     throw new Error(`Witness generation failed: ${msg}`);
   }
   const { witness: hex } = (await res.json()) as { witness: string };
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+  return decodeWitnessHex(hex);
 }
 
 // Stage 2 — browser runs UltraHonk over the witness.
@@ -393,9 +424,7 @@ export async function computeAggregateWitness(
     // Days since epoch — mirrors the single-proof age path, which derives
     // current_date server-side.
     age_current_date: String(Math.floor(Date.now() / 86_400_000)),
-    age_threshold_years: String(
-      inputs.age.threshold_years ?? ageParams.threshold_years ?? 18,
-    ),
+    age_threshold_years: String(inputs.age.threshold_years ?? ageParams.threshold_years ?? 18),
     // ── Metadata (public) ───────────────────────────────────────────────────
     // The PoC circuit asserts num_credentials == 2.
     num_credentials: "2",
@@ -422,11 +451,7 @@ export async function computeAggregateWitness(
     throw new Error(`Aggregate witness generation failed: ${msg}`);
   }
   const { witness: hex } = (await res.json()) as { witness: string };
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+  return decodeWitnessHex(hex);
 }
 
 export async function generateAggregateProof(

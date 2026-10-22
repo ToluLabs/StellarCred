@@ -54,32 +54,32 @@ C=$(commit 42 7) || exit 1
 log_info "age_proof..."
 C=$(commit 3650 12345) || exit 1
 { echo "date_of_birth = \"3650\""; echo "salt = \"12345\""; echo "commitment = \"$C\""; \
-  echo "current_date = \"20000\""; echo "threshold_years = \"18\""; node "$SCRIPTS"/sign.js" "$C"; } \
+  echo "current_date = \"20000\""; echo "threshold_years = \"18\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/age_proof/Prover.toml"
 
 log_info "income_proof..."
 C=$(commit 250000 99) || exit 1
 {
   echo "income = \"250000\""; echo "salt = \"99\""; echo "commitment = \"$C\""; \
-  echo "threshold = \"200000\""; node "$SCRIPTS"/sign.js" "$C"; } \
+  echo "threshold = \"200000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/income_proof/Prover.toml"
 
 log_info "accreditation_proof..."
 C=$(commit 1500000 99) || exit 1
 { echo "net_worth = \"1500000\""; echo "salt = \"99\""; echo "commitment = \"$C\""; \
-  echo "threshold = \"1000000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "threshold = \"1000000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/accreditation_proof/Prover.toml"
 
 log_info "funds_proof..."
 C=$(commit 250000 99) || exit 1
 { echo "balance = \"250000\""; echo "salt = \"99\""; echo "commitment = \"$C\""; \
-  echo "threshold = \"200000\""; node "$SCRIPTS"/sign.js" "$C"; } \
+  echo "threshold = \"200000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/funds_proof/Prover.toml"
 
 log_info "range_proof..."
 C=$(commit 40000 2024) || exit 1
 { echo "value = \"40000\""; echo "salt = \"2024\""; echo "commitment = \"$C\""; \
-  echo "min = \"30000\""; echo "max = \"50000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "min = \"30000\""; echo "max = \"50000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/range_proof/Prover.toml"
 
 log_info "date_range..."
@@ -91,12 +91,12 @@ C=$(commit 3650 12345) || exit 1
 log_info "jurisdiction_proof (denylist)..."
 C=$(commit 566 77) || exit 1
 { echo "jurisdiction = \"566\""; echo "salt = \"77\""; echo "commitment = \"$C\""; \
-  echo "denylist = \"true\""; node "$SCRIPTS"/sign.js" "$C"; } \
+  echo "denylist = \"true\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/jurisdiction_proof/Prover.toml"
 {
   echo "country_code = \"566\""; echo "salt = \"77\""; echo "commitment = \"$C\""; \
   echo "restricted = [\"840\", \"364\", \"408\", \"0\", \"0\", \"0\", \"0\", \"0\"]"; \
-  echo "mode = \"0\""; node "$SCRIPTS"/sign.js" "$C"; } \
+  echo "mode = \"0\""; node "$SCRIPTS"/sign.js "$C"; } \
  > "$ROOT/jurisdiction_proof/Prover.toml"
 
 log_info "jurisdiction_proof (allowlist)..."
@@ -104,7 +104,7 @@ C=$(commit 566 77) || exit 1
 {
   echo "country_code = \"566\""; echo "salt = \"77\""; echo "commitment = \"$C\""; \
   echo "restricted = [\"566\", \"276\", \"356\", \"0\", \"0\", \"0\", \"0\", \"0\"]"; \
-  echo "mode = \"1\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "mode = \"1\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/jurisdiction_proof/Prover_allowlist.toml"
 
 log_info "employment_proof..."
@@ -113,7 +113,7 @@ log_info "employment_proof..."
 # binary "is employed" tag.
 C=$(commit3 1 5 11) || exit 1
 { echo "employment_status = \"1\""; echo "seniority = \"5\""; echo "salt = \"11\""; \
-  echo "commitment = \"$C\""; echo "min_seniority = \"3\""; node "$SCRIPTS"/sign.js" "$C"; } \
+  echo "commitment = \"$C\""; echo "min_seniority = \"3\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/employment_proof/Prover.toml"
 
 log_info "set_membership..."
@@ -132,7 +132,7 @@ MERKLE_LINES=$(node "$SCRIPTS"/merkle_tree.js" path $SM_VALUES --for $SM_MEMBER)
   echo "salt = \"$SM_SALT\""
   echo "commitment = \"$C\""
   echo "$MERKLE_LINES"
-  node "$SCRIPTS/sign.js" "$C"
+  node "$SCRIPTS"/sign.js "$C"
 } > "$ROOT/set_membership/Prover.toml"
 
 log_info "done. demo issuer public key:"
