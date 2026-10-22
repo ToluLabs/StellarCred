@@ -8,7 +8,7 @@ StellarCred is in active development. Security fixes are applied to the latest c
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Email **dahunsisamuel1st@gmail.com** with:
+Email **dahunsisamuel1@gmail.com** with:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce or a proof-of-concept (private gist / attachment is fine)
@@ -39,6 +39,38 @@ See the full threat model and reviewer checklist in [docs/THREAT_MODEL.md](docs/
 For the boundaries of the privacy guarantee — what the system does not hide, recover, or
 guarantee, and what each party observes — see
 [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+
+## Credential lifecycle and renewal policy
+
+This policy defines the standardized lifecycle for every issued credential, beyond the initial issuance. It applies to credentials issued through `app/api/issue/route.ts` and registered in `contracts/proof_registry`.
+
+### 1. Effective period and expiration
+
+- Every credential carries an explicit expiration timestamp. Credentials without an expiration are invalid and must be rejected at verification time.
+- The default effective period is 12 calendar months from issuance unless the issuer registers a shorter period for a specific credential type.
+- Expiration is enforced on-chain: the proof must include the credential expiry as a public input, and `contracts/proof_registry` rejects proofs whose expiry has passed at ledger close time.
+- Expiry checks must include a clock-drift buffer (default 60 seconds) so that proofs submitted just before expiry are not rejected due to ledger close latency.
+
+### 2. Renewal window
+
+- Renewal is allowed only within the 30 days preceding the expiration timestamp. Renewal requests outside this window are rejected.
+- Renewal requires a fresh issuer signature over a new commitment that includes the new expiry timestamp. Renewal cannot extend a credential by re-using an old signature.
+- Renewal preserves the credential's identity binding but issues a new expiry and a new commitment; the previous commitment is marked superseded in `contracts/proof_registry`.
+- Renewal does not re-run KYC. If the underlying identity attestation has expired or been revoked at the provider, the issuer must revoke the credential instead of renewing it.
+- Renewal requests are logged with the old and new expiry timestamps for audit purposes.
+
+### 3. Trust revocation
+
+- Trust revocation is distinct from expiry: a revoked credential is invalid immediately, regardless of its expiration timestamp.
+- The admin key can revoke an issuer in `IssuerRegistry`; revocation invalidates all credentials signed by that issuer key at or after the revocation ledger.
+- Issuers can revoke individual credentials by publishing the credential commitment to the revocation set in `contracts/proof_registry`. Verification must check this set and reject revoked commitments.
+- Revocation is final and cannot be undone. Re-issuance after revocation requires a new credential and a new issuer signature.
+- Revocation events are emitted on-chain and must be monitored by relying parties; a proof that was valid at submission time remains valid for that transaction but must be rejected in any later verification.
+
+### 4. Issuer key rotation
+
+- Issuer key rotation follows the procedure in the Pre-Mainnet Security Checklist below. Credentials signed under a previous key remain valid until their expiry or explicit revocation, provided the old key is retained in `IssuerRegistry` for verification.
+- Rotated-key credentials must be migrated to the new key within the renewal window or at expiry, whichever comes first.
 
 ## Pre-Mainnet Security Checklist
 
