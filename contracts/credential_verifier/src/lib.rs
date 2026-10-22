@@ -69,6 +69,30 @@ pub struct EventContractUpgraded {
     pub upgraded_at: u64,
 }
 
+/// Payload emitted when a proof verification succeeds.
+/// Topics: ("cred_ver", "ver_ok", credential_type)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVerificationSucceeded {
+    /// The VK version used for verification.
+    pub version: u32,
+    /// Ledger timestamp of the verification.
+    pub verified_at: u64,
+}
+
+/// Payload emitted when a proof verification fails (invalid proof, malformed
+/// input, or verifier error). Panics (e.g. `VkNotSet`, `VersionDeprecated`)
+/// are not captured by this event.
+/// Topics: ("cred_ver", "ver_fail", credential_type)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVerificationFailed {
+    /// The VK version used for verification.
+    pub version: u32,
+    /// Ledger timestamp of the failed verification.
+    pub failed_at: u64,
+}
+
 // ── Contract versioning ──────────────────────────────────────────────────────
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
@@ -371,6 +395,7 @@ impl CredentialVerifier {
     /// inputs or invalid proofs; panics with `VkNotSet` if no VK has been
     /// registered for this type/version, or with `VersionDeprecated` if the
     /// requested version has been deprecated.
+    #[allow(deprecated)]
     pub fn verify_proof(
         env: Env,
         credential_type: Symbol,
@@ -380,6 +405,17 @@ impl CredentialVerifier {
     ) -> bool {
         // Proofs are fixed-length; reject early before touching the verifier.
         if proof.len() as usize != PROOF_BYTES {
+            env.events().publish(
+                (
+                    symbol_short!("cred_ver"),
+                    symbol_short!("ver_fail"),
+                    credential_type,
+                ),
+                EventVerificationFailed {
+                    version: vk_version.unwrap_or(0),
+                    failed_at: env.ledger().timestamp(),
+                },
+            );
             return false;
         }
 
@@ -410,13 +446,41 @@ impl CredentialVerifier {
         let vk: Bytes = env
             .storage()
             .persistent()
-            .get(&DataKey::Vk(credential_type, version))
+            .get(&DataKey::Vk(credential_type.clone(), version))
             .unwrap_or_else(|| panic_with_error!(&env, Error::VkNotSet));
 
-        match UltraHonkVerifier::new(&env, &vk) {
+        let ok = match UltraHonkVerifier::new(&env, &vk) {
             Ok(verifier) => verifier.verify(&env, &proof, &public_inputs).is_ok(),
             Err(_) => false,
+        };
+
+        if ok {
+            env.events().publish(
+                (
+                    symbol_short!("cred_ver"),
+                    symbol_short!("ver_ok"),
+                    credential_type,
+                ),
+                EventVerificationSucceeded {
+                    version,
+                    verified_at: env.ledger().timestamp(),
+                },
+            );
+        } else {
+            env.events().publish(
+                (
+                    symbol_short!("cred_ver"),
+                    symbol_short!("ver_fail"),
+                    credential_type,
+                ),
+                EventVerificationFailed {
+                    version,
+                    failed_at: env.ledger().timestamp(),
+                },
+            );
         }
+
+        ok
     }
 
     /// Assign `address` as the holder of `role`, replacing any previous holder.

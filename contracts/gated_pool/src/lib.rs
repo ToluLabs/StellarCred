@@ -45,6 +45,17 @@ pub struct EventWithdraw {
     pub new_balance: i128,
 }
 
+/// Payload emitted when a KYC verification check is performed during deposit.
+/// Topics: (symbol_short!("gate_pool"), symbol_short!("verify"))
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVerify {
+    pub caller: Address,
+    pub verified: bool,
+    pub required_type: Symbol,
+    pub min_threshold: Option<u64>,
+}
+
 // Persistent-entry lifetime management (~5s ledgers).
 const DAY_IN_LEDGERS: u32 = 17280;
 const BALANCE_BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
@@ -140,6 +151,15 @@ impl GatedPool {
             &Self::required_type(&env),
             &Self::min_threshold(&env),
             &None,
+        );
+        env.events().publish(
+            (symbol_short!("gate_pool"), symbol_short!("verify")),
+            EventVerify {
+                caller: caller.clone(),
+                verified,
+                required_type: Self::required_type(&env),
+                min_threshold: Self::min_threshold(&env),
+            },
         );
         if !verified {
             panic_with_error!(&env, Error::NotKycVerified);
