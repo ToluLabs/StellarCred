@@ -2,6 +2,7 @@
 
 import type { Credential } from "./credential";
 import { loadCredentials, saveCredential } from "./credential";
+import { filterCredentialsForExport } from "./export-visibility";
 import {
   currentDeploymentRef,
   deploymentMismatchMessage,
@@ -46,7 +47,8 @@ export async function createEncryptedBackup(
     throw new Error("Passphrase must not be empty");
   }
   const credentials = await loadCredentials();
-  const sealed = await sealWithPassphrase(JSON.stringify(credentials), passphrase);
+  const exportableCredentials = filterCredentialsForExport(credentials);
+  const sealed = await sealWithPassphrase(JSON.stringify(exportableCredentials), passphrase);
 
   return {
     ...sealed,
