@@ -10,6 +10,7 @@ import {
   LIMITS,
 } from "../../../lib/rate-limit";
 import {
+  isProverResourceExhaustion,
   normalizeRestricted,
   validateWitnessCredential,
   type ClaimParams,
@@ -35,44 +36,44 @@ import aggregateCircuit from "../../../public/circuits/aggregate.json";
  */
 async function resolveCurrentDate(): Promise<number> {
   const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
-  
+
   if (!rpcUrl) {
-    throw new Error('NEXT_PUBLIC_RPC_URL is not configured');
+    throw new Error("NEXT_PUBLIC_RPC_URL is not configured");
   }
-  
+
   // Add timeout to prevent hanging on RPC calls (5 seconds)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
-  
+
   try {
     // Use Soroban RPC getLatestLedger to get the current ledger close time
     const res = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: 1,
-        method: 'getLatestLedger'
+        method: "getLatestLedger",
       }),
-      signal: controller.signal
+      signal: controller.signal,
     });
-    
+
     if (!res.ok) {
       throw new Error(`RPC error: ${res.status}`);
     }
-    
+
     const data = await res.json();
     const closedAt = data?.result?.closedAt || data?.result?.closeTime;
-    
+
     if (!closedAt) {
-      throw new Error('RPC response missing ledger close time');
+      throw new Error("RPC response missing ledger close time");
     }
-    
+
     // Convert ISO 8601 to UTC days since epoch
     return Math.floor(new Date(closedAt).getTime() / 86_400_000);
   } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error('Ledger time fetch timeout');
+    if (error.name === "AbortError") {
+      throw new Error("Ledger time fetch timeout");
     }
     throw error;
   } finally {
@@ -96,9 +97,9 @@ const asFieldString = (v: string | number | undefined, fallback: string): string
 
 // Modified: Accept currentDate as a parameter instead of calling resolveCurrentDate()
 async function buildInputs(
-  type: string, 
+  type: string,
   cred: Record<string, unknown>,
-  currentDate: string
+  currentDate: string,
 ): Promise<InputMap> {
   const value = String(cred.value);
   const salt = String(cred.salt);
@@ -237,23 +238,29 @@ export async function POST(req: NextRequest) {
   // and the body is never logged.
   const parsed = await readJsonBody<{ type?: string; credential?: Record<string, unknown> }>(req);
   if (!parsed.ok) {
-    logger.warn(stripSensitiveFields({
-      event: "witness_request_rejected",
-      outcome: parsed.error.code,
-      requestId,
-    }));
+    logger.warn(
+      stripSensitiveFields({
+        event: "witness_request_rejected",
+        outcome: parsed.error.code,
+        requestId,
+      }),
+    );
     return sendResponse(bodyErrorResponse(parsed.error));
   }
 
   const { type, credential } = parsed.body;
   if (!type || !credential) {
-    return sendResponse(NextResponse.json(
-      { error: "type and credential are required", code: "invalid_request" },
-      { status: 400 },
-    ));
+    return sendResponse(
+      NextResponse.json(
+        { error: "type and credential are required", code: "invalid_request" },
+        { status: 400 },
+      ),
+    );
   }
 
-  logger.info(stripSensitiveFields({ event: "witness_request_received", credentialType: type, requestId }));
+  logger.info(
+    stripSensitiveFields({ event: "witness_request_received", credentialType: type, requestId }),
+  );
 
   // Circuit-compatibility gate (#633), ahead of any Noir work. A credential
   // issued against a superseded circuit version may no longer be expressible by
@@ -265,42 +272,50 @@ export async function POST(req: NextRequest) {
   // owns the compiled circuits.
   const circuitMismatch = witnessCircuitVersionMismatch(type, credential);
   if (circuitMismatch) {
-    logger.warn(stripSensitiveFields({
-      event: "witness_request_rejected",
-      credentialType: type,
-      outcome: "circuit_version_mismatch",
-      requestId,
-    }));
-    return sendResponse(NextResponse.json(
-      { error: circuitMismatch, code: "circuit_version_mismatch" },
-      { status: 409 },
-    ));
+    logger.warn(
+      stripSensitiveFields({
+        event: "witness_request_rejected",
+        credentialType: type,
+        outcome: "circuit_version_mismatch",
+        requestId,
+      }),
+    );
+    return sendResponse(
+      NextResponse.json(
+        { error: circuitMismatch, code: "circuit_version_mismatch" },
+        { status: 409 },
+      ),
+    );
   }
 
   // Circuit-shape validation before building the InputMap: a wrong-length
   // signature or a non-numeric field would otherwise fail deep inside Noir.
   const invalid = validateWitnessCredential(type, credential);
   if (invalid) {
-    logger.warn(stripSensitiveFields({
-      event: "witness_request_rejected",
-      credentialType: type,
-      outcome: "invalid_credential",
-      requestId,
-    }));
-    return sendResponse(NextResponse.json(
-      {
-        error: `${invalid.field} ${invalid.message}`,
-        code: "invalid_credential",
-        field: invalid.field,
-      },
-      { status: 400 },
-    ));
+    logger.warn(
+      stripSensitiveFields({
+        event: "witness_request_rejected",
+        credentialType: type,
+        outcome: "invalid_credential",
+        requestId,
+      }),
+    );
+    return sendResponse(
+      NextResponse.json(
+        {
+          error: `${invalid.field} ${invalid.message}`,
+          code: "invalid_credential",
+          field: invalid.field,
+        },
+        { status: 400 },
+      ),
+    );
   }
 
   try {
     // Resolve date ONCE per request — not per credential
     const currentDate = String(await resolveCurrentDate());
-    
+
     const { Noir } = await import("@noir-lang/noir_js");
     const circuit = circuitFor(type);
     const noir = new Noir(circuit as never);
@@ -308,27 +323,64 @@ export async function POST(req: NextRequest) {
     const { witness } = await noir.execute(inputs);
     // Serialize Uint8Array —→ hex string for JSON transport.
     const hex = Buffer.from(witness).toString("hex");
-    logger.info(stripSensitiveFields({
-      event: "witness_response_sent",
-      credentialType: type,
-      outcome: "success",
-      requestId,
-    }));
+    logger.info(
+      stripSensitiveFields({
+        event: "witness_response_sent",
+        credentialType: type,
+        outcome: "success",
+        requestId,
+      }),
+    );
     return sendResponse(NextResponse.json({ witness: hex }));
   } catch (e) {
     const err = e as Error;
+
+    // #803 — a large credential payload can exhaust the prover's WASM memory
+    // during witness generation. That is a size problem, not a server bug: map
+    // it to a 413 so the holder gets a legible "input too large" instead of an
+    // opaque 500. The upstream u64/field validation in lib/witness-input.ts
+    // rejects oversized values before Noir is ever invoked; this is the
+    // graceful backstop for anything that still overruns the prover itself.
+    if (isProverResourceExhaustion(err.message)) {
+      logger.warn(
+        stripSensitiveFields({
+          event: "witness_response_sent",
+          credentialType: type,
+          outcome: "resource_exhausted",
+          requestId,
+        }),
+      );
+      return sendResponse(
+        NextResponse.json(
+          {
+            error:
+              "The credential payload is too large to generate a witness in the available prover memory. Use a smaller payload.",
+            code: "input_too_large",
+          },
+          { status: 413 },
+        ),
+      );
+    }
+
     // Map errors to appropriate HTTP status codes
-    const status = err.message === 'Ledger time fetch timeout' ? 504 : 
-                   err.message === 'NEXT_PUBLIC_RPC_URL is not configured' ? 500 :
-                   err.message.startsWith('RPC error') ? 502 : 500;
-    
-    logger.error(stripSensitiveFields({
-      event: "witness_response_sent",
-      credentialType: type,
-      outcome: "failure",
-      error: err.message,
-      requestId,
-    }));
+    const status =
+      err.message === "Ledger time fetch timeout"
+        ? 504
+        : err.message === "NEXT_PUBLIC_RPC_URL is not configured"
+          ? 500
+          : err.message.startsWith("RPC error")
+            ? 502
+            : 500;
+
+    logger.error(
+      stripSensitiveFields({
+        event: "witness_response_sent",
+        credentialType: type,
+        outcome: "failure",
+        error: err.message,
+        requestId,
+      }),
+    );
     return sendResponse(NextResponse.json({ error: err.message }, { status }));
   }
 }

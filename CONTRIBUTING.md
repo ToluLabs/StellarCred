@@ -2,6 +2,13 @@
 
 Thanks for your interest in contributing. StellarCred is a ZK credential layer for Stellar — contributions that improve correctness, security, or developer experience are especially welcome.
 
+**First time in this repo?** Work through
+[START_HERE.md](START_HERE.md) — one linear path from `git clone` to the same
+checks CI runs on your PR. This file is the reference for everything after that:
+project layout, workflow, review routing, trust-model invariants and PR rules.
+The per-component commands, expected outputs and known failure modes are
+collected in [docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md).
+
 ## Project layout
 
 ```
@@ -37,6 +44,25 @@ Two rules follow. The first is the one whose absence produced the duplicated
 2. **Link with a path that resolves from the file you are editing.** From the
    root, `docs/EVENTS.md`; from another file in `docs/`, the sibling `EVENTS.md`;
    from a component, the full walk up (`../../docs/EVENTS.md`).
+
+### Export pipeline
+
+The admin export system (issues [#783](https://github.com/ToluLabs/StellarCred/issues/783), [#784](https://github.com/ToluLabs/StellarCred/issues/784), and [#788](https://github.com/ToluLabs/StellarCred/issues/788)) lives under:
+
+```
+frontend/lib/export-store.ts          ExportRecord store (create/list/get/revoke)
+frontend/lib/export-job-store.ts      Chunked ExportJob model and cursor handles
+frontend/lib/export-cursor.ts         HMAC-signed resumable cursor tokens
+frontend/lib/export-chunks.ts         serveExportChunk orchestrator
+frontend/lib/export-throttle.ts       Per-tenant rate limiting
+frontend/lib/export-concurrency.ts    Global concurrency cap
+frontend/lib/export-scheduler.ts      Cost-aware priority queue
+frontend/lib/export-metrics.ts        Backpressure metrics aggregator
+frontend/app/api/admin/exports/       API routes (list, get, revoke, audit, chunks, queue)
+frontend/app/admin/exports/           Admin web UI (Server Component + Server Action)
+```
+
+Full API reference, schema documentation, cURL and TypeScript examples, a contributor checklist, and testing guidance are in **[docs/exports.md](docs/exports.md)**.
 
 ### Writing a contract test
 
@@ -79,10 +105,15 @@ covered by `cargo test` and by `cargo clippy --workspace`.
 
 ## Setting up your environment
 
-Full install instructions — including exact commands, PATH configuration, and
-a troubleshooting table — are in **[SETUP.md](SETUP.md)**.
+[**START_HERE.md**](START_HERE.md) is the ordered path from a fresh clone to a
+green local build. [**SETUP.md**](SETUP.md) is the install reference behind it —
+exact commands per toolchain, PATH configuration, and the troubleshooting table.
+[**docs/CONTRIBUTOR_CHECKLIST.md**](docs/CONTRIBUTOR_CHECKLIST.md) lists the
+validation command for each component, what its output looks like when it passes,
+and the failure modes contributors hit most often.
 
-After following SETUP.md, run:
+Install only what your change needs (contracts do not need `nargo`/`bb`; the
+committed test fixtures already contain the real artifacts), then verify:
 
 ```bash
 make doctor
@@ -102,7 +133,10 @@ is wrong before you hit a confusing CI failure. A passing run looks like:
 All checks passed — environment is ready.
 ```
 
-Fix any `[FAIL]` lines before running `make build` or `make test`.
+Fix any `[FAIL]` lines before running `make build` or `make test`. The Makefile
+needs GNU Make **and** bash — on Windows run it from Git Bash or WSL, and if you
+have no Make, run the per-component commands from
+[docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md) instead.
 
 ### Pinned versions at a glance
 
@@ -115,37 +149,64 @@ Fix any `[FAIL]` lines before running `make build` or `make test`.
 | Node | **20** | Frontend and indexer |
 | pnpm | **9** | Frontend workspace manager |
 
+`frontend/package.json` also declares its own `packageManager` pnpm version, which
+corepack honours for commands run inside `frontend/`; SETUP.md § "Quick reference"
+explains how the two interact and what to do if they disagree.
+
 > **Circuit toolchain warning:** the `nargo` and `bb` versions are load-bearing.
 > A mismatch produces a VK that differs from the committed fixture, and CI fails
 > with `VK mismatch for <circuit>` — which looks like your change broke
 > something but is actually a version problem. Run `make doctor` first.
 
-## Docker quickstart
+## Docker
 
-Skip local toolchain installs — use the pinned dev image:
+Two different things live in Docker here, and mixing them up is a common early
+stumble.
+
+**The pinned toolchain image** — [`docker/Dockerfile.dev`](docker/Dockerfile.dev)
+— is what you use instead of installing Rust, Noir, Barretenberg, Node and pnpm
+on your host. It has no `docker compose` service, so build and run it directly,
+mounting the repo at `/workspace`:
 
 ```bash
-# Build the dev image (first time, or after Dockerfile changes)
-docker compose build
+docker build -f docker/Dockerfile.dev -t stellarcred-dev .
 
-# Frontend dev server on http://localhost:3000
-docker compose up frontend
+# Contract tests / WASM build
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "cargo test --locked && cargo build --release --target wasm32v1-none --locked"
 
-# Contract tests (21 tests)
-docker compose run --rm contracts cargo test
+# Circuits
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "bash ./circuits/scripts/build.sh"
 
-# Compile all Noir circuits
-docker compose run --rm circuits nargo compile --workspace
+# Frontend
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "cd frontend && pnpm install && pnpm build"
 ```
 
-The image pins Rust 1.93.1, nargo 1.0.0-beta.9, bb 0.87.0, Node 20, and pnpm 9,
-so version mismatches are not possible inside the container.
+The image pins nargo 1.0.0-beta.9, bb 0.87.0, Node 20, pnpm 9 and Stellar CLI
+27; Rust itself comes from `rust:1-bookworm` and `rust-toolchain.toml` selects
+the pinned compiler on the first `cargo` run inside the container, so that run
+needs network access.
+
+**`docker compose`** runs the *application*, not the toolchain: it defines only
+the `indexer` and `frontend` containers, reads contract IDs and keys from `.env`
+(see [`.env.example`](.env.example) and `services/indexer/.env.example`), and the
+frontend waits for the indexer's `/health` check:
+
+```bash
+docker compose up            # indexer on 3001, frontend on 3000
+docker compose up frontend   # also starts the indexer — it is a dependency
+```
+
+There is no `contracts` or `circuits` compose service; a `docker compose run
+--rm contracts …` command fails with `no such service`.
 
 ## Getting started
 
 ```bash
-# contracts
-cargo test                        # 21 tests, real BN254 verification
+# contracts — real BN254 verification against the committed fixtures/ artifacts
+cargo test
 
 # circuits (optional — pre-built artifacts are committed)
 ./circuits/scripts/build.sh       # compile all, stage to frontend/public/circuits
@@ -159,9 +220,14 @@ pnpm dev
 # indexer (optional — off-chain Soroban event indexing)
 cd services/indexer
 cp .env.example .env
-npm install
+npm ci
 npm run dev
 ```
+
+To validate rather than just run a component, use the checklist's per-component
+tables ([§ 3–§ 6](docs/CONTRIBUTOR_CHECKLIST.md)) — they pair each command with
+the output that means it passed. `make build && make test && make lint` (or
+`make all`) mirrors the CI build/test/lint jobs across every workspace.
 
 ## Holder page architecture
 
@@ -180,18 +246,22 @@ there**. Everything else has a designated home:
 2. Write the UI in `components/holder/`.
 3. Import and wire them in HolderPageClient.
 
-A CI guard (`scripts/check-holder-size.sh`) enforces a hard line-count ceiling on
-HolderPageClient.tsx. Adding inline feature code will fail CI. The guard was added
-in [#606](https://github.com/ToluLabs/StellarCred/issues/606).
+A CI guard (`scripts/check-page-client-size.sh`) enforces a hard line-count
+ceiling on the page-client shells — `HolderPageClient.tsx`, `VerifyPageClient.tsx`
+and `DocsPageClient.tsx`. Caps are pinned at their current sizes and only go down,
+so adding inline feature code fails CI. The guard was added in
+[#606](https://github.com/ToluLabs/StellarCred/issues/606) and extended in
+[#685](https://github.com/ToluLabs/StellarCred/issues/685).
 
 ## Development workflow
 
 1. **Pick and claim an issue** (see [Picking up an issue](#picking-up-an-issue) below), then **fork** the repo and create a branch from `main`.
 2. Make your changes. Keep commits focused — one logical change per commit.
-3. For contract changes: run `cargo test` and confirm all tests pass.
+3. For contract changes: run `cargo test --locked`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo fmt --all` before committing (formatting the files you did not touch would bloat the diff — revert those).
 4. For circuit changes: run `./circuits/scripts/build.sh` and update the relevant `fixtures/<type>/` artifacts, then regenerate the regression test vectors with `node circuits/scripts/testvectors.js update` (see `circuits/README.md` — "Test Vectors") and commit the result. CI runs `node circuits/scripts/testvectors.js check` and fails if a circuit or toolchain change silently altered proof output without the vectors being updated.
-5. For frontend changes: run `pnpm tsc --noEmit` (zero errors required) and `pnpm build`.
-6. Open a pull request against `main` with a clear description of what changed and why.
+5. For frontend changes: run `pnpm lint`, `pnpm exec tsc --noEmit` (zero errors required), `pnpm test`, `pnpm format:check` and `pnpm build`. For the SDK, the examples and the indexer, use the matching table in [docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md).
+6. Before pushing, walk [docs/CONTRIBUTOR_CHECKLIST.md § 9](docs/CONTRIBUTOR_CHECKLIST.md) — the CI job → command map there is how you reproduce anything red on the PR.
+7. Open a pull request against `main` with a clear description of what changed and why.
 
 ### Process documents belong in the PR description
 
@@ -563,7 +633,7 @@ Please do **not** open a public issue for security vulnerabilities. See [SECURIT
 
 ## Code style & Linting
 
-- **Rust**: `cargo fmt` before committing. Follow the existing contract structure — cross-contract calls use `#[contractclient]` interface traits, not crate dependencies.
+- **Rust**: `cargo fmt` before committing. Follow the existing contract structure — cross-contract calls use `#[contractclient]` interface traits, not crate dependencies. No CI job runs `cargo fmt --check` today and parts of the tree are unformatted, so keep the reformat to the files your PR touches.
 - **TypeScript & Web**: ESLint and Prettier are configured across the repository.
   - Run linting: `pnpm --dir frontend lint` (or `pnpm --dir frontend/packages/sdk lint` for SDK).
   - Check formatting: `pnpm --dir frontend format:check`.

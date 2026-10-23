@@ -242,9 +242,10 @@ lint-frontend:
 test-sdk:
 	cd frontend/packages/sdk && pnpm typecheck && pnpm test:integration
 
-## test-example: Run canonical integration example typecheck and test suite
+## test-example: Run integration example typechecks and test suites
 test-example:
 	cd examples/canonical-integration && npm run typecheck && npm test
+	cd examples/typescript && npm run typecheck && npm test
 
 ## test-a11y: Run axe-core accessibility tests
 test-a11y:

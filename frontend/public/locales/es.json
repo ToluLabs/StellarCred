@@ -6,7 +6,8 @@
     "connecting": "Conectando…",
     "show": "Mostrar",
     "hide": "Ocultar",
-    "selectLanguage": "Seleccionar idioma"
+    "selectLanguage": "Seleccionar idioma",
+    "dismiss": "Descartar notificación"
   },
   "nav": {
     "brand": "StellarCred",
@@ -16,7 +17,9 @@
     "apps": "Aplicaciones",
     "docs": "Documentos",
     "developers": "Desarrolladores",
-    "toggleMenu": "Abrir menú"
+    "toggleMenu": "Abrir menú",
+    "tour": "Tour",
+    "login": "Iniciar sesión"
   },
   "footer": {
     "copyright": "© {year} StellarCred",
@@ -35,8 +38,13 @@
   },
   "wallet": {
     "connect": "Conectar cartera",
+    "connecting": "Conectando…",
     "disconnect": "Haz clic para desconectar",
+    "disconnectAriaLabel": "Cartera conectada {address}. Haz clic para desconectar.",
+    "connectingAriaLabel": "Conectando cartera",
     "install": "Instalar {walletName}",
+    "retry": "Reintentar",
+    "report": "Reportar",
     "error": "Error",
     "errorMessage": "Ocurrió un error"
   },
@@ -90,15 +98,22 @@
   },
   "network": {
     "wrongNetwork": "Red incorrecta detectada. Cambia tu cartera a {network} para continuar.",
+    "mismatchBanner": "Tu cartera está en la red incorrecta. Cambia a {network} en tu extensión de cartera para enviar — la generación de pruebas sigue funcionando, pero el envío está bloqueado hasta que las redes coincidan.",
     "testnet": "Testnet",
-    "mainnet": "Mainnet"
+    "mainnet": "Mainnet",
+    "futurenet": "Futurenet"
   },
   "config": {
     "notConfigured": "La aplicación no está completamente configurada.",
     "issuanceDisabled": "La emisión de credenciales y el envío en cadena están deshabilitados — variables de entorno faltantes:",
     "submissionDisabled": "El envío en cadena está deshabilitado — variables de entorno faltantes:",
     "deployScript": "./scripts/deploy.sh",
-    "envLocation": "frontend/.env.local"
+    "envLocation": "frontend/.env.local",
+    "activeNetwork": "Red activa",
+    "mixedNetwork": "Configuración de red mixta detectada.",
+    "mixedNetworkFix": "Corrige NEXT_PUBLIC_STELLAR_NETWORK (o las anulaciones en conflicto) en {envLocation} — la firma e indexación son inseguras hasta que la configuración sea coherente.",
+    "credentialIssuanceAnd": "La emisión de credenciales y ",
+    "onChainSubmissionDisabled": "el envío en cadena están deshabilitados — variables de entorno faltantes:"
   },
   "credential": {
     "details": "Detalles de credencial",

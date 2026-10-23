@@ -878,9 +878,10 @@ if (!result.ok) {
 createSession(req, result.wallet);
 ```
 
-### Complete Runnable Reference Application
+### Complete Runnable Reference Applications
 
-A complete, runnable application implementing this entire pattern end-to-end (redirect, return handling, challenge generation, signature verification, on-chain re-verification, session route gating, and failure-state diagnosis) is available at [`examples/canonical-integration`](../../../examples/canonical-integration).
+- **Canonical Integration Example**: A complete, runnable application implementing this entire pattern end-to-end (redirect, return handling, challenge generation, signature verification, on-chain re-verification, session route gating, and failure-state diagnosis) is available at [`examples/canonical-integration`](../../../examples/canonical-integration).
+- **TypeScript SDK Example**: A minimal, typed example demonstrating SDK initialization, credential verification, wallet challenge signing, and credential-gated Stellar transaction creation with `@stellar/stellar-sdk` is available at [`examples/typescript`](../../../examples/typescript).
 
 ---
 
