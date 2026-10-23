@@ -143,7 +143,7 @@
       "welcome": {
         "title": "Bienvenido a StellarCred",
         "summary": "Demuestra hechos sobre ti mismo sin revelar datos personales. Este recorrido te guía por el ciclo completo una vez: una cartera, una credencial y una prueba que cualquiera puede verificar.",
-        "tip": "Tus credenciales viven solo en este navegador — nunca en un servidor. Puedes repetir este recorrido en cualquier momento con el botón "Tour" del encabezado.",
+        "tip": "Tus credenciales viven solo en este navegador — nunca en un servidor. Puedes repetir este recorrido en cualquier momento con el botón “Tour” del encabezado.",
         "railLabel": "Bienvenida"
       },
       "connect-wallet": {
