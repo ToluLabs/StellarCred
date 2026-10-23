@@ -688,16 +688,16 @@ function GenerateProofStep({
       </p>
       <ol style={{ paddingLeft: "1.2rem", margin: "0 0 1.1rem", display: "grid", gap: "0.5rem" }}>
         <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          <span style={{ color: ACCENT }}>Select</span> {t("proofGuide.step1").replace(/^Select a/, "a")}
+          {t("proofGuide.step1")}
         </li>
         <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          <span style={{ color: ACCENT }}>Choose</span> {t("proofGuide.step2").replace(/^Choose the/, "the")}
+          {t("proofGuide.step2")}
         </li>
         <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          Click <span style={{ color: ACCENT }}>Generate proof</span> &mdash; {t("proofGuide.step3").replace(/^Click Generate proof — /, "")}
+          {t("proofGuide.step3")}
         </li>
         <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          <span style={{ color: ACCENT }}>Submit</span> {t("proofGuide.step4").replace(/^Submit the/, "the")}
+          {t("proofGuide.step4")}
         </li>
       </ol>
       <div style={{ textAlign: "center", display: "grid", gap: "0.6rem" }}>

@@ -6,12 +6,14 @@
 
 import { useEffect, useState } from "react";
 import { IconX, IconArrowRight } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { useOnboarding, ONBOARDING_STEPS } from "@/lib/onboarding";
 import { useWallet } from "@/lib/wallet-context";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 
 export function OnboardingNudge() {
-  const { state, mounted, goToStep, currentStep } = useOnboarding();
+  const t = useTranslations("onboarding.nudge");
+  const { state, mounted, resumeAt, currentStep } = useOnboarding();
   const { address } = useWallet();
   const [dismissed, setDismissed] = useState(false);
 
@@ -56,20 +58,20 @@ export function OnboardingNudge() {
       }}
     >
       <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>
-        Complete your setup — generate your first proof to finish onboarding
+        {t("message")}
       </span>
       <div className="row" style={{ gap: "0.5rem" }}>
         <button
           className="btn btn-primary btn-sm"
-          onClick={() => goToStep(4)}
+          onClick={() => resumeAt(4)}
         >
-          Continue setup
+          {t("continueSetup")}
           <IconArrowRight size={13} />
         </button>
         <button
           className="btn btn-ghost btn-sm"
           onClick={handleDismiss}
-          aria-label="Dismiss nudge"
+          aria-label={t("dismiss")}
         >
           <IconX size={13} />
         </button>
