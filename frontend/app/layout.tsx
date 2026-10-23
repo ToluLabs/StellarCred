@@ -12,6 +12,7 @@ import { LocaleMetaTags } from "@/components/LocaleMetaTags";
 import { WalletProvider } from "@/lib/wallet-context";
 import { ToastProvider } from "@/components/Toast";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { BrowserCapabilityBanner } from "@/components/BrowserCapabilityBanner";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import type { Locale } from "@/i18n.config";
 
@@ -91,6 +92,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
+        <BrowserCapabilityBanner />
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ToastProvider>
             <WalletProvider>
@@ -98,7 +100,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <NetworkBanner />
               <RpcStatusBanner />
               <OnboardingWizard />
-              <main id="main-content" tabIndex={-1} className="container">
+              <main id="main-content" tabIndex={-1} className="container pt-4">
                 {children}
               </main>
               <Footer />
