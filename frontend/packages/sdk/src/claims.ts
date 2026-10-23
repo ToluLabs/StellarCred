@@ -19,6 +19,11 @@ import {
 } from "./indexer";
 // RpcError has been moved to ./errors.ts (issue #404)
 import { RpcError, ContractError, ContractErrorCode, parseContractError } from "./errors";
+import {
+  buildVerifyUrl as buildVerifyUrlWithBase,
+  type BuildVerifyUrlOptions,
+} from "./buildVerifyUrl";
+export type { BuildVerifyUrlClaimParams, BuildVerifyUrlOptions } from "./buildVerifyUrl";
 
 export { IndexerError };
 export type { IndexerClaimRow };
@@ -1557,6 +1562,8 @@ export async function getClaims(
 // URL builders & helpers
 // ---------------------------------------------------------------------------
 
+export function buildVerifyUrl(opts: BuildVerifyUrlOptions): string {
+  return buildVerifyUrlWithBase(opts, _config.baseUrl);
 export function buildVerifyUrl(opts: {
   returnUrl: string;
   claim?: ClaimType;

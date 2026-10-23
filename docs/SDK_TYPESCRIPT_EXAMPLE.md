@@ -36,13 +36,13 @@ npm install @stellarcred/sdk @stellar/stellar-sdk
 npm install --save-dev typescript tsx @types/node
 ```
 
-| Package | Role |
-| --- | --- |
-| `@stellarcred/sdk` | claim reads, `createWalletChallenge`, `verifyWalletClaim`, branded errors |
-| `@stellar/stellar-sdk` | required peer dependency; `TransactionBuilder`, `Keypair`, `Networks` |
-| `typescript` | typechecking (`tsc --noEmit`) |
-| `tsx` | run the `.ts` example without a build step |
-| `@types/node` | `process.env`, `Buffer` |
+| Package                | Role                                                                      |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `@stellarcred/sdk`     | claim reads, `createWalletChallenge`, `verifyWalletClaim`, branded errors |
+| `@stellar/stellar-sdk` | required peer dependency; `TransactionBuilder`, `Keypair`, `Networks`     |
+| `typescript`           | typechecking (`tsc --noEmit`)                                             |
+| `tsx`                  | run the `.ts` example without a build step                                |
+| `@types/node`          | `process.env`, `Buffer`                                                   |
 
 `@stellarcred/sdk` resolves through its `exports` map with `types` pointing at
 `dist/index.d.ts`, so `moduleResolution: "node16"`, `"bundler"` (used below), or
@@ -123,10 +123,7 @@ export async function hasVerifiedClaim(
 }
 
 /** Validity window and failure reason, without exposing personal data. */
-export async function readClaim(
-  wallet: string,
-  claim: ClaimType,
-): Promise<CredentialStatusResult> {
+export async function readClaim(wallet: string, claim: ClaimType): Promise<CredentialStatusResult> {
   return StellarCred.checkClaimStatus(wallet, claim, { throwOnError: true });
 }
 
@@ -142,6 +139,34 @@ checks `stored >= required`:
 ```ts
 const canTrade = await StellarCred.hasClaim(wallet, "age", { minThreshold: 21 });
 ```
+
+Build a typed verification link when the claim has not yet been established.
+`buildVerifyUrl` supports a single claim or a set of claims, typed policy
+parameters, and an optional return URL:
+
+```ts
+import { buildVerifyUrl, parseReturnParams, type BuildVerifyUrlOptions } from "@stellarcred/sdk";
+
+const verifyOptions = {
+  returnUrl: "https://yourapp.xyz/markets",
+  claim: "age",
+  claimParams: { threshold_years: "21" },
+} satisfies BuildVerifyUrlOptions;
+
+const verifyUrl = buildVerifyUrl(verifyOptions);
+// Redirect with: window.location.assign(verifyUrl)
+
+// On return, parse the query parameters before using them in UI state.
+const result = parseReturnParams(window.location.search);
+if (result.verified && result.wallet) {
+  console.log("Verified in this session:", result.claims);
+}
+```
+
+For a multi-claim flow, use `claims: ["kyc", "age"]`; age thresholds and
+funds/income thresholds use `claimParams.threshold_years` and
+`claimParams.threshold`, respectively. Treat `state` as opaque non-secret
+correlation data, and confirm security-sensitive claims with `hasClaim`.
 
 ## 5. Create and sign a transaction
 
@@ -204,7 +229,7 @@ export function verifyTransactionSignature(wallet: string, transaction: Transact
 ```
 
 Use this to confirm that the wallet submitting a signed transaction is the wallet
-whose credential you are gating on. It proves *control of the key*; combine it
+whose credential you are gating on. It proves _control of the key_; combine it
 with `hasClaim` for credential status.
 
 ## 7. Recommended: challenge + claim
