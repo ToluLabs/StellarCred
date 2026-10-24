@@ -6,7 +6,7 @@ const fs = require('fs');
 
 const ROOT = path.join(__dirname, '..');
 const REPO = path.join(ROOT, '..');
-const FIXTURES = path.join(REPO, 'fixtures');
+const FIXTURES = path.join(REPO,'fixtures');
 const NEGATIVE_FIXTURES = path.join(FIXTURES, 'negative');
 
 console.log('Generating comprehensive negative fixtures for all circuits...');
@@ -22,7 +22,7 @@ function helperCopyFixture(circuit, caseName, modifyPublicInputsFn = null) {
   const inputsPath = path.join(srcDir, 'public_inputs');
 
   if (!fs.existsSync(proofPath) || !fs.existsSync(vkPath) || !fs.existsSync(inputsPath)) {
-    console.log(`  [Skipped] Fixture directory for '${circuit}' missing required files.`);
+    console.log(`\n  [Skipped] Fixture directory for '${circuit}' missing required files.`);
     return false;
   }
 
