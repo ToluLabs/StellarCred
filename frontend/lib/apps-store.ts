@@ -66,11 +66,15 @@ export function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
-export function validateSubmission(input: Partial<AppSubmissionInput>): {
+export function validateSubmission(input: Partial<AppSubmissionInput> | null | undefined): {
   valid: boolean;
   errors: Record<string, string>;
 } {
   const errors: Record<string, string> = {};
+
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { valid: false, errors: { body: "Request body must be a JSON object" } };
+  }
 
   if (!input.appName || typeof input.appName !== "string" || !input.appName.trim()) {
     errors.appName = "App name is required";

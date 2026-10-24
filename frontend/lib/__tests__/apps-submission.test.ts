@@ -92,6 +92,30 @@ describe("Apps gallery submission and review flow (#433)", () => {
       expect(valid.valid).toBe(true);
       expect(Object.keys(valid.errors).length).toBe(0);
     });
+
+    it("rejects non-object request bodies instead of throwing", () => {
+      for (const input of [null, undefined, "string", 42, [], ["app"]]) {
+        const result = validateSubmission(input as never);
+        expect(result.valid).toBe(false);
+        expect(result.errors.body).toBe("Request body must be a JSON object");
+      }
+    });
+
+    it("rejects payloads with non-string fields without throwing", () => {
+      const result = validateSubmission({
+        appName: 123 as never,
+        description: true as never,
+        requiredClaims: "kyc" as never,
+        verifyUrl: null as never,
+        contactEmail: {} as never,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors.appName).toBeTruthy();
+      expect(result.errors.description).toBeTruthy();
+      expect(result.errors.requiredClaims).toBeTruthy();
+      expect(result.errors.verifyUrl).toBeTruthy();
+      expect(result.errors.contactEmail).toBeTruthy();
+    });
   });
 
   describe("Submission, storage, and review/approval workflow", () => {

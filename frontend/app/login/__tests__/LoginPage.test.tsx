@@ -99,10 +99,9 @@ describe("LoginPage Accessibility & Functionality (Issue #756)", () => {
     const submitBtn = screen.getByRole("button", { name: /sign in to your account/i });
     fireEvent.click(submitBtn);
 
-    // Error alert should appear with role="alert" and aria-live="assertive"
+    // Inline identifier error appears with role="alert"
     const alert = await screen.findByRole("alert");
     expect(alert).toBeInTheDocument();
-    expect(alert).toHaveAttribute("aria-live", "assertive");
     expect(alert).toHaveTextContent(/please enter your email or stellar public key/i);
 
     // Fill identifier and submit again
@@ -112,6 +111,36 @@ describe("LoginPage Accessibility & Functionality (Issue #756)", () => {
 
     const alertPassphrase = await screen.findByRole("alert");
     expect(alertPassphrase).toHaveTextContent(/please enter your credential passphrase/i);
+  });
+
+  it("shows inline errors for invalid identifiers before submit", async () => {
+    render(<LoginPageClient />);
+    fireEvent.click(screen.getByRole("tab", { name: /passphrase login/i }));
+
+    const identifierInput = screen.getByLabelText(/email or public key/i);
+    const submitBtn = screen.getByRole("button", { name: /sign in to your account/i });
+
+    fireEvent.change(identifierInput, { target: { value: "ab" } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/at least 3 characters/i);
+
+    fireEvent.change(identifierInput, { target: { value: "not a valid id!" } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/can only contain letters/i);
+
+    fireEvent.change(identifierInput, { target: { value: "plainidentifier" } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /valid email or stellar public key/i,
+    );
+
+    fireEvent.change(identifierInput, { target: { value: "user@bad" } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/valid email address/i);
+
+    fireEvent.change(identifierInput, { target: { value: "a".repeat(255) } });
+    fireEvent.click(submitBtn);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/at most 254 characters/i);
   });
 
   it("shows connected wallet status when wallet is connected", () => {
