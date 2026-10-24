@@ -23,6 +23,7 @@ PNPM_MAJOR      := 9
         compile-circuits check-circuits \
         build-frontend test-frontend lint-frontend test-sdk test-example test-a11y \
         build-indexer test-indexer lint-indexer run-indexer \
+        deploy deploy-check \
         backfill backfill-resume
 
 # ------------------------------------------------------------------------------
@@ -44,6 +45,8 @@ help:
 	@echo "  make fmt             - Check or apply formatting across Rust and TS"
 	@echo "  make clean           - Remove build artifacts and caches"
 	@echo "  make check-api-reference - Check docs/PROOF_REGISTRY_API.md against the contract source (issue #525)"
+	@echo "  make deploy          - Idempotently deploy contracts to a local environment"
+	@echo "  make deploy-check    - Verify deploy script is idempotent (dry-run twice)"
 	@echo ""
 	@echo "Focused Workspace Targets:"
 	@echo "  make build-contracts - Compile Soroban contracts to wasm32v1-none"
@@ -89,6 +92,22 @@ check-api-reference:
 clean:
 	cargo clean
 	rm -rf frontend/.next frontend/dist services/indexer/dist circuits/target
+
+# ------------------------------------------------------------------------------
+# Deploy (idempotent bootstrap)
+# ------------------------------------------------------------------------------
+
+## deploy: Idempotently deploy contracts; safe to re-run without cleaning state
+# The deploy script must check for existing resources (contract IDs, network
+# state) before creating them, so repeated runs skip or resume instead of
+# failing with "resource already exists".
+deploy:
+	bash ./scripts/deploy.sh
+
+## deploy-check: Run the deploy script twice to prove idempotency
+deploy-check:
+	bash ./scripts/deploy.sh
+	bash ./scripts/deploy.sh
 
 # ------------------------------------------------------------------------------
 # Doctor — environment version check

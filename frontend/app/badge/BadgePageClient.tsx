@@ -90,7 +90,11 @@ function BadgeContent() {
 
   // Amber is reserved for "cannot determine" — never used for a negative.
   const toneColor =
-    status === "verified" ? "#10b981" : status === "unverified" ? "#ef4444" : "#e3b341";
+    status === "verified"
+      ? "#10b981"
+      : status === "unverified"
+        ? "#ef4444"
+        : "#e3b341";
   const toneBg =
     status === "verified"
       ? "rgba(16, 185, 129, 0.15)"
