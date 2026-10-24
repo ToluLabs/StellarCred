@@ -5,7 +5,7 @@
 // and service context while guaranteeing zero sensitive payloads or PII escape.
 
 import type { NextRequest, NextResponse } from "next/server";
-import { logger, stripSensitiveFields } from "../logger";
+import { logger, safeError } from "../logger";
 
 // This module is also imported from middleware.ts, which is bundled for the
 // Edge runtime and cannot resolve `node:crypto`. Web Crypto's getRandomValues
@@ -310,7 +310,7 @@ export function withSentryRouteHandler(
         },
       });
 
-      logger.error(
+      safeError(
         stripSensitiveFields({
           event: "api_unhandled_server_error",
           requestId,
