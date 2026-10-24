@@ -16,6 +16,8 @@
 # - Validates WASM files before deployment
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 SOURCE="${SOURCE:-deployer}"
 NETWORK="${NETWORK:-testnet}"
 WASM_DIR="target/wasm32-unknown-unknown/release"
@@ -34,6 +36,11 @@ if [ -z "${ISSUER_PRIVATE_KEY:-}" ]; then
   echo "Error: ISSUER_PRIVATE_KEY is not set. Export it before running deploy.sh." >&2
   exit 1
 fi
+
+# Run the same environment validation CI uses before touching the network, so
+# a malformed key or deprecated variable name fails loudly instead of silently
+# producing a broken deployment.
+"$ROOT/scripts/validate-deploy-env.sh" --target=contracts
 
 echo "Building contracts..."
 stellar contract build >/dev/null

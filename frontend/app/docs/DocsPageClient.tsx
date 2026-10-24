@@ -879,6 +879,16 @@ fields 33–64  issuer_y   (secp256k1 Y, one byte per field in low byte)`}</Code
               before it ever becomes a QR code, so the code alone reveals nothing. On the other
               device, scan the QR and enter the same passphrase to import.
             </P>
+            <P>
+              On the Holder page, <strong style={{color:"var(--text)"}}>Export field visibility</strong>
+              {" "}controls whether the sensitive credential attribute value and holder wallet
+              address are included in credential backups, encrypted transfers, and Guardian
+              recovery exports. Both fields are included by default to preserve existing behavior;
+              clearing a checkbox omits that key rather than replacing it with a marker. An export
+              with an omitted field cannot fully restore or prove that credential. Proof-history
+              JSON and CSV contain proof metadata only. These are local user preferences: there is
+              no admin override or server-side export role.
+            </P>
             <SubHeading>Credentials belong to the deployment that issued them</SubHeading>
             <P>
               Every credential records the network and contract IDs of the

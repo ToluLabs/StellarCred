@@ -6,7 +6,8 @@
     "connecting": "Connecting…",
     "show": "Show",
     "hide": "Hide",
-    "selectLanguage": "Select language"
+    "selectLanguage": "Select language",
+    "dismiss": "Dismiss notification"
   },
   "nav": {
     "brand": "StellarCred",
@@ -16,7 +17,9 @@
     "apps": "Apps",
     "docs": "Docs",
     "developers": "Developers",
-    "toggleMenu": "Toggle menu"
+    "toggleMenu": "Toggle menu",
+    "tour": "Tour",
+    "login": "Login"
   },
   "footer": {
     "copyright": "© {year} StellarCred",
@@ -35,8 +38,13 @@
   },
   "wallet": {
     "connect": "Connect wallet",
+    "connecting": "Connecting…",
     "disconnect": "Click to disconnect",
+    "disconnectAriaLabel": "Connected wallet {address}. Click to disconnect.",
+    "connectingAriaLabel": "Connecting wallet",
     "install": "Install {walletName}",
+    "retry": "Retry",
+    "report": "Report",
     "error": "Error",
     "errorMessage": "An error occurred"
   },
@@ -90,15 +98,22 @@
   },
   "network": {
     "wrongNetwork": "Wrong network detected. Switch your wallet to {network} to continue.",
+    "mismatchBanner": "Your wallet is on the wrong network. Switch to {network} in your wallet extension to submit — proving still works, but submission is blocked until networks match.",
     "testnet": "Testnet",
-    "mainnet": "Mainnet"
+    "mainnet": "Mainnet",
+    "futurenet": "Futurenet"
   },
   "config": {
     "notConfigured": "App not fully configured.",
     "issuanceDisabled": "Credential issuance and On-chain submission is disabled — missing env vars:",
     "submissionDisabled": "On-chain submission is disabled — missing env vars:",
     "deployScript": "./scripts/deploy.sh",
-    "envLocation": "frontend/.env.local"
+    "envLocation": "frontend/.env.local",
+    "activeNetwork": "Active network",
+    "mixedNetwork": "Mixed-network configuration detected.",
+    "mixedNetworkFix": "Fix NEXT_PUBLIC_STELLAR_NETWORK (or the conflicting overrides) in {envLocation} — signing and indexing are unsafe until the config is coherent.",
+    "credentialIssuanceAnd": "Credential issuance and ",
+    "onChainSubmissionDisabled": "On-chain submission is disabled — missing env vars:"
   },
   "credential": {
     "details": "Credential details",

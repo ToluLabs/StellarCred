@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   RESTRICTED_LEN,
+  U64_MAX,
+  isProverResourceExhaustion,
   normalizeRestricted,
   validateWitnessCredential,
 } from "../witness-input";
@@ -12,8 +14,7 @@ function validCredential(overrides: Record<string, unknown> = {}) {
   return {
     value: "19000",
     salt: "0x" + "ab".repeat(31),
-    commitment:
-      "0x1e0f5c7a0b6a4d3e2c1b0a998877665544332211ffeeddccbbaa99887766554",
+    commitment: "0x1e0f5c7a0b6a4d3e2c1b0a998877665544332211ffeeddccbbaa99887766554",
     sig: bytes(64),
     issuerPubX: bytes(32),
     issuerPubY: bytes(32, 2),
@@ -24,7 +25,14 @@ function validCredential(overrides: Record<string, unknown> = {}) {
 describe("normalizeRestricted", () => {
   it("pads a short list to RESTRICTED_LEN with zeros", () => {
     expect(normalizeRestricted(["840", "364"])).toEqual([
-      "840", "364", "0", "0", "0", "0", "0", "0",
+      "840",
+      "364",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
     ]);
   });
 
@@ -42,7 +50,9 @@ describe("validateWitnessCredential", () => {
   });
 
   it("accepts decimal and 0x-hex field strings", () => {
-    expect(validateWitnessCredential("kyc", validCredential({ value: "0", salt: "0x1f" }))).toBeNull();
+    expect(
+      validateWitnessCredential("kyc", validCredential({ value: "0", salt: "0x1f" })),
+    ).toBeNull();
   });
 
   it.each([
@@ -63,8 +73,7 @@ describe("validateWitnessCredential", () => {
   });
 
   it("rejects a field at or above the BN254 modulus", () => {
-    const modulus =
-      "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+    const modulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
     const err = validateWitnessCredential("kyc", validCredential({ salt: modulus }));
     expect(err).toEqual({
       field: "credential.salt",
@@ -163,5 +172,112 @@ describe("validateWitnessCredential", () => {
   it("validates an unknown type as kyc", () => {
     const err = validateWitnessCredential("made-up", validCredential({ sig: bytes(10) }));
     expect(err?.field).toBe("credential.sig");
+  });
+});
+
+// ── #803 — large inputs must be rejected before they reach the prover ─────
+// The u64-typed circuits range-constrain their value/threshold inputs, so an
+// oversized value can never produce a witness: it crashes witness generation
+// deep inside ACVM. These checks turn that prover crash into a precise 400.
+
+describe("u64 circuit inputs (#803)", () => {
+  const overMax = (U64_MAX + 1n).toString();
+
+  it("accepts a value exactly at the u64 max", () => {
+    expect(
+      validateWitnessCredential("income", validCredential({ value: U64_MAX.toString() })),
+    ).toBeNull();
+    expect(
+      validateWitnessCredential("funds", validCredential({ value: U64_MAX.toString() })),
+    ).toBeNull();
+  });
+
+  it.each(["age", "income", "funds", "accreditation", "jurisdiction", "employment"])(
+    "rejects a %s credential value above u64 max",
+    (type) => {
+      const err = validateWitnessCredential(type, validCredential({ value: overMax }));
+      expect(err?.field).toBe("credential.value");
+      expect(err?.message).toContain("64-bit");
+    },
+  );
+
+  it("rejects a u64 value given as an over-max hex string", () => {
+    // 2^64 in hex — fits the field modulus but not u64.
+    const err = validateWitnessCredential("age", validCredential({ value: "0x10000000000000000" }));
+    expect(err?.field).toBe("credential.value");
+    expect(err?.message).toContain("64-bit");
+  });
+
+  it("rejects an age threshold above u64 max", () => {
+    const cred = validCredential({ claimParams: { threshold_years: overMax } });
+    const err = validateWitnessCredential("age", cred);
+    expect(err?.field).toBe("credential.claimParams.threshold_years");
+    expect(err?.message).toContain("64-bit");
+  });
+
+  it("accepts a threshold exactly at the u64 max", () => {
+    const cred = validCredential({ claimParams: { threshold: U64_MAX.toString() } });
+    expect(validateWitnessCredential("funds", cred)).toBeNull();
+  });
+
+  it("rejects employment seniority above u64 max", () => {
+    const err = validateWitnessCredential("employment", validCredential({ seniority: overMax }));
+    expect(err?.field).toBe("credential.seniority");
+    expect(err?.message).toContain("64-bit");
+  });
+
+  it("rejects an aggregate age_date_of_birth above u64 max", () => {
+    const agg = {
+      kyc_secret: "1",
+      kyc_salt: "2",
+      kyc_sig: bytes(64),
+      kyc_commitment: "3",
+      kyc_issuer_x: bytes(32),
+      kyc_issuer_y: bytes(32, 2),
+      age_date_of_birth: overMax,
+      age_salt: "4",
+      age_sig: bytes(64),
+      age_commitment: "5",
+      age_issuer_x: bytes(32),
+      age_issuer_y: bytes(32, 2),
+      age_threshold_years: "18",
+      num_credentials: "2",
+    };
+    const err = validateWitnessCredential("aggregate", agg);
+    expect(err?.field).toBe("credential.age_date_of_birth");
+  });
+
+  it("still accepts an arbitrary Field secret for kyc (no u64 cap)", () => {
+    const fieldMax =
+      21888242871839275222246405745257275088548364400416034343698204186575808495616n.toString(); // modulus - 1
+    expect(validateWitnessCredential("kyc", validCredential({ value: fieldMax }))).toBeNull();
+  });
+
+  it("cuts off a pathologically long field string before parsing it", () => {
+    const err = validateWitnessCredential("kyc", validCredential({ value: "9".repeat(1000) }));
+    expect(err).toEqual({
+      field: "credential.value",
+      message: "exceeds the BN254 field modulus",
+    });
+  });
+});
+
+describe("isProverResourceExhaustion (#803)", () => {
+  it.each([
+    "memory allocation failed",
+    "Array buffer allocation failed",
+    "out of memory",
+    "RuntimeError: unreachable",
+  ])("recognises %j as prover memory exhaustion", (message) => {
+    expect(isProverResourceExhaustion(message)).toBe(true);
+  });
+
+  it.each([
+    "Attempt to multiply with overflow",
+    "Failed to decode u64",
+    "Witness generation failed: constraint false",
+    "",
+  ])("does not treat %j as memory exhaustion", (message) => {
+    expect(isProverResourceExhaustion(message)).toBe(false);
   });
 });
