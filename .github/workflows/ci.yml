@@ -470,6 +470,23 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc --noEmit
 
+      # `npx stellarcred` (frontend/packages/cli) reuses the SDK from source:
+      # typecheck, test (incl. the bundled binary), and build the package.
+      # Kept before the bundle-size report: size-limit-action checks out the
+      # base branch to measure it, so steps after it run against the base tree,
+      # where this package does not exist yet.
+      - name: Typecheck stellarcred CLI
+        working-directory: frontend/packages/cli
+        run: pnpm exec tsc --noEmit -p tsconfig.json
+
+      - name: Test stellarcred CLI
+        working-directory: frontend/packages/cli
+        run: pnpm exec vitest run
+
+      - name: Build stellarcred CLI
+        working-directory: frontend/packages/cli
+        run: npm run build && node dist/cli.mjs --version
+
       - name: Build
         id: build
         run: pnpm build

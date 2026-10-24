@@ -43,6 +43,9 @@ reusable proofs instead of re-submitting personal data to every app.
 - **Drop-in integration.** The [`@stellarcred/sdk`](frontend/packages/sdk) gives
   protocols `hasClaim`, `getClaims`, and `buildVerifyUrl`, plus a return-URL
   redirect flow so users verify and bounce straight back.
+- **Scriptable from the command line.** [`npx stellarcred`](frontend/packages/cli)
+  checks credentials, lists issuers, builds verify links and prepares issuer
+  registration for CI, ops and issuer tooling — built on the same SDK.
 
 ---
 
