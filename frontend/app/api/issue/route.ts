@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CREDENTIAL_TYPES, type ClaimParams, type CredentialType } from "@stellarcred/issuer";
 import { fetchIssuerPubkey } from "@/lib/issuer-registry";
-import { previewIssue } from "@stellarcred/issuer";
 import { currentDeploymentRef } from "@/lib/deployment";
 import { circuitVersionStampFor } from "@/lib/circuit-versions";
 import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
@@ -237,32 +236,6 @@ async function executeRequest(
   );
   if (registrationFailure) {
     return sendResponse(failureResponse(registrationFailure));
-  }
-
-  // ── Preview mode ─────────────────────────────────────────────────────────
-  // Returns deterministic unsigned credential metadata (commitment, public
-  // inputs, attribute mapping) without touching signing keys or external
-  // providers. See docs/ISSUER_PREVIEW.md.
-  if (preview) {
-    try {
-      const previews = validated.request.credentialTypes.map((type) =>
-        previewIssue({
-          type: type as CredentialType,
-          holder: validated.request.holder,
-          issuerId: validated.request.issuerId,
-          issuerName: validated.request.issuerName,
-          expiry: validated.request.expiry,
-          attributes: validated.request.attributes,
-          claimParams: validated.request.claimParams,
-        }),
-      );
-      outcome = "success";
-      return sendResponse(
-        NextResponse.json({ preview: true, credentials: previews }, { status: 200 }),
-      );
-    } catch (e) {
-      return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 400 }));
-    }
   }
 
   const result = await runIssuanceFlow(validated.request, {
