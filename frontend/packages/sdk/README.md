@@ -417,6 +417,38 @@ const url = StellarCred.buildVerifyUrl({
 | `funds` | Liquid balance exceeds threshold | `threshold` (USD) |
 | `accreditation` | Holder meets an accredited-investor threshold | `threshold` (USD) |
 
+## Validating credential JSON
+
+Use the validator whenever credential JSON crosses a trust boundary — a user
+pasting an exported credential, a QR scan, an import file, or a request body
+from another service. It rejects malformed shapes before they reach storage or
+a verification flow, and reports every problem at once with the offending field
+path.
+
+```ts
+import { parseCredentialJson } from "@stellarcred/sdk";
+
+const result = parseCredentialJson(pastedJson);
+if (!result.valid) {
+  // e.g. "issuerId — must be a non-empty string."
+  return { errors: result.errors };
+}
+
+// result.credential is typed as CredentialJson.
+await storeLocally(result.credential);
+```
+
+If you already have an object (for example `await req.json()`), call
+`validateCredential(value)` instead. Server handlers that prefer exceptions can
+use `assertValidCredential(value)`, which throws a `CredentialValidationError`
+carrying the same `issues` list.
+
+The helper only checks shape and required metadata (`type`, `issuerId`, `holder`,
+`value`, `salt`, `commitment`, signature/public-key byte arrays, and expiry). It
+does **not** prove the credential on-chain or verify that the commitment is
+valid — for that, keep using `hasClaim` / `checkClaimStatus`, which read from
+ProofRegistry.
+
 ## Types
 
 The package exports its public types so you can type your own wrappers without
@@ -440,6 +472,10 @@ function gate(wallet: string, claim: ClaimType, opts?: ClaimOptions) {
 | `ClaimOptions` | `{ minThreshold?: number; trustedIssuers?: string[]; requestTimeoutMs?: number }` | Optional settings for `hasClaim`. `minThreshold` is forwarded to the on-chain `check_claim` for parameterised claim types and ignored for binary claims (`kyc`, `jurisdiction`). `trustedIssuers` restricts which issuer(s) the proof must come from, for any claim type — omit to accept any registered issuer. `requestTimeoutMs` bounds the individual read and defaults to 10 seconds. |
 | `Claim` | `{ type: string; verifiedAt: number; expiry: number }` | Shape returned by `getClaims`. |
 | `CLAIM_TYPES` | `readonly ClaimType[]` | The runtime constant. Use `as const` strings for compile-time narrowing. |
+| `validateCredential` | `(value: unknown) => CredentialValidationResult` | Validates an already-parsed credential object and returns `{ valid, credential }` or `{ valid: false, errors }`. |
+| `parseCredentialJson` | `(json: string) => CredentialValidationResult` | Parses and validates credential JSON text without throwing. |
+| `assertValidCredential` | `(value: unknown) => asserts value is CredentialJson` | Throws `CredentialValidationError` (with an `issues` array) for invalid input. |
+| `CredentialJson` | interface | The canonical credential shape accepted by the validator. |
 
 ## Full integration example
 

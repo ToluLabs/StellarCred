@@ -1,14 +1,15 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { IconWallet, IconChevronDown, IconAlertTriangle, IconInfoCircle, IconRefresh } from "@tabler/icons-react";
+import { IconWallet, IconChevronDown, IconAlertTriangle, IconInfoCircle, IconRefresh, IconNetwork } from "@tabler/icons-react";
 import { useWallet } from "@/lib/wallet-context";
 import { getWalletErrorInfo, getWalletReportUrl } from "@/lib/wallet";
+import { NETWORK } from "@/lib/stellar";
 import { truncateAddress } from "@/lib/format";
 import CopyButton from "@/components/CopyButton";
 
 export function WalletButton() {
-  const { address, connecting, error, connect, disconnect } = useWallet();
+  const { address, connecting, error, networkMismatch, connect, disconnect } = useWallet();
   const t = useTranslations();
 
   return (
@@ -40,6 +41,18 @@ export function WalletButton() {
           <IconWallet size={14} aria-hidden="true" />
           {connecting ? t("wallet.connecting") : t("wallet.connect")}
         </button>
+      )}
+
+      {address && networkMismatch && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.4rem", maxWidth: 300 }}>
+          <IconNetwork size={13} style={{ color: "var(--warn)", flexShrink: 0, marginTop: "0.15rem" }} aria-hidden="true" />
+          <span
+            className="mono"
+            style={{ color: "var(--warn)", fontSize: "0.7rem", textAlign: "right", lineHeight: 1.4 }}
+          >
+            Network mismatch — switch your wallet to {NETWORK} to continue
+          </span>
+        </div>
       )}
 
       {error && (() => {

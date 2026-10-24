@@ -105,9 +105,7 @@ beforeEach(() => {
   vi.mocked(issueAndAuditCredentials).mockReset();
   vi.mocked(reportError).mockReset();
 
-  vi.mocked(issueAndAuditCredentials).mockResolvedValue([
-    credential("kyc"),
-  ] as never);
+  vi.mocked(issueAndAuditCredentials).mockResolvedValue([credential("kyc")] as never);
 });
 
 afterEach(() => {
@@ -144,11 +142,7 @@ describe("Persona gate", () => {
     // The redirect stage must not sign anything.
     expect(issueAndAuditCredentials).not.toHaveBeenCalled();
 
-    expect(createPersonaInquiry).toHaveBeenCalledWith(
-      TEMPLATE_ID,
-      `${ORIGIN}/verify`,
-      HOLDER,
-    );
+    expect(createPersonaInquiry).toHaveBeenCalledWith(TEMPLATE_ID, `${ORIGIN}/verify`, HOLDER);
 
     // The server-side pending-inquiry record gets exactly the non-PII issuance
     // context a webhook needs to finish the job.
@@ -170,16 +164,11 @@ describe("Persona gate", () => {
       id: INQUIRY_ID,
     });
 
-    await runIssuanceFlow(
-      request({ returnUrl: "https://app.example/dashboard?tab=ids" }),
-      CTX,
-    );
+    await runIssuanceFlow(request({ returnUrl: "https://app.example/dashboard?tab=ids" }), CTX);
 
     expect(createPersonaInquiry).toHaveBeenCalledWith(
       TEMPLATE_ID,
-      `${ORIGIN}/verify?return_url=${encodeURIComponent(
-        "https://app.example/dashboard?tab=ids",
-      )}`,
+      `${ORIGIN}/verify?return_url=${encodeURIComponent("https://app.example/dashboard?tab=ids")}`,
       HOLDER,
     );
   });
@@ -226,10 +215,7 @@ describe("Persona gate", () => {
       error: "Persona KYC inquiry status: declined",
     });
 
-    const result = await runIssuanceFlow(
-      request({ personaInquiryId: INQUIRY_ID }),
-      CTX,
-    );
+    const result = await runIssuanceFlow(request({ personaInquiryId: INQUIRY_ID }), CTX);
 
     expect(result).toEqual({
       kind: "error",
@@ -276,10 +262,7 @@ describe("Persona gate", () => {
     );
     const events = captureLogs();
 
-    const result = await runIssuanceFlow(
-      request({ personaInquiryId: INQUIRY_ID }),
-      CTX,
-    );
+    const result = await runIssuanceFlow(request({ personaInquiryId: INQUIRY_ID }), CTX);
 
     expect(result).toEqual({
       kind: "error",
@@ -328,10 +311,7 @@ describe("Plaid attestation", () => {
       error: "Balance verification failed.",
     });
 
-    const result = await runIssuanceFlow(
-      request({ credentialTypes: ["funds"] }),
-      CTX,
-    );
+    const result = await runIssuanceFlow(request({ credentialTypes: ["funds"] }), CTX);
 
     expect(result).toEqual({
       kind: "error",
@@ -354,10 +334,7 @@ describe("issuance and stamping", () => {
       credential("age", "1995-06-15"),
     ] as never);
 
-    const result = await runIssuanceFlow(
-      request({ credentialTypes: ["kyc", "age"] }),
-      CTX,
-    );
+    const result = await runIssuanceFlow(request({ credentialTypes: ["kyc", "age"] }), CTX);
 
     expect(result.kind).toBe("issued");
     if (result.kind !== "issued") return;
@@ -401,10 +378,7 @@ describe("issuance and stamping", () => {
     );
     const events = captureLogs();
 
-    const result = await runIssuanceFlow(
-      request({ credentialTypes: ["kyc", "age"] }),
-      CTX,
-    );
+    const result = await runIssuanceFlow(request({ credentialTypes: ["kyc", "age"] }), CTX);
 
     expect(result).toEqual({
       kind: "error",

@@ -31,16 +31,9 @@ import {
  * Enforce the per-IP limit. Raw IPs are never logged — only a truncated
  * SHA-256 token, enough to correlate lines without carrying the address.
  */
-export function enforceIpRateLimit(
-  req: NextRequest,
-  requestId: string,
-): NextResponse | null {
+export function enforceIpRateLimit(req: NextRequest, requestId: string): NextResponse | null {
   const ip = extractIp(req);
-  const result = checkLimit(
-    `issue:ip:${ip}`,
-    LIMITS.issuePerIp(),
-    LIMITS.windowMs(),
-  );
+  const result = checkLimit(`issue:ip:${ip}`, LIMITS.issuePerIp(), LIMITS.windowMs());
   if (!result.throttled) return null;
 
   logger.warn(
@@ -59,15 +52,8 @@ export function enforceIpRateLimit(
  * Enforce the per-wallet limit, keyed on the `holder` from the request body
  * (which is already known to be present at this point in the flow).
  */
-export function enforceWalletRateLimit(
-  wallet: string,
-  requestId: string,
-): NextResponse | null {
-  const result = checkLimit(
-    `issue:wallet:${wallet}`,
-    LIMITS.issuePerWallet(),
-    LIMITS.windowMs(),
-  );
+export function enforceWalletRateLimit(wallet: string, requestId: string): NextResponse | null {
+  const result = checkLimit(`issue:wallet:${wallet}`, LIMITS.issuePerWallet(), LIMITS.windowMs());
   if (!result.throttled) return null;
 
   logger.warn(
