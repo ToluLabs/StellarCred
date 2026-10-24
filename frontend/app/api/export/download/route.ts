@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySecureDownloadToken } from '@/lib/security/secureDownload';
+import { verifyDownloadToken } from '@/lib/auth';
 import { getExportJob, getExportArtifact } from '@/lib/export-jobs';
 
 export async function GET(req: NextRequest) {
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const verification = verifySecureDownloadToken(token);
+    const verification = verifyDownloadToken(token);
 
     if (!verification.isValid) {
       if (verification.error === 'Token has expired') {

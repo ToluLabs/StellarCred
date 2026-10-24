@@ -28,8 +28,8 @@ describe("POST /api/webhooks/issuance (#846)", () => {
   const originalSecret = process.env.ISSUANCE_WEBHOOK_SECRET;
 
   afterAll(() => {
-    // Restore the ambient secret so this suite does not leak its mutation into
-    // other test files running in the same worker process.
+    process.env.ISSUANCE_WEBHOOK_SECRET = originalSecret;
+
     if (originalSecret !== undefined) {
       process.env.ISSUANCE_WEBHOOK_SECRET = originalSecret;
     } else {

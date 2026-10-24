@@ -7,21 +7,11 @@ import {
   type ExportScope,
   type ExportFormat,
 } from '@/lib/export-jobs';
-
-function getUserContext(req: NextRequest) {
-  const addressHeader = req.headers.get('x-user-address');
-  const authHeader = req.headers.get('authorization');
-  const roleHeader = req.headers.get('x-user-role');
-
-  const userAddress = addressHeader || 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2';
-  const isAdmin = roleHeader === 'admin' || authHeader?.toLowerCase().includes('admin');
-
-  return { userAddress, isAdmin };
-}
+import { resolveUserContext } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   try {
-    const { userAddress, isAdmin } = getUserContext(req);
+    const { userAddress, isAdmin } = resolveUserContext(req);
     const jobs = await listUserExportJobs(userAddress);
     const allowedScopes = getAllowedScopes(isAdmin);
 
@@ -38,7 +28,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userAddress, isAdmin } = getUserContext(req);
+    const { userAddress, isAdmin } = resolveUserContext(req);
 
     const body = await req.json().catch(() => ({}));
     const { scope, format = 'json', tenantId = 'default' } = body as {

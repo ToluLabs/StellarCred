@@ -3,7 +3,7 @@
 // Webhook signature verification, normalization, and reconciliation for
 // asynchronous issuance callbacks from external identity providers (#846).
 
-import crypto from "node:crypto";
+import { verifyHmacSignature } from "./auth";
 
 export type WebhookProvider = "persona" | "plaid" | "custom" | string;
 export type WebhookIssuanceStatus = "completed" | "failed" | "pending";
@@ -73,67 +73,16 @@ export function sanitizeWebhookPayload(obj: unknown): Record<string, unknown> {
  * Verifies HMAC-SHA256 signatures for inbound webhook callbacks.
  * Supports standard raw hex, `sha256=<hex>`, and timestamped signatures `t=<ts>,v1=<hex>`.
  * Uses constant-time comparison to prevent timing attacks.
+ *
+ * The comparison itself lives in lib/auth.ts so every HMAC check in the app
+ * shares one implementation and one skew window.
  */
 export function verifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null | undefined,
   secret: string
 ): boolean {
-  if (!signatureHeader || !secret || typeof rawBody !== "string") {
-    return false;
-  }
-
-  try {
-    let expectedSigHex: string;
-    let actualSigHex: string;
-
-    // Format 1: Timestamped header `t=123456,v1=abcdef...`
-    if (signatureHeader.includes("t=") && signatureHeader.includes("v1=")) {
-      const parts = signatureHeader.split(",").reduce<Record<string, string>>((acc, item) => {
-        const [k, v] = item.trim().split("=");
-        if (k && v) acc[k] = v;
-        return acc;
-      }, {});
-
-      const timestamp = parts.t;
-      actualSigHex = parts.v1;
-      if (!timestamp || !actualSigHex) return false;
-
-      // Bound timestamp skew to 5 minutes to prevent replay attacks
-      const now = Math.floor(Date.now() / 1000);
-      const parsedTime = parseInt(timestamp, 10);
-      if (isNaN(parsedTime) || Math.abs(now - parsedTime) > 300) {
-        return false;
-      }
-
-      expectedSigHex = crypto
-        .createHmac("sha256", secret)
-        .update(`${timestamp}.${rawBody}`)
-        .digest("hex");
-    } else {
-      // Format 2: Direct hex or `sha256=<hex>`
-      actualSigHex = signatureHeader.startsWith("sha256=")
-        ? signatureHeader.slice(7)
-        : signatureHeader;
-
-      expectedSigHex = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    }
-
-    if (actualSigHex.length !== expectedSigHex.length) {
-      return false;
-    }
-
-    const actualBuffer = Buffer.from(actualSigHex, "hex");
-    const expectedBuffer = Buffer.from(expectedSigHex, "hex");
-
-    if (actualBuffer.length !== expectedBuffer.length) {
-      return false;
-    }
-
-    return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
-  } catch {
-    return false;
-  }
+  return verifyHmacSignature(rawBody, signatureHeader, secret, { toleranceSeconds: 300 });
 }
 
 /**
