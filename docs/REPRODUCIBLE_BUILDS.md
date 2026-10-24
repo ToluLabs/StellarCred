@@ -106,7 +106,35 @@ verified cross-environment.
 
 ---
 
-## Option A — Verify using Docker (recommended)
+## Unified End-to-End Verification (Recommended)
+
+To verify the entire deployment chain in a single command — checking deployed contract IDs, on-chain versions, reproducible WASM byte-identity, and circuit VKs:
+
+```bash
+# Verify testnet deployment end-to-end:
+make verify-deployment NETWORK=testnet
+
+# Or verify mainnet:
+make verify-deployment NETWORK=mainnet
+
+# Or directly via script:
+./scripts/verify-deployment.sh --network testnet
+```
+
+This single command:
+1. Reads deployed contract IDs and expected hashes from `DEPLOYMENTS.md`.
+2. Reads each contract's `version()` and WASM hash on-chain via Soroban RPC.
+3. Rebuilds WASM artifacts deterministically (using Docker or locked host cargo).
+4. Compares registered VKs against freshly compiled circuits and committed test vectors.
+5. Prints a single consolidated `PASS` or `FAIL` with structured mismatch diagnostics.
+
+Run this as the primary check for auditing or verifying any deployment.
+
+---
+
+## Manual Verification Methods
+
+### Option A — Verify using Docker (step-by-step)
 
 Docker removes host-specific sources of variation. This path matches layer 2 of
 the CI check.

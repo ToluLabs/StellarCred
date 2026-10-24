@@ -449,10 +449,8 @@ impl ProofRegistry {
         Self::require_admin(&env);
         env.storage().instance().remove(&DataKey::PendingAdmin);
 
-        env.events().publish(
-            (symbol_short!("proof_reg"), symbol_short!("adm_canc")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("proof_reg"), symbol_short!("adm_canc")), ());
     }
 
     pub fn admin(env: Env) -> Address {
@@ -616,13 +614,12 @@ impl ProofRegistry {
         }
         let key = DataKey::Nullifier(app_context.clone(), nullifier.clone());
         env.storage().persistent().set(&key, &true);
-        env.storage().persistent().extend_ttl(&key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
 
         env.events().publish(
-            (
-                symbol_short!("proof_reg"),
-                symbol_short!("nullifier"),
-            ),
+            (symbol_short!("proof_reg"), symbol_short!("nullifier")),
             EventNullifierUsed {
                 app_context,
                 nullifier,
@@ -813,7 +810,15 @@ impl ProofRegistry {
 
             let threshold =
                 Self::extract_threshold_from_aggregate(&ct, &public_inputs, field_offset);
-            Self::store_claim(&env, &holder, &ct, now, expiries.get(i).unwrap(), threshold, issuer.clone());
+            Self::store_claim(
+                &env,
+                &holder,
+                &ct,
+                now,
+                expiries.get(i).unwrap(),
+                threshold,
+                issuer.clone(),
+            );
 
             env.events().publish(
                 (
@@ -911,7 +916,12 @@ impl ProofRegistry {
     /// own revocation, same as `revoke_proof`. A no-op (not an error) if no
     /// such delegation exists.
     #[allow(deprecated)]
-    pub fn revoke_verification(env: Env, holder: Address, verifier: Address, credential_type: Symbol) {
+    pub fn revoke_verification(
+        env: Env,
+        holder: Address,
+        verifier: Address,
+        credential_type: Symbol,
+    ) {
         holder.require_auth();
         env.storage().persistent().remove(&DataKey::Delegation(
             holder.clone(),
@@ -943,8 +953,7 @@ impl ProofRegistry {
         credential_type: Symbol,
     ) -> (bool, u64, u64) {
         let now = env.ledger().timestamp();
-        let delegation_key =
-            DataKey::Delegation(holder.clone(), verifier, credential_type.clone());
+        let delegation_key = DataKey::Delegation(holder.clone(), verifier, credential_type.clone());
         let delegated = match env.storage().persistent().get::<_, u64>(&delegation_key) {
             Some(expiry) => expiry > now,
             None => false,
@@ -1211,9 +1220,10 @@ impl ProofRegistry {
         // Ensure schema version is recorded
         let current_version = Self::proof_record_schema_version(env.clone());
         if current_version != PROOF_RECORD_SCHEMA_VERSION {
-            env.storage()
-                .instance()
-                .set(&DataKey::ProofRecordSchemaVersion, &PROOF_RECORD_SCHEMA_VERSION);
+            env.storage().instance().set(
+                &DataKey::ProofRecordSchemaVersion,
+                &PROOF_RECORD_SCHEMA_VERSION,
+            );
         }
 
         // Record migration timestamp

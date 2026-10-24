@@ -59,7 +59,13 @@ fn read_test_wasm() -> std::vec::Vec<u8> {
     if !path.exists() {
         let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let output = std::process::Command::new(env!("CARGO"))
-            .args(["build", "--release", "--locked", "--target", "wasm32v1-none"])
+            .args([
+                "build",
+                "--release",
+                "--locked",
+                "--target",
+                "wasm32v1-none",
+            ])
             .current_dir(workspace_root)
             .output()
             .expect("failed to spawn `cargo build` for the proof_registry wasm");
@@ -482,12 +488,8 @@ fn revoke_with_reason_codes_stores_and_emits_each_code() {
         let holder_i = Address::generate(&env);
         submit(&env, &h, &holder_i, 9999);
 
-        h.registry.revoke(
-            &h.issuer,
-            &holder_i,
-            &symbol_short!("kyc"),
-            &Some(*reason),
-        );
+        h.registry
+            .revoke(&h.issuer, &holder_i, &symbol_short!("kyc"), &Some(*reason));
 
         let record = h
             .registry
@@ -508,7 +510,8 @@ fn revoke_without_reason_defaults_to_other() {
     let holder = Address::generate(&env);
 
     submit(&env, &h, &holder, 9999);
-    h.registry.revoke(&h.issuer, &holder, &symbol_short!("kyc"), &None);
+    h.registry
+        .revoke(&h.issuer, &holder, &symbol_short!("kyc"), &None);
 
     let record = h
         .registry
@@ -2838,7 +2841,10 @@ fn test_nullifier_recording_and_duplicate_rejection_in_same_context() {
 
     // Reusing the same nullifier in the same app context is rejected on-chain
     let err = h.registry.try_record_nullifier(&app_context, &nullifier);
-    assert!(err.is_err(), "Duplicate nullifier in the same context must be rejected");
+    assert!(
+        err.is_err(),
+        "Duplicate nullifier in the same context must be rejected"
+    );
 }
 
 #[test]
@@ -2895,7 +2901,9 @@ fn test_submit_proof_with_nullifier_rejects_sybil_reuse() {
     );
 
     assert!(h.registry.is_nullifier_used(&app_context, &nullifier));
-    assert!(h.registry.check_claim(&holder, &symbol_short!("kyc"), &None, &None));
+    assert!(h
+        .registry
+        .check_claim(&holder, &symbol_short!("kyc"), &None, &None));
 
     // A second submission by another (or same) holder with the same nullifier in that app context MUST be rejected
     let second_holder = Address::generate(&env);
@@ -2910,5 +2918,8 @@ fn test_submit_proof_with_nullifier_rejects_sybil_reuse() {
         &app_context,
         &nullifier,
     );
-    assert!(second_attempt.is_err(), "Second submission with same nullifier in same context must revert");
+    assert!(
+        second_attempt.is_err(),
+        "Second submission with same nullifier in same context must revert"
+    );
 }

@@ -328,6 +328,11 @@ cd frontend && pnpm install && pnpm dev
 See [`DEPLOYMENTS.md`](./DEPLOYMENTS.md) for the authoritative list of live
 contract IDs, versions, WASM hashes, and deployment dates by network.
 
+Verify a deployment end-to-end with a single command:
+```bash
+make verify-deployment NETWORK=testnet   # or NETWORK=mainnet
+```
+
 ---
 
 ## Try it in 2 minutes
