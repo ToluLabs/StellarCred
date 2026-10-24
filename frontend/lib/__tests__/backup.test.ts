@@ -28,6 +28,8 @@ vi.mock("../stellar", () => ({
 
 const { createEncryptedBackup, decryptBackup, mergeCredentials } = await import("../backup");
 const { CREDENTIALS_STORAGE_KEY } = await import("../credential");
+const { openWithPassphrase } = await import("../credential-crypto");
+const { STORAGE_KEYS } = await import("../storage-keys");
 
 const PASSPHRASE = "correct horse battery staple";
 function deploymentRef(networkPassphrase: string): DeploymentRef {
@@ -70,6 +72,20 @@ describe("createEncryptedBackup", () => {
     expect(backup.kdf).toBe("PBKDF2-SHA256");
     expect(backup.iterations).toBe(600_000);
     expect(backup.deployment).toEqual(deploymentRef(TESTNET_PASSPHRASE));
+  });
+
+  it("omits opted-out PII fields from the encrypted backup payload", async () => {
+    localStorage.setItem(CREDENTIALS_STORAGE_KEY, JSON.stringify([storedCredential()]));
+    localStorage.setItem(
+      STORAGE_KEYS.EXPORT_VISIBILITY,
+      JSON.stringify({ value: false, holder: true }),
+    );
+
+    const backup = await createEncryptedBackup(PASSPHRASE);
+    const exported = JSON.parse(await openWithPassphrase(backup, PASSPHRASE)) as Record<string, unknown>[];
+
+    expect(exported[0]).not.toHaveProperty("value");
+    expect(exported[0]).toHaveProperty("holder", "GTESTHOLDER");
   });
 });
 

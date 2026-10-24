@@ -18,6 +18,7 @@ describe("storage-keys", () => {
   describe("STORAGE_KEYS enumeration", () => {
     it("exports all expected storage keys", () => {
       expect(STORAGE_KEYS.CREDENTIALS).toBe("stellarcred:credentials");
+      expect(STORAGE_KEYS.EXPORT_VISIBILITY).toBe("stellarcred:export-visibility");
       expect(STORAGE_KEYS.PROOF_CACHE).toBe("stellarcred:proof-cache");
       expect(STORAGE_KEYS.PROOF_TIMELINE_PREFIX).toBe("proofTimeline:");
       expect(STORAGE_KEYS.ONBOARDING).toBe("stellarcred:onboarding");
@@ -67,6 +68,7 @@ describe("storage-keys", () => {
       
       // Should include all static keys
       expect(allKeys).toContain(STORAGE_KEYS.CREDENTIALS);
+      expect(allKeys).toContain(STORAGE_KEYS.EXPORT_VISIBILITY);
       expect(allKeys).toContain(STORAGE_KEYS.PROOF_CACHE);
       expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING);
       expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING_LEGACY);
@@ -83,6 +85,7 @@ describe("storage-keys", () => {
       const allKeys = getAllStorageKeys();
       
       expect(allKeys).toContain(STORAGE_KEYS.CREDENTIALS);
+      expect(allKeys).toContain(STORAGE_KEYS.EXPORT_VISIBILITY);
       expect(allKeys).toContain(STORAGE_KEYS.PROOF_CACHE);
       expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING);
       expect(allKeys).toContain(STORAGE_KEYS.WALLET_ID);
@@ -93,6 +96,7 @@ describe("storage-keys", () => {
   describe("isStellarCredKey", () => {
     it("identifies static StellarCred keys", () => {
       expect(isStellarCredKey(STORAGE_KEYS.CREDENTIALS)).toBe(true);
+      expect(isStellarCredKey(STORAGE_KEYS.EXPORT_VISIBILITY)).toBe(true);
       expect(isStellarCredKey(STORAGE_KEYS.PROOF_CACHE)).toBe(true);
       expect(isStellarCredKey(STORAGE_KEYS.ONBOARDING)).toBe(true);
       expect(isStellarCredKey(STORAGE_KEYS.WALLET_ID)).toBe(true);

@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
+import { renderWithIntl } from "@/lib/test-utils";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { LoginPageClient } from "../LoginPageClient";
 
@@ -48,13 +49,13 @@ describe("LoginPage Accessibility & Functionality (Issue #756)", () => {
   });
 
   it("renders the main page heading and landmark structure", () => {
-    render(<LoginPageClient />);
+    renderWithIntl(<LoginPageClient />);
     const heading = screen.getByRole("heading", { level: 1, name: /sign in to stellarcred/i });
     expect(heading).toBeInTheDocument();
   });
 
   it("exposes accessible tablist and tab controls with correct ARIA attributes", () => {
-    render(<LoginPageClient />);
+    renderWithIntl(<LoginPageClient />);
     const tablist = screen.getByRole("tablist", { name: /login methods/i });
     expect(tablist).toBeInTheDocument();
 
@@ -71,7 +72,7 @@ describe("LoginPage Accessibility & Functionality (Issue #756)", () => {
   });
 
   it("provides accessible labels and hint descriptions for all form inputs", () => {
-    render(<LoginPageClient />);
+    renderWithIntl(<LoginPageClient />);
     const passphraseTab = screen.getByRole("tab", { name: /passphrase login/i });
     fireEvent.click(passphraseTab);
 
@@ -91,7 +92,7 @@ describe("LoginPage Accessibility & Functionality (Issue #756)", () => {
   });
 
   it("announces validation errors in an accessible role='alert' live region", async () => {
-    render(<LoginPageClient />);
+    renderWithIntl(<LoginPageClient />);
     const passphraseTab = screen.getByRole("tab", { name: /passphrase login/i });
     fireEvent.click(passphraseTab);
 
@@ -123,7 +124,7 @@ describe("LoginPage Accessibility & Functionality (Issue #756)", () => {
       networkMismatch: false,
     };
 
-    render(<LoginPageClient />);
+    renderWithIntl(<LoginPageClient />);
     const status = screen.getByRole("status");
     expect(status).toBeInTheDocument();
     expect(status).toHaveTextContent(/connected as GBBB...BBBB/i);

@@ -3,11 +3,7 @@ import { CREDENTIAL_TYPES, type ClaimParams, type Credential } from "@stellarcre
 import { fetchIssuerPubkey } from "@/lib/issuer-registry";
 import { circuitVersionStampFor } from "@/lib/circuit-versions";
 import { readJsonBody, bodyErrorResponse } from "@/lib/request-limits";
-import {
-  logger,
-  stripSensitiveFields,
-  resolveRequestId,
-} from "@/lib/logger";
+import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
 import { env } from "@/lib/env";
 import {
   checkLimit,
@@ -29,7 +25,12 @@ import {
 import {
   issueAndAuditCredentials,
   localIssuerPubkeyBytes,
+  resolveIssuerSigningKey,
+  createIssuerClient,
 } from "@/lib/issuer-service";
+import { resolveTenant, validateTenantCredentialTypes } from "@/lib/tenancy";
+import { normalizeAttributes } from "@/lib/attribute-normalizer";
+import { equals } from "@/lib/crypto";
 
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -75,17 +76,14 @@ export async function POST(req: NextRequest) {
 
   // ── Idempotency-Key support ────────────────────────────────────────────────
   const rawKey = req.headers.get("Idempotency-Key")?.trim() || undefined;
-  const idempotencyKey =
-    rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
+  const idempotencyKey = rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
   if (rawKey && !idempotencyKey) {
     logger.warn(
       stripSensitiveFields({
         event: "idempotency_key_rejected",
         requestId,
         reason:
-          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES
-            ? "too_long"
-            : "invalid",
+          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES ? "too_long" : "invalid",
       }),
     );
   }
@@ -101,9 +99,7 @@ export async function POST(req: NextRequest) {
       const inFlight = idempotencyInFlightBegin(idempotencyKey);
       if (!inFlight) break;
 
-      logger.info(
-        stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }),
-      );
+      logger.info(stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }));
       try {
         await inFlight;
         return replayIdempotencyRecord(requestId);
@@ -152,8 +148,7 @@ function replayIdempotencyRecord(requestId: string): NextResponse {
   return NextResponse.json(
     {
       code: "IDEMPOTENCY_RESPONSE_REDACTED",
-      error:
-        "This Idempotency-Key already completed; credential data is not retained for replay.",
+      error: "This Idempotency-Key already completed; credential data is not retained for replay.",
     },
     { status: 409, headers },
   );
@@ -173,6 +168,17 @@ async function executeBatchRequest(
         batch?: BatchItemRequest[];
         items?: BatchItemRequest[];
       };
+
+  const tenantRes = await resolveTenant(req);
+  if (tenantRes.error) {
+    if (idempotencyKey) {
+      idempotencyInFlightFail(idempotencyKey, new Error(tenantRes.error));
+    }
+    const res = NextResponse.json({ error: tenantRes.error }, { status: tenantRes.status ?? 401 });
+    res.headers.set("x-request-id", requestId);
+    return res;
+  }
+  const tenant = tenantRes.tenant;
 
   const parsed = await readJsonBody<RawBatchBody>(req);
   if (!parsed.ok) {
@@ -198,10 +204,7 @@ async function executeBatchRequest(
     if (idempotencyKey) {
       try {
         if (response.status === 200) {
-          const record = completedIdempotencyRecord(
-            response.status,
-            await response.clone().text(),
-          );
+          const record = completedIdempotencyRecord(response.status, await response.clone().text());
           await idempotencySetAsync(idempotencyKey, record);
           idempotencyInFlightSettle(idempotencyKey, record);
         } else {
@@ -237,6 +240,12 @@ async function executeBatchRequest(
     );
   }
 
+  let customIssuerClient: ReturnType<typeof createIssuerClient> | undefined;
+  if (tenant) {
+    const signingKey = await resolveIssuerSigningKey(tenant.config.signingKeySecretRef);
+    customIssuerClient = createIssuerClient(signingKey);
+  }
+
   // Pre-validate issuer registration if configured
   const cachedIssuerKeyCheck = new Map<string, boolean>();
 
@@ -255,12 +264,24 @@ async function executeBatchRequest(
     }
 
     const holder = item.holder?.trim();
-    const issuerId = item.issuerId?.trim() ?? SIM_ACCOUNT;
-    const issuerName = item.issuerName ?? "StellarCred Authority";
+    const rawIssuerId = item.issuerId?.trim();
+    const issuerId = rawIssuerId ?? tenant?.config.issuerId ?? SIM_ACCOUNT;
+    const issuerName = item.issuerName ?? tenant?.config.issuerName ?? "StellarCred Authority";
     const expiry = item.expiry ?? "90 days";
 
     if (!holder) {
       results.push({ index, success: false, error: "holder address is required" });
+      failed++;
+      continue;
+    }
+
+    if (tenant && rawIssuerId && rawIssuerId !== tenant.config.issuerId) {
+      results.push({
+        index,
+        success: false,
+        holder,
+        error: `Unauthorized issuerId for tenant '${tenant.id}'. Configured issuerId is '${tenant.config.issuerId}'.`,
+      });
       failed++;
       continue;
     }
@@ -306,6 +327,20 @@ async function executeBatchRequest(
       continue;
     }
 
+    if (tenant) {
+      const typeCheck = validateTenantCredentialTypes(tenant, credentialTypes);
+      if (!typeCheck.allowed) {
+        results.push({
+          index,
+          success: false,
+          holder,
+          error: `Tenant '${tenant.id}' is not authorized to issue credential type '${typeCheck.disallowedType}'.`,
+        });
+        failed++;
+        continue;
+      }
+    }
+
     // Check issuer registry key match if configured
     if (env.NEXT_PUBLIC_ISSUER_REGISTRY_ID) {
       if (!cachedIssuerKeyCheck.has(issuerId)) {
@@ -313,8 +348,8 @@ async function executeBatchRequest(
         if (!registered) {
           cachedIssuerKeyCheck.set(issuerId, false);
         } else {
-          const localKey = localIssuerPubkeyBytes();
-          const matches = Buffer.from(registered).equals(localKey);
+          const localKey = localIssuerPubkeyBytes(customIssuerClient);
+          const matches = equals(registered, localKey);
           cachedIssuerKeyCheck.set(issuerId, matches);
         }
       }
@@ -331,13 +366,11 @@ async function executeBatchRequest(
       }
     }
 
-    const attributes: Record<string, string> = { ...(item.attributes ?? {}) };
-    if (item.attribute !== undefined && item.type) {
-      if (item.type === "age") attributes.date_of_birth ??= item.attribute;
-      else if (item.type === "income") attributes.income ??= item.attribute;
-      else if (item.type === "jurisdiction") attributes.country_code ??= item.attribute;
-      else if (item.type === "employment") attributes.seniority ??= item.attribute;
-    }
+    const attributes: Record<string, string> = normalizeAttributes(
+      item.type,
+      item.attribute,
+      item.attributes,
+    );
 
     try {
       const credentials = await issueAndAuditCredentials({
@@ -349,6 +382,7 @@ async function executeBatchRequest(
         attributes,
         claimParams: item.claimParams,
         requestId: `${requestId}-${i}`,
+        issuerClient: customIssuerClient,
       });
 
       results.push({

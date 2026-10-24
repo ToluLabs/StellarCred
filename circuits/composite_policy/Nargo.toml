@@ -1,0 +1,8 @@
+[package]
+name = "composite_policy"
+type = "lib"
+authors = ["ZeroKnowledge"]
+compiler-version = "0.31.0"
+
+#[dependencies]
+#noirlbs = { path = "../../noirlibs" }

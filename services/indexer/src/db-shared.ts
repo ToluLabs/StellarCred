@@ -36,7 +36,6 @@ import {
   type VerificationRawEvent,
   type VerificationTimeBucket,
   type WebhookDelivery,
-  type WebhookSubscription,
   type WebhookSubscriptionInput,
 } from "./db-types";
 

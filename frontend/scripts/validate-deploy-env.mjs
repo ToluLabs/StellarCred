@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Pre-deploy Environment Variable Validation Script
  *

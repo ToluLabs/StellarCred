@@ -30,6 +30,7 @@ const SERVER_SECRET_KEYS = [
   "PLAID_SECRET",
   "PLAID_ACCESS_TOKEN",
   "PLAID_ACCESS_TOKENS",
+  "ISSUANCE_WEBHOOK_SECRET",
 ] as const;
 
 const envSchema = z
@@ -154,6 +155,10 @@ const envSchema = z
       emptyToUndefined,
       z.coerce.number().int().positive().optional(),
     ),
+    RATE_LIMIT_CSP_REPORT_IP: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().positive().optional(),
+    ),
 
     // --- Ops -------------------------------------------------------------------
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
@@ -165,6 +170,10 @@ const envSchema = z
     ),
     // Deprecated alias; OUTBOUND_SINK_URL is the shared setting going forward.
     ERROR_REPORTING_WEBHOOK: z.preprocess(emptyToUndefined, z.string().url().optional()),
+    // Sentry error monitoring DSN (#853)
+    SENTRY_DSN: z.preprocess(emptyToUndefined, z.string().url().optional()),
+    // Asynchronous issuance callback webhook secret (#846)
+    ISSUANCE_WEBHOOK_SECRET: z.preprocess(emptyToUndefined, z.string().min(8).optional()),
   })
   .superRefine((val, ctx) => {
     // The /api/issue route previously discovered this combination missing at

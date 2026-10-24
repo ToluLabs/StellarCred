@@ -19,9 +19,11 @@ PNPM_MAJOR      := 9
 
 .PHONY: help all build test lint fmt clean check-api-reference doctor \
         build-contracts test-contracts lint-contracts \
+        ci-cache-setup ci-cache-save build-contracts-fast \
         compile-circuits check-circuits \
         build-frontend test-frontend lint-frontend test-sdk test-example test-a11y \
-        build-indexer test-indexer run-indexer
+        build-indexer test-indexer lint-indexer run-indexer \
+        backfill backfill-resume
 
 # ------------------------------------------------------------------------------
 # Top-Level Orchestration Targets
@@ -38,7 +40,7 @@ help:
 	@echo "  make all             - Run build, test, and lint across all workspaces"
 	@echo "  make build           - Build contracts, circuits, frontend, and indexer"
 	@echo "  make test            - Run all unit, integration, and contract test suites"
-	@echo "  make lint            - Run clippy, commitlint, and frontend linters"
+	@echo "  make lint            - Run clippy, commitlint, frontend and indexer ESLint"
 	@echo "  make fmt             - Check or apply formatting across Rust and TS"
 	@echo "  make clean           - Remove build artifacts and caches"
 	@echo "  make check-api-reference - Check docs/PROOF_REGISTRY_API.md against the contract source (issue #525)"
@@ -47,6 +49,8 @@ help:
 	@echo "  make build-contracts - Compile Soroban contracts to wasm32v1-none"
 	@echo "  make test-contracts  - Run cargo contract unit & snapshot tests"
 	@echo "  make lint-contracts  - Run clippy with -D warnings on contracts"
+	@echo "  make build-contracts-fast - Quick Soroban build reusing local cargo cache (PR path)"
+	@echo "  make ci-cache-setup  - Restore Cargo target cache (used by contracts CI)"
 	@echo "  make compile-circuits- Compile Noir zk circuits and derive VKs"
 	@echo "  make build-frontend  - Build Next.js frontend web app"
 	@echo "  make test-frontend   - Run frontend and SDK unit tests"
@@ -56,7 +60,10 @@ help:
 	@echo "  make test-a11y       - Run axe-core accessibility tests (requires Playwright)"
 	@echo "  make build-indexer   - Compile TypeScript indexer service"
 	@echo "  make test-indexer    - Run Jest test suite for indexer"
+	@echo "  make lint-indexer    - Run ESLint on indexer service code"
 	@echo "  make run-indexer     - Start local indexer service"
+	@echo "  make backfill        - Backfill a bounded ledger range (FROM=, TO=; TO defaults to head)"
+	@echo "  make backfill-resume - Resume an interrupted backfill from its checkpoint"
 
 ## all: Run build, test, and lint across all workspaces (CI mirror)
 all: build test lint
@@ -67,8 +74,8 @@ build: build-contracts build-frontend build-indexer
 ## test: Run all unit and integration test suites
 test: test-contracts test-frontend test-indexer test-example
 
-## lint: Run clippy and frontend linters
-lint: lint-contracts lint-frontend
+## lint: Run clippy, ESLint on the frontend, and ESLint on the indexer
+lint: lint-contracts lint-frontend lint-indexer
 
 ## fmt: Check Rust formatting
 fmt:
@@ -203,6 +210,10 @@ doctor:
 build-contracts:
 	cargo build --release --target wasm32v1-none --locked
 
+## build-contracts-fast: Quick Soroban build reusing local cargo cache (PR path)
+build-contracts-fast:
+	bash ./scripts/ci-cache-helpers.sh build-fast
+
 ## test-contracts: Run contract test suite
 test-contracts:
 	cargo test --locked
@@ -212,6 +223,15 @@ test-contracts:
 # skips it, since only the deployable contracts are default workspace members.
 lint-contracts:
 	cargo clippy --workspace --all-targets -- -D warnings
+
+## ci-cache-setup: Restore Cargo target cache for contracts CI
+# Centralizes cache setup so the workflow and local runs share one code path.
+ci-cache-setup:
+	bash ./scripts/ci-cache-helpers.sh restore
+
+## ci-cache-save: Save Cargo target cache for contracts CI
+ci-cache-save:
+	bash ./scripts/ci-cache-helpers.sh save
 
 # ------------------------------------------------------------------------------
 # Circuits (Noir / Aztec Barretenberg)
@@ -241,9 +261,10 @@ lint-frontend:
 test-sdk:
 	cd frontend/packages/sdk && pnpm typecheck && pnpm test:integration
 
-## test-example: Run canonical integration example typecheck and test suite
+## test-example: Run integration example typechecks and test suites
 test-example:
 	cd examples/canonical-integration && npm run typecheck && npm test
+	cd examples/typescript && npm run typecheck && npm test
 
 ## test-a11y: Run axe-core accessibility tests
 test-a11y:
@@ -261,6 +282,39 @@ build-indexer:
 test-indexer:
 	cd services/indexer && npm test
 
+## lint-indexer: Run ESLint on indexer source
+# ESLint is not in the indexer's package-lock.json (see the Install ESLint
+# toolchain step in .github/workflows/lint.yml for why), so a fresh clone needs
+# the lint-only toolchain once:
+#   cd services/indexer && npm install --no-save --no-package-lock \
+#     eslint@9 @eslint/js@9 typescript-eslint@8
+lint-indexer:
+	cd services/indexer && npm run lint
+
 ## run-indexer: Start the indexer service locally
 run-indexer:
 	cd services/indexer && npm start
+
+# ------------------------------------------------------------------------------
+# Indexer Backfill (bounded, resumable, separate from the live poll loop)
+# ------------------------------------------------------------------------------
+# Usage:
+#   make backfill FROM=1000000 TO=1200000        # explicit range
+#   make backfill FROM=genesis                   # contract deployment to head
+#   make backfill-resume                         # continue from checkpoint
+# Progress is printed per batch; a checkpoint is persisted after each batch so
+# an interrupted run resumes without re-fetching completed ledgers.
+# Throughput is bound by Horizon rate limits (one request per page of up to
+# 200 events), so run time tracks event density rather than ledger count.
+
+FROM  ?= genesis
+TO    ?= head
+BATCH ?= 200
+
+## backfill: Index a bounded ledger range in batched, resumable mode
+backfill:
+	cd services/indexer && npm run backfill -- --from $(FROM) --to $(TO) --batch-size $(BATCH)
+
+## backfill-resume: Resume an interrupted backfill from its persisted checkpoint
+backfill-resume:
+	cd services/indexer && npm run backfill -- --resume --batch-size $(BATCH)

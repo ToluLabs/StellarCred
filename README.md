@@ -115,6 +115,7 @@ scripts/deploy.sh       deploy + wire + register issuer + install all VKs on tes
 scripts/benchmark.sh    measure instruction budget for every public function on testnet
 BENCHMARKS.md           per-function instruction counts, ledger I/O, and fee estimates
 docs/EVENTS.md          authoritative contract event topic & payload schemas
+docs/BACKFILL.md        when and how to backfill the indexer (ranges, resume, timing)
 docs/STORAGE_TTL.md     contract storage lifetime model, rent fees, and archival behavior
 ```
 
@@ -137,7 +138,9 @@ npm install @stellarcred/sdk
 >
 > **Canonical Integration Example**: Looking for a complete, runnable end-to-end integration with wallet control challenge proof and server-side route gating? See [`examples/canonical-integration`](examples/canonical-integration).
 >
-> **TypeScript example**: A minimal, CI-typechecked walkthrough — typed claim reads, a signed Stellar transaction, and the challenge flow — is in [`docs/SDK_TYPESCRIPT_EXAMPLE.md`](docs/SDK_TYPESCRIPT_EXAMPLE.md) and [`examples/typescript-quickstart`](examples/typescript-quickstart).
+> **TypeScript SDK Example**: Minimal TypeScript integration demonstrating typed imports, anti-spoofing challenge verification, and credential-gated Stellar transaction creation and signing. See [`examples/typescript`](examples/typescript).
+>
+> **TypeScript quickstart**: A minimal, CI-typechecked walkthrough — typed claim reads, a signed Stellar transaction, and the challenge flow — is in [`docs/SDK_TYPESCRIPT_EXAMPLE.md`](docs/SDK_TYPESCRIPT_EXAMPLE.md) and [`examples/typescript-quickstart`](examples/typescript-quickstart).
 
 Protocols never handle credential data - they ask the on-chain registry one
 question: _has this wallet proven the claim I require?_
@@ -149,8 +152,6 @@ import { StellarCred } from "@stellarcred/sdk";
 const canDeposit = await StellarCred.hasClaim(wallet, "kyc");
 
 // Threshold claim — enforce minimum on-chain
-const canAccessVault = await StellarCred.hasClaim(wallet, "funds", { minThreshold: 50000 });
-const canTrade = await StellarCred.hasClaim(wallet, "age", { minThreshold: 21 });
 const canAccessVault = await StellarCred.hasClaim(wallet, "funds", {
   minThreshold: 50000,
 });
@@ -278,6 +279,14 @@ no StellarCred account and no server-side credential database. This means:
   code whose payload is encrypted (AES-256-GCM, PBKDF2 key derivation) before
   leaving the device — scan it on the other device and enter the passphrase to
   import.
+- **Choose which PII fields exports include.** On the Holder page, **Export
+  field visibility** controls the sensitive credential attribute value and
+  holder wallet address. Both are included by default (including for existing
+  browser profiles). Turning either off omits that key from credential JSON
+  backups, encrypted transfers, and Guardian recovery exports; proof-history
+  JSON/CSV contain proof metadata only. An export with an omitted field cannot
+  fully restore or prove that credential. Preferences are local to this browser
+  profile, and no admin override exists for local exports.
 - **What reaches the server and chain.** The only server round-trip is
   `POST /api/witness` (rate-limited, never logged or persisted), which runs the
   Noir circuit and returns witness bytes for in-browser proving. On chain, only
@@ -396,7 +405,7 @@ StellarCred spans four toolchains (Rust contracts, Noir zk-circuits, Next.js fro
 | `make compile-circuits`| Circuits | Compiles Noir circuits and verifies verification keys (`bb`). |
 | `make test-frontend` | Frontend | Runs frontend SDK tests, theme tests, and issuer package tests. |
 | `make test-sdk` | SDK | Runs standalone `@stellarcred/sdk` integration tests. |
-| `make test-example` | Examples | Runs typecheck and test suite for `examples/canonical-integration`. |
+| `make test-example` | Examples | Runs typecheck and test suite for `examples/canonical-integration` and `examples/typescript`. |
 | `make test-a11y` | Frontend | Runs axe-core accessibility checks via Playwright. |
 | `make test-indexer` | Indexer | Runs Jest test suite for the indexer service. |
 | `make run-indexer` | Indexer | Starts the local indexer service. |
@@ -424,7 +433,8 @@ until they reach their natural expiry. If a key is compromised instead, call
 [docs/ISSUER_KEY_ROTATION.md](docs/ISSUER_KEY_ROTATION.md).
 
 > In-browser proving uses cross-origin isolation (COOP/COEP headers in
-> `next.config.mjs`) for multithreading, falling back to single-threaded.
+> `next.config.mjs`) for multithreading, falling back to single-threaded. See
+> [docs/CSP.md](docs/CSP.md) for the Content-Security-Policy configuration and headers.
 
 ### Testnet reset recovery
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { IconInfoCircle } from "@tabler/icons-react";
 import {
   contractsConfigured,
@@ -20,6 +21,7 @@ import { NETWORK } from "@/lib/stellar";
  * IssuerRegistry, not just the contract IDs.
  */
 export function ConfigBanner({ requireIssuance = false }: { requireIssuance?: boolean }) {
+  const t = useTranslations();
   const missing = missingContractEnvVars();
   const missingIssue = requireIssuance ? missingIssueConfigEnvVars() : [];
   const allMissing = Array.from(new Set([...missing, ...missingIssue]));
@@ -46,16 +48,14 @@ export function ConfigBanner({ requireIssuance = false }: { requireIssuance?: bo
       >
         <IconInfoCircle size={16} style={{ color: "var(--danger)", flexShrink: 0, marginTop: 2 }} />
         <span>
-          <strong style={{ color: "var(--danger)" }}>Mixed-network configuration detected.</strong>{" "}
+          <strong style={{ color: "var(--danger)" }}>{t("config.mixedNetwork")}</strong>{" "}
           {networkProblems.map((p) => (
             <span key={p.key} style={{ display: "block", marginTop: "0.25rem" }}>
               <span className="mono">{p.key}</span>: {p.message}
             </span>
           ))}
           <span style={{ display: "block", marginTop: "0.4rem" }}>
-            Fix NEXT_PUBLIC_STELLAR_NETWORK (or the conflicting overrides) in{" "}
-            <span className="mono">frontend/.env.local</span> — signing and indexing are
-            unsafe until the config is coherent.
+            {t("config.mixedNetworkFix", { envLocation: t("config.envLocation") })}
           </span>
         </span>
       </div>
@@ -74,13 +74,12 @@ export function ConfigBanner({ requireIssuance = false }: { requireIssuance?: bo
 
       <IconInfoCircle size={16} className="config-banner__icon" />
       <span className="config-banner__text">
-        <strong className="config-banner__strong">App not fully configured.</strong>{" "}
-        Active network: <strong>{NETWORK}</strong>.{" "}
-        {requireIssuance ? "Credential issuance and " : ""}On-chain submission is
-        disabled — missing env vars:{" "}
+        <strong className="config-banner__strong">{t("config.notConfigured")}</strong>{" "}
+        {t("config.activeNetwork")}: <strong>{NETWORK}</strong>.{" "}
+        {requireIssuance ? t("config.credentialIssuanceAnd") : ""}{t("config.onChainSubmissionDisabled")}{" "}
         <span className="config-banner__code">{allMissing.join(", ")}</span>. Run{" "}
-        <span className="config-banner__code">./scripts/deploy.sh</span> and set them in{" "}
-        <span className="config-banner__code">frontend/.env.local</span>.
+        <span className="config-banner__code">{t("config.deployScript")}</span> and set them in{" "}
+        <span className="config-banner__code">{t("config.envLocation")}</span>.
       </span>
     </div>
   );

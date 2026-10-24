@@ -1,6 +1,8 @@
 // Server-side only — never shipped to the browser.
 if (typeof window !== "undefined") {
-  throw new Error("lib/issuer-service.ts is server-only and must not be imported from client code.");
+  throw new Error(
+    "lib/issuer-service.ts is server-only and must not be imported from client code.",
+  );
 }
 
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -12,13 +14,10 @@ import {
 } from "@stellarcred/issuer";
 import { env } from "./env";
 import { logger, stripSensitiveFields } from "./logger";
-import {
-  auditLogAppend,
-  auditLogBootstrap,
-  auditLogFilePath,
-  auditLogPersist,
-} from "./audit-log";
+import { auditLogAppend, auditLogBootstrap, auditLogFilePath, auditLogPersist } from "./audit-log";
 import { enqueueOutboundEvent } from "./outbound-sink";
+
+import { resolveSigningKey } from "./secrets-vault";
 
 // Server-side only — never shipped to the browser.
 // Set ISSUER_PRIVATE_KEY in .env.local to the 64-char hex secp256k1 private
@@ -28,10 +27,17 @@ import { enqueueOutboundEvent } from "./outbound-sink";
 export function getIssuerPrivateKeyHex(): string {
   return (
     env.ISSUER_PRIVATE_KEY ||
-    Buffer.from(
-      sha256(new TextEncoder().encode("stellarcred-demo-issuer")),
-    ).toString("hex")
+    Buffer.from(sha256(new TextEncoder().encode("stellarcred-demo-issuer"))).toString("hex")
   );
+}
+
+/**
+ * Dynamically resolves an issuer signing key from the active secrets provider
+ * (e.g. Vault or Env), falling back to getIssuerPrivateKeyHex().
+ */
+export async function resolveIssuerSigningKey(secretRef?: string): Promise<string> {
+  const resolved = await resolveSigningKey(secretRef);
+  return resolved || getIssuerPrivateKeyHex();
 }
 
 if (!env.ISSUER_PRIVATE_KEY) {
@@ -44,13 +50,19 @@ if (!env.ISSUER_PRIVATE_KEY) {
 export const issuer = new IssuerClient({ privateKey: getIssuerPrivateKeyHex() });
 
 /**
+ * Creates an IssuerClient instance configured with the specified private key.
+ */
+export function createIssuerClient(privateKeyHex: string): IssuerClient {
+  return new IssuerClient({ privateKey: privateKeyHex });
+}
+
+/**
  * The server's own public key (x || y, 64 bytes) — derived from the same key
  * `issuer` signs with, via the package's publicKey(), not re-derived locally.
- * Used to confirm the selected issuerId's on-chain registered key actually
- * matches this server's signing key before issuing.
+ * If a custom client is provided, uses its public key instead.
  */
-export function localIssuerPubkeyBytes(): Buffer {
-  const { x, y } = issuer.publicKey();
+export function localIssuerPubkeyBytes(customClient?: IssuerClient): Buffer {
+  const { x, y } = (customClient || issuer).publicKey();
   return Buffer.from([...x, ...y]);
 }
 
@@ -63,15 +75,15 @@ export interface IssueAndAuditParams {
   attributes: Record<string, string>;
   claimParams?: ClaimParams;
   requestId: string;
+  issuerClient?: IssuerClient;
+  signingKeyHex?: string;
 }
 
 /**
  * Signs commitments for each requested credential type and appends
  * PII-free audit records chained to previous entries.
  */
-export async function issueAndAuditCredentials(
-  params: IssueAndAuditParams,
-): Promise<Credential[]> {
+export async function issueAndAuditCredentials(params: IssueAndAuditParams): Promise<Credential[]> {
   const {
     credentialTypes,
     holder,
@@ -81,7 +93,11 @@ export async function issueAndAuditCredentials(
     attributes,
     claimParams,
     requestId,
+    issuerClient,
+    signingKeyHex,
   } = params;
+
+  const client = issuerClient || (signingKeyHex ? createIssuerClient(signingKeyHex) : issuer);
 
   const uniqueTypes = Array.from(new Set(credentialTypes));
   const credentials: Credential[] = [];
@@ -97,7 +113,7 @@ export async function issueAndAuditCredentials(
       }),
     );
 
-    const credential = await issuer.issue({
+    const credential = await client.issue({
       type: type as CredentialType,
       holder,
       issuerId,

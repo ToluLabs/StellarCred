@@ -7,7 +7,9 @@
     "test": "nyc pnpm run test:unit",
     "test:unit": "node --test test/**/*.test.js",
     "coverage": "nyc pnpm run test:unit",
-    "coverage:report": "nyc report --reporter=text-summary --reporter=lcov"
+    "coverage:report": "nyc report --reporter=text-summary --reporter=lcov",
+    "check:page-client-size": "node .github/scripts/check-page-client-size.mjs",
+    "ci": "pnpm run check:page-client-size && pnpm run test"
   },
   "devDependencies": {
     "nyc": "^17.1.0",
