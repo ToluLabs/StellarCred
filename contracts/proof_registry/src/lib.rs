@@ -178,6 +178,20 @@ pub struct EventNullifierUsed {
     pub recorded_at: u64,
 }
 
+/// Payload emitted when a proof submission fails verification or an
+/// issuer/expiry check, giving operators a structured failure signal
+/// without having to parse panic messages (#observability).
+/// Topics: ("proof_reg", "submit_fail", credential_type)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventProofSubmitFailed {
+    pub holder: Address,
+    pub issuer: Address,
+    /// Numeric `Error` code that caused the failure (see [`Error`]).
+    pub error_code: u32,
+    pub failed_at: u64,
+}
+
 // Persistent-entry lifetime management
 const DAY_IN_LEDGERS: u32 = 17280;
 const SECONDS_PER_LEDGER: u64 = 5;
@@ -555,20 +569,44 @@ impl ProofRegistry {
     ) {
         holder.require_auth();
         Self::ensure_not_paused(&env);
-        Self::validate_expiry(&env, expiry);
+        if let Err(err) = Self::try_validate_expiry(&env, expiry) {
+            Self::emit_submit_failed(&env, &holder, &issuer_id, &credential_type, err);
+            panic_with_error!(&env, err);
+        }
 
         let registry = IssuerClient::new(&env, &Self::issuer_registry(&env));
         if !registry.is_valid_issuer(&issuer_id, &credential_type) {
+            Self::emit_submit_failed(
+                &env,
+                &holder,
+                &issuer_id,
+                &credential_type,
+                Error::IssuerNotTrusted,
+            );
             panic_with_error!(&env, Error::IssuerNotTrusted);
         }
 
         let presented = Self::pubkey_from_public_inputs(&env, &public_inputs, PUBKEY_START_FIELD);
         if !registry.is_valid_issuer_key(&issuer_id, &presented) {
+            Self::emit_submit_failed(
+                &env,
+                &holder,
+                &issuer_id,
+                &credential_type,
+                Error::IssuerKeyMismatch,
+            );
             panic_with_error!(&env, Error::IssuerKeyMismatch);
         }
 
         let verifier = VerifierClient::new(&env, &Self::verifier(&env));
         if !verifier.verify_proof(&credential_type, &proof, &public_inputs, &vk_version) {
+            Self::emit_submit_failed(
+                &env,
+                &holder,
+                &issuer_id,
+                &credential_type,
+                Error::VerificationFailed,
+            );
             panic_with_error!(&env, Error::VerificationFailed);
         }
 
@@ -1233,6 +1271,43 @@ impl ProofRegistry {
         if expiry > now.saturating_add(MAX_CREDENTIAL_TTL_SECS) {
             panic_with_error!(env, Error::InvalidExpiry);
         }
+    }
+
+    /// Non-panicking variant of [`Self::validate_expiry`] used by the
+    /// issuance path so a structured failure event can be emitted before the
+    /// panic unwinds (#observability).
+    fn try_validate_expiry(env: &Env, expiry: u64) -> Result<(), Error> {
+        let now = env.ledger().timestamp();
+        if expiry <= now || expiry > now.saturating_add(MAX_CREDENTIAL_TTL_SECS) {
+            return Err(Error::InvalidExpiry);
+        }
+        Ok(())
+    }
+
+    /// Emit a structured failure event for a rejected proof submission so
+    /// operators can diagnose issuance failures without decoding panic
+    /// messages (#observability).
+    #[allow(deprecated)]
+    fn emit_submit_failed(
+        env: &Env,
+        holder: &Address,
+        issuer: &Address,
+        credential_type: &Symbol,
+        error: Error,
+    ) {
+        env.events().publish(
+            (
+                symbol_short!("proof_reg"),
+                symbol_short!("sub_fail"),
+                credential_type.clone(),
+            ),
+            EventProofSubmitFailed {
+                holder: holder.clone(),
+                issuer: issuer.clone(),
+                error_code: error as u32,
+                failed_at: env.ledger().timestamp(),
+            },
+        );
     }
 
     fn extract_threshold(
