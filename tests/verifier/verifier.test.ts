@@ -13,7 +13,7 @@ import {
   missingProofPayload,
   unsupportedClaimTypePayload,
   staleCredentialPayload,
-} from '../../frontend/lib/verifier/__fixtures_/fixtures';
+} from '../../frontend/lib/verifier/__fixtures__/fixtures';
 
 describe('verifier (cross-package): proof and claim validation', () => {
   it('accepts a valid proof', () => {

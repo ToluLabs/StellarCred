@@ -8,7 +8,7 @@ import {
   missingProofPayload,
   unsupportedClaimTypePayload,
   staleCredentialPayload,
-} from '../../../lib/verifier/__fixtures_/fixtures';
+} from '../../../lib/verifier/__fixtures__/fixtures';
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/verify', {
@@ -29,7 +29,7 @@ describe('POST /api/verify', () => {
   it('returns 400 for an invalid proof with an actionable error', async () => {
     const res = await POST(makeRequest(invalidProofPayload));
     const json = await res.json();
-    expect(res.status).toBe(res.status);
+    expect(res.status).toBe(400);
     expect(json.ok).toBe(false);
     expect(json.error).toMatch(/proof verification failed/i);
   });
