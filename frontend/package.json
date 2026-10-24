@@ -20,6 +20,11 @@
     "size": "size-limit",
     "check:i18n": "node scripts/check-i18n-parity.mjs",
     "verify:audit-log": "node --import tsx --experimental-strip-types scripts/verify-audit-log.ts",
+    "credential-cli": "node --no-warnings --experimental-strip-types ../scripts/credential-cli.ts",
+    "credentials:export": "node --no-warnings --experimental-strip-types ../scripts/credential-cli.ts export",
+    "credentials:import": "node --no-warnings --experimental-strip-types ../scripts/credential-cli.ts import",
+    "credentials:validate": "node --no-warnings --experimental-strip-types ../scripts/credential-cli.ts validate",
+    "credentials:inspect": "node --no-warnings --experimental-strip-types ../scripts/credential-cli.ts inspect",
     "format": "prettier --write \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
     "prepare": "cd .. && npx husky .husky 2>/dev/null || true"

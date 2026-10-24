@@ -43,14 +43,21 @@ import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer — load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
-const TransferExportModal = dynamic(() => import("@/components/TransferExportModal").then((m) => m.TransferExportModal), { ssr: false });
-const TransferImportModal = dynamic(() => import("@/components/TransferImportModal").then((m) => m.TransferImportModal), { ssr: false });
-const ExportDataModal = dynamic(() => import("@/components/ExportDataModal").then((m) => m.ExportDataModal), { ssr: false });
+const TransferExportModal = dynamic(
+  () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
+  { ssr: false },
+);
+const TransferImportModal = dynamic(
+  () => import("@/components/TransferImportModal").then((m) => m.TransferImportModal),
+  { ssr: false },
+);
+const ExportDataModal = dynamic(
+  () => import("@/components/ExportDataModal").then((m) => m.ExportDataModal),
+  { ssr: false },
+);
 
 type PageView =
-  | { kind: "list" }
-  | { kind: "single"; cred: Credential }
-  | { kind: "batch"; creds: Credential[] };
+  { kind: "list" } | { kind: "single"; cred: Credential } | { kind: "batch"; creds: Credential[] };
 
 type BulkAction = {
   type: "remove-selected" | "clear-expired";
@@ -64,7 +71,16 @@ function HolderInner() {
   const searchParams = useSearchParams();
   const toast = useToast();
 
-  const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } = useCredentialStore();
+  const {
+    creds,
+    isLoaded,
+    reload,
+    save,
+    remove,
+    removeMultiple,
+    markCredentialProved,
+    markCredentialsProved,
+  } = useCredentialStore();
   const { downloadBackup } = useImportExport();
 
   const [view, setView] = useState<PageView>({ kind: "list" });
@@ -119,13 +135,8 @@ function HolderInner() {
     clearSelection,
   } = useBatchSelection(unproved, address, toast.error);
 
-  // Bulk removal is sequential on purpose: removeCredential is a
-  // read-modify-write of the whole list, so concurrent calls would race.
   async function executeBulkRemove(commitments: string[]) {
-    for (const commitment of commitments) {
-      await removeCredential(commitment);
-    }
-    reload();
+    await removeMultiple(commitments);
     clearSelection();
     setConfirmBulkAction(null);
   }
@@ -227,8 +238,10 @@ function HolderInner() {
               className="card"
               style={{
                 padding: "0.85rem 1.15rem",
-                backgroundColor: expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
-                borderColor: expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
+                backgroundColor:
+                  expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
+                borderColor:
+                  expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -239,7 +252,10 @@ function HolderInner() {
               <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
                 <IconAlertTriangle
                   size={18}
-                  style={{ color: expired.length > 0 ? "var(--danger)" : "var(--warn)", flexShrink: 0 }}
+                  style={{
+                    color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
+                    flexShrink: 0,
+                  }}
                 />
                 <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
                   {expired.length > 0
@@ -254,27 +270,39 @@ function HolderInner() {
           )}
 
           {/* ── Empty state ── */}
-          {creds.length === 0 && !importing && (
+          {isLoaded && creds.length === 0 && !importing && (
             <div
               className="card"
               style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
             >
               <IconCertificate size={30} stroke={1.3} color="var(--faint)" />
               <h3 style={{ margin: "1rem 0 0.4rem" }}>No credentials yet</h3>
-              <p className="muted" style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}>
-                Get a credential from a trusted issuer, then generate a
-                zero-knowledge proof to verify it on-chain.
+              <p
+                className="muted"
+                style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}
+              >
+                Get a credential from a trusted issuer, then generate a zero-knowledge proof to
+                verify it on-chain.
               </p>
-              <a href="/verify" className="btn btn-primary btn-sm" style={{ display: "inline-flex" }}>
+              <a
+                href="/verify"
+                className="btn btn-primary btn-sm"
+                style={{ display: "inline-flex" }}
+              >
                 Get a credential
                 <IconArrowRight size={14} />
               </a>
               <p
                 className="faint"
-                style={{ fontSize: "0.75rem", maxWidth: 380, margin: "1.25rem auto 0", lineHeight: 1.6 }}
+                style={{
+                  fontSize: "0.75rem",
+                  maxWidth: 380,
+                  margin: "1.25rem auto 0",
+                  lineHeight: 1.6,
+                }}
               >
-                Credentials are stored only in this browser&apos;s local storage — clearing
-                site data, switching browsers/devices, or private mode erases them.{" "}
+                Credentials are stored only in this browser&apos;s local storage — clearing site
+                data, switching browsers/devices, or private mode erases them.{" "}
                 <Link
                   href="/docs#storage"
                   style={{ color: "var(--accent)", textDecoration: "underline" }}
@@ -399,7 +427,11 @@ function HolderInner() {
                   className="btn btn-ghost btn-sm"
                   onClick={downloadBackup}
                   disabled={creds.length === 0}
-                  title={creds.length === 0 ? "No credentials to back up yet" : "Download a JSON backup of all credentials"}
+                  title={
+                    creds.length === 0
+                      ? "No credentials to back up yet"
+                      : "Download a JSON backup of all credentials"
+                  }
                 >
                   <IconDownload size={14} />
                   Export backup
@@ -415,10 +447,13 @@ function HolderInner() {
                 </button>
                 <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
               </div>
-              <p className="faint" style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
-                Credentials live only in this browser (localStorage) — export a backup
-                before clearing site data or switching devices, and restore it here with{" "}
-                “Import credential JSON”.{" "}
+              <p
+                className="faint"
+                style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}
+              >
+                Credentials live only in this browser (localStorage) — export a backup before
+                clearing site data or switching devices, and restore it here with “Import credential
+                JSON”.{" "}
                 <Link
                   href="/docs#storage"
                   style={{ color: "var(--accent)", textDecoration: "underline" }}

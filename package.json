@@ -1,3 +1,4 @@
+
 {
   "name": "stellar-kyc-credentials",
   "version": "0.1.0",
@@ -8,6 +9,11 @@
     "test:unit": "node --test test/**/*.test.js",
     "coverage": "nyc pnpm run test:unit",
     "coverage:report": "nyc report --reporter=text-summary --reporter=lcov",
+    "credential-cli": "node --no-warnings --experimental-strip-types scripts/credential-cli.ts",
+    "credentials:export": "node --no-warnings --experimental-strip-types scripts/credential-cli.ts export",
+    "credentials:import": "node --no-warnings --experimental-strip-types scripts/credential-cli.ts import",
+    "credentials:validate": "node --no-warnings --experimental-strip-types scripts/credential-cli.ts validate",
+    "credentials:inspect": "node --no-warnings --experimental-strip-types scripts/credential-cli.ts inspect",
     "check:page-client-size": "node .github/scripts/check-page-client-size.mjs",
     "ci": "pnpm run check:page-client-size && pnpm run test"
   },
