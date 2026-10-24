@@ -4,20 +4,17 @@
 // Captures unhandled server errors with stack traces, environment tags, commit hashes,
 // and service context while guaranteeing zero sensitive payloads or PII escape.
 
-import crypto from "crypto";
-
 import type { NextRequest, NextResponse } from "next/server";
 import { logger, safeError } from "../logger";
 
-function generateUUID(): string {
-  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+// This module is also imported from middleware.ts, which is bundled for the
+// Edge runtime and cannot resolve `node:crypto`. Web Crypto's getRandomValues
+// is available in the Node, Edge and browser runtimes, so ids are generated
+// from it instead (same hex output as crypto.randomUUID().replace(/-/g, "")).
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export interface SentryConfig {
@@ -162,8 +159,8 @@ export class SentryClient {
       return res.ok;
     } catch (err) {
       logger.warn(
-        { event: "sentry_delivery_failed" },
-        `Failed to deliver error event to Sentry: ${(err as Error).message}`
+        stripSensitiveFields({ event: "sentry_delivery_failed" }),
+        `Failed to deliver error event to Sentry: ${(err as Error).message}`,
       );
       return false;
     }
@@ -173,7 +170,7 @@ export class SentryClient {
    * Captures an exception with relevant tags and environment metadata.
    */
   async captureException(error: unknown, context: SentryErrorContext = {}): Promise<string> {
-    const eventId = generateUUID().replace(/-/g, "");
+    const eventId = randomHex(16);
     const errorObj = error instanceof Error ? error : new Error(String(error));
     const safeMsg = sanitizeErrorMessage(errorObj.message);
 
@@ -280,7 +277,7 @@ export function getSentryClient(): SentryClient {
  */
 export async function captureServerException(
   error: unknown,
-  context?: SentryErrorContext
+  context?: SentryErrorContext,
 ): Promise<string> {
   return getSentryClient().captureException(error, context);
 }
@@ -291,14 +288,14 @@ export async function captureServerException(
  * forwards to Sentry, and returns a sanitized 500 error response.
  */
 export function withSentryRouteHandler(
-  handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>
+  handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>,
 ) {
   return async (req: NextRequest, ...args: any[]): Promise<NextResponse> => {
     try {
       return await handler(req, ...args);
     } catch (error) {
       const requestId =
-        req.headers.get("x-request-id") ?? generateUUID().replace(/-/g, "").slice(0, 16);
+        req.headers.get("x-request-id") ?? randomHex(8);
       const method = req.method;
       const path = req.nextUrl?.pathname ?? "unknown_endpoint";
 
@@ -314,14 +311,14 @@ export function withSentryRouteHandler(
       });
 
       safeError(
-        {
+        stripSensitiveFields({
           event: "api_unhandled_server_error",
           requestId,
           method,
           path,
           sentryEventId: eventId,
-        },
-        `Unhandled API server exception on ${method} ${path}: ${(error as Error).message}`
+        }),
+        `Unhandled API server exception on ${method} ${path}: ${(error as Error).message}`,
       );
 
       return Response.json(
@@ -330,7 +327,7 @@ export function withSentryRouteHandler(
           requestId,
           code: "INTERNAL_ERROR",
         },
-        { status: 500 }
+        { status: 500 },
       ) as unknown as NextResponse;
     }
   };

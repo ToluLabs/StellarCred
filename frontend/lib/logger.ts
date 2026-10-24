@@ -69,6 +69,7 @@ export const SAFE_FIELDS = [
   "itemIndex",
   "itemCount",
   "accountCount",
+  "cspViolation",
   "sentryEventId",
 ];
 

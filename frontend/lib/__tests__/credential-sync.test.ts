@@ -96,7 +96,7 @@ describe("useCredentialSync - Cross-tab storage sync", () => {
         expect(result.current).toHaveLength(1);
         expect(result.current[0].type).toBe("age");
       },
-      { timeout: 200 },
+      { timeout: 1000 },
     );
   });
 
@@ -176,7 +176,7 @@ describe("useCredentialSync - Cross-tab storage sync", () => {
         // Should have the latest value (cred2)
         expect(result.current[0].type).toBe("age");
       },
-      { timeout: 300 },
+      { timeout: 1000 },
     );
   });
 

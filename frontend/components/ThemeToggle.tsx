@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { IconSun, IconMoon } from "@tabler/icons-react";
 import {
   applyTheme,
@@ -22,6 +23,7 @@ import {
  */
 export function ThemeToggle() {
   const [activeTheme, setActiveTheme] = useState<Theme>("dark");
+  const t = useTranslations();
 
   useEffect(() => {
     // Align React state with whatever the boot script (or a prior paint) set.
@@ -54,7 +56,7 @@ export function ThemeToggle() {
   };
 
   const ariaLabel =
-    activeTheme === "light" ? "Switch to dark mode" : "Switch to light mode";
+    activeTheme === "light" ? t("theme.dark") : t("theme.light");
 
   return (
     <button

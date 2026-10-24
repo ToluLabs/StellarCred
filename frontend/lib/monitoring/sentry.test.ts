@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import {
   SentryClient,
+  getSentryClient,
   initSentry,
   sanitizeErrorMessage,
   sanitizeHeaders,
@@ -48,8 +49,7 @@ describe("Sentry Error Monitoring (#853)", () => {
   });
 
   it("sanitizes error messages containing emails, dates of birth, and IDs", () => {
-    const raw =
-      "Failed to process user@example.com born on 1990-05-15 with account 123456789";
+    const raw = "Failed to process user@example.com born on 1990-05-15 with account 123456789";
     const sanitized = sanitizeErrorMessage(raw);
 
     expect(sanitized).not.toContain("user@example.com");
@@ -103,5 +103,82 @@ describe("Sentry Error Monitoring (#853)", () => {
     const lastEvent = events[events.length - 1];
     expect(lastEvent.tags.requestId).toBe("req_test_boundary_42");
     expect(lastEvent.tags.path).toBe("/api/failing-endpoint");
+  });
+
+  it("sanitizeErrorMessage returns placeholder for empty/falsy messages", () => {
+    expect(sanitizeErrorMessage("")).toBe("[empty error]");
+  });
+
+  it("sanitizeHeaders handles plain object input (non-Headers branch)", () => {
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: "Bearer secret",
+      "x-request-id": "req_plain_obj",
+    };
+    const safe = sanitizeHeaders(headers);
+    expect(safe["content-type"]).toBe("application/json");
+    expect(safe["authorization"]).toBeUndefined();
+    expect(safe["x-request-id"]).toBe("req_plain_obj");
+  });
+
+  it("beforeSend hook can suppress an event by returning null", async () => {
+    const suppressingClient = initSentry({
+      environment: "test",
+      enabled: true,
+      beforeSend: () => null,
+    });
+    suppressingClient.clearRecordedEvents();
+    const eventId = await suppressingClient.captureException(new Error("suppressed"));
+    expect(eventId).toBeTruthy();
+    // Event should be in recordedEvents (added before beforeSend check) but sendEvent not called after null
+    expect(suppressingClient.getRecordedEvents().length).toBe(0);
+  });
+
+  it("beforeSend hook can mutate and pass through an event", async () => {
+    const mutatingClient = initSentry({
+      environment: "test",
+      enabled: true,
+      beforeSend: (event) => ({ ...event, level: "warning" }),
+    });
+    mutatingClient.clearRecordedEvents();
+    await mutatingClient.captureException(new Error("mutated"));
+    const events = mutatingClient.getRecordedEvents();
+    expect(events.length).toBe(1);
+    expect(events[0].level).toBe("warning");
+  });
+
+  it("captureException handles non-Error objects (string path)", async () => {
+    await client.captureException("plain string error");
+    const events = client.getRecordedEvents();
+    const last = events[events.length - 1];
+    expect(last.exception?.values[0].value).toContain("plain string error");
+  });
+
+  it("captureException omits request field when no path in context", async () => {
+    await client.captureException(new Error("no-path"), { requestId: "req_no_path" });
+    const events = client.getRecordedEvents();
+    const last = events[events.length - 1];
+    expect(last.request).toBeUndefined();
+  });
+
+  it("withSentryRouteHandler generates a requestId when x-request-id header is absent", async () => {
+    const failingHandler = async () => {
+      throw new Error("no-header-test");
+    };
+    const wrapped = withSentryRouteHandler(failingHandler);
+    const req = new NextRequest("http://localhost:3000/api/test-no-header", { method: "GET" });
+    const res = await wrapped(req);
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.requestId).toBeTruthy();
+    expect(typeof data.requestId).toBe("string");
+  });
+
+  it("getSentryClient auto-initializes when no client set yet", () => {
+    // Re-init with null by creating a fresh one and verifying getSentryClient returns something
+    initSentry({ environment: "fresh-test" });
+    const c = getSentryClient();
+    expect(c).toBeInstanceOf(SentryClient);
+    expect(c.config.environment).toBe("fresh-test");
   });
 });

@@ -27,12 +27,14 @@ export interface AuditLogFields {
   requestId: string;
   issuer: string;
   commitment: string;
+  adminAction?: string;
 }
 
 export interface AuditLogEntry extends AuditLogFields {
   index: number;
   prevHash: string;
   hash: string;
+  adminAction?: string;
 }
 
 export function canonicalEntryFields(
@@ -177,6 +179,7 @@ const ALLOWED_ENTRY_KEYS = [
   "commitment",
   "prevHash",
   "hash",
+  "adminAction",
 ];
 
 export function assertPiiFreeEntry(entry: Record<string, unknown>): void {
@@ -280,6 +283,9 @@ export function parseAuditLogLines(text: string): AuditLogEntry[] {
       typeof entry.hash !== "string"
     ) {
       throw new Error(`audit log line ${i + 1}: missing or mistyped field`);
+    }
+    if (typeof record.adminAction === "string") {
+      entry.adminAction = record.adminAction;
     }
     entries.push(entry);
   }
