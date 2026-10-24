@@ -23,7 +23,7 @@ Bundles are JSON documents with the following shape:
   "app_version": "0.0.0",
   "records": [
     {
-      "id": "<opaque-id",
+      "id": "<opaque-id>",
       "type": "credential",
       "name": "<label>",
       "secret_reference": "<opaque-reference>",
