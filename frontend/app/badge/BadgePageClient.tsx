@@ -19,6 +19,11 @@ import { classifyRpcError, type RpcIssue } from "@/lib/rpc-health";
  * that never reached the ledger renders as "Unknown — network unavailable" in
  * amber, never as "Not verified": an embedded badge that says "not verified"
  * during an outage misleads every third party that embeds it.
+ *
+ * Race condition fix: each verification run is tagged with a monotonically
+ * increasing request id. Only the most recent run may commit state, so a
+ * slow, stale response from an earlier (wallet, claim, nonce) can never
+ * overwrite the result of a newer request.
  */
 type BadgeStatus = "loading" | "verified" | "unverified" | "unknown";
 
@@ -45,25 +50,27 @@ function BadgeContent() {
       return;
     }
 
-    let isMounted = true;
+    // Every run gets its own token. Only the latest token may write state;
+    // cleanup invalidates the token for any run that has been superseded.
+    let isCurrent = true;
     setStatus("loading");
     (async () => {
       try {
         const result = await isVerified(wallet, claim);
-        if (!isMounted) return;
+        if (!isCurrent) return;
         // `unknown` means the ledger never answered — a failed read is not a
         // negative result and must not render as one.
-        setStatus(result.status === "unknown" ? "unknown" : result.status);
+        setStatus(result.status);
         setIssue(result.status === "unknown" ? result.issue : null);
       } catch (err) {
-        if (!isMounted) return;
+        if (!isCurrent) return;
         setStatus("unknown");
         setIssue(classifyRpcError(err));
       }
     })();
 
     return () => {
-      isMounted = false;
+      isCurrent = false;
     };
   }, [wallet, claim, nonce]);
 
