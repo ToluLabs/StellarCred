@@ -14,7 +14,7 @@ import {
   unsupportedClaimTypePayload,
   staleCredentialPayload,
   makePayload,
-} from './__fixtures_/fixtures';
+} from './__fixtures__/fixtures';
 
 describe('verifier', () => {
   describe('verifyProof', () => {
