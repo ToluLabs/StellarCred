@@ -37,6 +37,12 @@ export interface SentryErrorContext {
   extra?: Record<string, unknown>;
 }
 
+export interface SentryStackFrame {
+  filename: string;
+  function: string;
+  lineno?: number;
+}
+
 export interface SentryEvent {
   event_id: string;
   timestamp: number;
@@ -51,11 +57,7 @@ export interface SentryEvent {
       type: string;
       value: string;
       stacktrace?: {
-        frames: Array<{
-          filename: string;
-          function: string;
-          lineno?: number;
-        }>;
+        frames: SentryStackFrame[];
       };
     }>;
   };
@@ -235,10 +237,10 @@ export class SentryClient {
     this.recordedEvents = [];
   }
 
-  private parseStack(stack: string): SentryEvent["exception"] extends undefined ? never : any {
+  private parseStack(stack: string): { frames: SentryStackFrame[] } {
     const lines = stack.split("\n").slice(1);
-    const frames = lines
-      .map((line) => {
+    const frames: SentryStackFrame[] = lines
+      .map((line): SentryStackFrame | null => {
         const match = line.match(/^\s*at\s+(?:([^\s(]+)\s+\((.+):(\d+):(\d+)\)|(.+):(\d+):(\d+))/);
         if (!match) return null;
         return {
@@ -247,7 +249,7 @@ export class SentryClient {
           lineno: parseInt(match[3] ?? match[6] ?? "0", 10),
         };
       })
-      .filter((f): f is NonNullable<typeof f> => f !== null)
+      .filter((f): f is SentryStackFrame => f !== null)
       .reverse(); // Sentry expects oldest caller first
 
     return { frames };
@@ -288,9 +290,9 @@ export async function captureServerException(
  * forwards to Sentry, and returns a sanitized 500 error response.
  */
 export function withSentryRouteHandler(
-  handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>,
+  handler: (req: NextRequest, ...args: unknown[]) => Promise<NextResponse>,
 ) {
-  return async (req: NextRequest, ...args: any[]): Promise<NextResponse> => {
+  return async (req: NextRequest, ...args: unknown[]): Promise<NextResponse> => {
     try {
       return await handler(req, ...args);
     } catch (error) {

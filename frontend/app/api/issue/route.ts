@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bodyErrorResponse } from "@/lib/request-limits";
+import { CREDENTIAL_TYPES, type ClaimParams, type CredentialType } from "@stellarcred/issuer";
+import { fetchIssuerPubkey } from "@/lib/issuer-registry";
+import { currentDeploymentRef } from "@/lib/deployment";
+import { circuitVersionStampFor } from "@/lib/circuit-versions";
+import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
 import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
 import {
   completedIdempotencyRecord,
@@ -166,6 +170,7 @@ async function executeRequest(
   const request = normalizeIssueRequest(parsed.body, tenant);
   const walletAddress = request.holder;
   const issuerId = request.issuerId;
+  const preview = parsed.body.preview === true;
 
   const sendResponse = async (response: NextResponse, record?: IdempotencyRecord) => {
     const durationMs = Date.now() - startTime;
