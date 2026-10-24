@@ -421,6 +421,40 @@ Three consequences pin down what the indexer may claim:
 
 ---
 
+## Historical Backfill
+
+Use the dedicated backfill command when bringing up a new indexer against an
+already-active contract or repairing a historical gap. Backfill is deliberately
+separate from the live poll loop: it does not apply `FINALITY_LAG`, does not
+start `POLL_INTERVAL_SECONDS`, and does not modify the live ingestion cursor.
+
+### Run a bounded backfill
+
+```bash
+cd services/indexer
+npm run backfill -- --from 100000 --to 120000
+```
+
+To run from the beginning of the ledger history through the current Horizon head:
+
+```bash
+npm run backfill -- --from genesis --to head
+```
+
+The command fetches up to 200 events per Horizon page, checkpoints each
+completed page in the separate `backfill_cursor`, and prints ledger, percentage,
+page, and event progress. Re-running the same command resumes from that
+checkpoint. Replaying a completed page is safe because claim writes are
+idempotent.
+
+Runtime depends on ledger span, event density, Horizon latency/rate limits, and
+database write speed. Use the progress output from a representative range to
+estimate production runtime; there is no fixed ledgers-per-second guarantee.
+
+Do not run the live poller and a backfill against the same database
+simultaneously. The backfill is a one-shot maintenance process and never starts
+the live polling loop or changes its finality behavior.
+
 ## Development & Testing
 
 ```bash

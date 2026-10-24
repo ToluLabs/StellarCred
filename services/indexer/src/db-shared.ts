@@ -127,6 +127,48 @@ export function createSharedDb(dialect: SqlDialect): Db {
       );
     },
 
+    async getBackfillLedger() {
+      const row = await dialect.get<{ last_ledger: SqlParam }>(
+        "SELECT last_ledger FROM backfill_cursor WHERE id = 1",
+      );
+      return toCount(row?.last_ledger);
+    },
+
+    async getBackfillStartLedger() {
+      const row = await dialect.get<{ start_ledger: SqlParam }>(
+        "SELECT start_ledger FROM backfill_checkpoint WHERE id = 1",
+      );
+      return toCount(row?.start_ledger);
+    },
+
+    async setBackfillStartLedger(seq) {
+      await dialect.run(
+        "UPDATE backfill_checkpoint SET start_ledger = ? WHERE id = 1",
+        [seq],
+      );
+    },
+
+    async setBackfillLedger(seq) {
+      await dialect.run(
+        "UPDATE backfill_cursor SET last_ledger = ? WHERE id = 1",
+        [seq],
+      );
+    },
+
+    async getBackfillCursor() {
+      const row = await dialect.get<{ cursor: string | null }>(
+        "SELECT cursor FROM backfill_page_cursor WHERE id = 1",
+      );
+      return row?.cursor ?? null;
+    },
+
+    async setBackfillCursor(cursor) {
+      await dialect.run(
+        "UPDATE backfill_page_cursor SET cursor = ? WHERE id = 1",
+        [cursor],
+      );
+    },
+
     async upsertClaim(row: ClaimInput) {
       const ex = dialect.excludedRef;
       await dialect.run(

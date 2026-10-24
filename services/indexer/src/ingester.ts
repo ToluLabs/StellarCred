@@ -152,6 +152,9 @@ interface HorizonContractEvent {
 
 interface HorizonEventsPage {
   _embedded: { records: HorizonContractEvent[] };
+  _links?: {
+    next?: { href: string };
+  };
 }
 
 /** Horizon root response — used to read the current ledger. */
@@ -490,9 +493,35 @@ function parseEvent(
 
 // ── Ingester ────────────────────────────────────────────────────────────────
 
+export interface BackfillProgress {
+  fromLedger: number;
+  toLedger: number;
+  currentLedger: number;
+  eventsProcessed: number;
+  pagesProcessed: number;
+  percent: number;
+  /** Elapsed wall-clock time in seconds since the backfill started. */
+  elapsedSeconds: number;
+  /** Ledgers indexed per second (rolling average over the whole run). 0 before first page completes. */
+  ledgersPerSecond: number;
+  /** Estimated seconds remaining until toLedger is reached. null when rate is 0. */
+  etaSeconds: number | null;
+  /** Whether the backfill is still running (false when complete or interrupted). */
+  running: boolean;
+}
+
 export interface Ingester {
   /** Run one ingestion cycle (fetch + write). Returns number of events processed. */
   tick(): Promise<number>;
+  /**
+   * Backfill a bounded historical range without starting the live poll loop.
+   * The DB ledger cursor is checkpointed after each completed page.
+   */
+  backfill(
+    fromLedger: number,
+    toLedger?: number,
+    onProgress?: (progress: BackfillProgress) => void,
+  ): Promise<BackfillProgress>;
   /**
    * Re-scan a bounded window of ledgers to reconcile after a detected reorg.
    * Deletes claims newer than `reorgPoint` and re-indexes up to the new head.
@@ -508,6 +537,12 @@ export interface Ingester {
   getHealth(): IngesterHealth;
   /** Get Prometheus metrics for the ingester. */
   getMetrics(): IngesterMetrics;
+  /**
+   * Return the most recent backfill progress snapshot, or null if no backfill
+   * has been started in this process lifetime. Safe to call at any time,
+   * including while a backfill is running in parallel.
+   */
+  getBackfillStatus(): BackfillProgress | null;
 }
 
 export function createIngester(config: Config, db: Db): Ingester {
@@ -538,6 +573,9 @@ export function createIngester(config: Config, db: Db): Ingester {
       console.error("[indexer] webhook delivery cycle failed:", error);
     }
   }
+
+  // ── Backfill status snapshot (readable via getBackfillStatus) ────────────
+  let lastBackfillStatus: BackfillProgress | null = null;
 
   // ── Prometheus metrics state ──────────────────────────────────────────
   const startTime = Date.now();
@@ -728,12 +766,16 @@ export function createIngester(config: Config, db: Db): Ingester {
 
     // 3. Build the Horizon cursor. For a fresh start with startLedger
     //    configured, begin there; otherwise resume from lastLedger.
-    const cursorNum = lastLedger > 0 ? lastLedger * 100_000 : 0;
+    // Horizon paging tokens are ledger-derived 64-bit values. Use BigInt so
+    // large ledger sequences do not lose precision in JavaScript.
+    const ledgerCursor = (ledger: number): string =>
+      (BigInt(ledger + 1) * 4_294_967_296n - 1n).toString();
+
     const cursor =
       config.startLedger > 0 && lastLedger === 0
-        ? String(config.startLedger * 100_000)
-        : cursorNum > 0
-        ? String(cursorNum)
+        ? ledgerCursor(config.startLedger - 1)
+        : lastLedger > 0
+        ? ledgerCursor(lastLedger)
         : undefined;
 
     // 4. Fetch events up to the finality ceiling.
@@ -800,6 +842,162 @@ export function createIngester(config: Config, db: Db): Ingester {
     return processed;
   }
 
+  // ── Historical backfill ──────────────────────────────────────────────────
+
+  async function backfill(
+    fromLedger: number,
+    requestedToLedger?: number,
+    onProgress?: (progress: BackfillProgress) => void,
+  ): Promise<BackfillProgress> {
+    if (!Number.isInteger(fromLedger) || fromLedger < 1) {
+      throw new Error(`Backfill start ledger must be a positive integer, got ${fromLedger}`);
+    }
+
+    let toLedger = requestedToLedger;
+    if (toLedger === undefined) toLedger = await getLedgerHead();
+    if (!Number.isInteger(toLedger) || toLedger < fromLedger) {
+      throw new Error(`Backfill end ledger must be an integer >= start ledger; got ${toLedger}`);
+    }
+
+    const storedStartLedger = await db.getBackfillStartLedger();
+    const storedLedger = await db.getBackfillLedger();
+    const sameRange = storedStartLedger === fromLedger;
+    if (!sameRange) {
+      await db.setBackfillStartLedger(fromLedger);
+      await db.setBackfillLedger(fromLedger - 1);
+      await db.setBackfillCursor(null);
+    }
+    let currentLedger = sameRange ? Math.max(fromLedger - 1, storedLedger) : fromLedger - 1;
+    let cursor = sameRange ? await db.getBackfillCursor() : null;
+
+    const totalLedgers = toLedger - fromLedger + 1;
+
+    if (currentLedger >= toLedger) {
+      const complete: BackfillProgress = {
+        fromLedger, toLedger, currentLedger: toLedger,
+        eventsProcessed: 0, pagesProcessed: 0, percent: 100,
+        elapsedSeconds: 0, ledgersPerSecond: 0, etaSeconds: null,
+        running: false,
+      };
+      lastBackfillStatus = complete;
+      onProgress?.(complete);
+      return complete;
+    }
+
+    // Legacy fallback for checkpoints created before exact page cursors were
+    // persisted. New checkpoints always resume from the opaque Horizon cursor.
+    const ledgerCursor = (ledger: number): string =>
+      (BigInt(ledger + 1) * 4_294_967_296n - 1n).toString();
+    if (!cursor) {
+      cursor = ledgerCursor(currentLedger >= fromLedger ? currentLedger : fromLedger - 1);
+    }
+    let eventsProcessed = 0;
+    let pagesProcessed = 0;
+    const backfillStartTime = Date.now();
+
+    console.log(`[indexer] backfill starting: ${fromLedger} → ${toLedger} (resume ledger ${currentLedger})`);
+
+    // Publish an initial "running" status snapshot immediately.
+    lastBackfillStatus = {
+      fromLedger, toLedger, currentLedger,
+      eventsProcessed: 0, pagesProcessed: 0, percent: 0,
+      elapsedSeconds: 0, ledgersPerSecond: 0, etaSeconds: null,
+      running: true,
+    };
+
+    const batchSize = config.backfillBatchSize ?? 200;
+
+    while (currentLedger < toLedger) {
+      const url = new URL(`/contracts/${config.proofRegistryContractId}/events`, config.horizonUrl);
+      url.searchParams.set("order", "asc");
+      url.searchParams.set("limit", String(batchSize));
+      if (cursor !== undefined) url.searchParams.set("cursor", cursor);
+
+      const page = await fetchEventsWithRetry(url.toString(), AbortSignal.timeout(30_000));
+      const records = page._embedded?.records ?? [];
+      pagesProcessed++;
+
+      const inRange = records.filter((ev) => {
+        const ledger = typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
+        return ledger >= fromLedger && ledger <= toLedger!;
+      });
+
+      if (inRange.length > 0) {
+        eventsProcessed += await processEvents(inRange);
+        for (const ev of inRange) {
+          const ledger = typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
+          if (ledger > currentLedger) currentLedger = ledger;
+        }
+      }
+
+      const highestPageLedger = records.reduce((max, ev) => {
+        const ledger = typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
+        return Math.max(max, ledger);
+      }, currentLedger);
+      const nextHref = page._links?.next?.href;
+
+      if (highestPageLedger > toLedger) {
+        currentLedger = toLedger;
+        await db.setBackfillLedger(toLedger);
+        await db.setBackfillCursor(null);
+      } else if (records.length === 0 || !nextHref) {
+        currentLedger = toLedger;
+        await db.setBackfillLedger(toLedger);
+        await db.setBackfillCursor(null);
+      } else {
+        await db.setBackfillLedger(currentLedger);
+        const nextUrl = new URL(nextHref);
+        const nextCursor = nextUrl.searchParams.get("cursor");
+        if (!nextCursor) throw new Error("Horizon returned a next page without a cursor");
+        cursor = nextCursor;
+        await db.setBackfillCursor(nextCursor);
+      }
+
+      // ── Progress metrics ────────────────────────────────────────────────
+      const elapsedMs = Date.now() - backfillStartTime;
+      const elapsedSeconds = elapsedMs / 1000;
+      const ledgersDone = Math.max(0, currentLedger - fromLedger + 1);
+      const ledgersPerSecond = elapsedSeconds > 0 ? ledgersDone / elapsedSeconds : 0;
+      const ledgersLeft = Math.max(0, toLedger - currentLedger);
+      const etaSeconds = ledgersPerSecond > 0 ? ledgersLeft / ledgersPerSecond : null;
+      const percent = Math.min(100, Math.round((ledgersDone / totalLedgers) * 100));
+
+      const progress: BackfillProgress = {
+        fromLedger, toLedger, currentLedger,
+        eventsProcessed, pagesProcessed, percent,
+        elapsedSeconds: Math.round(elapsedSeconds * 10) / 10,
+        ledgersPerSecond: Math.round(ledgersPerSecond * 10) / 10,
+        etaSeconds: etaSeconds !== null ? Math.round(etaSeconds) : null,
+        running: currentLedger < toLedger,
+      };
+      lastBackfillStatus = progress;
+      onProgress?.(progress);
+      console.log(
+        `[indexer] backfill progress: ${progress.currentLedger}/${toLedger}` +
+        ` (${progress.percent}%) — ${eventsProcessed} event(s)` +
+        ` | ${progress.ledgersPerSecond} ledgers/s` +
+        (progress.etaSeconds !== null ? ` | ETA ${progress.etaSeconds}s` : ""),
+      );
+
+      if (currentLedger >= toLedger) break;
+    }
+
+    const elapsedMs = Date.now() - backfillStartTime;
+    const elapsedSeconds = elapsedMs / 1000;
+    const ledgersPerSecond = elapsedSeconds > 0 ? totalLedgers / elapsedSeconds : 0;
+
+    const finalProgress: BackfillProgress = {
+      fromLedger, toLedger, currentLedger: toLedger,
+      eventsProcessed, pagesProcessed, percent: 100,
+      elapsedSeconds: Math.round(elapsedSeconds * 10) / 10,
+      ledgersPerSecond: Math.round(ledgersPerSecond * 10) / 10,
+      etaSeconds: null,
+      running: false,
+    };
+    lastBackfillStatus = finalProgress;
+    return finalProgress;
+  }
+
   // ── Reorg reconciliation ─────────────────────────────────────────────────
 
   /**
@@ -839,6 +1037,7 @@ export function createIngester(config: Config, db: Db): Ingester {
 
   return {
     tick,
+    backfill,
     reconcile,
     start() {
       if (running) return;
@@ -882,6 +1081,9 @@ export function createIngester(config: Config, db: Db): Ingester {
         dbWriteLatencySeconds: lastTickDurationSec,
         lag,
       };
+    },
+    getBackfillStatus() {
+      return lastBackfillStatus;
     },
   };
 }

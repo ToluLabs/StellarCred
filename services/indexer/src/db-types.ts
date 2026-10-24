@@ -85,6 +85,22 @@ export interface Db {
   /** Persist the last fully ingested ledger sequence. */
   setLastLedger(seq: number): void | Promise<void>;
 
+  /** Return the last fully completed historical backfill ledger (0 if none). */
+  getBackfillLedger(): number | Promise<number>;
+
+  /** Return the ledger range associated with the resumable backfill checkpoint. */
+  getBackfillStartLedger(): number | Promise<number>;
+
+  /** Persist the ledger range associated with the resumable backfill checkpoint. */
+  setBackfillStartLedger(seq: number): void | Promise<void>;
+
+  /** Persist the historical backfill checkpoint. */
+  setBackfillLedger(seq: number): void | Promise<void>;
+  /** Return the exact Horizon page cursor for a resumable backfill. */
+  getBackfillCursor(): string | null | Promise<string | null>;
+  /** Persist or clear the exact Horizon page cursor for a resumable backfill. */
+  setBackfillCursor(cursor: string | null): void | Promise<void>;
+
   /**
    * Delete all claims whose ledger_sequence is strictly greater than `fromLedger`.
    * Used during reorg reconciliation to roll back un-final data.

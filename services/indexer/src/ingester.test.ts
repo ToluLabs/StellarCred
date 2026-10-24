@@ -39,6 +39,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     rateLimitWindowMs: 60000,
     rateLimitMax: 120,
     rateLimitEnabled: true,
+    backfillBatchSize: 200,
     ...overrides,
   } as Config;
 }

@@ -31,6 +31,12 @@ export interface Config {
   rateLimitMax: number;
   rateLimitEnabled: boolean;
   /**
+   * Number of events to request per Horizon page during backfill.
+   * Higher values reduce round-trips; lower values reduce memory pressure.
+   * Default: 200 (Horizon's maximum per-page limit).
+   */
+  backfillBatchSize: number;
+  /**
    * When set, /claims, /stats, and /recent require the key as either:
    *   Authorization: Bearer <key>   or   X-API-Key: <key>
    * Absent or empty → public mode. Treated as optional so Partial<Config>
@@ -151,6 +157,10 @@ export function loadConfig(): Config {
     startLedger: Number(optional("START_LEDGER", "0")),
     port: Number(optional("PORT", "3001")),
     finalityLag: Number(optional("FINALITY_LAG", "6")),
+    backfillBatchSize: Math.min(
+      200,
+      Math.max(1, Number(optional("BACKFILL_BATCH_SIZE", "200"))),
+    ),
     corsOrigins: parseCorsOrigins(rawCors),
     rateLimitWindowMs: (Number.isFinite(windowSec) && windowSec > 0 ? windowSec : 60) * 1000,
     rateLimitMax: Number.isFinite(maxReq) && maxReq > 0 ? maxReq : 120,
