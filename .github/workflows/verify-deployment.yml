@@ -13,12 +13,10 @@ on:
           - mainnet
   schedule:
     - cron: "0 2 * * *" # Nightly at 02:00 UTC
-  pull_request:
-    paths:
-      - "scripts/verify-deployment.sh"
-      - "scripts/verify-onchain.mjs"
-      - ".github/workflows/verify-deployment.yml"
 
+# Intentionally not attached to pull_request: this checks live network state
+# against DEPLOYMENTS.md, which a PR cannot change. The script's syntax is
+# checked on every PR by the contracts job in ci.yml.
 permissions:
   contents: read
 
