@@ -269,6 +269,9 @@ no StellarCred account and no server-side credential database. This means:
   backup** to download a JSON file of every credential (treat it like a
   password — it contains the raw values). Restore on any device with **Import
   credential JSON**.
+- **Full backup & restore workflow.** For a step-by-step procedure covering
+  safe export, encrypted archival, retention, and verified restore into a
+  known-good environment, see **[docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md)**.
 - **Guardian recovery (Shamir Secret Sharing).** On the **Holder** page, click
   **Guardian recovery** to split your 256-bit credential-encryption key among
   $N$ chosen guardians or devices with a threshold $K$ (e.g. 2-of-3). Guardians
@@ -489,6 +492,8 @@ Deploy and wire the contracts on the Stellar Mainnet:
 - Server-side issuance, multi-claim flow, the return-URL redirect, the
   `@stellarcred/sdk`, and the Persona relay are wired and build-clean.
 - **Bundle size budget & CI checks enforced**: WASM proving assets and route bundles are monitored with `@size-limit/file` and `@next/bundle-analyzer`. See [docs/BUNDLE_SIZE_BUDGET.md](docs/BUNDLE_SIZE_BUDGET.md).
+- **Credential backup & restore documented**: export bundles, encrypted archival,
+  and verified restore are covered in [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md).
 
 ---
 
@@ -498,12 +503,14 @@ Deploy and wire the contracts on the Stellar Mainnet:
 - UltraHonk Soroban verifier — https://github.com/yugocabrio/rs-soroban-ultrahonk
 - Noir — https://noir-lang.org/docs
 - Stellar Wallets Kit — https://stellarwalletskit.dev
+- Backup & restore guide — [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md)
 
 ---
 
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, development workflow, and areas open for contribution.
+When touching credential export or import code, update [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) so the documented workflow stays in sync with the tooling.
 
 ## License
 
