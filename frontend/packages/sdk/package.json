@@ -43,8 +43,8 @@
     "test:retry": "vitest run src/submit-retry.test.ts",
     "typecheck": "tsc --noEmit",
     "docs:api": "typedoc",
-    "lint": "eslint src test",
-    "format:check": "prettier --check src test",
+    "bundle:budget": "node scripts/check-bundle-budget.mjs",
+    "bundle:report": "node scripts/report-bundle-composition.mjs",
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {

@@ -30,11 +30,7 @@
 export * from "./claims";
 export * from "./capabilities";
 export * from "./challenge";
-export * from "./subscriptions";
-export * from "./errors"; // Typed error taxonomy (#404)
-export * from "./validateCredential"; // Credential JSON validation (#27)
-export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
-export type { SubmitTransactionOptions } from "./submit";
+export * from "./uniqueness";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
@@ -90,6 +86,11 @@ import {
   verifyWalletSignature,
   verifyWalletClaim,
 } from "./challenge";
+import {
+  canonicalizeUniquenessPayload,
+  createUniquenessAttestation,
+  sameUniquenessSubject,
+} from "./uniqueness";
 
 import { subscribeClaims } from "./subscriptions";
 
@@ -130,6 +131,9 @@ export const StellarCred = {
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,
+  canonicalizeUniquenessPayload,
+  createUniquenessAttestation,
+  sameUniquenessSubject,
   CLAIM_TYPES,
   deriveNullifier,
   isNullifierUsed,
