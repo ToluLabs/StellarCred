@@ -32,6 +32,7 @@ export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
 export * from "./errors"; // Typed error taxonomy (#404)
+export * from "./validateCredential"; // Credential JSON validation (#27)
 export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
 export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
@@ -92,6 +93,13 @@ import {
 
 import { subscribeClaims } from "./subscriptions";
 
+import {
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
+  CredentialValidationError,
+} from "./validateCredential";
+
 export const StellarCred = {
   configure,
   bootstrap,
@@ -115,6 +123,9 @@ export const StellarCred = {
   normalizeRpcError,
   classifyTransientFailure,
   submitTransaction,
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
   subscribeClaims,
   createWalletChallenge,
   verifyWalletSignature,
@@ -131,6 +142,7 @@ export const StellarCred = {
   ContractError,
   ContractErrorCode,
   TransactionSubmissionError,
+  CredentialValidationError,
   parseContractError,
 };
 export default StellarCred;
