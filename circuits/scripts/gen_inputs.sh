@@ -9,18 +9,47 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS="$ROOT/scripts"
 COMMIT="$ROOT/commit"
 
+# Serialize all nargo executions that share a circuit directory. Concurrent
+# proof jobs otherwise race on the shared Prover.toml / target artifacts.
+LOCKDIR="${TMHDIR:-/tmp}/circuit-prover-locks"
+mkdir -p "$LOCKDIR"
+
+with_lock() { # lockname cmd... -> run cmd while holding an exclusive lock
+  local name="$1"; shift
+  local lockfile="$LOCKDIR/$name.lock"
+  (
+    if command -v flock >/dev/null 2>&1; then
+      exec 9>"$lockfile"
+      flock 9
+      "$@"
+    else
+      # Portable fallback: atomic mkdir-based mutex with retry.
+      local d="$lockfile.d"
+      until mkdir "$d" 2>/dev/null; do sleep 0.05; done
+      trap 'rmdir "$d" 2>/dev/null || true' EXIT
+      "$@"
+      rmdir "$d" 2>/dev/null || true
+      trap - EXIT
+    fi
+  )
+}
+
 commit() { # value salt -> canonical decimal commitment (2-arity)
-  printf 'value = "%s"\nsalt = "%s"\n' "$1" "$2" > "$COMMIT/Prover.toml"
   local raw
-  raw=$(cd "$COMMIT" && nargo execute 2>&1 | grep "Circuit output" | sed -E 's/.*Field\((-?[0-9]+)\).*/\1/')
-  RAW="$raw" node -e 'const r=21888242871839275222246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
+  raw=$(with_lock commit bash -c '
+    printf '\''value = "%s"\nsalt = "%s"\n'\'' "$1" "$2" > "$3/Prover.toml"
+    cd "$3" && nargo execute 2>&1 | grep "Circuit output" | sed -E '\''s/.*Field\((-?[0-9]+)\).*/\1/\''
+  ' _ "$1" "$2" "$COMMIT")
+  RAW="$raw" node -e 'const r=2188824287183927522246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
 }
 
 commit3() { # value1 value2 salt -> canonical decimal commitment (3-arity, for employment)
-  printf 'status = "%s"\nseniority = "%s"\nsalt = "%s"\n' "$1" "$2" "$3" > "$ROOT/commit3/Prover.toml"
   local raw
-  raw=$(cd "$ROOT/commit3" && nargo execute 2>&1 | grep "Circuit output" | sed -E 's/.*Field\((-?[0-9]+)\).*/\1/')
-  RAW="$raw" node -e 'const r=21888242871839275222246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
+  raw=$(with_lock commit3 bash -c '
+    printf '\''status = "%s"\nseniority = "%s"\nsalt = "%s"\n'\'' "$1" "$2" "$3" > "$4/Prover.toml"
+    cd "$4" && nargo execute 2>&1 | grep "Circuit output" | sed -E '\''s/.*Field\((-?[0-9]+)\).*/\1/\''
+  ' _ "$1" "$2" "$3" "$ROOT/commit3")
+  RAW="$raw" node -e 'const r=2188824287183927522246405745257275088548364400416034343698204186575808495617n;let x=BigInt(process.env.RAW);if(x<0n)x+=r;console.log(x.toString())'
 }
 
 echo "kyc_proof..."
@@ -61,7 +90,7 @@ C=$(commit 40000 2024)
 echo "date_range..."
 C=$(commit 3650 12345)
 { echo "issued_at = \"3650\""; echo "salt = \"12345\""; echo "commitment = \"$C\""; \
-  echo "window_start = \"3000\""; echo "window_end = \"4000\""; node "$SCRIPTS/sign.js" "$C"; } \
+  echo "window_start = \"3000\""; echo "window_end = \"4000\""; node "$SCRIPTS"/sign.js "$C"; } \
   > "$ROOT/date_range/Prover.toml"
 
 echo "jurisdiction_proof (denylist)..."

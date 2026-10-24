@@ -21,6 +21,13 @@
 // Examples:
 //   node circuits/scripts/merkle_tree.js root 840 276 566 356
 //   node circuits/scripts/merkle_tree.js path 840 276 566 356 --for 840
+//
+// Concurrency note:
+//   This module is safe to use from multiple concurrent proof jobs. It holds
+//   no mutable global state (the ZERO cache is computed once at load and never
+//   mutated), performs no filesystem I/O, and does not write to shared temp
+//   files. Callers that need to serialize proof generation should use the
+//   exported withProofLock() helper below.
 
 "use strict";
 
@@ -199,6 +206,39 @@ const ZERO = (() => {
   return z;
 })();
 
+// ── Proof job queue / lock ────────────────────────────────────────────────────
+// Serializes proof generation across concurrent callers within a single
+// process. Proof jobs share no temp files, but the underlying prover may use
+// global state (e.g. WASM memory, thread pool) that is not re-entrant, so we
+// funnel jobs through a FIFO queue to guarantee reliability under load.
+const _proofQueue = [];
+let _proofRunning = false;
+
+function _drainProofQueue() {
+  if (_proofRunning) return;
+  const next = _proofQueue.shift();
+  if (!next) return;
+  _proofRunning = true;
+  Promise.resolve()
+    .then(next.job)
+    .then(
+      (result) => { _proofRunning = false; next.resolve(result); _drainProofQueue(); },
+      (err)    => { _proofRunning = false; next.reject(err);  _drainProofQueue(); },
+    );
+}
+
+// Enqueue an async proof job. Returns a promise resolving to the job's result.
+// Jobs run one at a time in submission order.
+function withProofLock(job) {
+  if (typeof job !== "function") {
+    return Promise.reject(new TypeError("withProofLock expects a function"));
+  }
+  return new Promise((resolve, reject) => {
+    _proofQueue.push({ job, resolve, reject });
+    _drainProofQueue();
+  });
+}
+
 // ── Tree construction ─────────────────────────────────────────────────────────
 function buildTree(values) {
   if (values.length > TREE_SIZE)
@@ -315,6 +355,8 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
 
-module.exports = { buildTree, merklePathForIndex, verifyPath, leafHash, nodeHash, poseidon2Hash, DEPTH, ZERO };
+module.exports = { buildTree, merklePathForIndex, verifyPath, leafHash, nodeHash, poseidon2Hash, DEPTH, ZERO, withProofLock };
