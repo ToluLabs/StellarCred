@@ -164,3 +164,16 @@ export function buildSchema(dialect: SqlDialect): Schema {
 
   return { claimsTable: claims, tables, indexes };
 }
+
+/** The `issuer_metadata` table DDL for the given dialect (issue #907). */
+export function buildIssuerMetadataTable(dialect: SqlDialect): string {
+  return `CREATE TABLE IF NOT EXISTS issuer_metadata (
+  ${column("address", "TEXT", { notNull: true })},
+  ${column("name", "TEXT")},
+  ${column("url", "TEXT")},
+  ${column("logo", "TEXT")},
+  ${column("ledger_sequence", dialect.intType, { notNull: true, default: "0" })},
+  ${column("updated_at", dialect.createdAtType)},
+  PRIMARY KEY (address)
+)`;
+}

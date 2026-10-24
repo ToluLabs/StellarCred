@@ -29,6 +29,8 @@ import {
   createIssuerClient,
 } from "@/lib/issuer-service";
 import { resolveTenant, validateTenantCredentialTypes } from "@/lib/tenancy";
+import { normalizeAttributes } from "@/lib/attribute-normalizer";
+import { equals } from "@/lib/crypto";
 
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -347,7 +349,7 @@ async function executeBatchRequest(
           cachedIssuerKeyCheck.set(issuerId, false);
         } else {
           const localKey = localIssuerPubkeyBytes(customIssuerClient);
-          const matches = Buffer.from(registered).equals(localKey);
+          const matches = equals(registered, localKey);
           cachedIssuerKeyCheck.set(issuerId, matches);
         }
       }
@@ -364,13 +366,11 @@ async function executeBatchRequest(
       }
     }
 
-    const attributes: Record<string, string> = { ...(item.attributes ?? {}) };
-    if (item.attribute !== undefined && item.type) {
-      if (item.type === "age") attributes.date_of_birth ??= item.attribute;
-      else if (item.type === "income") attributes.income ??= item.attribute;
-      else if (item.type === "jurisdiction") attributes.country_code ??= item.attribute;
-      else if (item.type === "employment") attributes.seniority ??= item.attribute;
-    }
+    const attributes: Record<string, string> = normalizeAttributes(
+      item.type,
+      item.attribute,
+      item.attributes,
+    );
 
     try {
       const credentials = await issueAndAuditCredentials({
