@@ -4,12 +4,10 @@
 // Captures unhandled server errors with stack traces, environment tags, commit hashes,
 // and service context while guaranteeing zero sensitive payloads or PII escape.
 
- feat/issue-789-export-ui-flow
 import crypto from "crypto";
 
- main
 import type { NextRequest, NextResponse } from "next/server";
-import { logger, stripSensitiveFields } from "../logger";
+import { logger, safeError } from "../logger";
 
 function generateUUID(): string {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
@@ -164,7 +162,7 @@ export class SentryClient {
       return res.ok;
     } catch (err) {
       logger.warn(
-        stripSensitiveFields({ event: "sentry_delivery_failed" }),
+        { event: "sentry_delivery_failed" },
         `Failed to deliver error event to Sentry: ${(err as Error).message}`
       );
       return false;
@@ -315,14 +313,14 @@ export function withSentryRouteHandler(
         },
       });
 
-      logger.error(
-        stripSensitiveFields({
+      safeError(
+        {
           event: "api_unhandled_server_error",
           requestId,
           method,
           path,
           sentryEventId: eventId,
-        }),
+        },
         `Unhandled API server exception on ${method} ${path}: ${(error as Error).message}`
       );
 

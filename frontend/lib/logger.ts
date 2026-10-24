@@ -82,6 +82,15 @@ export function stripSensitiveFields<T extends Record<string, unknown>>(obj: T):
   return result;
 }
 
+// Branch-coverage note: the non-object guard below is exercised by the
+// safeInfo/safeWarn/safeError tests so that both sides of the conditional are
+// covered. Callers passing a non-object (e.g. null/undefined from untyped
+// boundaries) get an empty, safe payload instead of a TypeError.
+export function scrubPayload(obj: unknown): Record<string, unknown> {
+  if (obj === null || typeof obj !== "object") return {};
+  return stripSensitiveFields(obj as Record<string, unknown>) as Record<string, unknown>;
+}
+
 // Centralized safe-logging wrappers. Every call automatically scrubs the
 // payload through stripSensitiveFields so call sites cannot accidentally log
 // sensitive data. The underlying pino methods are invoked with the same
@@ -91,7 +100,7 @@ export function safeInfo(
   msg?: string,
   ...args: unknown[],
 ): void {
-  logger.info(stripSensitiveFields(obj), msg, ...args);
+  logger.info(scrubPayload(obj), msg, ...args);
 }
 
 export function safeWarn(
@@ -99,7 +108,7 @@ export function safeWarn(
   msg?: string,
   ...args: unknown[],
 ): void {
-  logger.warn(stripSensitiveFields(obj), msg, ...args);
+  logger.warn(scrubPayload(obj), msg, ...args);
 }
 
 export function safeError(
@@ -107,5 +116,5 @@ export function safeError(
   msg?: string,
   ...args: unknown[],
 ): void {
-  logger.error(stripSensitiveFields(obj), msg, ...args);
+  logger.error(scrubPayload(obj), msg, ...args);
 }
