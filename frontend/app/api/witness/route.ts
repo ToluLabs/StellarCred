@@ -362,25 +362,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Map errors to appropriate HTTP status codes
-    const status =
-      err.message === "Ledger time fetch timeout"
-        ? 504
-        : err.message === "NEXT_PUBLIC_RPC_URL is not configured"
-          ? 500
-          : err.message.startsWith("RPC error")
-            ? 502
-            : 500;
-
     logger.error(
       stripSensitiveFields({
         event: "witness_response_sent",
         credentialType: type,
-        outcome: "failure",
-        error: err.message,
+        outcome: "error",
         requestId,
+        error: err.message,
       }),
     );
-    return sendResponse(NextResponse.json({ error: err.message }, { status }));
+    return sendResponse(
+      NextResponse.json(
+        { error: "Witness generation failed", code: "witness_generation_failed" },
+        { status: 500 },
+      ),
+    );
   }
 }
