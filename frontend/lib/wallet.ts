@@ -13,7 +13,7 @@
 // is statically imported here. It is lazy-loaded on first use (connect/restore /
 // sign) so the root layout — and every page — avoids bundling it.
 
-import { NETWORK_PASSPHRASE } from "./stellar";
+import { NETWORK_PASSPHRASE, NETWORK, NETWORK_PRESETS } from "./stellar";
 import type {
   StellarWalletsKit,
   ModuleInterface,
@@ -369,4 +369,97 @@ export async function signTx(xdr: string, address: string): Promise<string> {
     networkPassphrase: NETWORK_PASSPHRASE,
   });
   return signedTxXdr;
+}
+
+// ---------------------------------------------------------------------------
+// Wallet onboarding helpers (Issue #904)
+// ---------------------------------------------------------------------------
+
+/**
+ * Known Stellar wallet extensions and their install pages, used by the
+ * onboarding UI to surface clear installation guidance when no wallet is
+ * detected.
+ */
+export interface WalletInstallInfo {
+  id: string;
+  name: string;
+  installUrl: string;
+  description: string;
+  isExtension: boolean;
+}
+
+export const KNOWN_WALLETS: WalletInstallInfo[] = [
+  {
+    id: "freighter",
+    name: "Freighter",
+    installUrl: "https://www.freighter.app/",
+    description: "Self-custody Stellar wallet — browser extension",
+    isExtension: true,
+  },
+  {
+    id: "xlxclarolet",
+    name: "xBull",
+    installUrl: "https://xbull.app/",
+    description: "Stellar wallet — browser extension",
+    isExtension: true,
+  },
+  {
+    id: "albedo",
+    name: "Albedo",
+    installUrl: "https://albedo.link/",
+    description: "Signing-only web wallet — no installation needed",
+    isExtension: false,
+  },
+  {
+    id: "lobstr",
+    name: "LOBSTR",
+    installUrl: "https://lobstr.co/",
+    description: "Stellar wallet — web and mobile",
+    isExtension: false,
+  },
+];
+
+/**
+ * Best-effort detection of whether a browser wallet extension is installed.
+ * Checks `window.freighterApi` (Freighter) and other known injection points.
+ * Returns the wallet id of the first detected extension, or null if none found.
+ */
+export function detectInstalledWallet(): string | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as Record<string, unknown>;
+  const freighter = w.freighterApi ?? w.freighter;
+  if (freighter) return "freighter";
+  return null;
+}
+
+/**
+ * Returns true when a known Stellar wallet extension appears to be installed.
+ */
+export function isWalletInstalled(): boolean {
+  return detectInstalledWallet() !== null;
+}
+
+/**
+ * The Stellar network the app is configured for, as a human-readable string.
+ */
+export function appNetworkName(): string {
+  return NETWORK;
+}
+
+/**
+ * The network name the connected wallet reports, or null if it can't be read.
+ */
+export async function walletNetworkName(): Promise<string | null> {
+  try {
+    const { networkPassphrase } = await (await getKit()).getNetwork();
+    if (!networkPassphrase) return null;
+    for (const [name, preset] of Object.entries(NETWORK_PRESETS)) {
+      if (preset.networkPassphrase === networkPassphrase) {
+        return name === "mainnet" ? "Mainnet (Public)" : name.charAt(0).toUpperCase() + name.slice(1);
+      }
+    }
+    return "Unknown network";
+  } catch {
+    return null;
+  }
 }

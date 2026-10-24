@@ -3,7 +3,8 @@
 // picking an issuer outside the protocol's trusted list warns instead of
 // silently issuing a proof that will be rejected.
 
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { renderWithIntl } from "@/lib/test-utils";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
 
@@ -80,12 +81,12 @@ vi.mock("@/components/WalletButton", () => ({ WalletButton: () => null }));
 // asserts that), which disables the issue button as "app not configured". This
 // test is about issuer choice, so pretend the deployment is configured.
 vi.mock("@/lib/config", async (importOriginal: any) => {
-  const actual = await importOriginal() as typeof import("@/lib/config");
+  const actual = (await importOriginal()) as typeof import("@/lib/config");
   return { ...actual, issuanceConfigured: () => true };
 });
 
 vi.mock("@/lib/credential", async (importOriginal: any) => {
-  const actual = await importOriginal() as typeof import("@/lib/credential");
+  const actual = (await importOriginal()) as typeof import("@/lib/credential");
   return { ...actual, saveCredential: vi.fn() };
 });
 
@@ -128,7 +129,7 @@ describe("holder picks the issuer (#620)", () => {
   });
 
   it("lists the issuers that can attest the claim, preselects the protocol-accepted one", async () => {
-    render(<VerifyPage />);
+    renderWithIntl(<VerifyPage />);
 
     // Both age-capable issuers are offered, with their on-chain metadata.
     const picker = await screen.findByRole("radiogroup", {
@@ -153,7 +154,7 @@ describe("holder picks the issuer (#620)", () => {
   });
 
   it("warns when the holder picks an issuer the protocol will not accept, and still issues from it", async () => {
-    render(<VerifyPage />);
+    renderWithIntl(<VerifyPage />);
 
     const picker = await screen.findByRole("radiogroup", {
       name: /issuing authority/i,
@@ -163,15 +164,10 @@ describe("holder picks the issuer (#620)", () => {
     await screen.findByText(/trusted-issuer list/i);
     expect(screen.getByText(/will reject a proof from it/i)).toBeInTheDocument();
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: /get credential/i }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: /get credential/i }));
     // The registry read already used fetch, so wait for the issue POST itself.
     await waitFor(() =>
-      expect(fetch).toHaveBeenCalledWith(
-        "/api/issue",
-        expect.objectContaining({ method: "POST" }),
-      ),
+      expect(fetch).toHaveBeenCalledWith("/api/issue", expect.objectContaining({ method: "POST" })),
     );
     expect(issueBody().issuerId).toBe(ISSUER_FOR_AGE_AND_KYC);
     expect(issueBody().issuerName).toBe("Globule Registry");

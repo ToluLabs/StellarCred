@@ -122,7 +122,7 @@ function freshHealth(): IngesterHealth {
  *
  * The full shape has many optional fields; we only care about these.
  */
-interface HorizonContractEvent {
+export interface HorizonContractEvent {
   /** Paging token / cursor. */
   paging_token: string;
   /** The contract that emitted this event. */
@@ -150,7 +150,7 @@ interface HorizonContractEvent {
   source_account?: string;
 }
 
-interface HorizonEventsPage {
+export interface HorizonEventsPage {
   _embedded: { records: HorizonContractEvent[] };
 }
 
@@ -313,7 +313,7 @@ async function fetchEventsWithRetry(
 
 // ── Event parser ───────────────────────────────────────────────────────────
 
-type ParsedEvent =
+export type ParsedEvent =
   | {
       kind: "verified";
       holder: string;
@@ -352,7 +352,7 @@ type ParsedEvent =
  *   topics = ("proof_reg", "self_rev", credential_type)
  *   value  = EventHolderRevoked { holder, revoked_at }
  */
-function parseEvent(
+export function parseEvent(
   ev: HorizonContractEvent,
   contractId: string
 ): ParsedEvent {

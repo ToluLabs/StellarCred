@@ -100,7 +100,7 @@ SM_SALT="42"
 C=$(commit $SM_MEMBER $SM_SALT)
 # Compute merkle_root and the Merkle path lines for the member value.
 MERKLE_ROOT=$(node "$SCRIPTS"/merkle_tree.js root $SM_VALUES)
-MERLLE_LINES=$(node "$SCRIPTS"/merkle_tree.js path $SM_VALUES --for $SM_MEMBER)
+MERKLE_LINES=$(node "$SCRIPTS"/merkle_tree.js path $SM_VALUES --for $SM_MEMBER)
 {
   echo "value = \"$SM_MEMBER\""
   echo "salt = \"$SM_SALT\""
@@ -111,7 +111,7 @@ MERLLE_LINES=$(node "$SCRIPTS"/merkle_tree.js path $SM_VALUES --for $SM_MEMBER)
 
 echo "composite_policy_proof..."
 # Bounded boolean policy over committed attributes. Policy is encoded as a
-| fixed-shape formula of terms; each term is a threshold or membership
+# fixed-shape formula of terms; each term is a threshold or membership
 # check over a committed attribute. The circuit evaluates the formula and
 # outputs a single pass/fail bit, revealing only the result.
 #
@@ -127,7 +127,7 @@ echo "composite_policy_proof..."
 # Example formula: (accredited OR income>=X) AND jurisdiction-in-allowlist
 #   term0: accreditation threshold (net_worth >= 1000000)
 #   term1: income threshold (income >= 200000)
-   term2: jurisdiction membership (country_code in allowlist)
+#   term2: jurisdiction membership (country_code in allowlist)
 #   ops:   term0 OR term1, result AND term2  -> ops = [1, 0]
 #
 # We use three committed attributes (net_worth, income, country_code),

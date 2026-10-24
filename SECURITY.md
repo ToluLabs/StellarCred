@@ -34,6 +34,7 @@ Areas of particular interest:
 - The issuer's secp256k1 signature is verified **inside** the ZK proof (`std::ecdsa_secp256k1`), and the contract checks the public key from public inputs matches the registered issuer key. A valid proof requires a registered issuer to have signed the credential.
 - `prehash: false` is required when signing — Noir uses the raw 32-byte commitment as the message digest. Changing this breaks all existing proofs.
 - Identity fields from KYC providers are used only to derive credential values and are never stored or logged after the API call completes.
+- The app sends a Content-Security-Policy. By default the enforced policy still permits inline scripts; a stricter nonce-based policy is sent in report-only mode, with sanitized violation reports delivered to /api/csp-report, and can be enforced with CSP_MODE=enforce. See docs/CSP.md.
 
 See the full threat model and reviewer checklist in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 For the boundaries of the privacy guarantee — what the system does not hide, recover, or

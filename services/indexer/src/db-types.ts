@@ -378,3 +378,17 @@ export function toClaimRow(row: Record<string, unknown>): ClaimRow {
 export function toCount(value: SqlParam | undefined): number {
   return value == null ? 0 : Number(value);
 }
+
+/** Metadata written by a future seeding PR (issue #907). */
+export interface IssuerMetadataInput {
+  address: string;
+  name: string | null;
+  url: string | null;
+  logo: string | null;
+  ledger_sequence: number;
+}
+
+/** An issuer_metadata row as read back from the database. */
+export interface IssuerMetadataRow extends IssuerMetadataInput {
+  updated_at: string;
+}

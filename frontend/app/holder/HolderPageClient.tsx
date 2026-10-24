@@ -14,6 +14,7 @@ import {
 } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
+import { WalletOnboarding } from "@/components/WalletOnboarding";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings";
 import CredentialDetailModal from "@/components/CredentialDetailModal";
@@ -37,22 +38,14 @@ import { SponsorBanner } from "@/components/holder/SponsorBanner";
 import { GuardianRecoveryControl } from "@/components/holder/GuardianRecoveryControl";
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
 import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
+import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
 
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer — load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
-const TransferExportModal = dynamic(
-  () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
-  { ssr: false },
-);
-const TransferImportModal = dynamic(
-  () => import("@/components/TransferImportModal").then((m) => m.TransferImportModal),
-  { ssr: false },
-);
-const ExportDataModal = dynamic(
-  () => import("@/components/ExportDataModal").then((m) => m.ExportDataModal),
-  { ssr: false },
-);
+const TransferExportModal = dynamic(() => import("@/components/TransferExportModal").then((m) => m.TransferExportModal), { ssr: false });
+const TransferImportModal = dynamic(() => import("@/components/TransferImportModal").then((m) => m.TransferImportModal), { ssr: false });
+const ExportDataModal = dynamic(() => import("@/components/ExportDataModal").then((m) => m.ExportDataModal), { ssr: false });
 
 type PageView =
   | { kind: "list" }
@@ -71,14 +64,7 @@ function HolderInner() {
   const searchParams = useSearchParams();
   const toast = useToast();
 
-  const {
-    creds,
-    reload,
-    save,
-    remove,
-    markCredentialProved,
-    markCredentialsProved,
-  } = useCredentialStore();
+  const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } = useCredentialStore();
   const { downloadBackup } = useImportExport();
 
   const [view, setView] = useState<PageView>({ kind: "list" });
@@ -189,6 +175,8 @@ function HolderInner() {
       </div>
 
       <ConfigBanner />
+
+      <WalletOnboarding />
 
       <SponsorBanner />
 
@@ -443,6 +431,8 @@ function HolderInner() {
           )}
         </div>
       )}
+
+      <CredentialExportPanel />
 
       {detailCred && (
         <CredentialDetailModal

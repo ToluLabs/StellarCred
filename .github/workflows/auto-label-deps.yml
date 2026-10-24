@@ -1,48 +1,109 @@
 name: Auto-label Dependency PRs
 
+# `pull_request_target` is required rather than `pull_request`: workflows
+# triggered by Dependabot PRs receive a read-only GITHUB_TOKEN under
+# `pull_request`, so they could not add a label. This workflow never checks out
+# or executes PR code — it checks out the base branch's labeler script only and
+# inspects the PR through the API.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
-  pull-requests: write
+  contents: read
   issues: write
+  pull-requests: read
+
+concurrency:
+  group: auto-label-deps-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 env:
-  LABEL_NAME: ${{ vars.DEPENDENCY_LABEL_NAME || 'deps' }}
+  # Repository variable lets each deployment choose the label name without
+  # editing this workflow. Falls back to "deps" when unset.
+  DEPENDENCY_LABEL_NAME: ${{ vars.DEPENDENCY_LABEL_NAME || 'deps' }}
 
 jobs:
   auto-label:
+    name: Apply dependency label
     runs-on: ubuntu-latest
     steps:
-      - name: Check author and apply label
-        uses: actions/github-script@v7
+      - name: Check out the labeler script from the base branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Classify PR and apply label
+        uses: actions/github-script@v9
         with:
           script: |
-            const pr = context.payload.pull_request;
-            const author = pr.user.login;
-            const title = pr.title.toLowerCase();
-            const branch = pr.head.ref;
-            
-            const isDependabot = author === 'dependabot[bot]' || branch.startsWith('dependabot/');
-            const isRenovate = author === 'renovate[bot]' || branch.startsWith('renovate/');
-            const isDependencyBump = title.includes('bump') || title.includes('deps') || title.includes('dependency');
+            const { classifyDependencyPr, resolveDependencyLabel } = await import(
+              `${process.env.GITHUB_WORKSPACE}/.github/scripts/label-deps.mjs`
+            );
 
-            if (isDependabot || isRenovate || isDependencyBump) {
-              const labelName = process.env.LABEL_NAME || 'deps';
-              console.log(`Applying label '${labelName}' to PR #${pr.number} (author: ${author}, branch: ${branch})`);
-              
-              try {
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  labels: [labelName]
-                });
-                console.log('Successfully applied dependency label.');
-              } catch (error) {
-                console.error('Failed to add label:', error);
-              }
-            } else {
-              console.log('PR is not recognized as a dependency update.');
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const classification = classifyDependencyPr({
+              author: pr.user?.login,
+              branch: pr.head?.ref,
+              title: pr.title,
+              changedFiles: changedFiles.map((file) => file.filename),
+            });
+
+            const labelName = resolveDependencyLabel(
+              process.env.DEPENDENCY_LABEL_NAME
+            );
+
+            if (!classification.isDependency) {
+              core.info(
+                `PR #${pr.number} is not a dependency update; no label applied.`
+              );
+              return;
             }
+
+            core.info(
+              `PR #${pr.number} is a dependency update (${classification.reasons.join(
+                ", "
+              )}). Applying '${labelName}'.`
+            );
+
+            // addLabels fails with 404 when the label does not exist yet.
+            // Create it on first use so a fresh repository (or a newly
+            // configured DEPENDENCY_LABEL_NAME) labels successfully.
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: labelName });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              try {
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: labelName,
+                  color: "ededed",
+                  description: "Dependency update (Dependabot/Renovate)",
+                });
+              } catch (createError) {
+                // Another run may have created it between get and create.
+                if (createError.status !== 422) throw createError;
+              }
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: pr.number,
+              labels: [labelName],
+            });
+
+            core.info(`Applied '${labelName}' to PR #${pr.number}.`);
