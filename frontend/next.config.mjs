@@ -1,13 +1,13 @@
 import { createRequire } from "module";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 import createNextIntlPlugin from "next-intl/plugin";
+import { buildCsp, resolveCspMode, resolveBadgeFrameAncestors } from "./lib/csp.mjs";
 
 const withBundleReport = withBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
 
 const withNextIntl = createNextIntlPlugin();
-
 
 const require = createRequire(import.meta.url);
 const bufferPath = require.resolve("buffer/");
@@ -20,6 +20,18 @@ const nextConfig = {
   poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["@tabler/icons-react"],
+  },
+
+  // Rewrite barrel imports from "@tabler/icons-react" to per-icon ESM files.
+  // e.g. `import { IconCheck } from "@tabler/icons-react"` becomes
+  //      `import { IconCheck } from "@tabler/icons-react/dist/esm/icons/IconCheck.mjs"`
+  // This prevents the entire ~475 kB icon library from being included in the
+  // bundle when only a handful of icons are actually used. The package has
+  // `sideEffects: false`, making this tree-shaking safe.
+  modularizeImports: {
+    "@tabler/icons-react": {
+      transform: "@tabler/icons-react/dist/esm/icons/{{member}}",
+    },
   },
 
   // (Removed the legacy `optimizeFonts: false` here: Next 16 no longer
@@ -70,6 +82,33 @@ const nextConfig = {
           process: processPath,
         }),
       );
+
+      // Split heavy Stellar/wallet vendor libs into a separate named chunk so
+      // they are fetched once and shared across routes rather than duplicated.
+      // @stellar/stellar-sdk + @creit.tech/stellar-wallets-kit combined are
+      // several hundred kB; isolating them prevents them from inflating every
+      // route's first-load budget.
+      config.optimization = config.optimization ?? {};
+      config.optimization.splitChunks = {
+        ...(config.optimization.splitChunks ?? {}),
+        cacheGroups: {
+          ...((config.optimization.splitChunks)?.cacheGroups ?? {}),
+          stellarVendor: {
+            name: "stellar-vendor",
+            test: /[\\/]node_modules[\\/](@stellar[\\/]stellar-sdk|@creit\.tech[\\/]stellar-wallets-kit|@walletconnect[\\/]|pino)[\\/]/,
+            chunks: "all",
+            priority: 20,
+            reuseExistingChunk: true,
+          },
+          nobleVendor: {
+            name: "noble-vendor",
+            test: /[\\/]node_modules[\\/](@noble[\\/])/,
+            chunks: "all",
+            priority: 15,
+            reuseExistingChunk: true,
+          },
+        },
+      };
     }
 
     return config;
@@ -98,75 +137,39 @@ const nextConfig = {
     // lib/wallet.ts only registers WalletConnectModule (and only the app ever
     // opens its relay/verify/explorer traffic) when this is set — keep the CSP
     // minimally permissive for deployments that leave WalletConnect disabled.
+    const mode = resolveCspMode(process.env.CSP_MODE);
     const walletConnectEnabled = Boolean(process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID);
 
-    const csp = [
-      "default-src 'self'",
-      // Audit hardening (#800): no plugins, no <base> hijacking, no
-      // cross-origin form posts.
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      // Wallet icons for the Stellar Wallets Kit picker: stellar.creit.tech hosts
-      // Albedo/Freighter/xBull/Rabet/Lobstr/Hana/Klever/WalletConnect's, storage.herewallet.app
-      // hosts HOT Wallet's — needed for every wallet the kit shows, not just WalletConnect,
-      // so these two stay unconditional. explorer-api.walletconnect.com is WalletConnect's
-      // own wallet list, shown only if its QR pairing screen is opened.
-      // Verified against the actual requests the picker modal makes in a real browser
-      // (next build && next start), not just package source greps.
-      `img-src 'self' data: https://stellar.creit.tech https://storage.herewallet.app${
-        walletConnectEnabled ? " https://explorer-api.walletconnect.com" : ""
-      }`,
-      // contracts.ts ("use client") calls getAccount / prepareTransaction /
-      // sendTransaction against the Soroban RPC from the browser — must be
-      // allowed here or proof submission and on-chain verification break.
-      // The relay/explorer/verify entries are required by lib/wallet.ts's
-      // WalletConnectModule — hardcoded by @walletconnect/core and
-      // @walletconnect/modal-core, not configurable via env.
-      `connect-src 'self' https://soroban-testnet.stellar.org https://soroban-mainnet.stellar.org${
-        walletConnectEnabled
-          ? " wss://relay.walletconnect.com wss://relay.walletconnect.org https://explorer-api.walletconnect.com https://verify.walletconnect.com https://verify.walletconnect.org"
-          : ""
-      }${process.env.NEXT_PUBLIC_RPC_URL ? " " + process.env.NEXT_PUBLIC_RPC_URL : ""}`,
-    ];
-    if (walletConnectEnabled) {
-      // verify.walletconnect.{com,org} is WalletConnect's domain-verification
-      // iframe (loaded by @walletconnect/sign-client); without this it's
-      // silently blocked and WalletConnect connect attempts hang.
-      csp.push("frame-src 'self' https://verify.walletconnect.com https://verify.walletconnect.org");
-    }
+    // Build the legacy CSP string (only used when mode !== "enforce").
+    const csp =
+      mode !== "enforce"
+        ? buildCsp({
+            strict: false,
+            walletConnectEnabled,
+            rpcUrl: process.env.NEXT_PUBLIC_RPC_URL,
+            indexerUrl: process.env.NEXT_PUBLIC_INDEXER_URL,
+          })
+        : null;
 
     // Allow framing for the badge route (#532): it's designed to be embedded
     // in third-party sites via iframe. An optional BADGE_ALLOWED_ORIGINS env
     // var can restrict which origins may embed it (comma-separated list);
     // defaults to allowing all origins when unset.
-    const badgeAllowedOrigins = process.env.BADGE_ALLOWED_ORIGINS
-      ? process.env.BADGE_ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
-      : [];
-    
-    const badgeFrameAncestors =
-      badgeAllowedOrigins.length > 0
-        ? `frame-ancestors ${badgeAllowedOrigins.join(" ")}`
-        : "frame-ancestors *";
+    const badgeFrameAncestors = `frame-ancestors ${resolveBadgeFrameAncestors(
+      process.env.BADGE_ALLOWED_ORIGINS,
+    )}`;
 
-    const badgeCsp = [
-      ...csp,
-      badgeFrameAncestors,
-    ].join("; ") + ";";
-
-    const defaultCsp = [
-      ...csp,
-      "frame-ancestors 'none'",
-    ].join("; ") + ";";
+    // buildCsp() returns a joined string ending with ";".
+    // Append the frame-ancestors directive for each route variant.
+    const badgeCsp = csp !== null ? `${csp} ${badgeFrameAncestors};` : null;
+    const defaultCsp = csp !== null ? `${csp} frame-ancestors 'none';` : null;
 
     return [
       {
         // Badge route: frameable by default (#532)
         source: "/badge",
         headers: [
-          { key: "Content-Security-Policy", value: badgeCsp },
+          ...(badgeCsp !== null ? [{ key: "Content-Security-Policy", value: badgeCsp }] : []),
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
@@ -186,7 +189,7 @@ const nextConfig = {
         // All other routes: deny framing
         source: "/:path*",
         headers: [
-          { key: "Content-Security-Policy", value: defaultCsp },
+          ...(defaultCsp !== null ? [{ key: "Content-Security-Policy", value: defaultCsp }] : []),
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
