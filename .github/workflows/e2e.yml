@@ -140,11 +140,14 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      # Prebuilt release binary: building stellar-cli from source needs
+      # extra system libraries and takes several minutes.
       - name: Install Stellar CLI
         shell: bash
         run: |
           set -euo pipefail
-          cargo install stellar-cli --locked --version 27.0.0
+          curl -fsSL "https://github.com/stellar/stellar-cli/releases/download/v27.0.0/stellar-cli-27.0.0-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$HOME/.cargo/bin" stellar
           stellar --version
 
       - name: Install Noir and Barretenberg
