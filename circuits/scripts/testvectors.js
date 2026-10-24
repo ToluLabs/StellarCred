@@ -83,41 +83,45 @@ function buildVector(name, toolchain) {
   const dir = path.join(ROOT, name);
 
   // Serialize proof generation through the prover queue so concurrent
-  // invocations cannot clobber the shared workspace target dir.
-  const job = withProverLock(() => runProofJob({ circuit: name }));
+  // invocations cannot clobber the shared workspace target dir. The lock
+  // is held for the full duration of the proof job, including the reads of
+  // its outputs below, so no other job can overwrite them mid-read.
+  return withProverLock(() => {
+    const job = runProofJob({ circuit: name });
 
-  try {
-    const vkBytes = fs.readFileSync(job.vk);
-    const publicInputs = JSON.parse(
-      fs.readFileSync(path.join(job.outDir, "public_inputs_fields.json"), "utf8"),
-    );
-    const witness = parseProverToml(fs.readFileSync(path.join(dir, "Prover.toml"), "utf8"));
-    // The declared circuit version is part of what these vectors pin. A VK hash
-    // change alone cannot tell you *which* circuit a credential was issued
-    // against, so the version is pinned alongside it and a circuit edit that
-    // forgets to bump circuits/circuit-versions.json fails here (#633).
-    const declared = versionOf(name);
-    if (!declared) {
-      throw new Error(
-        `Circuit "${name}" has no entry in circuits/circuit-versions.json — add its ` +
-          `version and vkVersion so credentials can record what they were issued against.`,
+    try {
+      const vkBytes = fs.readFileSync(job.vk);
+      const publicInputs = JSON.parse(
+        fs.readFileSync(path.join(job.outDir, "public_inputs_fields.json"), "utf8"),
       );
-    }
+      const witness = parseProverToml(fs.readFileSync(path.join(dir, "Prover.toml"), "utf8"));
+      // The declared circuit version is part of what these vectors pin. A VK hash
+      // change alone cannot tell you *which* circuit a credential was issued
+      // against, so the version is pinned alongside it and a circuit edit that
+      // forgets to bump circuits/circuit-versions.json fails here (#633).
+      const declared = versionOf(name);
+      if (!declared) {
+        throw new Error(
+          `Circuit "${name}" has no entry in circuits/circuit-versions.json — add its ` +
+            `version and vkVersion so credentials can record what they were issued against.`,
+        );
+      }
 
-    return {
-      circuit: name,
-      circuit_version: declared.version,
-      circuit_vk_version: declared.vkVersion,
-      noir_version: toolchain.nargoVersion,
-      bb_version: toolchain.bbVersion,
-      witness,
-      public_inputs: publicInputs,
-      vk_hash_algo: "sha256",
-      vk_hash: crypto.createHash("sha256").update(vkBytes).digest("hex"),
-    };
-  } finally {
-    fs.rmSync(job.outDir, { recursive: true, force: true });
-  }
+      return {
+        circuit: name,
+        circuit_version: declared.version,
+        circuit_vk_version: declared.vkVersion,
+        noir_version: toolchain.nargoVersion,
+        bb_version: toolchain.bbVersion,
+        witness,
+        public_inputs: publicInputs,
+        vk_hash_algo: "sha256",
+        vk_hash: crypto.createHash("sha256").update(vkBytes).digest("hex"),
+      };
+    } finally {
+      fs.rmSync(job.outDir, { recursive: true, force: true });
+    }
+  });
 }
 
 function loadCommitted(name) {

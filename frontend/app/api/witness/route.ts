@@ -208,6 +208,17 @@ function circuitFor(type: string) {
   }
 }
 
+// Serializes witness generation within this process. Noir's WASM prover is
+// not safe to run concurrently against shared state; chaining each request
+// behind the previous one removes the race between overlapping executions.
+let proverQueue: Promise<unknown> = Promise.resolve();
+
+function runExclusive<T>(task: () => Promise<T>): Promise<T> {
+  const next = proverQueue.then(task, task);
+  proverQueue = next.catch(() => undefined);
+  return next;
+}
+
 export async function POST(req: NextRequest) {
   const requestId = resolveRequestId(req.headers.get("x-request-id"));
 
@@ -320,7 +331,9 @@ export async function POST(req: NextRequest) {
     const circuit = circuitFor(type);
     const noir = new Noir(circuit as never);
     const inputs = await buildInputs(type, credential, currentDate);
-    const { witness } = await noir.execute(inputs);
+    // Serialize prover execution so concurrent requests cannot race on the
+    // shared WASM prover state.
+    const { witness } = await runExclusive(() => noir.execute(inputs));
     // Serialize Uint8Array —→ hex string for JSON transport.
     const hex = Buffer.from(witness).toString("hex");
     logger.info(
@@ -362,25 +375,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Map errors to appropriate HTTP status codes
-    const status =
-      err.message === "Ledger time fetch timeout"
-        ? 504
-        : err.message === "NEXT_PUBLIC_RPC_URL is not configured"
-          ? 500
-          : err.message.startsWith("RPC error")
-            ? 502
-            : 500;
-
     logger.error(
       stripSensitiveFields({
         event: "witness_response_sent",
         credentialType: type,
-        outcome: "failure",
-        error: err.message,
+        outcome: "error",
         requestId,
       }),
     );
-    return sendResponse(NextResponse.json({ error: err.message }, { status }));
+    return sendResponse(
+      NextResponse.json(
+        { error: "Witness generation failed", code: "witness_failed" },
+        { status: 500 },
+      ),
+    );
   }
 }
