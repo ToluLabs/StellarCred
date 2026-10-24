@@ -56,6 +56,22 @@ jobs:
         working-directory: ./frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Validate required env vars
+        if: env.VERCEL_TOKEN_SET == 'true'
+        run: |
+          missing=0
+          for var in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Missing required env var: $var"
+              missing=1
+            fi
+          done
+          exit $missing
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
       - name: Install Vercel CLI
         if: env.VERCEL_TOKEN_SET == 'true'
         run: pnpm add -g vercel
@@ -87,6 +103,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           NEXT_PUBLIC_STELLAR_NETWORK: "testnet"
+          NEXT_PUBLIC_CONTRACT_ID: ${{ secrets.NEXT_PUBLIC_CONTRACT_ID }}
           NEXT_PUBLIC_PROOF_REGISTRY_ID: ${{ secrets.NEXT_PUBLIC_PROOF_REGISTRY_ID || 'CB2R3O43TX3G3N3X4Y5Z6A7B8C9D0E1F2G3H4I5J6K7L8M9N0O' }}
           NEXT_PUBLIC_ISSUER_REGISTRY_ID: ${{ secrets.NEXT_PUBLIC_ISSUER_REGISTRY_ID || 'CB2R3O43TX3G3N3X4Y5Z6A7B8C9D0E1F2G3H4I5J6K7L8M9N0O' }}
           NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID: ${{ secrets.NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID || 'CB2R3O43TX3G3N3X4Y5Z6A7B8C9D0E1F2G3H4I5J6K7L8M9N0O' }}

@@ -18,6 +18,14 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Validate required deploy env vars
+        run: |
+          node -e "const req=['STAGING_API_URL','STAGING_API_KEY','NEXT_PUBLIC_PROOF_REGISTRY_ID'];const miss=req.filter(k=>!process.env[k]);if(miss.length){console.error('Missing required env vars: '+miss.join(', '));process.exit(1)}console.log('All required env vars present')"
+        env:
+          STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
+          STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
+          NEXT_PUBLIC_PROOF_REGISTRY_ID: ${{ secrets.NEXT_PUBLIC_PROOF_REGISTRY_ID }}
+
       - name: Check environment variable documentation
         working-directory: frontend
         run: node scripts/check-env-sync.mjs
