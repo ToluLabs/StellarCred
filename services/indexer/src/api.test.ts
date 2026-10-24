@@ -103,12 +103,18 @@ describe("GET /health", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       status: "ok",
+      ready: true,
+      service: "stellarcred-indexer",
       lastLedger: 0,
       headLedger: 0,
       lag: -1,
       consecutiveErrors: 0,
       lastError: null,
     });
+    expect(typeof res.body.version).toBe("string");
+    expect(res.body.version.length).toBeGreaterThan(0);
+    expect(typeof res.body.timestamp).toBe("number");
+    expect(typeof res.body.uptimeSeconds).toBe("number");
   });
 
   it("reports degraded when consecutiveErrors is 1-2", async () => {
@@ -116,16 +122,40 @@ describe("GET /health", () => {
     const res = await request(app).get("/health");
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("degraded");
+    expect(res.body.ready).toBe(true);
     expect(res.body.consecutiveErrors).toBe(2);
     expect(res.body.lastError).toBe("timeout");
   });
 
-  it("reports error when consecutiveErrors >= 3", async () => {
+  it("reports error and not ready when consecutiveErrors >= 3", async () => {
     app = buildApp(db, makeIngester({ consecutiveErrors: 5, lag: 120 }));
     const res = await request(app).get("/health");
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("error");
+    expect(res.body.ready).toBe(false);
     expect(res.body.lag).toBe(120);
+  });
+
+  it("answers 503 with the same document shape when the database is unreachable", async () => {
+    const failingDb = {
+      ...db,
+      getLastLedger: () => {
+        throw new Error("db down");
+      },
+    } as unknown as Db;
+    app = buildApp(failingDb, makeIngester());
+
+    const res = await request(app).get("/health");
+
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      status: "error",
+      ready: false,
+      service: "stellarcred-indexer",
+      error: "db down",
+    });
+    expect(typeof res.body.version).toBe("string");
+    expect(typeof res.body.timestamp).toBe("number");
   });
 });
 
