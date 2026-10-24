@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bodyErrorResponse } from "@/lib/request-limits";
 import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
+import { recordIssuance } from "@/lib/metrics";
 import {
   completedIdempotencyRecord,
   idempotencyGetAsync,
@@ -207,6 +208,16 @@ async function executeRequest(
           requestId,
         }),
       );
+      // Record metrics for every completed issuance request.
+      recordIssuance(
+        type || "unknown",
+        outcome === "success" ? "success" : "failure",
+        durationMs,
+      );
+    }
+    // If no credential types were parsed yet (early rejection), record once.
+    if (credentialTypes.length === 0) {
+      recordIssuance("unknown", "invalid_request", durationMs);
     }
     return response;
   };
