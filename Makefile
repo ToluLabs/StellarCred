@@ -17,7 +17,7 @@ BB_VERSION      := 0.87.0
 NODE_MAJOR      := 20
 PNPM_MAJOR      := 9
 
-.PHONY: help all build test lint fmt clean check-api-reference doctor \
+.PHONY: help all build test lint fmt clean check-api-reference doctor verify-deployment \
         build-contracts test-contracts lint-contracts \
         ci-cache-setup ci-cache-save build-contracts-fast \
         compile-circuits check-circuits \
@@ -44,6 +44,7 @@ help:
 	@echo "  make fmt             - Check or apply formatting across Rust and TS"
 	@echo "  make clean           - Remove build artifacts and caches"
 	@echo "  make check-api-reference - Check docs/PROOF_REGISTRY_API.md against the contract source (issue #525)"
+	@echo "  make verify-deployment   - Verify deployed contract IDs, on-chain versions, WASM hashes, and VKs"
 	@echo ""
 	@echo "Focused Workspace Targets:"
 	@echo "  make build-contracts - Compile Soroban contracts to wasm32v1-none"
@@ -84,6 +85,11 @@ fmt:
 ## check-api-reference: Verify the ProofRegistry API reference matches the contract source
 check-api-reference:
 	node .github/scripts/check-api-reference.mjs
+
+## verify-deployment: Verify on-chain deployment end-to-end (contract IDs, versions, WASM, VKs)
+NETWORK ?= testnet
+verify-deployment:
+	./scripts/verify-deployment.sh --network $(NETWORK)
 
 ## clean: Remove all target outputs and build artifacts
 clean:

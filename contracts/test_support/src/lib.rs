@@ -441,7 +441,14 @@ impl Contracts {
         circuit: &Circuit,
         expiry: u64,
     ) -> bool {
-        self.try_submit_with(env, holder, issuer, circuit, &circuit.proof_bytes(env), expiry)
+        self.try_submit_with(
+            env,
+            holder,
+            issuer,
+            circuit,
+            &circuit.proof_bytes(env),
+            expiry,
+        )
     }
 
     /// Same as [`Contracts::try_submit`], with `proof` substituted for the real
@@ -492,9 +499,7 @@ impl Contracts {
 
     /// Whether `holder` currently has a valid claim for `circuit`.
     pub fn verify(&self, env: &Env, holder: &Address, circuit: &Circuit) -> bool {
-        self.registry
-            .is_verified(holder, &circuit.ct(env), &None)
-            .0
+        self.registry.is_verified(holder, &circuit.ct(env), &None).0
     }
 
     /// Whether `circuit`'s real proof verifies directly on the verifier.

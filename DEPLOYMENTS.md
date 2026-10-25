@@ -10,11 +10,33 @@ that their output matches.
 
 ## How to verify a deployment
 
-For every deployment listed below, the recorded commit SHA and WASM hashes let
-you confirm independently that the on-chain bytecode matches the open-source
-source code.
+To answer the single question that matters — **is the deployment at this address running the code in this repository at this commit?** — run the unified verification command:
 
-**Quick path (Docker — recommended):**
+```bash
+# Verify testnet deployment end-to-end:
+make verify-deployment NETWORK=testnet
+
+# Or verify mainnet deployment:
+make verify-deployment NETWORK=mainnet
+
+# Or invoke the verification script directly:
+./scripts/verify-deployment.sh --network testnet
+```
+
+This single command takes a network and verifies the entire chain automatically:
+1. **Fetches deployed contract IDs and hashes** from this document (`DEPLOYMENTS.md`).
+2. **Rebuilds deterministically** using the canonical pinned toolchain.
+3. **Reads each contract version and WASM hash on-chain** via Soroban RPC / Stellar CLI.
+4. **Compares registered VKs** against freshly compiled circuits and committed test vectors.
+5. **Prints a single consolidated PASS/FAIL result** detailing any mismatches and remediation steps.
+
+Third parties and auditors should run this single command to verify any deployment. This command is also run automatically in the nightly CI workflow against testnet to catch deployment drift.
+
+---
+
+### Manual step-by-step verification (Docker reference)
+
+For auditing individual build steps manually:
 
 ```bash
 # 1. Check out the exact commit the deployment was built from.
