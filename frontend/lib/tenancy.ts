@@ -5,6 +5,7 @@ if (typeof window !== "undefined") {
 
 import { NextRequest } from "next/server";
 import { logger, stripSensitiveFields } from "./logger";
+import { extractApiKey, getHeader } from "./auth";
 
 export type TenantStatus = "active" | "suspended" | "revoked";
 
@@ -122,29 +123,16 @@ export async function registerTenant(tenant: Tenant): Promise<void> {
 
 /**
  * Helper to extract an API key or auth header from incoming request headers.
+ *
+ * The header parsing itself lives in lib/auth.ts so every route reads
+ * `x-api-key` / `Authorization: Bearer` the same way.
  */
 function extractAuthCredentials(headers: Headers | Record<string, string | null | undefined>): {
   tenantId?: string;
   apiKey?: string;
 } {
-  const getHeader = (name: string): string | undefined => {
-    if ("get" in headers && typeof headers.get === "function") {
-      return headers.get(name)?.trim() || undefined;
-    }
-    const rec = headers as Record<string, string | null | undefined>;
-    const direct = rec[name] || rec[name.toLowerCase()];
-    return direct ? String(direct).trim() : undefined;
-  };
-
-  const tenantId = getHeader("x-tenant-id");
-  let apiKey = getHeader("x-api-key");
-
-  if (!apiKey) {
-    const authHeader = getHeader("authorization");
-    if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
-      apiKey = authHeader.slice(7).trim();
-    }
-  }
+  const tenantId = getHeader(headers, "x-tenant-id");
+  const apiKey = extractApiKey(headers);
 
   return { tenantId, apiKey };
 }

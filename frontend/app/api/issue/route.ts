@@ -14,31 +14,21 @@ import {
   type IdempotencyRecord,
 } from "@/lib/idempotency";
 import {
-  normalizeIssueRequest,
-  parseIssueBody,
-  resolveIssuerClient,
-  resolveRequestTenant,
-  validateIssueRequest,
-  validateIssuerRegistration,
-  type ValidationFailure,
-} from "./handlers/validate";
-import { enforceIpRateLimit, enforceWalletRateLimit } from "./handlers/rateLimit";
-import { runIssuanceFlow } from "./handlers/issuanceFlow";
+  issueAndAuditCredentials,
+  localIssuerPubkeyBytes,
+  resolveIssuerSigningKey,
+  createIssuerClient,
+} from "@/lib/issuer-service";
+import { validateTenantCredentialTypes } from "@/lib/tenancy";
+import { requireTenantAuth } from "../_middleware";
 
-/**
- * POST /api/issue — thin dispatcher.
- *
- * The work is split into focused modules so this file only sequences it:
- *
- *   handlers/validate.ts      tenant auth, parsing, normalisation, field,
- *                             tenant and issuer-registry checks
- *   handlers/rateLimit.ts     the per-IP and per-wallet limits
- *   handlers/issuanceFlow.ts  Persona, Plaid, signing, deployment/circuit stamps
- *
- * What stays here is request lifecycle: the idempotency cache (lookup, replay,
- * single-flight join, write-back), the ordering of those steps, and turning an
- * outcome into a response with `x-request-id` on it.
- */
+const SIM_ACCOUNT =
+  env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+// readonly CredentialType[] widened to string[] so .includes() accepts any
+// user-supplied string during validation, before it's known to be valid.
+const VALID_TYPES: readonly string[] = CREDENTIAL_TYPES;
+
 export async function POST(req: NextRequest) {
   const requestId = resolveRequestId(req.headers.get("x-request-id"));
 
@@ -138,18 +128,31 @@ async function executeRequest(
   let outcome: "success" | "failure" = "failure";
   let credentialTypes: string[] = [];
 
-  // Tenant authentication comes first: a request that cannot prove which
-  // tenant it belongs to must not have its body read or cached.
-  const tenantRes = await resolveRequestTenant(req);
-  if (!tenantRes.ok) {
+  type BodyType = {
+    credential_types?: string[];
+    type?: string;
+    holder?: string;
+    issuerId?: string;
+    issuerName?: string;
+    expiry?: string;
+    attributes?: Record<string, string>;
+    attribute?: string;
+    claimParams?: ClaimParams;
+    persona_inquiry_id?: string;
+    returnUrl?: string;
+  };
+
+  // Authentication: the tenant (if any) behind this request's API key.
+  const tenantAuth = await requireTenantAuth(req);
+  if (tenantAuth.error) {
     if (idempotencyKey) {
-      idempotencyInFlightFail(idempotencyKey, new Error(tenantRes.error));
+      idempotencyInFlightFail(idempotencyKey, new Error(tenantAuth.error));
     }
-    const res = NextResponse.json({ error: tenantRes.error }, { status: tenantRes.status });
+    const res = NextResponse.json({ error: tenantAuth.error }, { status: tenantAuth.status ?? 401 });
     res.headers.set("x-request-id", requestId);
     return res;
   }
-  const tenant = tenantRes.tenant;
+  const tenant = tenantAuth.tenant;
 
   // A body that cannot be read or parsed is answered directly: it is not a
   // verdict on an issuance request, so it is neither cached nor logged as one.

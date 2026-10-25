@@ -5,11 +5,23 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { logger, stripSensitiveFields } from "@/lib/logger";
+import { firstHeader } from "@/lib/auth";
 import {
   verifyWebhookSignature,
   parseAndNormalizeCallback,
   recordIssuanceCallback,
 } from "@/lib/webhooks";
+
+/**
+ * Providers sign their callbacks under one of several historical header
+ * names; the first one present wins.
+ */
+const SIGNATURE_HEADERS = [
+  "x-issuance-signature",
+  "x-webhook-signature",
+  "webhook-signature",
+  "persona-signature",
+];
 
 export async function POST(req: NextRequest) {
   const secret = process.env.ISSUANCE_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
@@ -24,11 +36,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const signatureHeader =
-    req.headers.get("x-issuance-signature") ||
-    req.headers.get("x-webhook-signature") ||
-    req.headers.get("webhook-signature") ||
-    req.headers.get("persona-signature");
+  const signatureHeader = firstHeader(req, SIGNATURE_HEADERS);
 
   const rawBody = await req.text();
 

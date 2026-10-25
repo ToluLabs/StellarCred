@@ -181,8 +181,8 @@ fn record_nullifier(env: Env, app_context: BytesN<32>, nullifier: BytesN<32>)
 - **Auth:** none (caller pays invocation fees).
 - **Stability:** Stable
 - **Parameters:**
-  - `app_context` — 32-byte application identifier context.
-  - `nullifier` — 32-byte unique nullifier hash.
+  - `app_context` — 32-byte application context identifier.
+  - `nullifier` — 32-byte unique-personhood nullifier hash.
 - **Returns:** —
 - **Panics:** `SubmissionsPaused (11)`, `NullifierAlreadyUsed (16)`.
 - **Events:** `("proof_reg", "nullifier")` → `EventNullifierUsed { app_context, nullifier, recorded_at }`.
