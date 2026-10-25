@@ -153,5 +153,11 @@ export async function GET() {
   body.app_version = process.env.NEXT_PUBLIC_APP_VERSION ?? "dev";
   body.deployment_timestamp = Date.now();
 
-  return NextResponse.json(body, { status: ready ? 200 : 503 });
+  // A readiness verdict must never be cached: an intermediary that replays a
+  // stale 503 (or a stale 200) would keep traffic away from — or pointed at —
+  // a service whose state has already changed.
+  return NextResponse.json(body, {
+    status: ready ? 200 : 503,
+    headers: { "Cache-Control": "no-store" },
+  });
 }

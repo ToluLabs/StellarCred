@@ -12,8 +12,12 @@
  * Endpoints:
  *
  *   GET /health
- *     â†’ { status, lastLedger, headLedger, lag, lastError, lastErrorTime,
- *         consecutiveErrors, fetchAttempts, fetchFailures }
+ *     → { status, ready, service, version, timestamp, uptimeSeconds,
+ *         lastLedger, headLedger, lag, consecutiveErrors, lastError,
+ *         lastErrorTime, lastSuccessLedger, fetchAttempts, fetchFailures }
+ *       200 when the database is reachable, 503 when it is not (the body is
+ *       the same document with ready: false and an `error` message).
+ *       See docs/HEALTHCHECKS.md for the full contract.
  *
  *   GET /claims?wallet=Gâ€¦
  *     â†’ { wallet: string, claims: SerializedClaim[] }
@@ -112,6 +116,11 @@ import { isIP } from "net";
 import { StrKey } from "@stellar/stellar-sdk";
 import { MAX_WEBHOOK_DELIVERY_ATTEMPTS } from "./webhooks";
 import { createGraphQLHandler } from "./graphql";
+import {
+  buildHealthResponse,
+  buildUnavailableHealthResponse,
+  type HealthResponse,
+} from "./health";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -299,37 +308,40 @@ export function buildApp(
   const graphqlHandler = createGraphQLHandler(db);
   app.use("/graphql", graphqlHandler as any);
 
-  // â”€â”€ GET /health â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Exposes ingester lag so operators can alert when the indexer falls behind.
+  // ── GET /health ──────────────────────────────────────────────────────────
+  // Liveness/readiness probe for the indexer worker. Exposes the coarse
+  // `status`/`ready` signal plus the service name and version for deployment
+  // and monitoring tooling, alongside the ingester counters operators alert on.
+  // See health.ts for the status semantics and docs/HEALTHCHECKS.md for the
+  // contract.
   //
-  // status semantics:
-  //   "ok"       â€” consecutiveErrors === 0
-  //   "degraded" â€” last fetch failed but some succeeded before it
-  //   "error"    â€” 3+ consecutive failures (stale data, indexer likely stalled)
+  // HTTP mapping:
+  //   200 — the service answered and the database is reachable. `status` may
+  //         still be "degraded"/"error"; the body carries that detail, so a
+  //         probe that only watches the status code never restarts the worker
+  //         over a transient Horizon hiccup.
+  //   503 — the service is up but cannot serve data (the database read
+  //         failed). The body is the same health document with `ready: false`
+  //         and an `error` message, so every response parses identically.
   app.get(
     "/health",
     asyncHandler(async (_req, res) => {
-      const lastLedger = await db.getLastLedger();
       const h = ingester.getHealth();
+      let payload: HealthResponse;
 
-      let status: "ok" | "degraded" | "error";
-      if (h.consecutiveErrors === 0) {
-        status = "ok";
-      } else if (h.consecutiveErrors < 3) {
-        status = "degraded";
-      } else {
-        status = "error";
+      try {
+        payload = await buildHealthResponse(db, ingester);
+      } catch (err) {
+        // A database outage must never look healthy: answer "not ready" with
+        // the same document shape so a probe has one parsing path.
+        console.error("[indexer/api] health check failed:", err);
+        res.status(503).json(buildUnavailableHealthResponse(ingester, err));
+        return;
       }
 
       res.json({
-        status,
-        lastLedger,
-        headLedger: h.headLedger,
-        lag: h.lag,
+        ...payload,
         lastSuccessLedger: h.lastSuccessLedger,
-        lastError: h.lastError,
-        lastErrorTime: h.lastErrorTime,
-        consecutiveErrors: h.consecutiveErrors,
         fetchAttempts: h.fetchAttempts,
         fetchFailures: h.fetchFailures,
       });
