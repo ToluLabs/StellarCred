@@ -14,7 +14,7 @@ import { hasClaims, type ClaimType } from "./claims";
  */
 export interface UseStellarCredOptions {
   claims?: ClaimType[];
-    /**
+  /**
    * Minimum thresholds for parameterized claims.
    *
    * Example:
@@ -61,46 +61,65 @@ export interface UseStellarCredResult {
  */
 export function useStellarCred(
   wallet: string | null,
-  options?: UseStellarCredOptions
+  options?: UseStellarCredOptions,
 ): UseStellarCredResult {
   const [claims, setClaims] = useState<Partial<Record<ClaimType, boolean>> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
 
-  const fetchClaims = useCallback(async () => {
-    if (!wallet) {
-      setClaims(null);
-      setLoading(false);
-      return;
-    }
+  // Callers usually pass inline arrays/objects, so depend on their serialised
+  // form rather than their identity (which changes every render).
+  const claimsKey = JSON.stringify(options?.claims ?? null);
+  const minThresholdsKey = JSON.stringify(options?.minThresholds ?? null);
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const typesToCheck: ClaimType[] =
-        options?.claims || ["kyc", "age", "jurisdiction", "income", "funds", "accreditation"];
-
-      // One batched read shares a single client across all types; per-type
-      // failures resolve to `false` inside `hasClaims`.
-      const results = await hasClaims(wallet, typesToCheck, {
-        minThresholds: options?.minThresholds,
-      });
-
-      if (mountedRef.current) {
-        setClaims(results);
-      }
-    } catch (err) {
-      if (mountedRef.current) {
-        setError(err instanceof Error ? err : new Error("Failed to check claims"));
-      }
-    } finally {
-      if (mountedRef.current) {
+  const fetchClaims = useCallback(
+    async (fresh = false) => {
+      if (!wallet) {
+        setClaims(null);
         setLoading(false);
+        return;
       }
-    }
-  }, [wallet, JSON.stringify(options?.claims)]);
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const requested = JSON.parse(claimsKey) as ClaimType[] | null;
+        const minThresholds = (JSON.parse(minThresholdsKey) ?? undefined) as
+          Partial<Record<ClaimType, number>> | undefined;
+        const typesToCheck: ClaimType[] = requested || [
+          "kyc",
+          "age",
+          "jurisdiction",
+          "income",
+          "funds",
+          "accreditation",
+        ];
+
+        // One batched read shares a single client across all types; per-type
+        // failures resolve to `false` inside `hasClaims`.
+        const results = await hasClaims(wallet, typesToCheck, {
+          minThresholds,
+          // `refetch` must not be answered from the opt-in claim cache.
+          fresh,
+        });
+
+        if (mountedRef.current) {
+          setClaims(results);
+        }
+      } catch (err) {
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err : new Error("Failed to check claims"));
+        }
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [wallet, claimsKey, minThresholdsKey],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -110,5 +129,9 @@ export function useStellarCred(
     };
   }, [fetchClaims]);
 
-  return { claims, loading, error, refetch: fetchClaims };
+  const refetch = useCallback(() => {
+    void fetchClaims(true);
+  }, [fetchClaims]);
+
+  return { claims, loading, error, refetch };
 }

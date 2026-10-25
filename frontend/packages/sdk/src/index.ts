@@ -33,6 +33,7 @@ export * from "./challenge";
 export * from "./subscriptions";
 export * from "./errors"; // Typed error taxonomy (#404)
 export * from "./validateCredential"; // Credential JSON validation (#27)
+export * from "./buildVerifyUrl";
 export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
 export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
@@ -63,6 +64,8 @@ import {
   deriveNullifier,
   isNullifierUsed,
   verifyUniquePersonhood,
+  invalidateClaimCache,
+  clearClaimCache,
   TimeoutError,
   ConfigError,
   InvalidAddressError,
@@ -111,6 +114,10 @@ export const StellarCred = {
   buildBadgeEmbedCode,
   parseReturnParams,
   watchClaim,
+  /** Drop cached claim reads for a wallet (see `configure({ claimCache })`). */
+  invalidate: invalidateClaimCache,
+  invalidateClaimCache,
+  clearClaimCache,
   withRetry,
   normalizeRpcError,
   classifyTransientFailure,
