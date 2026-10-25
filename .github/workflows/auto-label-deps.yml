@@ -12,7 +12,9 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # Adding a label to a pull request requires pull-requests write access;
+  # issues: write alone returns 403 "Resource not accessible by integration".
+  pull-requests: write
 
 concurrency:
   group: auto-label-deps-${{ github.event.pull_request.number }}
@@ -99,11 +101,22 @@ jobs:
               }
             }
 
-            await github.rest.issues.addLabels({
-              owner,
-              repo,
-              issue_number: pr.number,
-              labels: [labelName],
-            });
+            try {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: pr.number,
+                labels: [labelName],
+              });
+            } catch (error) {
+              // Labeling is best-effort: if the token is restricted (e.g. an
+              // org policy caps GITHUB_TOKEN to read-only), warn instead of
+              // failing the contributor's PR checks.
+              if (error.status !== 403) throw error;
+              core.warning(
+                `Could not apply '${labelName}' to PR #${pr.number}: ${error.message}`
+              );
+              return;
+            }
 
             core.info(`Applied '${labelName}' to PR #${pr.number}.`);
