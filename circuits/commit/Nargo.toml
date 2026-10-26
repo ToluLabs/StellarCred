@@ -1,8 +1,0 @@
-[package]
-name = "commit"
-type = "bin"
-authors = [""]
-compiler_version = ">=1.0.0"
-
-[dependencies]
-poseidon = { tag = "v0.2.6", git = "https://github.com/noir-lang/poseidon" }

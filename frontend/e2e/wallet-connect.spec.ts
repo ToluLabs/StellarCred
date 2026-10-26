@@ -21,9 +21,20 @@ import {
 // helpers
 // ---------------------------------------------------------------------------
 
-/** Return the first 6 + last 4 characters of an address, matching the UI. */
+/**
+ * Return the first 6 + last 4 characters of an address. This matches the
+ * "Issued to" line in the verify card (truncateMiddle(address, 6, 4)).
+ */
 function truncate(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+/**
+ * Return the first 4 + last 4 characters of an address. This matches the
+ * header WalletButton, which uses truncateAddress() from lib/format.
+ */
+function truncateHeader(addr: string) {
+  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
 }
 
 /**
@@ -69,8 +80,8 @@ test.describe("Wallet Connection", () => {
 
     await verifyCardConnectButton(page).click();
 
-    // After connecting, the truncated address should appear in the header / nav.
-    await expect(page.getByText(truncate(TEST_WALLET))).toBeVisible({
+    // After connecting, the header WalletButton shows the 4+4 address.
+    await expect(page.getByText(truncateHeader(TEST_WALLET))).toBeVisible({
       timeout: 8_000,
     });
 
@@ -103,9 +114,8 @@ test.describe("Wallet Connection", () => {
     // 6+4 "Issued to" line, and its accessible name comes from the aria-label
     // "Connected wallet GAAA…AWHF. Click to disconnect." There is no popover:
     // clicking the button calls disconnect() directly.
-    const headerAddr = `${TEST_WALLET.slice(0, 4)}…${TEST_WALLET.slice(-4)}`;
     const walletBtn = page.getByRole("button", {
-      name: new RegExp(`Connected wallet ${headerAddr}`, "i"),
+      name: new RegExp(`Connected wallet ${truncateHeader(TEST_WALLET)}`, "i"),
     });
     await walletBtn.click();
 
