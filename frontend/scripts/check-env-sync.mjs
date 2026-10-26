@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const ROOT_DIR = join(fileURLToPath(import.meta.url), "..", "..");
 const SCRIPT_NAME = basename(fileURLToPath(import.meta.url));
 
-const SYSTEM_ENV_VARS = new Set(["NODE_ENV", "NEXT_RUNTIME", "DEBUG"]);
+const SYSTEM_ENV_VARS = new Set(["NODE_ENV", "NEXT_RUNTIME", "DEBUG", "INIT_CWD"]);
 
 const EXCLUDE_DIRS = new Set(["node_modules", ".next", "dist", "build", "coverage", ".git", "public/bb"]);
 const EXCLUDE_FILE_PATTERNS = [

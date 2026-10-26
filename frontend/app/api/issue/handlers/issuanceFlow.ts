@@ -31,6 +31,7 @@ import { circuitVersionStampFor, type CircuitVersionStamp } from "@/lib/circuit-
 import { reportError } from "@/lib/error-reporting";
 import { env } from "@/lib/env";
 import { logger, stripSensitiveFields } from "@/lib/logger";
+import { recordError } from "@/lib/metrics";
 import type { IssueRequest } from "./validate";
 
 export interface IssuanceContext {
@@ -276,6 +277,7 @@ export async function runIssuanceFlow(
       status: 500,
       exception: e,
     });
+    recordError("issue", "signing_error");
     return {
       kind: "error",
       status: 500,

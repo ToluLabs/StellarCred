@@ -38,7 +38,7 @@ function parseExportVisibilityPreferences(raw: string): ExportVisibilityPreferen
 }
 
 export function getExportVisibilityPreferences(): ExportVisibilityPreferences {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || !window.localStorage) {
     return { ...DEFAULT_EXPORT_VISIBILITY_PREFERENCES };
   }
 
@@ -55,7 +55,7 @@ export function saveExportVisibilityPreferences(preferences: ExportVisibilityPre
       throw new TypeError(`Export visibility preference "${field}" must be a boolean.`);
     }
   }
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || !window.localStorage) {
     throw new Error("Export visibility preferences can only be saved in a browser.");
   }
 

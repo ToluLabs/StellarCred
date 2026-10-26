@@ -2,7 +2,8 @@
  * validate.ts — request parsing and validation for POST /api/issue.
  *
  * Everything between "bytes on the wire" and "a request the issuance flow can
- * act on" lives here: tenant authentication, the size-guarded JSON read,
+ * act on" lives here (tenant authentication is the shared guard in
+ * `app/api/_middleware.ts`): the size-guarded JSON read,
  * normalisation of the two accepted body shapes (multi-claim
  * `credential_types`, and the legacy single `type` + `attribute` pair), the
  * ordered field checks, the tenant boundaries, and the issuer registration
@@ -12,7 +13,6 @@
  * The split is deliberate, because the route needs the pieces at different
  * moments:
  *
- *   resolveRequestTenant()       async — authenticates the caller, if any
  *   normalizeIssueRequest()      pure — no validation, no logging
  *   validateIssueRequest()       ordered field checks + validation logging
  *   resolveIssuerClient()        async — tenant signing key from the vault
@@ -35,7 +35,7 @@ import {
   resolveIssuerSigningKey,
 } from "@/lib/issuer-service";
 import { readJsonBody, type BodyResult } from "@/lib/request-limits";
-import { resolveTenant, validateTenantCredentialTypes, type Tenant } from "@/lib/tenancy";
+import { validateTenantCredentialTypes, type Tenant } from "@/lib/tenancy";
 
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -57,6 +57,7 @@ export interface IssueBody {
   claimParams?: ClaimParams;
   persona_inquiry_id?: string;
   returnUrl?: string;
+  preview?: boolean;
 }
 
 /**
@@ -76,6 +77,7 @@ export interface NormalizedIssueRequest {
   claimParams?: ClaimParams;
   personaInquiryId?: string;
   returnUrl?: string;
+  preview?: boolean;
 }
 
 /** A normalised request whose required fields have been proven present. */
@@ -92,23 +94,6 @@ export interface ValidationFailure {
 
 export type ValidationResult =
   { ok: true; request: IssueRequest } | { ok: false; failure: ValidationFailure };
-
-/** The authenticated tenant, or a rejection when authentication failed. */
-export type TenantResolution =
-  { ok: true; tenant: Tenant | null } | { ok: false; status: number; error: string };
-
-/**
- * Authenticate the caller. Requests without tenant credentials take the
- * default (single-issuer) path; requests with a bad or cross-tenant key are
- * rejected before the body is read.
- */
-export async function resolveRequestTenant(req: NextRequest): Promise<TenantResolution> {
-  const result = await resolveTenant(req);
-  if (result.error) {
-    return { ok: false, status: result.status ?? 401, error: result.error };
-  }
-  return { ok: true, tenant: result.tenant };
-}
 
 /**
  * Read and parse the body through the shared size guard. A failure here is a
@@ -152,6 +137,7 @@ export function normalizeIssueRequest(
     claimParams: body.claimParams,
     personaInquiryId: body.persona_inquiry_id,
     returnUrl: body.returnUrl,
+    preview: body.preview === true,
   };
 }
 

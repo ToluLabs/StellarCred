@@ -46,7 +46,9 @@ export function useProtocolAccessCheck(
   // Stable fingerprint so parent re-renders with the same requirements don't re-fire.
   const reqKey = requirements.map((r) => `${r.type}:${r.minThreshold ?? ""}`).join("|");
   const reqRef = useRef(requirements);
-  reqRef.current = requirements;
+  useEffect(() => {
+    reqRef.current = requirements;
+  }, [requirements]);
 
   const retry = useCallback(() => {
     setRetryNonce((n) => n + 1);

@@ -12,7 +12,8 @@
  * Endpoints:
  *
  *   GET /health
- *     â†’ { status, lastLedger, headLedger, lag, lastError, lastErrorTime,
+ *     â†’ { status, ready, service, version, uptimeSeconds, timestamp,
+ *         lastLedger, headLedger, lag, lastError, lastErrorTime,
  *         consecutiveErrors, fetchAttempts, fetchFailures }
  *
  *   GET /claims?wallet=Gâ€¦
@@ -112,6 +113,7 @@ import { isIP } from "net";
 import { StrKey } from "@stellar/stellar-sdk";
 import { MAX_WEBHOOK_DELIVERY_ATTEMPTS } from "./webhooks";
 import { createGraphQLHandler } from "./graphql";
+import { buildHealthResponse } from "./health";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -309,30 +311,9 @@ export function buildApp(
   app.get(
     "/health",
     asyncHandler(async (_req, res) => {
+      // Shape and status semantics live in health.ts (docs/HEALTHCHECKS.md).
       const lastLedger = await db.getLastLedger();
-      const h = ingester.getHealth();
-
-      let status: "ok" | "degraded" | "error";
-      if (h.consecutiveErrors === 0) {
-        status = "ok";
-      } else if (h.consecutiveErrors < 3) {
-        status = "degraded";
-      } else {
-        status = "error";
-      }
-
-      res.json({
-        status,
-        lastLedger,
-        headLedger: h.headLedger,
-        lag: h.lag,
-        lastSuccessLedger: h.lastSuccessLedger,
-        lastError: h.lastError,
-        lastErrorTime: h.lastErrorTime,
-        consecutiveErrors: h.consecutiveErrors,
-        fetchAttempts: h.fetchAttempts,
-        fetchFailures: h.fetchFailures,
-      });
+      res.json(buildHealthResponse(lastLedger, ingester.getHealth()));
     })
   );
 

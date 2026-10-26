@@ -609,6 +609,40 @@ jobs:
           npm run typecheck
           npm test
 
+      # Bundle size gate (#737). These steps run LAST, after every test and
+      # every consumer of the build artifact, because size-limit-action's
+      # base-branch measurement force-checkouts the base branch into the
+      # shared workspace (`git checkout -f <base>`, then pnpm install + build
+      # on that tree) and never restores it. Run before the tests, it silently
+      # replaces this PR's code with main's and `pnpm test` fails against the
+      # wrong tree; run last, the clobbering is confined to steps with nothing
+      # left to lose. continue-on-error lets the PR still land while iterating
+      # on size budget values; remove continue-on-error once the baseline is
+      # set.
+      #
+      # size-limit 13 imports `glob` from node:fs/promises, which only exists
+      # on Node >= 22: on the job's Node 20 the CLI throws
+      # "SyntaxError: ... does not provide an export named 'glob'" before it
+      # measures a single byte, so this gate needs its own newer runtime. No
+      # restore step follows — nothing else in the job runs after these.
+      - name: Setup Node for bundle size check (#737)
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Check bundle size budget (#737)
+        run: pnpm size
+        continue-on-error: true
+
+      - name: Report bundle size on PR (#737)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: andresz1/size-limit-action@94bc357df29c36c8f8d50ea497c3e225c3c95d1d
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          script: pnpm size --json
+          package_manager: pnpm
+          directory: frontend
       - name: Test TypeScript SDK example
         working-directory: examples/typescript
         run: |
@@ -662,6 +696,21 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Run DB test matrix (SQLite + Postgres) and unit tests
+        run: npm test
+        env:
+          # Dummy contract ID / RPC so the ingester tests run headlessly.
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+          # Point the Postgres leg of the DB matrix at the service container.
+          TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
+
+      - name: Run indexer parsing and persistence tests (#820)
+        run: npm test -- --testPathPattern=tests/indexer
+        env:
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+      - name: Run tests with coverage
       # One jest run per job, with coverage. The Postgres leg shares a
       # single database across every test in the suite, and beforeEach only
       # clears claims/cursor — a second jest invocation in the same job would

@@ -27,6 +27,9 @@ fn verifies_kyc() {
 #[test]
 fn verifies_age() {
     let env = Env::default();
+    let admin = Address::generate(&env);
+    let contract_id = env.register(CredentialVerifier, (admin,));
+    let _client = CredentialVerifierClient::new(&env, &contract_id);
     env.mock_all_auths();
     let c = setup_verifier(&env, &AGE, 1);
     assert!(verify_with(&c, &env, &AGE, None));
