@@ -115,6 +115,7 @@ scripts/deploy.sh       deploy + wire + register issuer + install all VKs on tes
 scripts/benchmark.sh    measure instruction budget for every public function on testnet
 BENCHMARKS.md           per-function instruction counts, ledger I/O, and fee estimates
 docs/EVENTS.md          authoritative contract event topic & payload schemas
+docs/BACKFILL.md        when and how to backfill the indexer (ranges, resume, timing)
 docs/STORAGE_TTL.md     contract storage lifetime model, rent fees, and archival behavior
 ```
 

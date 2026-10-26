@@ -22,6 +22,18 @@ const nextConfig = {
     optimizePackageImports: ["@tabler/icons-react"],
   },
 
+  // Rewrite barrel imports from "@tabler/icons-react" to per-icon ESM files.
+  // e.g. `import { IconCheck } from "@tabler/icons-react"` becomes
+  //      `import { IconCheck } from "@tabler/icons-react/dist/esm/icons/IconCheck.mjs"`
+  // This prevents the entire ~475 kB icon library from being included in the
+  // bundle when only a handful of icons are actually used. The package has
+  // `sideEffects: false`, making this tree-shaking safe.
+  modularizeImports: {
+    "@tabler/icons-react": {
+      transform: "@tabler/icons-react/dist/esm/icons/{{member}}",
+    },
+  },
+
   // (Removed the legacy `optimizeFonts: false` here: Next 16 no longer
   // recognises the key. Build-time font fetches were already avoided by
   // `preload: false` on every next/font in app/layout.tsx.)
@@ -70,6 +82,33 @@ const nextConfig = {
           process: processPath,
         }),
       );
+
+      // Split heavy Stellar/wallet vendor libs into a separate named chunk so
+      // they are fetched once and shared across routes rather than duplicated.
+      // @stellar/stellar-sdk + @creit.tech/stellar-wallets-kit combined are
+      // several hundred kB; isolating them prevents them from inflating every
+      // route's first-load budget.
+      config.optimization = config.optimization ?? {};
+      config.optimization.splitChunks = {
+        ...(config.optimization.splitChunks ?? {}),
+        cacheGroups: {
+          ...((config.optimization.splitChunks)?.cacheGroups ?? {}),
+          stellarVendor: {
+            name: "stellar-vendor",
+            test: /[\\/]node_modules[\\/](@stellar[\\/]stellar-sdk|@creit\.tech[\\/]stellar-wallets-kit|@walletconnect[\\/]|pino)[\\/]/,
+            chunks: "all",
+            priority: 20,
+            reuseExistingChunk: true,
+          },
+          nobleVendor: {
+            name: "noble-vendor",
+            test: /[\\/]node_modules[\\/](@noble[\\/])/,
+            chunks: "all",
+            priority: 15,
+            reuseExistingChunk: true,
+          },
+        },
+      };
     }
 
     return config;

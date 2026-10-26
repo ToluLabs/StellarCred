@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Dependency Update Threshold & Safety Evaluator
  *

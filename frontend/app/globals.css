@@ -989,6 +989,81 @@ textarea:focus-visible {
   }
 }
 
+/* ---- Onboarding wizard ----------------------------------------------------- */
+
+@keyframes obFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes obSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ob-wizard-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 1rem;
+  animation: obFadeIn 0.25s var(--ease);
+}
+
+.ob-wizard-card {
+  width: 100%;
+  max-width: 600px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 1.75rem;
+  position: relative;
+  animation: obSlideUp 0.3s var(--ease);
+}
+
+.ob-step-rail {
+  /* shown by default; hidden at ≤480px via media query */
+}
+
+.ob-step-counter {
+  display: none;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 1.1rem;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .ob-wizard-card {
+    max-height: 88vh;
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .ob-step-rail {
+    display: none;
+  }
+
+  .ob-step-counter {
+    display: flex;
+  }
+
+  .ob-wizard-card {
+    padding: 1rem;
+  }
+
+  .ob-nav-buttons .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* ---- Onboarding Tour -------------------------------------------------------- */
 
 .tour-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.55);cursor:pointer;animation:tour-fade-in 0.3s ease}

@@ -63,13 +63,7 @@ export interface ClaimGate {
 
 // ── Default claims ───────────────────────────────────────────────────────────
 
-const DEFAULT_CLAIMS: ClaimType[] = [
-  "kyc",
-  "age",
-  "jurisdiction",
-  "income",
-  "funds",
-];
+const DEFAULT_CLAIMS: ClaimType[] = ["kyc", "age", "jurisdiction", "income", "funds"];
 
 // ── Implementation ───────────────────────────────────────────────────────────
 
@@ -128,7 +122,7 @@ export function createClaimGate(config: ClaimGateConfig): ClaimGate {
     emit();
   }
 
-  async function fetchClaims(): Promise<void> {
+  async function fetchClaims(fresh = false): Promise<void> {
     const currentFetchId = ++fetchId;
 
     // No wallet means there is nothing to check.
@@ -156,6 +150,8 @@ export function createClaimGate(config: ClaimGateConfig): ClaimGate {
       const results = await hasClaims(wallet, claimsToCheck, {
         minThresholds: thresholds,
         trustedIssuers,
+        // An explicit refetch must not be answered from the opt-in claim cache.
+        fresh,
       });
 
       /**
@@ -232,7 +228,7 @@ export function createClaimGate(config: ClaimGateConfig): ClaimGate {
         return;
       }
 
-      void fetchClaims();
+      void fetchClaims(true);
     },
 
     destroy() {

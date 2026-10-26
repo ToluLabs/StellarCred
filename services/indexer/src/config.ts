@@ -4,8 +4,20 @@
  */
 
 import { NETWORK_PRESETS, checkNetworkConsistency, parseNetwork } from "./networks";
+import type { BreakerPolicy, RetryPolicy } from "./http-client";
 
 export type DbDriver = "sqlite" | "postgres";
+
+/**
+ * Tuning for the shared outbound HTTP client (#761): retries with exponential
+ * backoff for 429/5xx and a circuit breaker for a provider that stays down.
+ */
+export interface HttpClientConfig {
+  retry: RetryPolicy;
+  breaker: BreakerPolicy;
+  /** Per-attempt request timeout in ms. */
+  timeoutMs: number;
+}
 
 export interface Config {
   stellarNetwork: string;
@@ -48,6 +60,12 @@ export interface Config {
   integrityCheckIntervalMs: number;
   /** Claims compared against contract state per check. */
   integrityCheckSampleSize: number;
+  /**
+   * Outbound HTTP retry/circuit-breaker limits (#761). Optional like apiKey
+   * so test fixtures built as full Config literals keep compiling; absent
+   * means the client's documented defaults.
+   */
+  httpClient?: HttpClientConfig;
 }
 
 function required(name: string): string {
@@ -58,6 +76,13 @@ function required(name: string): string {
 
 function optional(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
+}
+
+/** Env int, clamped into [min, max]; a non-numeric value degrades to `def`. */
+function clampedInt(name: string, def: number, min: number, max: number): number {
+  const raw = Number(optional(name, String(def)));
+  if (!Number.isFinite(raw)) return def;
+  return Math.min(max, Math.max(min, Math.floor(raw)));
 }
 
 export function parseCorsOrigins(raw?: string): string[] {
@@ -137,6 +162,12 @@ export function loadConfig(): Config {
   const integrityCheckEnabled =
     optional("INTEGRITY_CHECK_ENABLED", "true").toLowerCase() !== "false";
 
+  // ── Outbound HTTP retry / circuit breaker (#761) ─────────────────────────
+  // Clamped like the integrity settings: a typo must degrade to a sane limit,
+  // not switch retry protection off or wedge the breaker permanently.
+  const rawJitter = Number(optional("HTTP_RETRY_JITTER_RATIO", "0.2"));
+  const jitterRatio = Number.isFinite(rawJitter) ? Math.min(1, Math.max(0, rawJitter)) : 0.2;
+
   return {
     stellarNetwork: network,
     horizonUrl: envHorizon ?? preset.horizonUrl,
@@ -165,5 +196,18 @@ export function loadConfig(): Config {
       Number.isFinite(integritySampleSize) && integritySampleSize > 0
         ? Math.floor(integritySampleSize)
         : 25,
+    httpClient: {
+      retry: {
+        maxAttempts: clampedInt("HTTP_MAX_ATTEMPTS", 3, 1, 10),
+        baseDelayMs: clampedInt("HTTP_RETRY_BASE_MS", 500, 0, 10_000),
+        maxDelayMs: clampedInt("HTTP_RETRY_MAX_DELAY_MS", 8_000, 0, 120_000),
+        jitterRatio,
+      },
+      breaker: {
+        failureThreshold: clampedInt("HTTP_BREAKER_FAILURE_THRESHOLD", 5, 1, 100),
+        resetTimeoutMs: clampedInt("HTTP_BREAKER_RESET_MS", 30_000, 1_000, 3_600_000),
+      },
+      timeoutMs: clampedInt("HTTP_REQUEST_TIMEOUT_MS", 10_000, 100, 300_000),
+    },
   };
 }

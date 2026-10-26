@@ -16,6 +16,12 @@ name: Lint
 # The `frontend` job deliberately does not replace the Lint step inside the
 # ci.yml frontend job — that step keeps the existing gate intact for the build
 # path; this one makes lint a first-class, fast, greppable check.
+#
+# ── Page-client size cap (#606 guard) ───────────────────────────────────────
+# The `page-client-size` job caps the line count of page-client files so they
+# can only shrink. Caps start at the current size and are lowered as extraction
+# work proceeds. Raising a cap requires a deliberate edit to
+# .github/scripts/check-page-client-size.mjs.
 on:
   push:
     branches: [main]
@@ -100,3 +106,20 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  # ── Page-client size cap: files may only shrink ───────────────────────────
+  page-client-size:
+    name: Page-client size cap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      # Caps live in .github/scripts/check-page-client-size.mjs (the single
+      # source of truth). They are set to each file's current size and must
+      # only ever be lowered. Adding a new page client? Add a cap there.
+      - name: Enforce page-client line caps
+        run: node .github/scripts/check-page-client-size.mjs

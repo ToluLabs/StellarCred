@@ -67,6 +67,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import type { Config } from "./config";
+import { createHttpClient, optionsFromConfig } from "./http-client";
 import type { ClaimRow, Db } from "./db-types";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -381,16 +382,21 @@ export function createSorobanContractReader(config: Config): ContractReader {
  * Horizon is used rather than Soroban RPC because `getLatestLedger` reports the
  * sequence but not the close time, and `GET /ledgers?order=desc&limit=1` is
  * already this service's source of truth for head-ledger sequencing.
+ *
+ * Goes through the shared HTTP client (#761): Horizon answers 429 when it is
+ * rate-limiting us and 5xx when it is briefly unhealthy, and a raw fetch
+ * treated the first such answer as a permanent clock failure. Now transient
+ * answers are retried with backoff, and a Horizon that stays down opens the
+ * circuit breaker so checks fail fast instead of queueing doomed requests.
  */
 export function createHorizonChainClock(config: Config): ChainClock {
+  const http = createHttpClient(optionsFromConfig(config.httpClient));
   return {
     async now() {
       const url = new URL("/ledgers", config.horizonUrl);
       url.searchParams.set("order", "desc");
       url.searchParams.set("limit", "1");
-      const res = await fetch(url.toString(), {
-        signal: AbortSignal.timeout(5_000),
-      });
+      const res = await http.fetch(url.toString());
       if (!res.ok) throw new Error(`Horizon /ledgers responded ${res.status}`);
       const body = (await res.json()) as {
         _embedded?: { records?: Array<{ closed_at?: string }> };

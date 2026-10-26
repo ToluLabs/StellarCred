@@ -11,9 +11,12 @@ import { Footer } from "@/components/Footer";
 import { LocaleMetaTags } from "@/components/LocaleMetaTags";
 import { WalletProvider } from "@/lib/wallet-context";
 import { ToastProvider } from "@/components/Toast";
-import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import type { Locale } from "@/i18n.config";
+// OnboardingWizard is deferred via next/dynamic(ssr:false) inside this client
+// wrapper. next/dynamic with ssr:false cannot be used directly in a Server
+// Component, so the call lives in a "use client" boundary.
+import { OnboardingOverlays } from "@/components/OnboardingOverlays";
 
 // Fonts are vendored as latin-subset variable woff2 files (from Google Fonts)
 // instead of next/font/google: the google loader downloads at build time,
@@ -94,10 +97,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ToastProvider>
             <WalletProvider>
+              <OnboardingOverlays />
               <SiteNav />
               <NetworkBanner />
               <RpcStatusBanner />
-              <OnboardingWizard />
               <main id="main-content" tabIndex={-1} className="container">
                 {children}
               </main>
