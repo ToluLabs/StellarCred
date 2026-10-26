@@ -10,7 +10,7 @@
  *   5. Wallet restore: the address is recovered from localStorage on hard reload.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import {
   injectMockWallet,
   injectMockWalletDisconnected,
@@ -24,6 +24,17 @@ import {
 /** Return the first 6 + last 4 characters of an address, matching the UI. */
 function truncate(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+/**
+ * The /verify page renders WalletButton twice: once in VerifyHeader and once
+ * inside the card that holds the "Connect your wallet" prompt. These tests
+ * mean the card one, so scope to that card instead of matching both.
+ */
+function verifyCardConnectButton(page: Page) {
+  return page
+    .locator(".card", { hasText: "Connect your wallet to request credentials" })
+    .getByRole("button", { name: "Connect wallet", exact: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +52,7 @@ test.describe("Wallet Connection", () => {
     await expect(
       page.getByText(/Connect your wallet to request credentials/i)
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Connect wallet", exact: true })).toBeVisible();
+    await expect(verifyCardConnectButton(page)).toBeVisible();
 
     // The main CTA ("Get credential") must not be reachable without a wallet.
     await expect(
@@ -56,7 +67,7 @@ test.describe("Wallet Connection", () => {
     await injectMockWalletDisconnected(page);
     await page.goto("/verify");
 
-    await page.getByRole("button", { name: "Connect wallet", exact: true }).click();
+    await verifyCardConnectButton(page).click();
 
     // After connecting, the truncated address should appear in the header / nav.
     await expect(page.getByText(truncate(TEST_WALLET))).toBeVisible({
@@ -100,7 +111,7 @@ test.describe("Wallet Connection", () => {
 
     // After disconnect, the connect-wallet prompt should reappear.
     await expect(
-      page.getByRole("button", { name: "Connect wallet", exact: true })
+      verifyCardConnectButton(page)
     ).toBeVisible({ timeout: 8_000 });
   });
 
