@@ -80,6 +80,10 @@ test.describe("Wallet Connection", () => {
 
     await verifyCardConnectButton(page).click();
 
+    // Connect opens the Stellar Wallets Kit picker first. The injected mock is
+    // only reached once a wallet is chosen, so pick Rabet (the mock's wallet).
+    await page.getByText("Rabet", { exact: true }).click();
+
     // After connecting, the header WalletButton shows the 4+4 address.
     await expect(page.getByText(truncateHeader(TEST_WALLET))).toBeVisible({
       timeout: 8_000,
