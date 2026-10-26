@@ -67,7 +67,8 @@ test.describe("LendFi app page — locked state (no wallet)", () => {
 
     // Action button must be disabled
     const actionBtn = page.getByRole("button", {
-      name: /Connect wallet to check access|connect wallet/i,
+      name: "Connect wallet to check access",
+      exact: true,
     });
     await expect(actionBtn).toBeVisible();
     await expect(actionBtn).toBeDisabled();

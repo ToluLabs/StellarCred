@@ -41,7 +41,7 @@ test.describe("Wallet Connection", () => {
     await expect(
       page.getByText(/Connect your wallet to request credentials/i)
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: /connect wallet/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect wallet", exact: true })).toBeVisible();
 
     // The main CTA ("Get credential") must not be reachable without a wallet.
     await expect(
@@ -56,7 +56,7 @@ test.describe("Wallet Connection", () => {
     await injectMockWalletDisconnected(page);
     await page.goto("/verify");
 
-    await page.getByRole("button", { name: /connect wallet/i }).click();
+    await page.getByRole("button", { name: "Connect wallet", exact: true }).click();
 
     // After connecting, the truncated address should appear in the header / nav.
     await expect(page.getByText(truncate(TEST_WALLET))).toBeVisible({
@@ -100,7 +100,7 @@ test.describe("Wallet Connection", () => {
 
     // After disconnect, the connect-wallet prompt should reappear.
     await expect(
-      page.getByRole("button", { name: /connect wallet/i })
+      page.getByRole("button", { name: "Connect wallet", exact: true })
     ).toBeVisible({ timeout: 8_000 });
   });
 
@@ -128,7 +128,7 @@ test.describe("Wallet Connection", () => {
 
     // Holder page should show a connect-wallet prompt instead of credentials.
     await expect(
-      page.getByRole("button", { name: /connect wallet/i })
+      page.getByRole("button", { name: "Connect wallet", exact: true })
     ).toBeVisible();
   });
 
@@ -140,7 +140,8 @@ test.describe("Wallet Connection", () => {
 
     // Without a wallet the action button should indicate connection is needed.
     const actionBtn = page.getByRole("button", {
-      name: /Connect wallet to check access|connect wallet/i,
+      name: "Connect wallet to check access",
+      exact: true,
     });
     await expect(actionBtn).toBeVisible();
     await expect(actionBtn).toBeDisabled();
