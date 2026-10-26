@@ -40,9 +40,12 @@ test.describe("Apps listing page (/apps)", () => {
     await injectMockWalletDisconnected(page);
     await page.goto("/apps");
 
-    const lendfiLink = page.getByRole("link", { name: /LendFi/i }).first();
-    await expect(lendfiLink).toBeVisible();
-    await expect(lendfiLink).toHaveAttribute("href", /\/apps\/lendfi/);
+    // The protocol card is a div role="link" with an onClick router push and no
+    // href, so assert navigation by clicking it rather than checking an attribute.
+    const lendfiCard = page.getByRole("link", { name: /LendFi/i }).first();
+    await expect(lendfiCard).toBeVisible();
+    await lendfiCard.click();
+    await expect(page).toHaveURL(/\/apps\/lendfi$/);
   });
 });
 
