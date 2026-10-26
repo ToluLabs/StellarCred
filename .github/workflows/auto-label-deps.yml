@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: auto-label-deps-${{ github.event.pull_request.number }}
@@ -85,20 +85,39 @@ jobs:
             // Create it on first use so a fresh repository (or a newly
             // configured DEPENDENCY_LABEL_NAME) labels successfully.
             try {
-              await github.rest.issues.getLabel({ owner, repo, name: labelName });
-            } catch (error) {
-              if (error.status !== 404) throw error;
               try {
-                await github.rest.issues.createLabel({
-                  owner,
-                  repo,
-                  name: labelName,
-                  color: "ededed",
-                  description: "Dependency update (Dependabot/Renovate)",
-                });
-              } catch (createError) {
-                // Another run may have created it between get and create.
-                if (createError.status !== 422) throw createError;
+                await github.rest.issues.getLabel({ owner, repo, name: labelName });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                try {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name: labelName,
+                    color: "ededed",
+                    description: "Dependency update (Dependabot/Renovate)",
+                  });
+                } catch (createError) {
+                  // Another run may have created it between get and create.
+                  if (createError.status !== 422) throw createError;
+                }
+              }
+
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: pr.number,
+                labels: [labelName],
+              });
+
+              core.info(`Applied '${labelName}' to PR #${pr.number}.`);
+            } catch (error) {
+              if (error.status === 403) {
+                core.warning(
+                  `Insufficient permissions to apply label '${labelName}' to PR #${pr.number}: ${error.message}`
+                );
+              } else {
+                throw error;
               }
             }
 

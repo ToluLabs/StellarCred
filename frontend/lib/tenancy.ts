@@ -4,6 +4,7 @@ if (typeof window !== "undefined") {
 }
 
 import { NextRequest } from "next/server";
+import { extractApiKey } from "./auth";
 import { logger, stripSensitiveFields } from "./logger";
 
 export type TenantStatus = "active" | "suspended" | "revoked";
@@ -137,14 +138,7 @@ function extractAuthCredentials(headers: Headers | Record<string, string | null 
   };
 
   const tenantId = getHeader("x-tenant-id");
-  let apiKey = getHeader("x-api-key");
-
-  if (!apiKey) {
-    const authHeader = getHeader("authorization");
-    if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
-      apiKey = authHeader.slice(7).trim();
-    }
-  }
+  const apiKey = extractApiKey(headers);
 
   return { tenantId, apiKey };
 }

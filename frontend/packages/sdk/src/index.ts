@@ -72,21 +72,31 @@ import {
 } from "./claims";
 
 import {
-  RpcError,
-  IndexerError,
-  ContractError,
-  ContractErrorCode,
-  parseContractError,
-  TransactionSubmissionError,
+  RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
 } from "./errors";
 
 import { submitTransaction } from "./submit";
+import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
+import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
+
+ feat/issues-847-848-820-841
+import { subscribeClaims } from "./subscriptions";
+
+// Version helpers — Issue #841
+export * from "./version";
 
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
+ main
 
-import { subscribeClaims } from "./subscriptions";
+import {
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
+} from "./version";
 
 import {
   validateCredential,
@@ -137,6 +147,12 @@ export const StellarCred = {
   ConfigError,
   InvalidAddressError,
   RpcError,
+  // Version helpers (#841)
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
   IndexerError,
   ContractError,
   ContractErrorCode,

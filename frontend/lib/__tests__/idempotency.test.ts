@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   completedIdempotencyRecord,
+  decryptEncryptedResponseIdempotencyRecord,
+  encryptedResponseIdempotencyRecord,
   idempotencyGet,
   idempotencyGetAsync,
   idempotencySet,
@@ -17,6 +19,8 @@ import {
   type CompletedIdempotencyRecord,
 } from "../idempotency";
 import { MemoryStore, setSharedStoreForTesting } from "../shared-store";
+
+const originalReplayEncryptionKey = process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY;
 
 function makeRecord(
   overrides: Partial<CompletedIdempotencyRecord> = {},
@@ -39,6 +43,11 @@ describe("idempotency store", () => {
   afterEach(() => {
     idempotencyClear();
     setSharedStoreForTesting(null);
+    if (originalReplayEncryptionKey === undefined) {
+      delete process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY;
+    } else {
+      process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = originalReplayEncryptionKey;
+    }
   });
 
   describe("completedIdempotencyRecord", () => {
@@ -65,6 +74,29 @@ describe("idempotency store", () => {
       expect(serialized).not.toContain("salt");
       expect(serialized).not.toContain("commitment");
       expect(serialized).not.toContain("sig");
+    });
+  });
+
+  describe("encrypted batch replay records", () => {
+    it("round-trips successful responses without exposing their contents", () => {
+      process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = "b".repeat(64);
+      const body = JSON.stringify({ credentials: [{ commitment: "private-credential" }] });
+      const record = encryptedResponseIdempotencyRecord(200, body);
+
+      expect(record.kind).toBe("encrypted_response");
+      expect(JSON.stringify(record)).not.toContain("private-credential");
+      expect(decryptEncryptedResponseIdempotencyRecord(record)).toBe(body);
+    });
+
+    it("rejects tampered encrypted responses", () => {
+      process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = "b".repeat(64);
+      const record = encryptedResponseIdempotencyRecord(200, '{"ok":true}');
+      expect(() =>
+        decryptEncryptedResponseIdempotencyRecord({
+          ...record,
+          ciphertext: Buffer.from("tampered").toString("base64url"),
+        }),
+      ).toThrow();
     });
   });
 

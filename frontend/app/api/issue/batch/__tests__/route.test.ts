@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "../route";
+import { idempotencyGetAsync } from "@/lib/idempotency";
 
 const HOLDER_1 = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const HOLDER_2 = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2";
@@ -26,9 +27,11 @@ function postRequest(body: unknown, headers: Record<string, string> = {}) {
 describe("POST /api/issue/batch", () => {
   beforeEach(() => {
     delete process.env.ISSUER_PRIVATE_KEY;
+    process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = "a".repeat(64);
   });
 
   afterEach(() => {
+    process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = "a".repeat(64);
     vi.clearAllMocks();
   });
 
@@ -86,7 +89,7 @@ describe("POST /api/issue/batch", () => {
     expect(data.results[1].credentials[0].type).toBe("age");
   });
 
-  it("handles partial failure without failing the entire batch", async () => {
+  it("rejects the whole batch without returning partial credentials", async () => {
     const req = postRequest([
       {
         holder: HOLDER_1,
@@ -108,31 +111,20 @@ describe("POST /api/issue/batch", () => {
     ]);
 
     const res = await POST(req);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(422);
 
     const data = await res.json();
     expect(data.total).toBe(4);
-    expect(data.successful).toBe(2);
-    expect(data.failed).toBe(2);
-
-    // Item 0: success
-    expect(data.results[0].success).toBe(true);
-    expect(data.results[0].holder).toBe(HOLDER_1);
-
-    // Item 1: failure (missing holder)
-    expect(data.results[1].success).toBe(false);
+    expect(data.successful).toBe(0);
+    expect(data.failed).toBe(4);
+    expect(data.results).toHaveLength(4);
+    expect(data.results.every((result: { success: boolean }) => !result.success)).toBe(true);
+    expect(JSON.stringify(data)).not.toContain('"credentials"');
+    expect(data.results[0].error).toMatch(/aborted/i);
     expect(data.results[1].error).toMatch(/holder address is required/i);
-
-    // Item 2: failure (invalid credential type)
-    expect(data.results[2].success).toBe(false);
-    expect(data.results[2].error).toMatch(/invalid credential type/i);
-
-    // Item 3: success
-    expect(data.results[3].success).toBe(true);
-    expect(data.results[3].holder).toBe(HOLDER_3);
   });
 
-  it("returns a redacted marker for an idempotent replay", async () => {
+  it("replays the exact successful response from an encrypted cache record", async () => {
     const key = "test-batch-key-123456789";
     const payload = [
       {
@@ -143,15 +135,42 @@ describe("POST /api/issue/batch", () => {
 
     const res1 = await POST(postRequest(payload, { "Idempotency-Key": key }));
     expect(res1.status).toBe(200);
+    const firstResponse = await res1.clone().json();
     const data1 = await res1.json();
     expect(data1.results[0].credentials).toHaveLength(1);
 
+    const record = await idempotencyGetAsync(key);
+    expect(record?.kind).toBe("encrypted_response");
+    expect(JSON.stringify(record)).not.toContain(JSON.stringify(data1.results[0].credentials));
+
     const res2 = await POST(postRequest(payload, { "Idempotency-Key": key }));
-    expect(res2.status).toBe(409);
+    expect(res2.status).toBe(200);
     expect(res2.headers.get("X-Idempotent")).toBe("true");
-    expect(res2.headers.get("X-Idempotency-Replay")).toBe("redacted");
-    await expect(res2.json()).resolves.toMatchObject({
-      code: "IDEMPOTENCY_RESPONSE_REDACTED",
-    });
+    expect(res2.headers.get("X-Idempotency-Replay")).toBe("restored");
+    await expect(res2.json()).resolves.toEqual(firstResponse);
+  });
+
+  it("requires an encryption key before accepting idempotent batch issuance", async () => {
+    delete process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY;
+    const res = await POST(postRequest([{ holder: HOLDER_1, type: "kyc" }], {
+      "Idempotency-Key": "missing-encryption-key",
+    }));
+    expect(res.status).toBe(503);
+  });
+
+  it("allows a corrected retry after a failed batch", async () => {
+    const key = "batch-retry-after-failure";
+    const failed = await POST(
+      postRequest([{ type: "kyc" }], { "Idempotency-Key": key }),
+    );
+    expect(failed.status).toBe(422);
+
+    const retried = await POST(
+      postRequest([{ holder: HOLDER_1, type: "kyc" }], { "Idempotency-Key": key }),
+    );
+    expect(retried.status).toBe(200);
+    const body = await retried.json();
+    expect(body.successful).toBe(1);
+    expect(body.results[0].credentials).toHaveLength(1);
   });
 });

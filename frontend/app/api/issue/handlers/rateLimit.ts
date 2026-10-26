@@ -26,6 +26,7 @@ import {
   tooManyRequestsResponse,
   LIMITS,
 } from "@/lib/rate-limit";
+import { recordRateLimitHit } from "@/lib/metrics";
 
 /**
  * Enforce the per-IP limit. Raw IPs are never logged — only a truncated
@@ -45,6 +46,7 @@ export function enforceIpRateLimit(req: NextRequest, requestId: string): NextRes
       requestId,
     }),
   );
+  recordRateLimitHit("issue", "ip");
   return tooManyRequestsResponse(result.retryAfterMs);
 }
 
@@ -65,5 +67,6 @@ export function enforceWalletRateLimit(wallet: string, requestId: string): NextR
       requestId,
     }),
   );
+  recordRateLimitHit("issue", "wallet");
   return tooManyRequestsResponse(result.retryAfterMs);
 }

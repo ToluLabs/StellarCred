@@ -160,6 +160,23 @@ const envSchema = z
       z.coerce.number().int().positive().optional(),
     ),
 
+    // --- Redis (optional; enables shared rate-limit store) --------------------
+    // When set, lib/redis-rate-limit.ts stores fixed-window counters in Redis
+    // so limits are enforced consistently across all application instances.
+    // Without this, each instance uses the in-process Map store (lib/rate-limit.ts),
+    // which is correct for single-replica deployments.
+    // See docker-compose.redis.yml for local development setup.
+    REDIS_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+    REDIS_KEY_PREFIX: z.preprocess(emptyToUndefined, z.string().optional()),
+    REDIS_TLS: z.preprocess(emptyToUndefined, z.string().optional()),
+
+    // --- Metrics --------------------------------------------------------------
+    // Optional static token to gate GET /api/metrics. When unset the endpoint
+    // is publicly accessible (exposes only aggregate counters, no PII).
+    // When set, requests must supply it as: Authorization: Bearer <token>
+    // or X-Metrics-Token: <token>.
+    METRICS_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
+
     // --- Ops -------------------------------------------------------------------
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
     APP_ORIGIN: z.preprocess(emptyToUndefined, z.string().url().optional()),

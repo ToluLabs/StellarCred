@@ -20,6 +20,8 @@
     "size": "size-limit",
     "check:i18n": "node scripts/check-i18n-parity.mjs",
     "verify:audit-log": "node --import tsx --experimental-strip-types scripts/verify-audit-log.ts",
+    "validate-proof": "node --import tsx scripts/validate-proof.ts",
+    "credential:cli": "node --import tsx scripts/credential-cli.ts",
     "format": "prettier --write \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
     "prepare": "cd .. && npx husky .husky 2>/dev/null || true"

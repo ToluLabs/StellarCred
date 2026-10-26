@@ -174,6 +174,8 @@ function HolderInner() {
         </div>
       </div>
 
+      <OnboardingNudge />
+
       <ConfigBanner />
 
       <WalletOnboarding />

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * Dependency PR detection and label resolution for auto-label-deps.yml.
  *

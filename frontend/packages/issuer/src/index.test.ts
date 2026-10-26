@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { IssuerClient, CREDENTIAL_TYPES } from "./index";
+import { IssuerClient, CREDENTIAL_TYPES, previewCredential } from "./index";
 
 // Fixed test key — not a real issuer key, used only to make assertions deterministic.
 const TEST_PRIVATE_KEY_64 = "01".repeat(32);
@@ -116,6 +116,35 @@ describe("IssuerClient.issue — pipeline round-trip", () => {
         attribute: {},
       }),
     ).rejects.toThrow(/Unknown credential type/);
+  });
+});
+
+describe("previewCredential", () => {
+  it("creates commitment metadata without a signature or issuer public key", async () => {
+    const preview = await previewCredential({
+      type: "age",
+      holder: "GABCDEXAMPLEHOLDERADDRESS",
+      issuerId: "test-issuer",
+      issuerName: "Sandbox Issuer",
+      expiry: "30 days",
+      attribute: { date_of_birth: "1995-06-15" },
+      claimParams: { threshold_years: "21" },
+    });
+
+    expect(preview.type).toBe("age");
+    expect(preview.claim).toBe("age ≥ 21");
+    expect(preview.commitment).toMatch(/^0x[0-9a-f]+$/i);
+    expect(preview.publicInputs).toEqual({
+      commitment: preview.commitment,
+      issuerId: "test-issuer",
+      holder: "GABCDEXAMPLEHOLDERADDRESS",
+    });
+    expect(preview.signed).toBe(false);
+    expect(preview).not.toHaveProperty("sig");
+    expect(preview).not.toHaveProperty("issuerPubX");
+    expect(preview).not.toHaveProperty("issuerPubY");
+    expect(preview).not.toHaveProperty("value");
+    expect(preview).not.toHaveProperty("salt");
   });
 });
 
