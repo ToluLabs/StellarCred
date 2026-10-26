@@ -1,0 +1,30 @@
+# Rust's output directory
+target
+
+# Node
+node_modules
+.pnpm-store
+.next
+dist
+
+# Coverage output
+coverage
+.nyc_output
+
+# Local settings
+.soroban
+.stellar
+.env.local
+
+# Deployment artifacts (local; use git for version control)
+deployment-manifests/
+*.wasm.hash
+
+# Benchmark output (local results; see BENCHMARKS.md for documented figures)
+benchmark_results.txt
+
+# Proptest regression files
+proptest-regressions/
+
+# macOS
+.DS_Store

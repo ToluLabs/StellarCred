@@ -1,0 +1,62 @@
+{
+  "description": "License policy for StellarCred dependencies",
+  "version": "1.0.0",
+  "allowedLicenses": [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "Unlicense",
+    "MPL-2.0",
+    "CC0-1.0",
+    "WTFPL"
+  ],
+  "deniedLicenses": [
+    "GPL",
+    "GPL-1.0",
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL",
+    "AGPL-1.0",
+    "AGPL-3.0",
+    "SSPL",
+    "Commons Clause"
+  ],
+  "frontendRuntimePolicy": {
+    "description": "Stricter policy for frontend runtime dependencies (reach browser with credential secrets)",
+    "maxAllowedDependencies": 150,
+    "flagging": {
+      "enableVulnerabilityCheck": true,
+      "enableMaintenanceCheck": true,
+      "enableDownloadsTrendCheck": true,
+      "enableAgeCheck": true
+    },
+    "packageAgeThreshold": {
+      "description": "Warn if package was not updated in more than X days",
+      "days": 365
+    },
+    "downloadsTrend": {
+      "description": "Warn if monthly downloads are declining",
+      "enabled": true
+    }
+  },
+  "exceptionList": [
+    {
+      "package": "example-package",
+      "version": "1.0.0",
+      "license": "GPL-2.0",
+      "reason": "Example exception - update as needed",
+      "approvedBy": "security-team",
+      "expiresAt": "2025-12-31"
+    }
+  ],
+  "notes": [
+    "Copyleft licenses (GPL, AGPL, SSPL) are denied by default due to viral nature and incompatibility with Apache-2.0",
+    "Frontend runtime dependencies are monitored more strictly as they handle credential material in the browser",
+    "All transitive dependencies must comply with this policy",
+    "License exceptions require explicit approval and expiration dates for review auditing"
+  ]
+}

@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  # ── ProofRegistry event indexer ─────────────────────────────────────────
+  indexer:
+    build:
+      context: ./services/indexer
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Set these in a .env file or pass via environment at runtime.
+      # See services/indexer/.env.example for all options.
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      HORIZON_URL: ${HORIZON_URL:-https://horizon-testnet.stellar.org}
+      RPC_URL: ${RPC_URL:-https://soroban-testnet.stellar.org}
+      PROOF_REGISTRY_CONTRACT_ID: ${PROOF_REGISTRY_CONTRACT_ID}
+      DB_DRIVER: ${DB_DRIVER:-sqlite}
+      SQLITE_PATH: /data/indexer.db
+      # Uncomment to use Postgres instead:
+      # DB_DRIVER: postgres
+      # DATABASE_URL: ${DATABASE_URL}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-6}
+      START_LEDGER: ${START_LEDGER:-0}
+      PORT: 3001
+    volumes:
+      # Persist SQLite data across container restarts
+      - indexer_data:/data
+    ports:
+      # Expose the read-only API on host port 3001 (adjust as needed)
+      - "${INDEXER_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e",
+        "require('http').get('http://localhost:3001/health',r=>{process.exit(r.statusCode===200?0:1)})"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── StellarCred frontend ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_STELLAR_NETWORK: ${NEXT_PUBLIC_STELLAR_NETWORK:-testnet}
+      NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:-https://soroban-testnet.stellar.org}
+      NEXT_PUBLIC_NETWORK_PASSPHRASE: ${NEXT_PUBLIC_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+      NEXT_PUBLIC_ISSUER_ADDRESS: ${NEXT_PUBLIC_ISSUER_ADDRESS:-}
+      NEXT_PUBLIC_STELLARCRED_BASE_URL: ${NEXT_PUBLIC_STELLARCRED_BASE_URL:-}
+      NEXT_PUBLIC_ISSUER_REGISTRY_ID: ${NEXT_PUBLIC_ISSUER_REGISTRY_ID:-}
+      NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID: ${NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID:-}
+      NEXT_PUBLIC_PROOF_REGISTRY_ID: ${NEXT_PUBLIC_PROOF_REGISTRY_ID:-}
+      NEXT_PUBLIC_GATED_POOL_ID: ${NEXT_PUBLIC_GATED_POOL_ID:-}
+      # Indexer URL accessible inside the Next.js server (same docker network)
+      NEXT_PUBLIC_INDEXER_URL: ${NEXT_PUBLIC_INDEXER_URL:-http://indexer:3001}
+      ISSUER_PRIVATE_KEY: ${ISSUER_PRIVATE_KEY:-}
+      PERSONA_API_KEY: ${PERSONA_API_KEY:-}
+      PERSONA_KYC_TEMPLATE_ID: ${PERSONA_KYC_TEMPLATE_ID:-}
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+      PLAID_SECRET: ${PLAID_SECRET:-}
+      PLAID_ACCESS_TOKEN: ${PLAID_ACCESS_TOKEN:-}
+      PLAID_ENV: ${PLAID_ENV:-sandbox}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      indexer:
+        condition: service_healthy
+
+volumes:
+  indexer_data:

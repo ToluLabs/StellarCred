@@ -1,0 +1,197 @@
+{
+  "generators": {
+    "address": 2,
+    "nonce": 0,
+    "mux_id": 0
+  },
+  "auth": [
+    [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "function_name": "set_vk",
+              "args": [
+                {
+                  "symbol": "range"
+                },
+                {
+                  "u32": 1
+                },
+                {
+                  "bytes": "00000000000100000000000000000010000000000000005300000000000000011f89dcfe622be6549642dcd65a919b2a34007e557c271a918e211dba049f20bb212bf6b9fff487891e09cce0c375eece5df167cd77c563117876b34bf6ffed3d2db35f4fed2d04573654d1022fda4ea501506f731153e397b88250c71a891acf0c1971d4b7017992dcfc7529d5b0e784c431be19e20e198fb449fa08d6a880861e0c7e3ccff419643cf059f7998c479b92d450b160e0b85d4f34ce0065ecaec5188d8b65ee00d8dd8474a4828fc559b7efd2b11183d3f26a5fc185ef2318f09f228a01529177cac3cee970416d32ccb1c2a93530e6bf4a5587555089d15716f4091482f86c913f576b30e85f38921c0a7425e542fb594c770fb11c77e26129732cfe82fcd7765b55ec9933c02082db98fafa1b4eea4d5c39ed3e1accd6caec4b0d79df7a9a2a27144b296147e594da46f06e1042d7a2ec1ca71ba2bc9cff866929615aaf8f2cc18aa3efb0d56c1bbcfc5766a9fa41992f5fc14d4555913b3f3b1290c19a9e4f37c63bc8775d455733f00a6d8ac594fda88f71246e66aafe9edd250c1aedcf6f1d7094a90afc08e2583798514cf7fa80b53b7984c700cb6dd8f61eba0e08f6b7d842d0f21ae08cbb51fc14f3722b1d83a559a9698105b114e68a2d4a4a31add49c65e54ece3c21548255f31cea47c1fc9e64938b0e824f1994240d928055e4986b097a2aa6e761bddf81cd471d046cd5bf56d680bbdbb2a6a2b81e41cae392d0da9d5b6803f010494578bbd0132c32aa07d34f9bdbd92617031c2c70c236b157e3ed7d8e5c165ead3fd27d7c8ea4b0b5cf64d3b05570fdef91350ffd03e2660dbe8549e9bb3aea842450ecda81220004baef6b8a2365a1f166d10272cd5c0d113ac79bd0f442a189cef713b2d178dbc274d532a4252712f5e6e61a15137d796237c206b330efdb560e53f2751497f8ef5db7d3f264205e2d8cd70aa417eb3a98e5557c1f4cf9c9e4fa784fcec500f828bdb0ccb55d5d1b7fba8223d16af98505b5c6fe1848b4715259ff4fca64d42245ecd530ae654d38fc22730189734504d3ffad9e825a27e1247165c5841cda5cb6e65d495d81a301c912db28829db0192caab64c2e32e4c69e915b2790ebf96ed639428bc97589d26f65652a1e3b5448187c1ec06e78e7fa89841d3e59b68e5e0f4def98b14a00a74d3ebc09c76ae72eaf02e387b827559e695f2fadeba1be48fb9ddcf68d1193424f61f1003d52872b10350e91ab6c76bb2551ff96345d6bd3fe1ca1304e68f4f9a5813e061b3a91e6aabe35ce703776ad3d2d1da172ff494a38693315f8d4f2e090454929a7b0b429e6dd9756a21d86825bac0c39cfef413bfaf2a67f27d119a82f92552ef1dfc8656e353ee28df332a0127f1c5e6383f9ce2fce3993d3f649e666fe57289efa9cdf33f10ae0895fc2a47ceee365e532b1c3b9345bfd08be76c1ed91af282020066a182056bb68711c573ef0a8081797f0abb553bdb6d67eccc7e5ba85087d477f8f0b3c71cfb21759868111a1ccc7fc4b0ce92d9d627b5c717714e64d14e1487658b1ddf73eb55af3cfc2b79af34e84125cfcb3196cc74be5dde4bf1c0f03dfe9beb1cf510742bc6d14e8bc8772b180789cbc6e9202af522f7e9759c302d5b5cdd8f806340ed5d27ba1b901f9e638500e20228c5a5cef8162956116e117dcbb25f79bc0979f07cfa62679a1f6471fb95b6bd2b298363b23756d8500140baeac46bb62ff1874c50ba444e296fd0badb2407cadfbb4a955e0a6fe3058792353d01a9630e525b2d9349b55a003980175085eeee88546070842a12a8f5fb2202dc7f73a8c63a1215093ac874f35f554563ee65c7de7574063728d8e9e38d6131251ee36bab39f86b080eeecefe9210ccfdffa00eb98df1447f5f00caa2d4b246dc68a13866187aeef7c4bbb0245d471dea293dc5bcfdd868fc94b088829d911da86d8260c3ec149bfb4a1892b2c3aa4d66319f829cfe62089f4006e8d011c1d05e563dd87c2050f69eb62f142f36c7e5a831faa0fa290852798c0fa201cd919f27b5a1d4f5138e6967c976d0150f0a4659314406d7a76b7b78252fbbf385519efff59f9c0a885b598a3c0cff1f8c176c0aa43f407822a4a7345539d64e92000b8d96d820c2b8f74f42102420bf96c43f2309c011760461f492b300bb0269707ea714ca4781738bdb2ea7b2f9f940970cf40bcda55f853627198a128d46b322c40b3009429aa05ffcd17b506541aa12f40a76ce5ba48b00aa2178363a120d90000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000216d7c75513ba2c96091927603a51c15a94c638a3ca13785d78d435dcffda7ff618dacb43ad6c67170833f6bdae40e9a6178d340a0c16779dab3610815e685d56"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    []
+  ],
+  "ledger": {
+    "protocol_version": 26,
+    "sequence_number": 0,
+    "timestamp": 0,
+    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
+    "ledger_entries": [
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "ledger_key_nonce": {
+                  "nonce": "801925984706572462"
+                }
+              },
+              "durability": "temporary",
+              "val": "void"
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "LatestVersion"
+                  },
+                  {
+                    "symbol": "range"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "u32": 1
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 3110400
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "Vk"
+                  },
+                  {
+                    "symbol": "range"
+                  },
+                  {
+                    "u32": 1
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "bytes": "00000000000100000000000000000010000000000000005300000000000000011f89dcfe622be6549642dcd65a919b2a34007e557c271a918e211dba049f20bb212bf6b9fff487891e09cce0c375eece5df167cd77c563117876b34bf6ffed3d2db35f4fed2d04573654d1022fda4ea501506f731153e397b88250c71a891acf0c1971d4b7017992dcfc7529d5b0e784c431be19e20e198fb449fa08d6a880861e0c7e3ccff419643cf059f7998c479b92d450b160e0b85d4f34ce0065ecaec5188d8b65ee00d8dd8474a4828fc559b7efd2b11183d3f26a5fc185ef2318f09f228a01529177cac3cee970416d32ccb1c2a93530e6bf4a5587555089d15716f4091482f86c913f576b30e85f38921c0a7425e542fb594c770fb11c77e26129732cfe82fcd7765b55ec9933c02082db98fafa1b4eea4d5c39ed3e1accd6caec4b0d79df7a9a2a27144b296147e594da46f06e1042d7a2ec1ca71ba2bc9cff866929615aaf8f2cc18aa3efb0d56c1bbcfc5766a9fa41992f5fc14d4555913b3f3b1290c19a9e4f37c63bc8775d455733f00a6d8ac594fda88f71246e66aafe9edd250c1aedcf6f1d7094a90afc08e2583798514cf7fa80b53b7984c700cb6dd8f61eba0e08f6b7d842d0f21ae08cbb51fc14f3722b1d83a559a9698105b114e68a2d4a4a31add49c65e54ece3c21548255f31cea47c1fc9e64938b0e824f1994240d928055e4986b097a2aa6e761bddf81cd471d046cd5bf56d680bbdbb2a6a2b81e41cae392d0da9d5b6803f010494578bbd0132c32aa07d34f9bdbd92617031c2c70c236b157e3ed7d8e5c165ead3fd27d7c8ea4b0b5cf64d3b05570fdef91350ffd03e2660dbe8549e9bb3aea842450ecda81220004baef6b8a2365a1f166d10272cd5c0d113ac79bd0f442a189cef713b2d178dbc274d532a4252712f5e6e61a15137d796237c206b330efdb560e53f2751497f8ef5db7d3f264205e2d8cd70aa417eb3a98e5557c1f4cf9c9e4fa784fcec500f828bdb0ccb55d5d1b7fba8223d16af98505b5c6fe1848b4715259ff4fca64d42245ecd530ae654d38fc22730189734504d3ffad9e825a27e1247165c5841cda5cb6e65d495d81a301c912db28829db0192caab64c2e32e4c69e915b2790ebf96ed639428bc97589d26f65652a1e3b5448187c1ec06e78e7fa89841d3e59b68e5e0f4def98b14a00a74d3ebc09c76ae72eaf02e387b827559e695f2fadeba1be48fb9ddcf68d1193424f61f1003d52872b10350e91ab6c76bb2551ff96345d6bd3fe1ca1304e68f4f9a5813e061b3a91e6aabe35ce703776ad3d2d1da172ff494a38693315f8d4f2e090454929a7b0b429e6dd9756a21d86825bac0c39cfef413bfaf2a67f27d119a82f92552ef1dfc8656e353ee28df332a0127f1c5e6383f9ce2fce3993d3f649e666fe57289efa9cdf33f10ae0895fc2a47ceee365e532b1c3b9345bfd08be76c1ed91af282020066a182056bb68711c573ef0a8081797f0abb553bdb6d67eccc7e5ba85087d477f8f0b3c71cfb21759868111a1ccc7fc4b0ce92d9d627b5c717714e64d14e1487658b1ddf73eb55af3cfc2b79af34e84125cfcb3196cc74be5dde4bf1c0f03dfe9beb1cf510742bc6d14e8bc8772b180789cbc6e9202af522f7e9759c302d5b5cdd8f806340ed5d27ba1b901f9e638500e20228c5a5cef8162956116e117dcbb25f79bc0979f07cfa62679a1f6471fb95b6bd2b298363b23756d8500140baeac46bb62ff1874c50ba444e296fd0badb2407cadfbb4a955e0a6fe3058792353d01a9630e525b2d9349b55a003980175085eeee88546070842a12a8f5fb2202dc7f73a8c63a1215093ac874f35f554563ee65c7de7574063728d8e9e38d6131251ee36bab39f86b080eeecefe9210ccfdffa00eb98df1447f5f00caa2d4b246dc68a13866187aeef7c4bbb0245d471dea293dc5bcfdd868fc94b088829d911da86d8260c3ec149bfb4a1892b2c3aa4d66319f829cfe62089f4006e8d011c1d05e563dd87c2050f69eb62f142f36c7e5a831faa0fa290852798c0fa201cd919f27b5a1d4f5138e6967c976d0150f0a4659314406d7a76b7b78252fbbf385519efff59f9c0a885b598a3c0cff1f8c176c0aa43f407822a4a7345539d64e92000b8d96d820c2b8f74f42102420bf96c43f2309c011760461f492b300bb0269707ea714ca4781738bdb2ea7b2f9f940970cf40bcda55f853627198a128d46b322c40b3009429aa05ffcd17b506541aa12f40a76ce5ba48b00aa2178363a120d90000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000216d7c75513ba2c96091927603a51c15a94c638a3ca13785d78d435dcffda7ff618dacb43ad6c67170833f6bdae40e9a6178d340a0c16779dab3610815e685d56"
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 3110400
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": "ledger_key_contract_instance",
+              "durability": "persistent",
+              "val": {
+                "contract_instance": {
+                  "executable": {
+                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  },
+                  "storage": [
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Admin"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Roles"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "admin"
+                            },
+                            "val": {
+                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_code": {
+              "ext": "v0",
+              "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "code": ""
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      }
+    ]
+  },
+  "events": []
+}

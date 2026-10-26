@@ -1,0 +1,115 @@
+# Code owners for StellarCred
+#
+# GitHub requests a review from the owners of every file a pull request
+# touches.
+#
+# ORDERING MATTERS: when several patterns match the same file, the LAST
+# matching rule wins. This file is therefore written general-to-specific —
+# broad catch-alls first, narrow overrides after. Moving a block without
+# re-checking what follows it will silently change who reviews what.
+#
+# Why this file exists: StellarCred is a ZK credential layer whose trust
+# anchor is the pair (on-chain contract, ZK circuit). A docs typo and a
+# change to proof verification do not deserve the same amount of review.
+#
+# Owners below are the repository maintainers. When the project forms review
+# teams, replace these handles with team slugs (for example
+# `@ToluLabs/protocol` for contracts/circuits) — a team slug that does not
+# exist or lacks write access is silently ignored by GitHub, so verify any
+# new slug has write access before relying on it.
+#
+# Review expectations per area are documented in CONTRIBUTING.md
+# ("Review routing") and the full checklist in docs/THREAT_MODEL.md.
+
+# ── Baseline: everything ────────────────────────────────────────────────────
+# Starting point. Every path below refines this, so nothing falls through
+# to an unreviewed state.
+/*                             @nonchalanttee22-lgtm @Psalmuel01
+
+# ── Frontend, general ───────────────────────────────────────────────────────
+# UI, components, and pages. Refined further below for the issuance path
+# and the SDK.
+/frontend/                     @nonchalanttee22-lgtm @Psalmuel01
+
+# ── Trust anchor: contracts and circuits ────────────────────────────────────
+# Highest scrutiny. Contracts decide which issuers are trusted and whether
+# a proof is accepted; circuits decide what a proof can even assert. A
+# change here can be technically correct, well tested, and still break the
+# guarantees the whole system rests on. Review against
+# docs/THREAT_MODEL.md, and expect the reasoning to be checked, not just
+# the diff.
+/contracts/                     @nonchalanttee22-lgtm @Psalmuel01
+/circuits/                      @nonchalanttee22-lgtm @Psalmuel01
+
+# Cargo.toml / Cargo.lock pin soroban-sdk and the git-sourced UltraHonk
+# verifier at exact revisions for cryptographic compatibility. A bump here
+# can silently change verifier behaviour or invalidate existing proofs, so
+# it is reviewed alongside the contracts it affects.
+/Cargo.toml                     @nonchalanttee22-lgtm @Psalmuel01
+/Cargo.lock                     @nonchalanttee22-lgtm @Psalmuel01
+
+# Committed verification keys, proofs, and public inputs are the artifacts
+# the contract tests verify against. Regenerating them by hand rather than
+# through the documented circuit build would let a broken circuit look green.
+/fixtures/                      @nonchalanttee22-lgtm @Psalmuel01
+
+# Circuit toolchain and test-vector generation. Nargo.toml pins the Noir
+# version; the scripts build circuits and regenerate fixtures, so a change
+# here can alter proof output without changing any circuit source.
+/circuits/Nargo.toml            @nonchalanttee22-lgtm @Psalmuel01
+/circuits/scripts/              @nonchalanttee22-lgtm @Psalmuel01
+
+# ── Issuance and signing ────────────────────────────────────────────────────
+# frontend/app/api/ is the issuance path. ISSUER_PRIVATE_KEY is read here,
+# and a credential is only as trustworthy as the signing step. A
+# `NEXT_PUBLIC_` prefix slipping in, or a change to the `prehash: false`
+# signing option, would let anyone mint credentials.
+/frontend/app/api/              @nonchalanttee22-lgtm @Psalmuel01
+
+# The signing helper and the KYC webhook sit outside app/api/ but are the
+# same trust path: the webhook accepts third-party identity assertions and
+# the signer produces the signature the circuit later verifies.
+/frontend/lib/issuer-signer.ts  @nonchalanttee22-lgtm @Psalmuel01
+/frontend/lib/persona-webhook.ts @nonchalanttee22-lgtm @Psalmuel01
+/frontend/lib/error-reporting.ts @nonchalanttee22-lgtm @Psalmuel01
+
+# Next middleware runs ahead of every request and is a common place for
+# auth and header handling to drift.
+/frontend/middleware.ts         @nonchalanttee22-lgtm @Psalmuel01
+
+# Contract bindings are generated, but they are the client-facing view of
+# the trust anchor and are hand-edited often enough to be worth routing.
+/frontend/packages/issuer-registry/   @nonchalanttee22-lgtm @Psalmuel01
+/frontend/packages/proof-registry/    @nonchalanttee22-lgtm @Psalmuel01
+
+# ── SDK ─────────────────────────────────────────────────────────────────────
+# The published integrators' surface. Breaking a signature here breaks
+# downstream projects on an npm package that cannot be unpublished.
+/frontend/packages/sdk/         @nonchalanttee22-lgtm @Psalmuel01
+
+# ── Indexer service ─────────────────────────────────────────────────────────
+# Independent of the on-chain verification path, so normal review depth
+# applies, but it reads chain state and republishes it to consumers.
+/services/indexer/              @nonchalanttee22-lgtm @Psalmuel01
+
+# ── CI/CD, release, and supply chain ────────────────────────────────────────
+# Workflows run with repository credentials and the release workflow
+# publishes to npm. Treat a workflow diff like a signing-path diff.
+/.github/workflows/             @nonchalanttee22-lgtm @Psalmuel01
+/.github/dependabot.yml         @nonchalanttee22-lgtm @Psalmuel01
+
+# Makefile and deny.toml are build and supply-chain policy: they decide
+# which commands run and which crates and licences are allowed.
+/Makefile                       @nonchalanttee22-lgtm @Psalmuel01
+/deny.toml                      @nonchalanttee22-lgtm @Psalmuel01
+
+# ── Policy, ADRs, and security documentation ───────────────────────────────
+# The ADRs record why the load-bearing trust-model choices were made, and
+# CONTRIBUTING requires citing them for changes in those areas. These
+# documents set the review bar the rest of this file relies on.
+/CHANGELOG.md                   @nonchalanttee22-lgtm @Psalmuel01
+/SECURITY.md                    @nonchalanttee22-lgtm @Psalmuel01
+/SUPPORT_POLICY.md              @nonchalanttee22-lgtm @Psalmuel01
+/VERSION_COMPATIBILITY.md       @nonchalanttee22-lgtm @Psalmuel01
+/docs/                          @nonchalanttee22-lgtm @Psalmuel01
+/CONTRIBUTING.md                @nonchalanttee22-lgtm @Psalmuel01

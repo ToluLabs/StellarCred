@@ -1,0 +1,93 @@
+name: Contracts CI
+
+# ── Soroban contract build + test gate (issue #747) ─────────────────────────
+# Dedicated PR gate for the Rust workspace in `contracts/`:
+#   1. builds the deployable WASM artifacts (wasm32v1-none), and
+#   2. runs the contract test suite (`make test-contracts` equivalent).
+# Any build or test failure fails the check, so a broken contract can never
+# merge silently. The fixtures the tests `include_bytes!` are checked into
+# `fixtures/`, so this job is fully self-contained.
+#
+# Note on tooling: Soroban contracts are built and tested with cargo — the
+# pinned toolchain comes from rust-toolchain.toml. nargo (the Noir toolchain)
+# compiles the ZK circuits in `circuits/`, which already has its own cached
+# jobs in ci.yml ("Contract tests & build" and "Circuit compile"); duplicating
+# the nargo install here would only slow every PR down.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# ── Security: top-level least-privilege ────────────────────────────────────
+# This workflow only needs to read the repository; no secrets are used.
+permissions:
+  contents: read
+
+# Never queue two runs for the same branch — cancel the stale one.
+concurrency:
+  group: contracts-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Shared cache configuration for the contracts job. The helper centralizes the
+# cache paths and key so local runs and CI stay in sync (see
+# scripts/ci-cache-helpers.sh and CI_TEST_GUIDE.md).
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: target
+
+jobs:
+  contracts:
+    name: Soroban contract build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare CI cache presteps
+        # Centralizes cache setup and common presteps so the workflow stays
+        # declarative. Safe to run on a cold cache.
+        run: bash scripts/ci-cache-helpers.sh prepare
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Same pin as rust-toolchain.toml and ci.yml — naming it explicitly
+          # lets the action pre-fetch the toolchain before the cache is
+          # restored. Bump both pins together when the WASM hashes in
+          # DEPLOYMENTS.md are re-recorded.
+          toolchain: "1.93.1"
+          targets: wasm32v1-none
+
+      - name: Cache cargo registry + build products
+        # Restores ~/.cargo and ./target keyed on the toolchain and lockfile,
+        # so unchanged dependency trees reuse the compiled artifacts and the
+        # job typically finishes in minutes instead of a cold full build.
+        # Bump the cache version suffix to invalidate manually.
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-contracts-v1-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-contracts-v1-
+            cargo-${{ runner.os }}-contracts-
+
+      - name: Build WASM artifacts
+        # --locked ensures Cargo.lock is respected exactly (no silent dep
+        # upgrades). Fails the PR check on any compile error.
+        run: cargo build --release --target wasm32v1-none --locked
+
+      - name: Run contract tests
+        # cargo test builds the workspace default members for the host target
+        # with soroban-sdk testutils (matching `make test-contracts`). Test
+        # failures surface here as a red PR check with the failing tests in
+        # the job log.
+        run: cargo test --locked
+
+      - name: Report cache status
+        # Emits a short cache summary so contributors can tell whether a slow
+        # run was a cold cache or a real build regression.
+        if: always()
+        run: bash scripts/ci-cache-helpers.sh report

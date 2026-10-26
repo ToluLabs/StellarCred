@@ -1,0 +1,53 @@
+name: Manage stale issues and pull requests
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label inactive issues, age out inactive pull requests
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # --- Issues: label only, never auto-close. ---
+          days-before-stale: 45
+          days-before-close: -1
+          stale-issue-label: stale
+          close-issue-label: stale-closed
+          stale-issue-message: >-
+            This issue has been inactive for 45 days. It remains open; please
+            add an update if it is still relevant or close it if the work is
+            no longer needed.
+          exempt-issue-labels: "security,blocked,good first issue"
+
+          # --- Pull requests: warn after 30 inactive days, close 14 days later. ---
+          # A PR counts as inactive on its last update (push or comment), so any
+          # reply, rebase, or pushed commit resets the clock. See CONTRIBUTING.md
+          # ("Pull request lifecycle and staleness") for the full policy.
+          days-before-pr-stale: 30
+          days-before-pr-close: 14
+          stale-pr-label: stale
+          close-pr-label: stale-closed
+          stale-pr-message: >-
+            This pull request has had no activity for 30 days and is at risk of
+            being closed as stale in 14 days. If it is still wanted, push an
+            update or comment to keep it open, and rebase onto the latest
+            `main` so CI can go green. If the work has been superseded by
+            another PR, please comment with a pointer to the replacement so the
+            author is not left guessing.
+          close-pr-message: >-
+            This pull request was closed because it has been inactive for over
+            44 days with no response. Nothing is lost: the branch and history
+            remain, and anyone can reopen it (or open a fresh PR) whenever the
+            work is picked back up. If this PR superseded an issue that is
+            still open, please re-file rather than reviving a stale branch.
+          exempt-pr-labels: "security,blocked,dependencies,good first issue"

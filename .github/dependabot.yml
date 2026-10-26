@@ -1,0 +1,83 @@
+version: 2
+updates:
+  # ── Frontend npm/pnpm ──────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    versioning-strategy: "increase"
+    commit-message:
+      prefix: "npm(deps)"
+    labels:
+      - "dependencies"
+      - "npm"
+    groups:
+      minor-patch:
+        applies-to: "version-updates"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # ZK toolchain — pinned to a specific Noir beta that must not drift
+      # because proof generation / verification depend on exact circuit ABI
+      # compatibility.
+      - dependency-name: "@aztec/bb.js"
+      - dependency-name: "@noir-lang/noir_js"
+      - dependency-name: "@noir-lang/acvm_js"
+      - dependency-name: "@noir-lang/noirc_abi"
+      - dependency-name: "@noir-lang/types"
+    open-pull-requests-limit: 10
+
+  # ── Rust / Soroban contracts ───────────────────────────────────────
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "cargo(deps)"
+    labels:
+      - "dependencies"
+      - "rust"
+    groups:
+      minor-patch:
+        applies-to: "version-updates"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Pinned to 26.0.1 for host-native BN254 crypto compatibility
+      # with the UltraHonk verifier — bumping could break proof
+      # verification on-chain.
+      - dependency-name: "soroban-sdk"
+      # Sourced from git, pinned to a specific commit studied during
+      # de-risking. Auto-bumps would change the compiled verifier
+      # logic and invalidate existing proofs.
+      - dependency-name: "ultrahonk_soroban_verifier"
+    open-pull-requests-limit: 10
+
+  # ── GitHub Actions ─────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      minor-patch:
+        applies-to: "version-updates"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 10

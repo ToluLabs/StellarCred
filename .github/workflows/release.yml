@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# ── Security: least-privilege permissions ──────────────────────────────────
+# contents:write – push updated CHANGELOG.md back to main.
+#
+# This workflow only fires on tag pushes (v*), never on pull_request or
+# pull_request_target. Fork PRs cannot trigger it, so NPM_TOKEN is never
+# exposed to untrusted code.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Changelog, GitHub Release & npm publish
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # full history for changelog generation
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Extract the version from the tag (strips leading 'v')
+      - name: Set version env
+        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # Ensure tag version matches package.json version
+      - name: Verify package version
+        working-directory: frontend/packages/sdk
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "${RELEASE_VERSION}" ]; then
+            echo "Error: Tag version (${RELEASE_VERSION}) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+      # Generate / update CHANGELOG.md at the repo root using conventional-changelog
+      - name: Update CHANGELOG.md
+        working-directory: .
+        run: |
+          npx --yes conventional-changelog-cli \
+            -p angular \
+            -i CHANGELOG.md \
+            -s \
+            -r 0
+
+      # Extract only the section for this release to use as the GitHub Release body
+      - name: Extract release notes
+        id: notes
+        working-directory: .
+        run: |
+          NOTES=$(npx --yes conventional-changelog-cli -p angular -r 1 --outfile /dev/stdout 2>/dev/null)
+          # Store as multiline env var using a random delimiter to avoid EOF injection
+          DELIM=$(openssl rand -hex 8)
+          {
+            echo "RELEASE_NOTES<<$DELIM"
+            echo "$NOTES"
+            echo "$DELIM"
+          } >> "$GITHUB_ENV"
+
+      # Commit the updated CHANGELOG.md back to the default branch
+      - name: Commit CHANGELOG.md
+        working-directory: .
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          # Only commit if there are staged changes
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update CHANGELOG.md for ${{ github.ref_name }} [skip ci]"
+            # Fetch the latest main and retry rebase/push in case of concurrent merges
+            for i in 1 2 3 4 5; do
+              git fetch origin main
+              if ! git rebase origin/main; then
+                git rebase --abort
+                echo "Rebase conflict, retrying in 5 seconds..."
+                sleep 5
+                continue
+              fi
+              if git push origin HEAD:main; then
+                echo "Successfully pushed CHANGELOG to main."
+                exit 0
+              fi
+              echo "Push failed, retrying in 5 seconds..."
+              sleep 5
+            done
+            echo "Failed to push CHANGELOG to main after multiple attempts."
+            exit 1
+          fi
+
+      # Create the GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ env.RELEASE_NOTES }}
+
+      # Build and publish @stellarcred/sdk to npm
+      - name: Build SDK
+        working-directory: frontend/packages/sdk
+        run: pnpm build
+
+      - name: Publish to npm
+        working-directory: frontend/packages/sdk
+        run: pnpm publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

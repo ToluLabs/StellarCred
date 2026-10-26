@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned for reproducible WASM builds. All contributors and CI use this exact
+# compiler so that code-generation, LTO, and symbol-stripping produce
+# byte-identical artifacts. Bump this only when the whole team has updated and
+# the new WASM hashes have been re-recorded in DEPLOYMENTS.md.
+channel = "1.93.1"
+targets  = ["wasm32v1-none"]
