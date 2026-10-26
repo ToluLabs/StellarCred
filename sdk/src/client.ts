@@ -102,6 +102,65 @@ export class SdkClient {
   post<T>(path: string, body?: unknown, options: Omit<SdkRequestOptions, 'method' | 'body'> = {}): Promise<SdkResponse<T>> {
     return this.request<T>(path, { ...options, method: 'POST', body });
   }
+
+  /**
+   * Derives a deterministic per-app nullifier for cross-app unlinkable Sybil resistance (#395).
+   */
+  deriveNullifier(secret: string | bigint, appContext: string | bigint): string {
+    const payload = `${secret.toString()}::${appContext.toString()}`;
+    let h1 = 0xdeadbeef ^ 42;
+    let h2 = 0x41c6ce57 ^ 42;
+    for (let i = 0; i < payload.length; i++) {
+      const ch = payload.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    const p1 = (h1 >>> 0).toString(16).padStart(8, '0');
+    const p2 = (h2 >>> 0).toString(16).padStart(8, '0');
+    const p3 = (Math.imul(h1, 31) >>> 0).toString(16).padStart(8, '0');
+    const p4 = (Math.imul(h2, 37) >>> 0).toString(16).padStart(8, '0');
+    return `${p1}${p2}${p3}${p4}`.padEnd(64, '0');
+  }
+
+  /**
+   * Checks whether a nullifier has already been recorded in a given application context.
+   */
+  async checkNullifier(appContext: string, nullifier: string, options: SdkRequestOptions = {}): Promise<boolean> {
+    const res = await this.get<{ isUsed: boolean }>(`/api/nullifier/check`, {
+      ...options,
+      query: { ...options.query, appContext, nullifier },
+    });
+    return Boolean(res.data?.isUsed);
+  }
+
+  /**
+   * Records a nullifier in a given application context for Sybil resistance.
+   */
+  async recordNullifier(
+    appContext: string,
+    nullifier: string,
+    options: SdkRequestOptions = {}
+  ): Promise<SdkResponse<{ recorded: boolean }>> {
+    return this.post<{ recorded: boolean }>(`/api/nullifier/record`, { appContext, nullifier }, options);
+  }
+
+  /**
+   * High-level verification of unique personhood in an application context (#395).
+   */
+  async verifyUniquePersonhood(params: {
+    appContext: string;
+    nullifier?: string;
+    secret?: string | bigint;
+  }): Promise<{ unique: boolean; nullifier: string }> {
+    const nullifier = params.nullifier ?? (params.secret ? this.deriveNullifier(params.secret, params.appContext) : '');
+    if (!nullifier) {
+      throw new Error('Either nullifier or secret must be provided to verifyUniquePersonhood');
+    }
+    const isUsed = await this.checkNullifier(params.appContext, nullifier);
+    return { unique: !isUsed, nullifier };
+  }
 }
 
 function safeParseJson(text: string): unknown {

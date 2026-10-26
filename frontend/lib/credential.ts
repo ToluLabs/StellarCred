@@ -5,6 +5,7 @@ import { CREDENTIAL_TYPES, type CredentialType } from "./stellar";
 import { deploymentMismatchMessage, type DeploymentRef } from "./deployment";
 import { circuitVersionMismatchMessage } from "./circuit-versions";
 import { isStorageAvailable } from "./safe-storage";
+import { filterCredentialsForExport } from "./export-visibility";
 import {
   ENVELOPE_VERSION,
   PBKDF2_ITERATIONS,
@@ -347,11 +348,10 @@ export async function loadCredentials(): Promise<Credential[]> {
  * Serialize every locally stored credential to a JSON string for backup.
  * Pairs with the holder page's "Import credential JSON" flow: the exported
  * file's contents can be pasted back (or into another browser) to restore.
- * The export contains the sensitive attribute values, so it must be handled
- * like a password.
+ * Per-field visibility preferences omit opted-out PII fields from the export.
  */
 export async function exportCredentials(): Promise<string> {
-  return JSON.stringify(await loadCredentials(), null, 2);
+  return JSON.stringify(filterCredentialsForExport(await loadCredentials()), null, 2);
 }
 
 async function persistCredentials(next: Credential[]): Promise<void> {

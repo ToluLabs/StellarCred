@@ -1,13 +1,10 @@
 "use client";
 
-import {
+import { NETWORK_PASSPHRASE } from "./stellar";
+import type {
   ModuleInterface,
-  ModuleType,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
-import { StrKey } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASE } from "./stellar";
-import { xdr } from "@stellar/stellar-sdk";
 // Runtime type shapes for the Ledger internals. Deliberately type-only: the
 // real @ledgerhq/hw-transport entry point isn't a direct dependency of the
 // frontend, and TransportWebUSB's instance type carries everything the
@@ -16,11 +13,17 @@ import { xdr } from "@stellar/stellar-sdk";
 // runtime-broken behind `any`.
 import type TransportWebUSB from "@ledgerhq/hw-transport-webusb";
 import type Str from "@ledgerhq/hw-app-str";
+import { Buffer } from "buffer";
 
 export const LEDGER_ID = "ledger";
 export const LEDGER_NAME = "Ledger";
 export const LEDGER_ICON =
   "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwMDAwIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTMgM2gxOHYxOEgzeiIvPjxwYXRoIGQ9Ik03IDdoMTB2MTBIN3eiIvPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjIiLz48L3N2Zz4=";
+
+// The kit's ModuleType enum is a runtime value ("HW_WALLET"), but statically
+// importing the kit here would drag it into the common chunk via wallet.ts's
+// lazy ledger-module import. The kit interface only needs the literal, so use
+// it directly — pinned by the ModuleType mock in the ledger/wallet tests.
 
 export class LedgerModule implements ModuleInterface {
   id = LEDGER_ID;
@@ -31,7 +34,7 @@ export class LedgerModule implements ModuleInterface {
   async isPlatformWrapper(): Promise<boolean> {
     return false;
   }
-  moduleType = ModuleType.HW_WALLET;
+  moduleType = "HW_WALLET" as ModuleInterface["moduleType"];
   productId = LEDGER_ID;
   productName = LEDGER_NAME;
   productUrl = "https://www.ledger.com";
@@ -71,6 +74,10 @@ export class LedgerModule implements ModuleInterface {
       // NOT { publicKey: hexString }. Passing the raw bytes straight to StrKey
       // avoids the double-hex-decoding the old code assumed.
       const response = await this.app.getPublicKey(path, true);
+      // Lazy load StrKey from the stellar-sdk bundle so the home page never has
+      // to carry the heavy SDK (stellar-sdk + stellar-base) when the ledger
+      // module is never used (the wallet picker already excludes it).
+      const { StrKey } = await import("@stellar/stellar-sdk");
       const address = StrKey.encodeEd25519PublicKey(response.rawPublicKey);
       return { address };
     } catch (e) {
@@ -97,7 +104,7 @@ export class LedgerModule implements ModuleInterface {
           "Ledger signing requires the signer address (opts.address)"
         );
       }
-      const { Transaction } = await import("@stellar/stellar-sdk");
+      const { Transaction, StrKey, xdr } = await import("@stellar/stellar-sdk");
       const tx = new Transaction(
         xdrString,
         opts.networkPassphrase ?? NETWORK_PASSPHRASE
@@ -175,9 +182,15 @@ export class LedgerModule implements ModuleInterface {
  * enum, so anything that isn't mainnet signs as testnet.
  */
 export function kitNetworkForPassphrase(passphrase: string): WalletNetwork {
-  return passphrase === "Public Global Stellar Network ; September 2015"
-    ? WalletNetwork.PUBLIC
-    : WalletNetwork.TESTNET;
+  // WalletNetwork enum values ARE the passphrases themselves (PUBLIC =
+  // "Public Global Stellar Network ; September 2015", TESTNET = "Test SDF
+  // Network ; September 2015") — compare inline as literals so this helper
+  // never needs a runtime kit import; callers cast to WalletNetwork.
+  return (
+    passphrase === "Public Global Stellar Network ; September 2015"
+      ? "Public Global Stellar Network ; September 2015"
+      : "Test SDF Network ; September 2015"
+  ) as WalletNetwork;
 }
 
 export function getLedgerModule(): LedgerModule {

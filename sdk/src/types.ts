@@ -41,3 +41,20 @@ export class SdkError extends Error {
 }
 
 export type SdkFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+export interface NullifierCheckOptions extends SdkRequestOptions {
+  appContext: string;
+  nullifier: string;
+}
+
+export interface NullifierRecordOptions extends SdkRequestOptions {
+  appContext: string;
+  nullifier: string;
+}
+
+export interface UniquePersonhoodOptions extends SdkRequestOptions {
+  appContext: string;
+  nullifier?: string;
+  secret?: string | bigint;
+  wallet?: string;
+}

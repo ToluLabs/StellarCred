@@ -168,6 +168,16 @@ pub struct EventVerificationRevoked {
     pub verifier: Address,
 }
 
+/// Payload emitted when a nullifier is seen and recorded for an application context (#395).
+/// Topics: ("proof_reg", "nullifier")
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventNullifierUsed {
+    pub app_context: BytesN<32>,
+    pub nullifier: BytesN<32>,
+    pub recorded_at: u64,
+}
+
 // Persistent-entry lifetime management
 const DAY_IN_LEDGERS: u32 = 17280;
 const SECONDS_PER_LEDGER: u64 = 5;
@@ -280,6 +290,9 @@ pub enum DataKey {
     /// scoped, time-boxed grant letting `verifier` read `holder`'s
     /// `credential_type` result via `check_delegated_verification` (#396).
     Delegation(Address, Address, Symbol),
+    /// (app_context, nullifier) -> bool. Stores whether a nullifier has been
+    /// consumed within an application context to enforce Sybil resistance (#395).
+    Nullifier(BytesN<32>, BytesN<32>),
 }
 
 #[contracterror]
@@ -305,6 +318,8 @@ pub enum Error {
     RoleHolderMismatch = 14,
     /// `accept_admin` was called with no pending proposal (#343).
     NoPendingAdmin = 15,
+    /// The nullifier has already been consumed in this application context (#395).
+    NullifierAlreadyUsed = 16,
 }
 
 #[contract]
@@ -582,6 +597,65 @@ impl ProofRegistry {
                 verified_at: record.verified_at,
                 expiry: record.expiry,
             },
+        );
+    }
+
+    /// Checks if a nullifier has already been recorded for a specific application context (#395).
+    pub fn is_nullifier_used(env: Env, app_context: BytesN<32>, nullifier: BytesN<32>) -> bool {
+        let key = DataKey::Nullifier(app_context, nullifier);
+        env.storage().persistent().has(&key)
+    }
+
+    /// Records a nullifier for a specific application context to enforce one-per-person / Sybil resistance.
+    /// Rejects a second submission/recording with the same nullifier for that context (#395).
+    #[allow(deprecated)]
+    pub fn record_nullifier(env: Env, app_context: BytesN<32>, nullifier: BytesN<32>) {
+        Self::ensure_not_paused(&env);
+        if Self::is_nullifier_used(env.clone(), app_context.clone(), nullifier.clone()) {
+            panic_with_error!(&env, Error::NullifierAlreadyUsed);
+        }
+        let key = DataKey::Nullifier(app_context.clone(), nullifier.clone());
+        env.storage().persistent().set(&key, &true);
+        env.storage().persistent().extend_ttl(&key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
+
+        env.events().publish(
+            (
+                symbol_short!("proof_reg"),
+                symbol_short!("nullifier"),
+            ),
+            EventNullifierUsed {
+                app_context,
+                nullifier,
+                recorded_at: env.ledger().timestamp(),
+            },
+        );
+    }
+
+    /// Submits a proof and atomically binds and records a per-app nullifier (#395).
+    /// Rejects on-chain if the nullifier has already been used in this app_context.
+    #[allow(deprecated)]
+    pub fn submit_proof_with_nullifier(
+        env: Env,
+        holder: Address,
+        issuer_id: Address,
+        credential_type: Symbol,
+        proof: Bytes,
+        public_inputs: Bytes,
+        vk_version: Option<u32>,
+        expiry: u64,
+        app_context: BytesN<32>,
+        nullifier: BytesN<32>,
+    ) {
+        Self::record_nullifier(env.clone(), app_context, nullifier);
+        Self::submit_proof(
+            env,
+            holder,
+            issuer_id,
+            credential_type,
+            proof,
+            public_inputs,
+            vk_version,
+            expiry,
         );
     }
 

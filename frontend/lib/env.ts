@@ -30,6 +30,7 @@ const SERVER_SECRET_KEYS = [
   "PLAID_SECRET",
   "PLAID_ACCESS_TOKEN",
   "PLAID_ACCESS_TOKENS",
+  "ISSUANCE_WEBHOOK_SECRET",
 ] as const;
 
 const envSchema = z
@@ -154,6 +155,27 @@ const envSchema = z
       emptyToUndefined,
       z.coerce.number().int().positive().optional(),
     ),
+    RATE_LIMIT_CSP_REPORT_IP: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().positive().optional(),
+    ),
+
+    // --- Redis (optional; enables shared rate-limit store) --------------------
+    // When set, lib/redis-rate-limit.ts stores fixed-window counters in Redis
+    // so limits are enforced consistently across all application instances.
+    // Without this, each instance uses the in-process Map store (lib/rate-limit.ts),
+    // which is correct for single-replica deployments.
+    // See docker-compose.redis.yml for local development setup.
+    REDIS_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+    REDIS_KEY_PREFIX: z.preprocess(emptyToUndefined, z.string().optional()),
+    REDIS_TLS: z.preprocess(emptyToUndefined, z.string().optional()),
+
+    // --- Metrics --------------------------------------------------------------
+    // Optional static token to gate GET /api/metrics. When unset the endpoint
+    // is publicly accessible (exposes only aggregate counters, no PII).
+    // When set, requests must supply it as: Authorization: Bearer <token>
+    // or X-Metrics-Token: <token>.
+    METRICS_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
 
     // --- Ops -------------------------------------------------------------------
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
@@ -165,6 +187,10 @@ const envSchema = z
     ),
     // Deprecated alias; OUTBOUND_SINK_URL is the shared setting going forward.
     ERROR_REPORTING_WEBHOOK: z.preprocess(emptyToUndefined, z.string().url().optional()),
+    // Sentry error monitoring DSN (#853)
+    SENTRY_DSN: z.preprocess(emptyToUndefined, z.string().url().optional()),
+    // Asynchronous issuance callback webhook secret (#846)
+    ISSUANCE_WEBHOOK_SECRET: z.preprocess(emptyToUndefined, z.string().min(8).optional()),
   })
   .superRefine((val, ctx) => {
     // The /api/issue route previously discovered this combination missing at
