@@ -99,15 +99,15 @@ test.describe("Wallet Connection", () => {
     // Confirm we are connected first.
     await expect(page.getByText(truncate(TEST_WALLET))).toBeVisible();
 
-    // Find and click the wallet button in the nav to open its popover, then
-    // click the disconnect option. The WalletButton renders a button that
-    // shows the truncated address; clicking it opens a dropdown/popover.
-    const walletBtn = page.getByRole("button", { name: new RegExp(truncate(TEST_WALLET), "i") });
+    // The header WalletButton uses a 4+4 truncation (truncateAddress), unlike the
+    // 6+4 "Issued to" line, and its accessible name comes from the aria-label
+    // "Connected wallet GAAA…AWHF. Click to disconnect." There is no popover:
+    // clicking the button calls disconnect() directly.
+    const headerAddr = `${TEST_WALLET.slice(0, 4)}…${TEST_WALLET.slice(-4)}`;
+    const walletBtn = page.getByRole("button", {
+      name: new RegExp(`Connected wallet ${headerAddr}`, "i"),
+    });
     await walletBtn.click();
-
-    const disconnectBtn = page.getByRole("button", { name: /disconnect/i });
-    await expect(disconnectBtn).toBeVisible({ timeout: 5_000 });
-    await disconnectBtn.click();
 
     // After disconnect, the connect-wallet prompt should reappear.
     await expect(
