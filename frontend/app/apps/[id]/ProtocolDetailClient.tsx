@@ -19,9 +19,16 @@ import { WalletButton } from "@/components/WalletButton";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
 import { ConfigBanner } from "@/components/ConfigBanner";
-import { QrCodeModal } from "@/components/QrCodeModal";
+import dynamic from "next/dynamic";
 import { getProtocol, type Protocol } from "@/lib/protocols";
 import { useProtocolAccessCheck } from "@/lib/use-protocol-access";
+
+// Lazy-load QrCodeModal (pulls in the qrcode lib) — only rendered when the
+// user clicks the QR icon. Keeps qrcode out of the initial /apps/[id] bundle.
+const QrCodeModal = dynamic(
+  () => import("@/components/QrCodeModal").then((m) => m.QrCodeModal),
+  { ssr: false },
+);
 
 function ProtocolDetailBody({
   protocol,
