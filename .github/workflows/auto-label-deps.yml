@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
   issues: write
+  # Labelling a *pull request* is authorised against pull-requests, not issues:
+  # with only `issues: write` the token gets 403 "Resource not accessible by
+  # integration" from POST /issues/{n}/labels.
   pull-requests: write
 
 concurrency:
@@ -78,10 +81,14 @@ jobs:
               )}). Applying '${labelName}'.`
             );
 
-            // addLabels fails with 404 when the label does not exist yet.
-            // Create it on first use so a fresh repository (or a newly
-            // configured DEPENDENCY_LABEL_NAME) labels successfully.
+            // Labelling is best-effort: a permission or API hiccup must never
+            // fail the PR's own checks. (Without `pull-requests: write`,
+            // POST /issues/{n}/labels returned 403 and every PR classified as
+            // a dependency update went red.)
             try {
+              // addLabels fails with 404 when the label does not exist yet.
+              // Create it on first use so a fresh repository (or a newly
+              // configured DEPENDENCY_LABEL_NAME) labels successfully.
               try {
                 await github.rest.issues.getLabel({ owner, repo, name: labelName });
               } catch (error) {
@@ -109,11 +116,8 @@ jobs:
 
               core.info(`Applied '${labelName}' to PR #${pr.number}.`);
             } catch (error) {
-              if (error.status === 403) {
-                core.warning(
-                  `Insufficient permissions to apply label '${labelName}' to PR #${pr.number}: ${error.message}`
-                );
-              } else {
-                throw error;
-              }
+              core.warning(
+                `Could not apply '${labelName}' to PR #${pr.number}: ${error.message} ` +
+                  `(labelling is best-effort, not failing this check).`
+              );
             }
