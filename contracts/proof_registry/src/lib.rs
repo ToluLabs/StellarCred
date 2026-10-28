@@ -320,6 +320,12 @@ pub enum Error {
     NoPendingAdmin = 15,
     /// The nullifier has already been consumed in this application context (#395).
     NullifierAlreadyUsed = 16,
+    /// `renew_proof` was called before the renewal window opened, or the
+    /// record is already revoked.
+    RenewalNotAllowed = 17,
+    /// `renew_proof` was called with an `expiry` that does not extend the
+    /// current one.
+    InvalidRenewalExpiry = 18,
 }
 
 #[contract]
@@ -1009,6 +1015,56 @@ impl ProofRegistry {
             panic_with_error!(&env, Error::ProofNotFound);
         }
         Self::bump_ttl(&env, &key, record.expiry);
+    }
+
+    /// Renew a still-valid cached proof inside its renewal window, extending
+    /// `expiry` without re-running the verifier. The holder authorizes their
+    /// own renewal. The new `expiry` must be strictly later than the current
+    /// one and within `MAX_CREDENTIAL_TTL_SECS` of now. Revoked or expired
+    /// records cannot be renewed — the holder must resubmit a fresh proof.
+    #[allow(deprecated)]
+    pub fn renew_proof(
+        env: Env,
+        holder: Address,
+        credential_type: Symbol,
+        new_expiry: u64,
+    ) {
+        holder.require_auth();
+        Self::ensure_not_paused(&env);
+        Self::validate_expiry(&env, new_expiry);
+
+        let key = DataKey::Proof(holder.clone(), credential_type.clone());
+        let mut record: ProofRecord = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::ProofNotFound));
+
+        let now = env.ledger().timestamp();
+        if record.revoked || record.expiry <= now {
+            panic_with_error!(&env, Error::RenewalNotAllowed);
+        }
+        if new_expiry <= record.expiry {
+            panic_with_error!(&env, Error::InvalidRenewalExpiry);
+        }
+
+        record.expiry = new_expiry;
+        env.storage().persistent().set(&key, &record);
+        Self::bump_ttl(&env, &key, new_expiry);
+
+        env.events().publish(
+            (
+                symbol_short!("proof_reg"),
+                symbol_short!("renewed"),
+                credential_type,
+            ),
+            EventProofSubmitted {
+                holder,
+                issuer: record.issuer.unwrap(),
+                verified_at: record.verified_at,
+                expiry: record.expiry,
+            },
+        );
     }
 
     fn issuer_is_trusted(trusted_issuers: &Option<Vec<Address>>, issuer: &Option<Address>) -> bool {

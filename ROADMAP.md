@@ -37,6 +37,41 @@ Already done and counted as gates for v1.0 (verify regression coverage at RC):
 
 ## 2. Scope
 
+- **Security and privacy:** [#69](https://github.com/ToluLabs/StellarCred/issues/69)
+  issuer signing-key Provenance/KMS/HSM; [#70](https://github.com/ToluLabs/StellarCred/issues/70)
+  issuance rate limiting; [#72](https://github.com/ToluLabs/StellarCred/issues/72)
+  API request validation; [#342](https://github.com/ToluLabs/StellarCred/issues/342)
+  contract admin rotation; [#531](https://github.com/ToluLabs/StellarCred/issues/531)
+  CSP; [#532](https://github.com/ToluLabs/StellarCred/issues/532)
+  embed framing/origin controls; [#533](https://github.com/ToluLabs/StellarCred/issues/533)
+  holder data-disclosure visibility; [#547](https://github.com/ToluLabs/StellarCred/issues/547)
+  consolidate credential storage/encryption; [#628](https://github.com/ToluLabs/StellarCred/issues/628)
+  avoid caching signed credentials in full responses; [#619](https://github.com/ToluLabs/StellarCred/issues/619)
+  expiring, single-use verification links.
+- **Correctness and resilience:** [#75](https://github.com/ToluLabs/StellarCred/issues/75)
+  API health/readiness; [#163](https://github.com/ToluLabs/StellarCred/issues/163)
+  validate circuit inputs; [#308](https://github.com/ToluLabs/StellarCred/issues/308)
+  aggregate submission integration coverage; [#333](https://github.com/ToluLabs/StellarCred/issues/333)
+  preserve indexer thresholds; [#521](https://github.com/ToluLabs/StellarCred/issues/521)
+  replace the mock pool ledger; [#528](https://github.com/ToluLabs/StellarCred/issues/528)
+  Persona webhook handling; [#534](https://github.com/ToluLabs/StellarCred/issues/534)
+  track circuit constraints; [#550](https://github.com/ToluLabs/StellarCred/issues/550)
+  strengthen reproducible-build checks; [#552](https://github.com/ToluLabs/StellarCred/issues/552)
+  test/document storage TTL; [#555](https://github.com/ToluLabs/StellarCred/issues/555)
+  prevent retry amplification; [#604](https://github.com/ToluLabs/StellarCred/issues/604)
+  remove duplicate health routes; [#612](https://github.com/ToluLabs/StellarCred/issues/612)
+  check indexer data integrity; [#624](https://github.com/ToluLabs/StellarCred/issues/624)
+  unify operational sink configuration; [#634](https://github.com/ToluLabs/StellarCred/issues/634)
+  explicit degraded mode when RPC is unavailable.
+- **Required verification and CI:** [#31](https://github.com/ToluLabs/StellarCred/issues/31)
+  shared circuit test harness; [#43](https://github.com/ToluLabs/StellarCred/issues/43)
+  testnet verify/prove/submit E2E; [#215](https://github.com/ToluLabs/StellarCred/issues/215)
+  frontend lint/tests in CI; [#599](https://github.com/ToluLabs/StellarCred/issues/599)
+  contract fmt/clippy CI; [#607](https://github.com/ToluLabs/StellarCred/issues/607)
+  record the reverted circuit change's root cause; [#621](https://github.com/ToluLabs/StellarCred/issues/621)
+  clarify CI workflow ownership; [#642](https://github.com/ToluLabs/StellarCred/issues/642)
+  verify browser-generated proofs on-chain.
+
 ### In scope for v1.0
 
 - **Contracts:** `IssuerRegistry`, `CredentialVerifier`, `ProofRegistry` with a
@@ -74,6 +109,100 @@ Already done and counted as gates for v1.0 (verify regression coverage at RC):
 
 Durations are rough and assume 2–4 active contributors. Create a GitHub
 milestone for each and assign the issues below to it.
+
+## Credential lifecycle and renewal policy
+
+This policy defines the standardised lifecycle for every StellarCred
+credential, from issuance through expiration, renewal, and revocation. It
+applies to issuers, holders, verifiers, and the indexer.
+
+### Credential states
+
+Every credential is in exactly one of these states. State is derived from
+on-chain data and the issuer's published policy, not from local client clocks
+alone.
+
+| State       | Meaning                                                 |
+| ------------ | ---------------------------------------------------------------|
+| `issued`     | Valid and within its validity window.                           |
+| `expiring`    | Within the renewal window and still valid.                       |
+| `expired`     | Past the validity window and no longer accepted for new proofs.    |
+| `revoked      | Explicitly invalidated by the issuer or admin before expiry.       |
+| `replaced`    | Superseded by a renewed credential; kept for audit only.           |
+
+### Validity windows
+
+- **Default validity:** 12 months from the issuance timestamp unless the
+  issuer publishes a shorter or longer window in its policy document.
+- **Maximum validity:** 36 months. Issuers requesting a longer window must
+  receive explicit approval from the protocol admin and record the justification
+  in the issuer registry.
+- **Minimum validity:** 1 day. Shorter windows are rejected at issuance to
+  avoid credentials that expire before a holder can use them.
+- **Clock source:** the ledger timestamp at issuance defines the start of the
+  window. Verifiers must evaluate expiry against the latest ledger timestamp,
+  not the holder's or verifier's local clock.
+
+### Renewal window
+
+- **Opening:** the renewal window opens 30 days before the expiry timestamp.
+- **Closing:** the renewal window closes at the expiry timestamp. After that,
+  the credential is `expired` and a new issuance flow is required.
+- **Grace period:** no grace period extends the validity of a credential for
+  verification. The window exists only to allow the holder to request renewal
+  before expiry.
+- **Renewal outcome:** a successful renewal issues a new credential and marks
+  the previous one `replaced`. The new credential receives a fresh validity
+  window and its own identifier; the old identifier is never reused.
+- **Required reattestation:** renewal must re-run the issuer's current
+  eligibility checks. Renewal is not an automatic extension of the prior grant.
+
+### Revocation and trust
+
+- **Revocation authority:** only the issuing issuer or a protocol admin acting
+  through the admin rotation process may revoke a credential. Holders and
+  verifiers cannot revoke.
+- **Revocation record:** every revocation records the credential identifier,
+  the authority, the ledger timestamp, and a reason code. Records are
+  append-only and publicly verifiable.
+- **Trust revocation:** revoking an issuer's signing key or trust registration
+  invalidates all credentials it issued that are still within their validity
+  window. Verifiers must treat those credentials as `invalid` immediately.
+- **Propagation:** revocation and trust-revocation events are published to the
+  indexer and are available through the SDK and revocation subscriptions
+  within one indexer checkpoint.
+
+### Verifier requirements
+
+- Verifiers must reject credentials that are `expired`, `revoked`, or
+  `replaced`, and must reject credentials from a revoked trust registration.
+- Verifiers must check the revocation state at the time of verification, not
+  cache a valid result beyond the credential's expiry timestamp.
+- Verifiers should surface the `expiring` state to holders so renewal can be
+  completed in time.
+
+### Holder responsibilities
+
+- Holders are notified when a credential enters the renewal window.
+- Holders must complete renewal before the expiry timestamp; after expiry the
+  credential cannot be renewed and a new issuance flow is required.
+- Holders may delete a credential locally at any time; deletion does not
+  revoke the on-chain record.
+
+### Operational guarantees
+
+- Expiry and renewal state transitions are deterministic given the ledger
+  timestamp and the issuer policy.
+- Revocation and trust-revocation events are idempotent and safe to replay.
+- The indexer must expose the current state of every credential and the current
+  trust status of every issuer registration.
+
+## How to use this roadmap
+
+Pick work from the highest track that matches your skills. Labels such as
+`.easy`, `medium`, and `hard` describe effort, not priority. Before starting,
+check that the issue is still open and not already being handled by an active
+pull request.
 
 ### v1.0-alpha — "scope frozen" (≈ weeks 0–3)
 

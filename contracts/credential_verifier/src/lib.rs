@@ -88,6 +88,17 @@ const VK_TTL: u32 = 180 * DAY_IN_LEDGERS;
 // commit. See: SUPPORT_POLICY.md
 const MAX_PROOF_VALIDITY_SECONDS: u64 = 90 * 86_400;
 
+// Credential lifecycle policy (see CREDENTIAL_LIFECYCLE.md).
+// Default credential validity window: a credential is valid for this many
+// seconds from issuance unless a shorter/longer window is explicitly set.
+const DEFAULT_CREDENTIAL_VALIDITY_SECONDS: u64 = 365 * 86_400;
+// Renewal window: credentials may be renewed starting this many seconds
+// before their expiration. Renewals outside this window are rejected.
+const CREDENTIAL_RENEWAL_WINDOW_SECONDS: u64 = 30 * 86_400;
+// Grace period after expiration during which a credential is still accepted
+// for verification (but not for new issuance).
+const CREDENTIAL_GRACE_PERIOD_SECONDS: u64 = 7 * 86_400;
+
 #[contracttype]
 pub enum DataKey {
     Admin,
@@ -108,6 +119,12 @@ pub enum DataKey {
     DeprecatedAt(Symbol, u32),
     /// Timestamp of the last upgrade (for audit trail).
     LastUpgradeTimestamp,
+    /// Per-credential-type lifecycle policy override: validity window in
+    /// seconds. Falls back to `DEFAULT_CREDENTIAL_VALIDITY_SECONDS`.
+    CredentialValidity(Symbol),
+    /// Per-credential-type renewal window override in seconds. Falls back to
+    /// `CREDENTIAL_RENEWAL_WINDOW_SECONDS`.
+    CredentialRenewalWindow(Symbol),
 }
 
 #[contracterror]
@@ -131,6 +148,14 @@ pub enum Error {
     RoleHolderMismatch = 8,
     /// `accept_admin` was called with no pending proposal (#342).
     NoPendingAdmin = 9,
+    /// The credential has expired and is outside its grace period; it can no
+    /// longer be verified or renewed.
+    CredentialExpired = 10,
+    /// The credential is not yet within its renewal window; renewal is
+    /// rejected until the window opens.
+    RenewalWindowNotOpen = 11,
+    /// The requested lifecycle policy value is invalid (e.g. zero validity).
+    InvalidLifecyclePolicy = 12,
 }
 
 #[contract]
@@ -270,6 +295,99 @@ impl CredentialVerifier {
         env.storage()
             .persistent()
             .extend_ttl(&at_key, VK_BUMP_THRESHOLD, VK_TTL);
+    }
+
+    /// Admin-role only. Sets the credential lifecycle policy for a credential
+    /// type: the validity window (seconds a credential remains valid from
+    /// issuance) and the renewal window (seconds before expiration during
+    /// which renewal is permitted). Both values must be non-zero, and the
+    /// renewal window must not exceed the validity window.
+    pub fn set_lifecycle_policy(
+        env: Env,
+        credential_type: Symbol,
+        validity_seconds: u64,
+        renewal_window_seconds: u64,
+    ) {
+        Self::require_role(&env, &symbol_short!("admin"));
+        if validity_seconds == 0
+            || renewal_window_seconds == 0
+            || renewal_window_seconds > validity_seconds
+        {
+            panic_with_error!(&env, Error::InvalidLifecyclePolicy);
+        }
+        let validity_key = DataKey::CredentialValidity(credential_type.clone());
+        let renewal_key = DataKey::CredentialRenewalWindow(credential_type);
+        env.storage()
+            .persistent()
+            .set(&validity_key, &validity_seconds);
+        env.storage()
+            .persistent()
+            .set(&renewal_key, &renewal_window_seconds);
+        env.storage()
+            .persistent()
+            .extend_ttl(&validity_key, VK_BUMP_THRESHOLD, VK_TTL);
+        env.storage()
+            .persistent()
+            .extend_ttl(&renewal_key, VK_BUMP_THRESHOLD, VK_TTL);
+    }
+
+    /// Returns the effective validity window (seconds) for a credential type,
+    /// falling back to `DEFAULT_CREDENTIAL_VALIDITY_SECONDS` when no override
+    /// has been configured.
+    pub fn credential_validity(env: Env, credential_type: Symbol) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::CredentialValidity(credential_type))
+            .unwrap_or(DEFAULT_CREDENTIAL_VALIDITY_SECONDS)
+    }
+
+    /// Returns the effective renewal window (seconds) for a credential type,
+    /// falling back to `CREDENTIAL_RENEWAL_WINDOW_SECONDS` when no override
+    /// has been configured.
+    pub fn credential_renewal_window(env: Env, credential_type: Symbol) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::CredentialRenewalWindow(credential_type))
+            .unwrap_or(CREDENTIAL_RENEWAL_WINDOW_SECONDS)
+    }
+
+    /// Computes the expiration timestamp for a credential of `credential_type`
+    /// issued at `issued_at`, using the effective validity window.
+    pub fn credential_expiration(
+        env: Env,
+        credential_type: Symbol,
+        issued_at: u64,
+    ) -> u64 {
+        let validity = Self::credential_validity(env.clone(), credential_type);
+        issued_at.saturating_add(validity)
+    }
+
+    /// Returns true iff a credential of `credential_type` issued at
+    /// `issued_at` is still within its validity window plus grace period at
+    /// the current ledger time.
+    pub fn is_credential_live(
+        env: Env,
+        credential_type: Symbol,
+        issued_at: u64,
+    ) -> bool {
+        let expires_at = Self::credential_expiration(env.clone(), credential_type, issued_at);
+        let deadline = expires_at.saturating_add(CREDENTIAL_GRACE_PERIOD_SECONDS);
+        env.ledger().timestamp() <= deadline
+    }
+
+    /// Returns true iff a credential of `credential_type` issued at
+    /// `issued_at` is currently within its renewal window (i.e. renewal is
+    /// permitted at the current ledger time).
+    pub fn is_renewal_open(
+        env: Env,
+        credential_type: Symbol,
+        issued_at: u64,
+    ) -> bool {
+        let expires_at = Self::credential_expiration(env.clone(), credential_type, issued_at);
+        let window = Self::credential_renewal_window(env.clone(), credential_type);
+        let opens_at = expires_at.saturating_sub(window);
+        let now = env.ledger().timestamp();
+        now >= opens_at && now <= expires_at.saturating_add(CREDENTIAL_GRACE_PERIOD_SECONDS)
     }
 
     /// Admin-only. Permanently removes the VK bytes for a deprecated version.
@@ -535,6 +653,35 @@ impl CredentialVerifier {
 
         env.events()
             .publish((symbol_short!("cred_ver"), symbol_short!("adm_canc")), ());
+    }
+
+    /// Renew a credential of `credential_type` issued at `issued_at`. Callable
+    /// by the credential holder, who must authenticate. Renewal is only
+    /// permitted while the credential is within its renewal window (see
+    /// `is_renewal_open`); otherwise the call panics with
+    /// `RenewalWindowNotOpen` or `CredentialExpired`. Returns the new
+    /// issuance timestamp (the current ledger time), from which a fresh
+    /// validity window begins.
+    ///
+    /// This is a policy-enforcement entry point: it validates the lifecycle
+    /// rules on-chain so that off-chain issuers and verifiers share a single
+    /// source of truth for expiration and renewal.
+    pub fn renew_credential(
+        env: Env,
+        holder: Address,
+        credential_type: Symbol,
+        issued_at: u64,
+    ) -> u64 {
+        holder.require_auth();
+        let now = env.ledger().timestamp();
+        let expires_at = Self::credential_expiration(env.clone(), credential_type.clone(), issued_at);
+        if now > expires_at.saturating_add(CREDENTIAL_GRACE_PERIOD_SECONDS) {
+            panic_with_error!(&env, Error::CredentialExpired);
+        }
+        if !Self::is_renewal_open(env.clone(), credential_type, issued_at) {
+            panic_with_error!(&env, Error::RenewalWindowNotOpen);
+        }
+        now
     }
 
     /// Read the current pending admin proposal, if any (#342).
