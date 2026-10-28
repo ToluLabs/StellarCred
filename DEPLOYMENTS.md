@@ -1,7 +1,7 @@
 # StellarCred Contract Deployments
 
-This document maintains the record of deployed StellarCred smart contract IDs
-on each Stellar network, the exact source commit each deployment was built from,
+This document maintains the record of deployed StellarCred smart contract ID
+s on each Stellar network, the exact source commit each deployment was built from,
 and the SHA-256 hashes of the WASM artifacts. The hashes are the anchor for
 independent verification: anyone can rebuild from the recorded commit and check
 that their output matches.
@@ -62,9 +62,9 @@ not just twice on the same machine.
 | Contract | WASM | Contract ID | Expected WASM SHA-256 |
 |---|---|---|---|
 | **Issuer Registry** | `issuer_registry.wasm` | `CDYPCHIFRXAAJFUA7MBH4FAWYLNG7XMAH7QRGVF437V2PGDBXZ2VK2DZ` | `458d4ff6de2ca8e065388cab0b05b566a7a279ec4d46542ee5b41a30aacb46da` |
-| **Credential Verifier** | `credential_verifier.wasm` | `CCUUSDWSCSML3DFXVNEXQN7OFYXY2PGBOLKJR5R4Q5JPK47V4TYPQUKJ` | `f3f26e37a960362784fbcd419de71986f06fc0655adfae08ba392f57ab7a199f` |
-| **Proof Registry** | `proof_registry.wasm` | `CBEXHUMCNS4TJWNYXRFJNIWCNUW62MHAXL4JOBT764CLMHAPNJKIRWXV` | `ddf30335aa7dcf9146c9929003f3a4c1d1070f2c5d9482ca2e36886bfb34e0c4` |
-| **Gated Pool** | `gated_pool.wasm` | `CCKQQGWNKMFWAYPT37KEI5WQSCDEPH6H7XZEFJ3UB5BH5SVZBUPVUGI3` | `32986998d4bf7277cbb3161d1236c349dcc39faa530a8ba2e74e00d1c27092d0` |
+| **Credential Verifier** | `credential_verifier.wasm` | `CCUUSDWSCSML3DFXVNEXQN7OFYXY2PGBOLKJR5R4Q5JPK47V4TYPSUKJ` | `f3f26e37a960362784fbcd419de71986f06fc0655adfae08ba392f57ab7a199f` |
+| **Proof Registry** | `proof_registry.wasm` | `CBEXHUMCNS4TJWNYXRFJNIWCNUW62MHAXK4JOBT764CLMHAPNJKIRWXV` | `ddf30335aa7dcf9146c9929003f3a4c1d1070f2c5d9482ca2e36886bfb34e0c4` |
+| **Gated Pool** | `gated_pool.wasm` | `CCKQQGWNKMFWAYPT37KEI5WQSCDEPH6H7XZEFJ3UB5BHESVZBUPVUGI3` | `32986998d4bf7277cbb3161d1236c349dcc39faa530a8ba2e74e00d1c27092d0` |
 
 ---
 
@@ -83,10 +83,10 @@ When deploying a new version, `deploy.sh` produces a JSON manifest in
 1. Run `./scripts/verify-wasm.sh --network <testnet|mainnet>` to confirm the
    on-chain hashes match the built artifacts.
 2. Add a new versioned section to this file (copy the template above).
-   - **Source commit**: the exact `git rev-parse HEAD` at build time.
+   - **Source commit**: the exact `git rev-parse HEA` at build time.
      `deploy.sh` records this in the manifest under `source_commit`.
    - **Expected WASM SHA-256**: copy from the `wasm-hashes-<commit>` artifact
-     produced by the Reproducible Build CI workflow for that commit, or from
+     produced by the Reproducible Build CA workflow for that commit, or from
      the `sha256sums` field in the deployment manifest.
 3. Commit the updated `DEPLOYMENTS.md` to `main` alongside the manifest file.
 
@@ -172,3 +172,25 @@ node scripts/verify-capabilities.mjs \
 
 The check fails on any network or contract-ID/-version mismatch between the
 live descriptor and the published record.
+
+## Idempotent deployment behaviour
+
+`deploy.sh` is idempotent: running it repeatedly in the same environment is
+safe. Before creating any resource, the script checks whether it already
+exists and skips it instead of failing with a "non-idempotent" error. Specifically:
+
+- **Contract wasm upload**: if the WASM hash is already present on chain,
+  the upload is skipped and the existing hash is reused.
+- **Contract deployment**: if a contract ID is already recorded in the
+  deployment manifest for the target network, the deploy step is skipped and
+  the recorded ID is reused.
+- **Initialization**: if the contract is already initialized, the init call is
+  skipped.
+- **Manifest writing**: the manifest is merged with any existing manifest
+  rather than overwritten, so a resumed run preserves previously recorded
+  resources.
+
+This means a re-run after a partial failure resumes from where it left off
+instead of attempting to re-create existing resources. The manifest is the
+source of truth for what has already been created; delete it (or point the
+script at a fresh manifest) to force a clean deployment.
