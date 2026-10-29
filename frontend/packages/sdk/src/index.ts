@@ -28,6 +28,7 @@
 //   const ok = await StellarCred.hasClaim(walletAddress, "kyc");
 
 export * from "./claims";
+export * from "./issuers"; // IssuerRegistry reads
 export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
@@ -70,11 +71,9 @@ import {
   ConfigError,
   InvalidAddressError,
 } from "./claims";
-
 import {
   RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
 } from "./errors";
-
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
@@ -97,6 +96,7 @@ import {
   assertValidCredential,
   CredentialValidationError,
 } from "./validateCredential";
+import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
 
 export const StellarCred = {
   configure,
@@ -129,6 +129,10 @@ export const StellarCred = {
   parseCredentialJson,
   assertValidCredential,
   subscribeClaims,
+  listIssuers,
+  listIssuerIds,
+  getIssuer,
+  isValidIssuer,
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,
