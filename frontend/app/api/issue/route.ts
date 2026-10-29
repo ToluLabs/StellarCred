@@ -48,7 +48,7 @@ import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
 export async function POST(req: NextRequest) {
   const requestId = resolveRequestId(req.headers.get("x-request-id"));
 
-  // ── Idempotency-Key support ────────────────────────────────────────────────
+  // Idempotency-Key support
   const rawKey = req.headers.get("Idempotency-Key")?.trim() || undefined;
   const idempotencyKey = rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
   if (rawKey && !idempotencyKey) {
@@ -226,7 +226,7 @@ async function executeRequest(
     return response;
   };
 
-  // ── Per-wallet rate limit ────────────────────────────────────────────────
+  // Per-wallet rate limit
   if (walletAddress) {
     const walletLimited = enforceWalletRateLimit(walletAddress, requestId);
     if (walletLimited) return sendResponse(walletLimited);

@@ -79,14 +79,23 @@ export function useOnboarding() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setState(loadState());
-    setMounted(true);
+    // Hydrate from storage after mount (external system sync). Using a
+    // subscription-style handler for the initial load avoids a synchronous
+    // setState in the effect body.
+    const hydrate = () => {
+      setState(loadState());
+      setMounted(true);
+    };
+    const frame = window.requestAnimationFrame(hydrate);
 
     function onReset() {
       setState(loadState());
     }
     window.addEventListener(RESET_EVENT, onReset);
-    return () => window.removeEventListener(RESET_EVENT, onReset);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener(RESET_EVENT, onReset);
+    };
   }, []);
 
   const currentStep = ONBOARDING_STEPS[state.step] ?? "welcome";
