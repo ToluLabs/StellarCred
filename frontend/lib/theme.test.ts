@@ -13,8 +13,21 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 // Minimal browser stubs for SSR-safe helpers
 const store = new Map<string, string>();
 
+type StubElement = {
+  attrs: Record<string, string>;
+  setAttribute: (name: string, value: string) => void;
+  getAttribute: (name: string) => string | null;
+};
+
+type StubGlobal = {
+  window?: unknown;
+  document?: { documentElement: StubElement };
+};
+
+const g = globalThis as unknown as StubGlobal;
+
 function installDomStubs(systemDark: boolean) {
-  (globalThis as any).window = {
+  g.window = {
     localStorage: {
       getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
       setItem: (k: string, v: string) => {
@@ -37,7 +50,7 @@ function installDomStubs(systemDark: boolean) {
       onchange: null,
     }),
   };
-  (globalThis as any).document = {
+  g.document = {
     documentElement: {
       attrs: {} as Record<string, string>,
       setAttribute(name: string, value: string) {
@@ -93,20 +106,14 @@ describe("theme helpers", async () => {
     installDomStubs(false);
     setExplicitTheme("dark");
     assert.equal(store.get("theme"), "dark");
-    assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
-      "dark",
-    );
+    assert.equal(g.document!.documentElement.getAttribute("data-theme"), "dark");
   });
 
   it("applyTheme sets data-theme without writing storage", () => {
     installDomStubs(true);
     applyTheme("light");
     assert.equal(store.has("theme"), false);
-    assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
-      "light",
-    );
+    assert.equal(g.document!.documentElement.getAttribute("data-theme"), "light");
   });
 
   it("boot script prefers stored theme then OS", () => {

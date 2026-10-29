@@ -82,7 +82,8 @@ export function useProofTimeline(cred: Credential | null) {
     data.events.sort((a, b) => a.timestamp - b.timestamp);
 
     saveTimeline(commitment, data);
-    setEvents(data.events);
+    // Defer state update out of the effect body to avoid cascading renders
+    queueMicrotask(() => setEvents(data.events));
   }, [cred, loadTimeline, saveTimeline]);
 
   // Cross-tab sync: listen for storage events from other tabs
