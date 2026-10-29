@@ -60,12 +60,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Poll the wallet's live network while connected, so a network switch made
-  // after connecting is caught without requiring a reconnect.
+  // after connecting is caught without requiring a reconnect. The synchronous
+  // reset is avoided by deriving the mismatch as false when disconnected.
   useEffect(() => {
-    if (!address) {
-      setNetworkMismatch(false);
-      return;
-    }
+    if (!address) return;
     let cancelled = false;
     const check = () => {
       getNetworkOk().then((ok) => {
@@ -112,7 +110,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WalletContext.Provider
-      value={{ address, connecting, error, networkMismatch, connect, disconnect }}
+      value={{ address, connecting, error, networkMismatch: address ? networkMismatch : false, connect, disconnect }}
     >
       {children}
     </WalletContext.Provider>
@@ -128,4 +126,11 @@ export function useWallet(): WalletState {
 export function usePreviewMode(): boolean {
   const { address } = useWallet();
   return !address;
+}
+
+// Optional preview issuer mode for sandbox integrations: when enabled, the
+// wallet is treated as previewing (no live signing) regardless of connection.
+export function usePreviewIssuer(enabled: boolean): boolean {
+  const previewing = usePreviewMode();
+  return enabled || previewing;
 }

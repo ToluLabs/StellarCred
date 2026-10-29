@@ -48,20 +48,22 @@ export function useVerifyParams() {
   );
 
   useEffect(() => {
+    // Derive the link error during render-time-safe sync: compute the next
+    // value and only set state when it actually differs.
+    let next: VerifyError | null;
     if (!parsedLink.ok) {
-      setLinkError(parsedLink.error ?? null);
-      return;
-    }
-    if (parsedLink.jti && isVerifyNonceConsumed(parsedLink.jti)) {
-      setLinkError({
+      next = parsedLink.error ?? null;
+    } else if (parsedLink.jti && isVerifyNonceConsumed(parsedLink.jti)) {
+      next = {
         code: "consumed_link",
         title: "This verification link has already been used",
         detail:
           "Each single-use verification link can only be opened once. Ask the service that sent you here for a fresh link.",
-      });
+      };
     } else {
-      setLinkError(null);
+      next = null;
     }
+    setLinkError((prev) => (prev === next ? prev : next));
   }, [parsedLink]);
 
   const returnUrl = searchParams.get("return_url");

@@ -71,8 +71,8 @@ async function resolveCurrentDate(): Promise<number> {
 
     // Convert ISO 8601 to UTC days since epoch
     return Math.floor(new Date(closedAt).getTime() / 86_400_000);
-  } catch (error: any) {
-    if (error.name === "AbortError") {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError") {
       throw new Error("Ledger time fetch timeout");
     }
     throw error;
@@ -355,7 +355,7 @@ export async function POST(req: NextRequest) {
           {
             error:
               "The credential payload is too large to generate a witness in the available prover memory. Use a smaller payload.",
-            code: "resource_exhausted",
+            code: "payload_too_large",
           },
           { status: 413 },
         ),
@@ -371,7 +371,10 @@ export async function POST(req: NextRequest) {
       }),
     );
     return sendResponse(
-      NextResponse.json({ error: "Witness generation failed", code: "internal_error" }, { status: 500 }),
+      NextResponse.json(
+        { error: "Witness generation failed", code: "witness_generation_failed" },
+        { status: 500 },
+      ),
     );
   }
 }

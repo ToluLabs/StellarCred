@@ -15,7 +15,7 @@ class MemStorage {
 }
 
 beforeEach(() => {
-  (globalThis as any).window = { sessionStorage: new MemStorage() };
+  (globalThis as { window?: unknown }).window = { sessionStorage: new MemStorage() };
   __clearVerifyNoncesForTesting();
 });
 
