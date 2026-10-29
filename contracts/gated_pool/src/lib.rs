@@ -23,7 +23,7 @@ use soroban_sdk::{
     symbol_short, token, Address, Env, Symbol, Vec,
 };
 
-// â”€â”€ Event payload structs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Event payload structs ─────────────────────────────────────────────────
 
 /// Payload emitted when a caller successfully deposits into the gated pool.
 /// Topics: (symbol_short!("gate_pool"), symbol_short!("deposit"))
@@ -61,7 +61,7 @@ const DAY_IN_LEDGERS: u32 = 17280;
 const BALANCE_BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
 const BALANCE_TTL: u32 = 120 * DAY_IN_LEDGERS;
 
-// â”€â”€ Contract versioning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Contract versioning ───────────────────────────────────────────────────
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
 // Increment MINOR on additive changes (new events, new query endpoints)
@@ -274,7 +274,7 @@ impl GatedPool {
     fn min_threshold(env: &Env) -> Option<u64> {
         env.storage()
             .instance()
-            .get(&DataKey::MinThreshold)
+            .get::<_, Option<u64>>(&DataKey::MinThreshold)
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 }
