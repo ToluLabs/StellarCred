@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",
-    "@creit.tech/stellar-wallets-kit": "^1.7.0",
+    "@creit.tech/stellar-wallets-kit": "^2.7.1",
     "@ledgerhq/hw-app-str": "^7.0.0",
     "@ledgerhq/hw-transport-webusb": "^6.28.0",
     "@noble/curves": "^2.2.0",
