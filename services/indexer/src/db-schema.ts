@@ -157,6 +157,7 @@ export function buildSchema(dialect: SqlDialect): Schema {
     ...dialect.extraClaimIndexes,
     `CREATE INDEX IF NOT EXISTS idx_claims_wallet ON claims (wallet)`,
     `CREATE INDEX IF NOT EXISTS idx_claims_type ON claims (credential_type)`,
+    `CREATE INDEX IF NOT EXISTS idx_claims_issuer ON claims (issuer)`,
     `CREATE INDEX IF NOT EXISTS idx_claims_verified_at ON claims (verified_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_claims_recent
   ON claims (ledger_sequence DESC, id DESC) WHERE revoked = 0`,

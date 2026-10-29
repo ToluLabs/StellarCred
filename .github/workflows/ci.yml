@@ -670,6 +670,77 @@ jobs:
           npm run typecheck
           npm test
 
+  # ── Windows smoke: catch path-separator / install flakiness (#874) ────────
+  # windows-latest runners are historically the flaky ones: pnpm install
+  # intermittently times out, scripts break on `\` vs `/`, and test runs hang
+  # without leaving a diagnosable log. This job pins the same toolchain as
+  # `frontend`, forces bash so path handling matches Linux, raises the job
+  # timeout, and uploads full logs on failure so the next flaky occurrence
+  # can be diagnosed from artifacts instead of a bare red X.
+  #
+  # Install + lint are the hard gates (they cover the path-separator and
+  # install-flakiness surface this job exists for). Typecheck and unit tests
+  # still run — that is where the historical Windows hangs happen — but are
+  # non-blocking while main itself is red on them (sentry.test.ts TS2300,
+  # packages/sdk deriveNullifier). Remove continue-on-error once those
+  # upstream breakages are fixed.
+  windows-smoke:
+    name: Windows smoke (frontend)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm (pinned)
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node (pinned)
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm exec tsc --noEmit 2>&1 | tee windows-smoke-typecheck.log
+
+      - name: Unit tests
+        id: unit-tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee windows-smoke-test.log
+
+      - name: Upload logs on failure
+        if: ${{ failure() || steps.typecheck.outcome == 'failure' || steps.unit-tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-smoke-logs-${{ github.sha }}
+          path: |
+            frontend/windows-smoke-*.log
+            frontend/test-results
+            frontend/coverage
+          retention-days: 7
+          if-no-files-found: ignore
+
   # ── Indexer: SQLite + Postgres test matrix ─────────────────────────────────
   # Runs in parallel with contracts, circuits, and frontend.
   indexer:

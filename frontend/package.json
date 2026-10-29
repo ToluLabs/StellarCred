@@ -24,7 +24,7 @@
     "credential:cli": "node --import tsx scripts/credential-cli.ts",
     "format": "prettier --write \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
-    "prepare": "cd .. && npx husky .husky 2>/dev/null || true"
+    "prepare": "cd .. && npx husky .husky || exit 0"
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",
