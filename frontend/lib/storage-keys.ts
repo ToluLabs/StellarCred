@@ -43,6 +43,9 @@ export const STORAGE_KEYS = {
 
   /** User theme preference: "light" | "dark" (lib/theme.ts) */
   THEME: "theme",
+
+  /** Dismissal flag for the onboarding re-entry nudge banner on /holder (#899) */
+  ONBOARDING_NUDGE_DISMISSED: "stellarcred:onboarding-nudge-dismissed",
 } as const;
 
 /**
@@ -78,6 +81,7 @@ export function getAllStorageKeys(): string[] {
     STORAGE_KEYS.ONBOARDING_LEGACY,
     STORAGE_KEYS.WALLET_ID,
     STORAGE_KEYS.THEME,
+    STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED,
     ...getTimelineKeys(),
   ];
 }

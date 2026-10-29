@@ -13,6 +13,21 @@ const PLAID_TIMEOUT_MS = 8_000;
 // the issuer would attest to a figure that is not the sum of the linked items.
 const MAX_PLAID_ITEMS = 25;
 
+/**
+ * Sum currency amounts exactly by accumulating integer cents.
+ *
+ * Naive float addition drifts on repeated small values (100 × 0.01 !== 1),
+ * which understates a cumulative total. Rounding each amount to cents first
+ * keeps the running sum exact for 2-decimal currency.
+ */
+export function sumCurrency(values: readonly number[]): number {
+  let cents = 0;
+  for (const value of values) {
+    cents += Math.round(value * 100);
+  }
+  return cents / 100;
+}
+
 export type PlaidBalanceAccount = { name: string; available: number };
 
 export type PlaidBalanceSuccess = {
@@ -154,7 +169,7 @@ async function fetchPlaidItemBalance(
     .map((a) => ({ name: a.name, available: a.balances.available ?? 0 }))
     .sort((a, b) => b.available - a.available);
 
-  const itemBalance = depository.reduce((sum, account) => sum + account.available, 0);
+  const itemBalance = sumCurrency(depository.map((account) => account.available));
   return { ok: true, balance: itemBalance, accounts: depository };
 }
 
@@ -209,13 +224,11 @@ export async function fetchPlaidBalance(requestId: string): Promise<PlaidBalance
   const failure = results.find((result): result is PlaidBalanceFailure => !result.ok);
   if (failure) return failure;
 
-  const successes = results.filter(
-    (result): result is PlaidBalanceSuccess => result.ok,
-  );
+  const successes = results.filter((result): result is PlaidBalanceSuccess => result.ok);
   const accounts = successes
     .flatMap((result) => result.accounts ?? [])
     .sort((a, b) => b.available - a.available);
-  const balance = successes.reduce((sum, result) => sum + result.balance, 0);
+  const balance = sumCurrency(successes.map((result) => result.balance));
 
   logger.info(
     stripSensitiveFields({

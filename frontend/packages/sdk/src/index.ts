@@ -32,6 +32,8 @@ export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
 export * from "./errors"; // Typed error taxonomy (#404)
+export * from "./validateCredential"; // Credential JSON validation (#27)
+export * from "./buildVerifyUrl";
 export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
 export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
@@ -62,35 +64,39 @@ import {
   deriveNullifier,
   isNullifierUsed,
   verifyUniquePersonhood,
+  invalidateClaimCache,
+  clearClaimCache,
   TimeoutError,
   ConfigError,
   InvalidAddressError,
 } from "./claims";
 
 import {
-  RpcError,
-  IndexerError,
-  ContractError,
-  ContractErrorCode,
-  parseContractError,
-  TransactionSubmissionError,
+  RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
 } from "./errors";
 
 import { submitTransaction } from "./submit";
-
-import {
-  bootstrap,
-  fetchCapabilities,
-  validateCapabilitiesDescriptor,
-} from "./capabilities";
-
-import {
-  createWalletChallenge,
-  verifyWalletSignature,
-  verifyWalletClaim,
-} from "./challenge";
-
+import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
+import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
 import { subscribeClaims } from "./subscriptions";
+
+// Version helpers — Issue #841
+export * from "./version";
+
+import {
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
+} from "./version";
+
+import {
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
+  CredentialValidationError,
+} from "./validateCredential";
 
 export const StellarCred = {
   configure,
@@ -111,10 +117,17 @@ export const StellarCred = {
   buildBadgeEmbedCode,
   parseReturnParams,
   watchClaim,
+  /** Drop cached claim reads for a wallet (see `configure({ claimCache })`). */
+  invalidate: invalidateClaimCache,
+  invalidateClaimCache,
+  clearClaimCache,
   withRetry,
   normalizeRpcError,
   classifyTransientFailure,
   submitTransaction,
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
   subscribeClaims,
   createWalletChallenge,
   verifyWalletSignature,
@@ -127,10 +140,17 @@ export const StellarCred = {
   ConfigError,
   InvalidAddressError,
   RpcError,
+  // Version helpers (#841)
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
   IndexerError,
   ContractError,
   ContractErrorCode,
   TransactionSubmissionError,
+  CredentialValidationError,
   parseContractError,
 };
 export default StellarCred;

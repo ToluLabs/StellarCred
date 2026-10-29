@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchPlaidBalance, plaidAccessTokens } from "./plaid";
+import { fetchPlaidBalance, plaidAccessTokens, sumCurrency } from "./plaid";
 
 function plaidResponse(accounts: unknown[]) {
   return {
@@ -130,9 +130,7 @@ describe("fetchPlaidBalance", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        plaidResponse([
-          { type: "depository", name: "Checking", balances: { available: 1500 } },
-        ]),
+        plaidResponse([{ type: "depository", name: "Checking", balances: { available: 1500 } }]),
       )
       .mockResolvedValueOnce(
         plaidResponse([
@@ -187,19 +185,14 @@ describe("fetchPlaidBalance", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        plaidResponse([
-          { type: "depository", name: "Checking", balances: { available: 4000 } },
-        ]),
+        plaidResponse([{ type: "depository", name: "Checking", balances: { available: 4000 } }]),
       )
       .mockResolvedValueOnce({
         ok: false,
-        json: () =>
-          Promise.resolve({ error_code: "ITEM_LOGIN_REQUIRED", error_message: "secret" }),
+        json: () => Promise.resolve({ error_code: "ITEM_LOGIN_REQUIRED", error_message: "secret" }),
       })
       .mockResolvedValueOnce(
-        plaidResponse([
-          { type: "depository", name: "Savings", balances: { available: 6000 } },
-        ]),
+        plaidResponse([{ type: "depository", name: "Savings", balances: { available: 6000 } }]),
       );
     global.fetch = fetchMock;
 
@@ -233,9 +226,7 @@ describe("fetchPlaidBalance", () => {
     global.fetch = vi
       .fn()
       .mockResolvedValueOnce(
-        plaidResponse([
-          { type: "depository", name: "Checking", balances: { available: 700 } },
-        ]),
+        plaidResponse([{ type: "depository", name: "Checking", balances: { available: 700 } }]),
       )
       .mockResolvedValueOnce(
         plaidResponse([{ type: "credit", name: "Card", balances: { available: 100 } }]),
@@ -289,5 +280,64 @@ describe("plaidAccessTokens", () => {
   it("splits, trims, and drops blank entries from PLAID_ACCESS_TOKENS", () => {
     process.env.PLAID_ACCESS_TOKENS = " item-a , ,item-b ,,";
     expect(plaidAccessTokens()).toEqual(["item-a", "item-b"]);
+  });
+});
+
+describe("sumCurrency", () => {
+  it("sums repeated small amounts without float drift", () => {
+    const values = Array.from({ length: 100 }, () => 0.01);
+    expect(sumCurrency(values)).toBe(1);
+    expect(values.reduce((sum, v) => sum + v, 0)).not.toBe(1);
+  });
+
+  it("stays monotonic as more positive amounts are added", () => {
+    const values = [0.1, 0.2, 0.05, 0.05, 0.01, 0.01, 0.01];
+    let running = 0;
+    for (let i = 0; i < values.length; i++) {
+      const next = sumCurrency(values.slice(0, i + 1));
+      expect(next).toBeGreaterThanOrEqual(running);
+      running = next;
+    }
+    expect(running).toBe(0.43);
+  });
+
+  it("handles whole numbers and mixed magnitudes exactly", () => {
+    expect(sumCurrency([1200, 9800])).toBe(11000);
+    expect(sumCurrency([0.1, 0.2])).toBe(0.3);
+    expect(sumCurrency([])).toBe(0);
+    expect(sumCurrency([10.999, 0.001])).toBe(11);
+  });
+});
+
+describe("fetchPlaidBalance cumulative aggregation", () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.PLAID_ACCESS_TOKEN;
+    delete process.env.PLAID_ACCESS_TOKENS;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("totals many small accounts without truncation and never drops as accounts are added", async () => {
+    const smallAccounts = Array.from({ length: 50 }, (_, i) => ({
+      type: "depository",
+      name: `Account ${i}`,
+      balances: { available: 0.1 },
+    }));
+    process.env.PLAID_ACCESS_TOKEN = "token";
+    global.fetch = vi.fn().mockResolvedValue(plaidResponse(smallAccounts));
+
+    const result = await fetchPlaidBalance("req-cumulative");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.balance).toBe(5);
+    }
   });
 });

@@ -1,0 +1,82 @@
+# docker-compose.redis.yml
+#
+# Local Redis instance for development and integration testing.
+#
+# ## Usage
+#
+#   # Start Redis in the background
+#   docker compose -f docker-compose.redis.yml up -d
+#
+#   # Stop Redis (data is preserved in the named volume)
+#   docker compose -f docker-compose.redis.yml down
+#
+#   # Stop and delete all data
+#   docker compose -f docker-compose.redis.yml down -v
+#
+# ## Connecting the frontend
+#
+# Set the following in `frontend/.env.local`:
+#
+#   REDIS_URL=redis://localhost:6379
+#
+# Optional tunables:
+#
+#   REDIS_KEY_PREFIX=sc:rl:       # default — prefix for all rate-limit keys
+#   REDIS_TLS=0                   # set to 1 to force TLS (not needed for local)
+#
+# ## What this enables
+#
+# When REDIS_URL is set in the Next.js environment, the rate-limit middleware
+# (`frontend/lib/redis-rate-limit.ts`) stores fixed-window counters in Redis
+# rather than in the process-local Map. This means:
+#
+#   - Rate limits are enforced consistently across multiple Next.js instances
+#     (e.g. when running behind a load balancer or in a blue/green deployment).
+#   - Limits survive a process restart (within the same window).
+#   - Keys expire automatically at the end of each window via PEXPIRE — no
+#     background cleanup job needed.
+#
+# Without REDIS_URL, the middleware falls back to the in-process store from
+# `frontend/lib/rate-limit.ts` automatically — local development without
+# Docker works fine with no additional configuration.
+#
+# ## Upstash Redis (production / Vercel)
+#
+# For serverless deployments (Vercel, AWS Lambda) where persistent TCP
+# connections are impractical, use Upstash Redis instead:
+#
+#   1. Create a database at https://upstash.com (free tier available).
+#   2. Copy the "UPSTASH_REDIS_REST_URL" — but use the "ioredis" URL format:
+#      the Upstash console shows both. It looks like:
+#        redis://:password@eu1-example.upstash.io:12345
+#   3. Set REDIS_URL and REDIS_TLS=1 in your deployment environment.
+#
+# The same `redis-rate-limit.ts` module works with Upstash's Redis-compatible
+# wire protocol — no code changes needed.
+
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: stellarcred-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: >
+      redis-server
+        --appendonly yes
+        --appendfsync everysec
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis-data:
+    driver: local

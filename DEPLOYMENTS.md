@@ -10,11 +10,31 @@ that their output matches.
 
 ## How to verify a deployment
 
-For every deployment listed below, the recorded commit SHA and WASM hashes let
-you confirm independently that the on-chain bytecode matches the open-source
-source code.
+The authoritative way for an operator, auditor, or third party to verify a deployment end to end is with a **single command**:
 
-**Quick path (Docker — recommended):**
+```bash
+# Verify Stellar Testnet deployment (default)
+make verify-deployment
+# or: ./scripts/verify-deployment.sh --network testnet
+
+# Verify Stellar Mainnet deployment
+make verify-deployment NETWORK=mainnet
+# or: ./scripts/verify-deployment.sh --network mainnet
+```
+
+### What this single command verifies:
+1. **Contract IDs**: Fetches the authoritative contract IDs from this document for the specified network.
+2. **On-Chain Contract Versions**: Reads each contract's on-chain `version()` view via Soroban RPC simulation and decodes it to semver, asserting agreement.
+3. **Reproducible Rebuild**: Recompiles the contracts reproducibly (in the pinned Docker container `docker/Dockerfile.reproducible` or pinned local Rust toolchain) with `SOURCE_DATE_EPOCH=0`.
+4. **WASM Bytecode Hashes**: Computes SHA-256 hashes of the rebuilt WASM artifacts and compares them against both the live on-chain WASM hashes (`stellar contract info hash`) and the expected hashes in this document.
+5. **Circuit Verification Keys (VKs)**: Freshly recompiles all Noir zk circuits and verifies that newly generated VKs match the committed test vectors and on-chain registered VK versions in `CredentialVerifier`.
+6. **Unified Result**: Prints a single structured pass/fail report with any detected mismatches.
+
+This command runs automatically every night against testnet in the [Nightly Deployment Verification workflow](.github/workflows/nightly.yml) so drift is caught continuously.
+
+### Manual / Step-by-Step Verification (Docker)
+
+If you wish to reproduce each step manually:
 
 ```bash
 # 1. Check out the exact commit the deployment was built from.
@@ -33,7 +53,7 @@ docker run --rm -v "$(pwd)/out:/out" --env SOURCE_DATE_EPOCH=0 \
 # 3. Compare your hashes against the "Expected WASM SHA-256" column below.
 sha256sum out/*.wasm
 
-# 4. Optionally, confirm the on-chain hash matches too (requires stellar CLI ≥ v26).
+# 4. Confirm the on-chain hash matches too (requires stellar CLI ≥ v26).
 ./scripts/verify-wasm.sh --network testnet   # or --network mainnet
 ```
 

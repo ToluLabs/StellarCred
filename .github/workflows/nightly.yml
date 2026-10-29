@@ -1,0 +1,65 @@
+name: Nightly Deployment Verification
+
+# ── Nightly End-to-End Verification Check ─────────────────────────────────────
+# Runs every night against Stellar Testnet to ensure that the deployment recorded
+# in DEPLOYMENTS.md has not drifted and matches the current repository source:
+#   1. Reads deployed contract IDs and expected WASM hashes from DEPLOYMENTS.md.
+#   2. Reads on-chain contract version numbers via Soroban RPC simulations.
+#   3. Rebuilds WASM artifacts reproducibly in the pinned toolchain environment.
+#   4. Compares local rebuilt WASM hashes against on-chain WASM hashes & DEPLOYMENTS.md.
+#   5. Compares registered VKs against freshly compiled Noir circuits & on-chain VK versions.
+#   6. Asserts a single PASS result; alerts on any drift.
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-testnet:
+    name: Verify testnet deployment end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain (pinned)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          targets: wasm32v1-none
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Install Stellar CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install stellar-cli --locked --version 27.0.0
+          stellar --version
+
+      - name: Install Noir and Barretenberg toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
+          export PATH="$HOME/.nargo/bin:$PATH"
+          noirup -v 1.0.0-beta.9
+          curl -fsSL https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          export PATH="$HOME/.bb:$PATH"
+          bbup -v 0.87.0
+
+      - name: Run end-to-end deployment verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$HOME/.cargo/bin:$PATH"
+          make verify-deployment NETWORK=testnet
