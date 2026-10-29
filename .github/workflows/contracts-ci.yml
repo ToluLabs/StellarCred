@@ -41,7 +41,7 @@ jobs:
     name: Soroban contract build & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Prepare CI cache presteps
         # Centralizes cache setup and common presteps so the workflow stays

@@ -55,6 +55,7 @@ describe("theme helpers", async () => {
   const { getStoredTheme, getSystemTheme, resolveTheme, setExplicitTheme, applyTheme, THEME_BOOT_SCRIPT } =
     await import("./theme.ts");
 
+
   beforeEach(() => {
     store.clear();
   });
