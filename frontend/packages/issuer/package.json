@@ -1,7 +1,7 @@
 {
   "name": "@stellarcred/issuer",
   "version": "0.1.0",
-  "description": "Server-only issuance client for StellarCred — attribute to value, salt, Poseidon2 commitment, secp256k1 signature. Never import this in a browser bundle.",
+  "description": "Server-only issuance client for StellarCred \u2014 attribute to value, salt, Poseidon2 commitment, secp256k1 signature. Never import this in a browser bundle.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "prebuild": "node scripts/sync-circuit.mjs",
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "build": "node init && tsup src/index.ts --format cjs,esm --dts --clean",
     "test": "vitest run",
     "prepublishOnly": "pnpm build"
   },

@@ -53,7 +53,7 @@ function BadgeContent() {
         if (!isMounted) return;
         // `unknown` means the ledger never answered — a failed read is not a
         // negative result and must not render as one.
-        setStatus(result.status === "unknown" ? "unknown" : result.status);
+        setStatus(result.status);
         setIssue(result.status === "unknown" ? result.issue : null);
       } catch (err) {
         if (!isMounted) return;

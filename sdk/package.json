@@ -19,7 +19,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node init && tsc -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts --exclude tests/bundle/**",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "bundle-check": "vitest run --config vitest.config.ts --dir tests/bundle"

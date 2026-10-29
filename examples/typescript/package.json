@@ -5,10 +5,10 @@
   "description": "Minimal TypeScript example for @stellarcred/sdk demonstrating imports, typings, credential gating, and transaction creation/signing on Stellar",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "node init && tsc",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/index.test.ts",
-    "start": "tsx src/index.ts"
+    "start": "node init && tsx src/index.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.3.0",
