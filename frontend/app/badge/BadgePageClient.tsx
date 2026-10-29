@@ -54,6 +54,13 @@ function BadgeContent() {
         // `unknown` means the ledger never answered — a failed read is not a
         // negative result and must not render as one.
         setStatus(result.status === "unknown" ? "unknown" : result.status);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("stellarcred:verification-check", {
+              detail: { wallet, claim, status: result.status },
+            }),
+          );
+        }
         setIssue(result.status === "unknown" ? result.issue : null);
       } catch (err) {
         if (!isMounted) return;

@@ -5,7 +5,7 @@
   "description": "Minimal, compile-checked TypeScript example for @stellarcred/sdk: typed claim checks, a signed Stellar transaction, and a wallet challenge.",
   "type": "module",
   "scripts": {
-    "start": "tsx src/main.ts",
+    "start": "node init && tsx src/main.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

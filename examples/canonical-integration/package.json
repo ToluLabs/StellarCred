@@ -5,8 +5,8 @@
   "description": "Canonical end-to-end example application demonstrating the complete StellarCred integration pattern including wallet-control proof, route gating, and failure states",
   "type": "module",
   "scripts": {
-    "start": "tsx src/server.ts",
-    "dev": "tsx watch src/server.ts",
+    "start": "node init && tsx src/server.ts",
+    "dev": "node init && tsx watch src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/integration.test.ts"
   },
