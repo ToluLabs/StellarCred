@@ -1637,3 +1637,169 @@ fn prop_retired_key_is_valid_only_within_its_window() {
         })
         .unwrap();
 }
+
+// ── Two-step credential trust update tests (#901) ──────────────────────
+
+#[test]
+fn propose_trust_update_by_non_admin_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let issuer = Address::generate(&env);
+    let pubkey = BytesN::<64>::random(&env);
+
+    let res = h.registry.mock_auths(&[]).try_propose_trust_update(
+        &TrustAction::RevokeIssuer { issuer_id: issuer },
+        &String::from_str(&env, "attempted by non-admin"),
+    );
+    assert!(res.is_err());
+}
+
+#[test]
+fn approve_trust_update_without_pending_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+
+    let res = h.registry.try_approve_trust_update();
+    assert!(res.is_err());
+}
+
+#[test]
+fn propose_then_approve_executes_underlying_action() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let issuer = Address::generate(&env);
+
+    // Proposal alone does not mutate state.
+    h.registry.propose_trust_update(
+        TrustAction::RevokeIssuer { issuer_id: issuer.clone() },
+        String::from_str(&env, "routine cleanup"),
+    );
+    assert!(h.registry.pending_trust_update().is_some());
+
+    // Approve from a *different* admin address.
+    let other_admin = Address::generate(&env);
+    h.registry
+        .mock_auths(&[MockAuth {
+            address: &other_admin,
+            invoke: &MockAuthInvoke {
+                contract: &h.registry.address,
+                fn_name: "approve_trust_update",
+                args: ().into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_approve_trust_update()
+        .unwrap();
+
+    assert!(h.registry.pending_trust_update().is_none());
+}
+
+#[test]
+fn self_approval_is_forbidden() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let issuer = Address::generate(&env);
+
+    h.registry.propose_trust_update(
+        TrustAction::RevokeIssuer { issuer_id: issuer },
+        String::from_str(&env, "self-approval attempt"),
+    );
+
+    // Same admin (the proposer) tries to approve.
+    let res = h.registry.try_approve_trust_update();
+    assert!(res.is_err());
+
+    // Proposal still pending.
+    assert!(h.registry.pending_trust_update().is_some());
+}
+
+#[test]
+fn cancel_trust_update_clears_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let issuer = Address::generate(&env);
+
+    h.registry.propose_trust_update(
+        TrustAction::RevokeIssuer { issuer_id: issuer },
+        String::from_str(&env, "will be cancelled"),
+    );
+    assert!(h.registry.pending_trust_update().is_some());
+
+    h.registry.cancel_trust_update();
+    assert!(h.registry.pending_trust_update().is_none());
+
+    // Approve after cancel must fail.
+    let res = h.registry.try_approve_trust_update();
+    assert!(res.is_err());
+}
+
+#[test]
+fn reject_trust_update_clears_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let issuer = Address::generate(&env);
+
+    h.registry.propose_trust_update(
+        TrustAction::RevokeIssuer { issuer_id: issuer },
+        String::from_str(&env, "will be rejected"),
+    );
+
+    h.registry.reject_trust_update(String::from_str(&env, "not authorised"));
+    assert!(h.registry.pending_trust_update().is_none());
+}
+
+#[test]
+fn propose_trust_update_overwrites_pending() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let issuer_a = Address::generate(&env);
+    let issuer_b = Address::generate(&env);
+
+    h.registry.propose_trust_update(
+        TrustAction::RevokeIssuer { issuer_id: issuer_a },
+        String::from_str(&env, "first"),
+    );
+    h.registry.propose_trust_update(
+        TrustAction::RevokeIssuer { issuer_id: issuer_b },
+        String::from_str(&env, "second overwrites first"),
+    );
+
+    // Only the second is pending.
+    let pending = h.registry.pending_trust_update().unwrap();
+    assert_eq!(pending.rationale, String::from_str(&env, "second overwrites first"));
+}
+
+#[test]
+fn revoke_issuer_key_bypasses_proposal_queue() {
+    // Break-glass semantics: `revoke_issuer_key` remains callable directly
+    // by an admin with no pending proposal, exactly as documented in
+    // docs/contract-signer-rotation-runbook.md. This test guards that
+    // property from #901's changes.
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let issuer = Address::generate(&env);
+    let pubkey = BytesN::<64>::random(&env);
+
+    h.registry.register_issuer(
+        &issuer,
+        &pubkey,
+        &Vec::from_array(&env, [symbol_short!("kyc")]),
+    );
+
+    // No proposal exists.
+    assert!(h.registry.pending_trust_update().is_none());
+
+    // Break-glass revocation fires directly.
+    h.registry.revoke_issuer_key(&issuer, &pubkey);
+
+    // And no proposal was created as a side effect.
+    assert!(h.registry.pending_trust_update().is_none());
+}

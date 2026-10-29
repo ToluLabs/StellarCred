@@ -650,3 +650,18 @@ and webhook payload schemas.
 1. **Immutable Topic Schemas**: Topic position and symbol values are guaranteed stable across contract upgrades.
 2. **Deterministic Payload Layout**: Field names, types, and ordering in `#[contracttype]` structs are preserved.
 3. **Continuous Drift Protection**: The event-shape suites added for issue #429 — `contracts/proof_registry/src/test.rs`, `contracts/issuer_registry/src/test.rs`, and `contracts/credential_verifier/src/test.rs` — assert the exact topic tuples and serialized payload structures documented here on every `cargo test` and CI run. The assertions hardcode the shapes from this file rather than reading it from disk, so a contract-side event change fails CI while a doc-side change is caught only in review. Point new event tests at the single `docs/EVENTS.md` copy, never a second one.
+
+---
+
+### IssuerRegistry — Two-step credential trust update events (#901)
+
+Emitted by the `propose_trust_update` / `approve_trust_update` / `reject_trust_update` / `cancel_trust_update` functions. The underlying operation (register / revoke / rotate / set_metadata) still emits its own canonical event on approval — these lifecycle events exist so indexers can reconstruct the *proposal* audit trail even when the operation is rejected or cancelled.
+
+| Contract | Event | Topics Tuple | Payload Struct | Emitting Method(s) | Authorization |
+|---|---|---|---|---|---|
+| `IssuerRegistry` | `trust_prop` | `("iss_reg", "trust_prop")` | `(proposer: Address, action: TrustAction, proposed_at: u64)` | `propose_trust_update` | Admin |
+| `IssuerRegistry` | `trust_appr` | `("iss_reg", "trust_appr")` | `(approver: Address, action: TrustAction, approved_at: u64)` | `approve_trust_update` | Admin (≠ proposer) |
+| `IssuerRegistry` | `trust_rej` | `("iss_reg", "trust_rej")` | `reason: String` | `reject_trust_update` | Admin |
+| `IssuerRegistry` | `trust_canc` | `("iss_reg", "trust_canc")` | `()` | `cancel_trust_update` | Admin |
+
+**Self-approval is forbidden** — `approve_trust_update` panics with `Error::SelfApprovalForbidden` (15) if called by the proposer. **Break-glass remains out-of-band** — `revoke_issuer_key` emits only its existing `key_revk` event and does not interact with the proposal queue.
