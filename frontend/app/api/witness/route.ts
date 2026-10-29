@@ -71,8 +71,8 @@ async function resolveCurrentDate(): Promise<number> {
 
     // Convert ISO 8601 to UTC days since epoch
     return Math.floor(new Date(closedAt).getTime() / 86_400_000);
-  } catch (error: any) {
-    if (error.name === "AbortError") {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError") {
       throw new Error("Ledger time fetch timeout");
     }
     throw error;
@@ -354,33 +354,4 @@ export async function POST(req: NextRequest) {
         NextResponse.json(
           {
             error:
-              "The credential payload is too large to generate a witness in the available prover memory. Use a smaller payload.",
-            code: "input_too_large",
-          },
-          { status: 413 },
-        ),
-      );
-    }
-
-    // Map errors to appropriate HTTP status codes
-    const status =
-      err.message === "Ledger time fetch timeout"
-        ? 504
-        : err.message === "NEXT_PUBLIC_RPC_URL is not configured"
-          ? 500
-          : err.message.startsWith("RPC error")
-            ? 502
-            : 500;
-
-    logger.error(
-      stripSensitiveFields({
-        event: "witness_response_sent",
-        credentialType: type,
-        outcome: "failure",
-        error: err.message,
-        requestId,
-      }),
-    );
-    return sendResponse(NextResponse.json({ error: err.message }, { status }));
-  }
-}
+              "The credential payload is too large to generate a witness in the available prover memory. Use a smaller pa

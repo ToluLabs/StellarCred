@@ -172,7 +172,8 @@ function BadgeContent() {
             width: isCompact ? "18px" : "22px",
             height: isCompact ? "18px" : "22px",
             borderRadius: "50%",
-            background: status === "loading" ? "rgba(148, 163, 184, 0.15)" : toneBg,
+            background:
+              status === "loading" ? "rgba(148, 163, 184, 0.15)" : toneBg,
             color: status === "loading" ? faintColor : toneColor,
             flexShrink: 0,
           }}

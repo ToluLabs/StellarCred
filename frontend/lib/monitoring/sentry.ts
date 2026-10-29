@@ -235,7 +235,7 @@ export class SentryClient {
     this.recordedEvents = [];
   }
 
-  private parseStack(stack: string): SentryEvent["exception"] extends undefined ? never : any {
+  private parseStack(stack: string): { frames: Array<{ filename: string; function: string; lineno?: number }> } {
     const lines = stack.split("\n").slice(1);
     const frames = lines
       .map((line) => {
