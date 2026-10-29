@@ -891,8 +891,8 @@ jobs:
           # Floor set to the tree's actual merged coverage (lines 21.98%,
           # functions 70.95%, branches 72.67%, statements 22.00%) — the
           # original 80/75/70/80 targets were never enforced because the
-          # workflow could not run (the YAML-separator breakage repaired
-          # in this branch). Re-measured after merging current main, whose
+          # workflow could not run (the YAML-separator breakage
+          # repaired in this branch). Re-measured after merging current main, whose
           # export-flow additions (#898) grew the frontend denominator
           # faster than covered statements; this still acts as a
           # regression ratchet, so raise it deliberately in

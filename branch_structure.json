@@ -1,0 +1,23 @@
+{
+ "default_branch": "main",
+ "branches": [
+ "fix/issue-764-fix-typo-in-deploy-script-causing-failed",
+ "main",
+ "origin"
+ ],
+ "ci_fixes": {
+ "env_check": "required env vars STAGING_API_URL, STAGING_API_KEY, NEXT_PUBLIC_PROOF_REGISTRY_ID must be set in CI as repository secrets/variables and passed into the env-check job env block (validated by node -e check in env-check job; fails fast with a clear message when missing)",
+ "typecheck": "await params/searchParams in app/admin/issuance/page.tsx and app/api/admin/issuance/[id]/route.ts, and await cookies()/headers() in app/admin/issuance/actions.ts and lib/admin-page-auth.ts for Next 16 async request APIs",
+ "syntax": "frontend/lib/monitoring/sentry.ts: fix TS1005 ',' expected at line 125 (remove duplicate identifier declaration if present)"
+ },
+ "parent": {
+ "fix/issue-764-fix-typo-in-deploy-script-causing-failed": "main",
+ "main": null,
+ "origin": "main"
+ },
+ "order": [
+ "main",
+ "fix/issue-764-fix-typo-in-deploy-script-causing-failed",
+ "origin"
+ ]
+}

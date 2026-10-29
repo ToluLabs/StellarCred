@@ -82,7 +82,9 @@ export function useProofTimeline(cred: Credential | null) {
     data.events.sort((a, b) => a.timestamp - b.timestamp);
 
     saveTimeline(commitment, data);
-    setEvents(data.events);
+    // Defer state update out of the effect body to avoid cascading renders.
+    const frame = setTimeout(() => setEvents(data.events), 0);
+    return () => clearTimeout(frame);
   }, [cred, loadTimeline, saveTimeline]);
 
   // Cross-tab sync: listen for storage events from other tabs
@@ -121,7 +123,7 @@ export function useProofTimeline(cred: Credential | null) {
       if (!cred) return;
       const { commitment } = cred;
       const timelineData = loadTimeline(commitment);
-      
+
       const newEvent: TimelineEvent = {
         stage,
         timestamp: data?.timestamp || Math.floor(Date.now() / 1000),

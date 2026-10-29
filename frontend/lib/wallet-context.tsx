@@ -63,7 +63,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // after connecting is caught without requiring a reconnect.
   useEffect(() => {
     if (!address) {
-      setNetworkMismatch(false);
+      // Reset is derived from the absence of an address; handled via the
+      // networkMismatch && !address guard at read-time below.
       return;
     }
     let cancelled = false;
@@ -103,6 +104,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const disconnect = useCallback(() => {
     setAddress("");
     setError(null);
+    setNetworkMismatch(false);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -112,7 +114,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WalletContext.Provider
-      value={{ address, connecting, error, networkMismatch, connect, disconnect }}
+      value={{
+        address,
+        connecting,
+        error,
+        networkMismatch: Boolean(address) && networkMismatch,
+        connect,
+        disconnect,
+      }}
     >
       {children}
     </WalletContext.Provider>
