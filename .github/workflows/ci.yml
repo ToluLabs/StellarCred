@@ -559,7 +559,7 @@ jobs:
         run: pnpm test:coverage
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage-${{ github.sha }}
           path: frontend/coverage
@@ -814,7 +814,7 @@ jobs:
           TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
 
       - name: Upload indexer coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: indexer-coverage-${{ github.sha }}
           path: services/indexer/coverage
@@ -873,7 +873,7 @@ jobs:
           STELLARCRED_RPC_URL: ${{ vars.STELLARCRED_RPC_URL || 'https://soroban-testnet.stellar.org' }}
 
       - name: Upload SDK coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sdk-coverage-${{ github.sha }}
           path: frontend/packages/sdk/coverage
@@ -992,7 +992,7 @@ jobs:
 
       - name: Upload merged coverage summary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-summary-${{ github.sha }}
           path: coverage-artifacts
