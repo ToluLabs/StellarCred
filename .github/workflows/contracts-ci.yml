@@ -63,7 +63,7 @@ jobs:
         # so unchanged dependency trees reuse the compiled artifacts and the
         # job typically finishes in minutes instead of a cold full build.
         # Bump the cache version suffix to invalidate manually.
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
