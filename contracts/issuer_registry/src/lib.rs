@@ -125,6 +125,43 @@ pub struct EventIssuerKeyRevoked {
     pub revoked_at: u64,
 }
 
+/// Payload emitted when an issuer's metadata is set or updated.
+/// Topics: ("iss_reg", "metadata")
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventIssuerMetadataSet {
+    /// The issuer whose metadata changed.
+    pub issuer: Address,
+    /// True when a name field was supplied in this update.
+    pub has_name: bool,
+    /// True when a url field was supplied in this update.
+    pub has_url: bool,
+    /// True when a logo field was supplied in this update.
+    pub has_logo: bool,
+}
+
+/// Payload emitted when a role is granted to an address.
+/// Topics: ("iss_reg", "role_grt")
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventRoleGranted {
+    /// The role name being assigned.
+    pub role: Symbol,
+    /// The address that now holds the role.
+    pub address: Address,
+}
+
+/// Payload emitted when a role is revoked from an address.
+/// Topics: ("iss_reg", "role_rvk")
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventRoleRevoked {
+    /// The role name being removed.
+    pub role: Symbol,
+    /// The address that no longer holds the role.
+    pub address: Address,
+}
+
 // Persistent-entry lifetime management (~5s ledgers).
 const DAY_IN_LEDGERS: u32 = 17280;
 const BUMP_THRESHOLD: u32 = 30 * DAY_IN_LEDGERS;
@@ -732,6 +769,7 @@ impl IssuerRegistry {
         out
     }
     /// Admin-role only. Pass `None` for fields you don't want to set.
+    #[allow(deprecated)]
     pub fn set_issuer_metadata(
         env: Env,
         issuer: Address,
@@ -769,6 +807,18 @@ impl IssuerRegistry {
         env.storage()
             .persistent()
             .extend_ttl(&key, BUMP_THRESHOLD, ENTRY_TTL);
+
+        // Emit: topics = ("iss_reg", "metadata")
+        //       data   = EventIssuerMetadataSet { issuer, has_name, has_url, has_logo }
+        env.events().publish(
+            (symbol_short!("iss_reg"), symbol_short!("metadata")),
+            EventIssuerMetadataSet {
+                issuer,
+                has_name: metadata.name.is_some(),
+                has_url: metadata.url.is_some(),
+                has_logo: metadata.logo.is_some(),
+            },
+        );
     }
 
     /// Read the optional on-chain metadata for an issuer.
@@ -861,11 +911,19 @@ impl IssuerRegistry {
     /// Root-admin only. Use this to delegate or rotate a role's key — e.g. hand
     /// the `admin` role to an operations key, or prepare an `issuer-manager`
     /// role for finer-grained issuer governance.
+    #[allow(deprecated)]
     pub fn grant_role(env: Env, role: Symbol, address: Address) {
         Self::require_admin(&env);
         let mut roles: Map<Symbol, Address> = Self::roles(&env);
-        roles.set(role, address);
+        roles.set(role.clone(), address.clone());
         env.storage().instance().set(&DataKey::Roles, &roles);
+
+        // Emit: topics = ("iss_reg", "role_grt")
+        //       data   = EventRoleGranted { role, address }
+        env.events().publish(
+            (symbol_short!("iss_reg"), symbol_short!("role_grt")),
+            EventRoleGranted { role, address },
+        );
     }
 
     /// Remove `address` as the holder of `role`. Root-admin only.
@@ -874,13 +932,21 @@ impl IssuerRegistry {
     /// address is a no-op risk, so it is rejected with `RoleHolderMismatch`
     /// instead). A role with no holder is simply unassigned — no one can act
     /// under it until it is granted again.
+    #[allow(deprecated)]
     pub fn revoke_role(env: Env, role: Symbol, address: Address) {
         Self::require_admin(&env);
         let mut roles: Map<Symbol, Address> = Self::roles(&env);
         match roles.get(role.clone()) {
             Some(current) if current == address => {
-                roles.remove(role);
+                roles.remove(role.clone());
                 env.storage().instance().set(&DataKey::Roles, &roles);
+
+                // Emit: topics = ("iss_reg", "role_rvk")
+                //       data   = EventRoleRevoked { role, address }
+                env.events().publish(
+                    (symbol_short!("iss_reg"), symbol_short!("role_rvk")),
+                    EventRoleRevoked { role, address },
+                );
             }
             Some(_) => panic_with_error!(&env, Error::RoleHolderMismatch),
             // Unassigned role — nothing to revoke.

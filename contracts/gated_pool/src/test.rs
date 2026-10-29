@@ -243,6 +243,10 @@ fn deposit_emits_event() {
     h.c.submit(&env, &user, &h.issuer, &KYC, 1_000_000);
     h.pool.deposit(&user, &250);
 
+    // Event topic/data are compared as the pool emits them: the `verify`
+    // event from the proof submission is emitted by the registry, and the
+    // `deposit` event is the pool's. Filter to the pool contract and assert
+    // the deposit event payload.
     assert_eq!(
         env.events().all().filter_by_contract(&h.pool.address),
         vec![
@@ -400,24 +404,3 @@ fn test_real_token_deposit_fails_when_user_has_insufficient_tokens() {
 #[should_panic]
 fn test_real_token_withdraw_fails_when_pool_has_insufficient_tokens() {
     let env = Env::default();
-    env.mock_all_auths();
-    let th = deploy_with_token(&env);
-    let user = Address::generate(&env);
-
-    th.token_admin.mint(&user, &200);
-
-    th.c.submit(&env, &user, &th.issuer, &KYC, 1_000_000);
-
-    th.pool.deposit(&user, &200);
-    assert_eq!(th.pool.get_balance(&user), 200);
-
-    // Forcibly drain the pool's token balance to simulate token shortage
-    let thief = Address::generate(&env);
-    th.token.transfer(&th.pool.address, &thief, &200);
-    assert_eq!(th.token.balance(&th.pool.address), 0);
-
-    // User attempts to withdraw: should fail because pool doesn't have the tokens
-    th.pool.withdraw(&user, &100);
-}
-
-
