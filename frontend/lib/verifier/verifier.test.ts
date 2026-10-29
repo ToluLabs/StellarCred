@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   verifyProof,
   validateClaimPayload,
@@ -34,6 +34,11 @@ describe('verifier', () => {
       const result = verifyProof(missingProofPayload);
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/missing proof/i);
+    });
+
+    it('accepts a proof payload built with makePayload', () => {
+      const result = verifyProof(makePayload(validProofPayload));
+      expect(result.ok).toBe(true);
     });
 
     it('rejects a malformed claim payload', () => {

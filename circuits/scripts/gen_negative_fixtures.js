@@ -6,8 +6,10 @@ const fs = require('fs');
 
 const ROOT = path.join(__dirname, '..');
 const REPO = path.join(ROOT, '..');
-const FIXTURES = path.join(REPO,'fixtures');
+const FIXTURES = path.join(REPO, 'fixtures');
 const NEGATIVE_FIXTURES = path.join(FIXTURES, 'negative');
+
+const skipped = [];
 
 console.log('Generating comprehensive negative fixtures for all circuits...');
 
@@ -22,7 +24,9 @@ function helperCopyFixture(circuit, caseName, modifyPublicInputsFn = null) {
   const inputsPath = path.join(srcDir, 'public_inputs');
 
   if (!fs.existsSync(proofPath) || !fs.existsSync(vkPath) || !fs.existsSync(inputsPath)) {
-    console.log(`\n  [Skipped] Fixture directory for '${circuit}' missing required files.`);
+    const missing = [proofPath, vkPath, inputsPath].filter((p) => !fs.existsSync(p));
+    console.log(`\n  [Skipped] Fixture directory for '${circuit}' missing required files: ${missing.join(', ')}`);
+    skipped.push(`${circuit} -> ${caseName}`);
     return false;
   }
 
@@ -50,10 +54,25 @@ helperCopyFixture('kyc', 'kyc_wrong_issuer', (inputs) => {
   return Buffer.concat([commitment, Buffer.alloc(32, 0), Buffer.alloc(32, 0)]);
 });
 helperCopyFixture('kyc', 'kyc_truncated_inputs', (inputs) => inputs.slice(0, 64));
-helperCopyFixture('kyc', 'kyc_wrong_circuit', null); // Age proof against KYC VK
-if (fs.existsSync(path.join(FIXTURES, 'age', 'proof'))) {
-  fs.copyFileSync(path.join(FIXTURES, 'age', 'proof'), path.join(NEGATIVE_FIXTURES, 'kyc_wrong_circuit', 'proof'));
-  fs.copyFileSync(path.join(FIXTURES, 'age', 'public_inputs'), path.join(NEGATIVE_FIXTURES, 'kyc_wrong_circuit', 'public_inputs'));
+
+// Age proof verified against the KYC verification key. Both the proof and
+// public inputs come from the age circuit; the vk comes from the KYC circuit.
+{
+  const caseName = 'kyc_wrong_circuit';
+  const ageDir = path.join(FIXTURES, 'age');
+  const kycVk = path.join(FIXTURES, 'kyc', 'vk');
+  const ageFiles = ['proof', 'public_inputs'].map((f) => path.join(ageDir, f));
+  if (ageFiles.every((f) => fs.existsSync(f)) && fs.existsSync(kycVk)) {
+    const caseDir = path.join(NEGATIVE_FIXTURES, caseName);
+    fs.mkdirSync(caseDir, { recursive: true });
+    fs.copyFileSync(ageFiles[0], path.join(caseDir, 'proof'));
+    fs.copyFileSync(ageFiles[1], path.join(caseDir, 'public_inputs'));
+    fs.copyFileSync(kycVk, path.join(caseDir, 'vk'));
+    console.log(`  -> fixtures/negative/${caseName}/{proof,public_inputs,vk}`);
+  } else {
+    console.log(`\n  [Skipped] Missing age or kyc fixtures for '${caseName}'.`);
+    skipped.push(`age/kyc -> ${caseName}`);
+  }
 }
 
 // 2. Threshold Circuits (Age, Income, Funds, Range)
@@ -103,5 +122,11 @@ remainingCircuits.forEach((circuit) => {
     return mutated;
   });
 });
+
+if (skipped.length > 0) {
+  console.error(`\nERROR: ${skipped.length} negative fixture(s) could not be generated:`);
+  skipped.forEach((s) => console.error(`  - ${s}`));
+  process.exit(1);
+}
 
 console.log('Done generating all negative fixtures!');
