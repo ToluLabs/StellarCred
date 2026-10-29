@@ -10,11 +10,24 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 
+type DomGlobals = {
+  window?: unknown;
+  document?: unknown;
+};
+
+const g = globalThis as unknown as DomGlobals;
+
 // Minimal browser stubs for SSR-safe helpers
 const store = new Map<string, string>();
 
+interface StubElement {
+  attrs: Record<string, string>;
+  setAttribute(name: string, value: string): void;
+  getAttribute(name: string): string | null;
+}
+
 function installDomStubs(systemDark: boolean) {
-  (globalThis as any).window = {
+  g.window = {
     localStorage: {
       getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
       setItem: (k: string, v: string) => {
@@ -37,17 +50,21 @@ function installDomStubs(systemDark: boolean) {
       onchange: null,
     }),
   };
-  (globalThis as any).document = {
-    documentElement: {
-      attrs: {} as Record<string, string>,
-      setAttribute(name: string, value: string) {
-        this.attrs[name] = value;
-      },
-      getAttribute(name: string) {
-        return this.attrs[name] ?? null;
-      },
+  const documentElement: StubElement = {
+    attrs: {},
+    setAttribute(name: string, value: string) {
+      this.attrs[name] = value;
+    },
+    getAttribute(name: string) {
+      return this.attrs[name] ?? null;
     },
   };
+  g.document = { documentElement };
+}
+
+function rootAttr(name: string): string | null {
+  const doc = g.document as { documentElement: StubElement };
+  return doc.documentElement.getAttribute(name);
 }
 
 describe("theme helpers", async () => {
@@ -93,20 +110,14 @@ describe("theme helpers", async () => {
     installDomStubs(false);
     setExplicitTheme("dark");
     assert.equal(store.get("theme"), "dark");
-    assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
-      "dark",
-    );
+    assert.equal(rootAttr("data-theme"), "dark");
   });
 
   it("applyTheme sets data-theme without writing storage", () => {
     installDomStubs(true);
     applyTheme("light");
     assert.equal(store.has("theme"), false);
-    assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
-      "light",
-    );
+    assert.equal(rootAttr("data-theme"), "light");
   });
 
   it("boot script prefers stored theme then OS", () => {

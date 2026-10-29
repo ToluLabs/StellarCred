@@ -60,12 +60,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Poll the wallet's live network while connected, so a network switch made
-  // after connecting is caught without requiring a reconnect.
+  // after connecting is caught without requiring a reconnect. The mismatch
+  // flag is derived from `address` in the render path rather than set
+  // synchronously inside the effect body.
   useEffect(() => {
-    if (!address) {
-      setNetworkMismatch(false);
-      return;
-    }
+    if (!address) return;
     let cancelled = false;
     const check = () => {
       getNetworkOk().then((ok) => {
@@ -110,9 +109,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Clear the mismatch flag whenever there is no connected address. Done via
+  // the derived value so no setState runs synchronously in an effect body.
+  const effectiveNetworkMismatch = address ? networkMismatch : false;
+
   return (
     <WalletContext.Provider
-      value={{ address, connecting, error, networkMismatch, connect, disconnect }}
+      value={{
+        address,
+        connecting,
+        error,
+        networkMismatch: effectiveNetworkMismatch,
+        connect,
+        disconnect,
+      }}
     >
       {children}
     </WalletContext.Provider>

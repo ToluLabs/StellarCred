@@ -4,7 +4,6 @@
 // Captures unhandled server errors with stack traces, environment tags, commit hashes,
 // and service context while guaranteeing zero sensitive payloads or PII escape.
 
-import crypto from "crypto";
 import type { NextRequest, NextResponse } from "next/server";
 import { logger, stripSensitiveFields } from "../logger";
 
@@ -236,7 +235,7 @@ export class SentryClient {
     this.recordedEvents = [];
   }
 
-  private parseStack(stack: string): SentryEvent["exception"] extends undefined ? never : any {
+  private parseStack(stack: string): NonNullable<SentryEvent["exception"]>["values"][number]["stacktrace"] {
     const lines = stack.split("\n").slice(1);
     const frames = lines
       .map((line) => {
@@ -289,14 +288,15 @@ export async function captureServerException(
  * forwards to Sentry, and returns a sanitized 500 error response.
  */
 export function withSentryRouteHandler(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>,
 ) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return async (req: NextRequest, ...args: any[]): Promise<NextResponse> => {
     try {
       return await handler(req, ...args);
     } catch (error) {
-      const requestId =
-        req.headers.get("x-request-id") ?? randomHex(8);
+      const requestId = req.headers.get("x-request-id") ?? randomHex(8);
       const method = req.method;
       const path = req.nextUrl?.pathname ?? "unknown_endpoint";
 

@@ -5,7 +5,7 @@
 
 import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithIntl } from "@/lib/test-utils";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
 
 const TEST_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -80,12 +80,12 @@ vi.mock("@/components/WalletButton", () => ({ WalletButton: () => null }));
 // vitest deliberately leaves the contract IDs unset (lib/__tests__/config.test.ts
 // asserts that), which disables the issue button as "app not configured". This
 // test is about issuer choice, so pretend the deployment is configured.
-vi.mock("@/lib/config", async (importOriginal: any) => {
+vi.mock("@/lib/config", async (importOriginal: () => Promise<unknown>) => {
   const actual = (await importOriginal()) as typeof import("@/lib/config");
   return { ...actual, issuanceConfigured: () => true };
 });
 
-vi.mock("@/lib/credential", async (importOriginal: any) => {
+vi.mock("@/lib/credential", async (importOriginal: () => Promise<unknown>) => {
   const actual = (await importOriginal()) as typeof import("@/lib/credential");
   return { ...actual, saveCredential: vi.fn() };
 });
