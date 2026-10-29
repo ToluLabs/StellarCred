@@ -235,7 +235,7 @@ export class SentryClient {
     this.recordedEvents = [];
   }
 
-  private parseStack(stack: string): SentryEvent["exception"] extends undefined ? never : any {
+  private parseStack(stack: string): NonNullable<SentryEvent["exception"]>["values"][number]["stacktrace"] {
     const lines = stack.split("\n").slice(1);
     const frames = lines
       .map((line) => {
@@ -294,8 +294,7 @@ export function withSentryRouteHandler(
     try {
       return await handler(req, ...args);
     } catch (error) {
-      const requestId =
-        req.headers.get("x-request-id") ?? randomHex(8);
+      const requestId = req.headers.get("x-request-id") ?? randomHex(8);
       const method = req.method;
       const path = req.nextUrl?.pathname ?? "unknown_endpoint";
 

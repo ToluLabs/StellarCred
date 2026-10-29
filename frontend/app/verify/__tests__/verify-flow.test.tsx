@@ -56,12 +56,12 @@ vi.mock("@/components/WalletButton", () => ({
 
 // vitest deliberately leaves the contract IDs unset (lib/__tests__/config.test.ts
 // asserts that), which disables the issue button as "app not configured".
-vi.mock("@/lib/config", async (importOriginal: any) => {
+vi.mock("@/lib/config", async (importOriginal: () => Promise<unknown>) => {
   const actual = (await importOriginal()) as typeof import("@/lib/config");
   return { ...actual, issuanceConfigured: () => true };
 });
 
-vi.mock("@/lib/credential", async (importOriginal: any) => {
+vi.mock("@/lib/credential", async (importOriginal: () => Promise<unknown>) => {
   const actual = (await importOriginal()) as typeof import("@/lib/credential");
   return { ...actual, saveCredential: vi.fn() };
 });
@@ -135,7 +135,7 @@ describe("verify -> issue -> redirect", () => {
       ([url]) => url === "/api/issue",
     );
     expect(issueCall).toBeDefined();
-    const init = issueCall![1];
+    const init = issueCall![1] as { headers: Record<string, string>; body: string };
     expect(typeof init.headers["x-request-id"]).toBe("string");
     expect(init.headers["x-request-id"].length).toBeGreaterThan(0);
     const body = JSON.parse(init.body);
