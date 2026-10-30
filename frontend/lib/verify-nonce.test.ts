@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   consumeVerifyNonce,
   isVerifyNonceConsumed,
@@ -15,7 +15,7 @@ class MemStorage {
 }
 
 beforeEach(() => {
-  (globalThis as any).window = { sessionStorage: new MemStorage() };
+  (globalThis as { window?: unknown }).window = { sessionStorage: new MemStorage() };
   __clearVerifyNoncesForTesting();
 });
 
@@ -46,5 +46,11 @@ describe("consumeVerifyNonce", () => {
     const now = Math.floor(Date.now() / 1000);
     expect(consumeVerifyNonce("tok_abcdefgh", now - 10, now - 20)).toBe(true);
     expect(isVerifyNonceConsumed("tok_abcdefgh", now + 100)).toBe(false);
+  });
+
+  it("consumed entries that are still valid stay blocked after pruning", () => {
+    const now = Math.floor(Date.now() / 1000);
+    expect(consumeVerifyNonce("tok_ijklmnop", now, now + 300)).toBe(true);
+    expect(isVerifyNonceConsumed("tok_ijklmnop", now + 1)).toBe(true);
   });
 });

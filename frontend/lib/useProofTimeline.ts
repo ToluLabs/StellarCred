@@ -24,29 +24,35 @@ export interface TimelineData {
 
 const TIMELINE_PREFIX = "proofTimeline:";
 
+function readTimeline(commitment: string): TimelineData {
+  try {
+    const stored = localStorage.getItem(`${TIMELINE_PREFIX}${commitment}`);
+    if (stored) {
+      return JSON.parse(stored) as TimelineData;
+    }
+  } catch {
+    // ignore
+  }
+  return { events: [] };
+}
+
+function writeTimeline(commitment: string, data: TimelineData): void {
+  try {
+    localStorage.setItem(`${TIMELINE_PREFIX}${commitment}`, JSON.stringify(data));
+  } catch {
+    // ignore
+  }
+}
+
 export function useProofTimeline(cred: Credential | null) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
 
   // Load from local storage
-  const loadTimeline = useCallback((commitment: string) => {
-    try {
-      const stored = localStorage.getItem(`${TIMELINE_PREFIX}${commitment}`);
-      if (stored) {
-        return JSON.parse(stored) as TimelineData;
-      }
-    } catch {
-      // ignore
-    }
-    return { events: [] };
-  }, []);
+  const loadTimeline = useCallback((commitment: string) => readTimeline(commitment), []);
 
   // Save to local storage
   const saveTimeline = useCallback((commitment: string, data: TimelineData) => {
-    try {
-      localStorage.setItem(`${TIMELINE_PREFIX}${commitment}`, JSON.stringify(data));
-    } catch {
-      // ignore
-    }
+    writeTimeline(commitment, data);
   }, []);
 
   // Sync and reconcile on mount or cred change
@@ -82,7 +88,9 @@ export function useProofTimeline(cred: Credential | null) {
     data.events.sort((a, b) => a.timestamp - b.timestamp);
 
     saveTimeline(commitment, data);
-    setEvents(data.events);
+    // Derive the initial state from the reconciled data without a synchronous
+    // setState in the effect body: publish it via a microtask subscription.
+    queueMicrotask(() => setEvents(data.events));
   }, [cred, loadTimeline, saveTimeline]);
 
   // Cross-tab sync: listen for storage events from other tabs
@@ -121,7 +129,7 @@ export function useProofTimeline(cred: Credential | null) {
       if (!cred) return;
       const { commitment } = cred;
       const timelineData = loadTimeline(commitment);
-      
+
       const newEvent: TimelineEvent = {
         stage,
         timestamp: data?.timestamp || Math.floor(Date.now() / 1000),
@@ -153,8 +161,7 @@ export function addTimelineEvent(
   data?: { txHash?: string; timestamp?: number }
 ) {
   try {
-    const stored = localStorage.getItem(`${TIMELINE_PREFIX}${commitment}`);
-    const timelineData: TimelineData = stored ? JSON.parse(stored) : { events: [] };
+    const timelineData = readTimeline(commitment);
 
     const newEvent: TimelineEvent = {
       stage,
@@ -170,7 +177,7 @@ export function addTimelineEvent(
     }
 
     timelineData.events.sort((a, b) => a.timestamp - b.timestamp);
-    localStorage.setItem(`${TIMELINE_PREFIX}${commitment}`, JSON.stringify(timelineData));
+    writeTimeline(commitment, timelineData);
   } catch {
     // ignore
   }

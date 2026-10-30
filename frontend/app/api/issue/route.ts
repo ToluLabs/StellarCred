@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { previewCredential, type CredentialType } from "@stellarcred/issuer";
-import { bodyErrorResponse } from "@/lib/request-limits";
+import { CREDENTIAL_TYPES, previewCredential, type ClaimParams, type CredentialType } from "@stellarcred/issuer";
+import { fetchIssuerPubkey } from "@/lib/issuer-registry";
+import { currentDeploymentRef } from "@/lib/deployment";
+import { circuitVersionStampFor } from "@/lib/circuit-versions";
+import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
 import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
 import { recordIssuance } from "@/lib/metrics";
 import {
@@ -45,7 +48,7 @@ import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
 export async function POST(req: NextRequest) {
   const requestId = resolveRequestId(req.headers.get("x-request-id"));
 
-  // ── Idempotency-Key support ────────────────────────────────────────────────
+  // Idempotency-Key support
   const rawKey = req.headers.get("Idempotency-Key")?.trim() || undefined;
   const idempotencyKey = rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
   if (rawKey && !idempotencyKey) {
@@ -167,6 +170,7 @@ async function executeRequest(
   const request = normalizeIssueRequest(parsed.body, tenant);
   const walletAddress = request.holder;
   const issuerId = request.issuerId;
+  const preview = parsed.body.preview === true;
 
   const sendResponse = async (response: NextResponse, record?: IdempotencyRecord) => {
     const durationMs = Date.now() - startTime;
@@ -222,7 +226,7 @@ async function executeRequest(
     return response;
   };
 
-  // ── Per-wallet rate limit ────────────────────────────────────────────────
+  // Per-wallet rate limit
   if (walletAddress) {
     const walletLimited = enforceWalletRateLimit(walletAddress, requestId);
     if (walletLimited) return sendResponse(walletLimited);
