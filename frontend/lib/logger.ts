@@ -6,12 +6,9 @@ export const logger = pino({
   level: LOG_LEVEL,
 });
 
-
 // Correlates one issuance across /api/issue -> /api/witness -> /api/plaid-balance
 // (and any Persona relay round-trip) so every log line for a single request can
 // be grepped by requestId.
-// Note: resolveRequestId is now defined in middleware.ts to avoid crypto module
-// imports in edge runtime
 
 /**
  * Canonical request-id resolver shared by API route handlers.
@@ -73,12 +70,55 @@ export const SAFE_FIELDS = [
   "sentryEventId",
 ];
 
+const SAFE_FIELD_SET: ReadonlySet<string> = new Set(SAFE_FIELDS);
+
 export function stripSensitiveFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
   const result: Partial<T> = {};
-  for (const key in obj) {
-    if (SAFE_FIELDS.includes(key)) {
-      result[key] = obj[key];
+  for (const key of Object.keys(obj)) {
+    if (SAFE_FIELD_SET.has(key)) {
+      (result as Record<string, unknown>)[key] = obj[key];
     }
   }
   return result;
+}
+
+// Branch-coverage note: the non-object guard below is exercised by the
+// safeInfo/safeWarn/safeError tests so that both sides of the conditional are
+// covered. Callers passing a non-object (e.g. null/undefined from untyped
+// boundaries) get an empty, safe payload instead of a TypeError.
+export function scrubPayload(obj: unknown): Record<string, unknown> {
+  if (obj === null || typeof obj !== "object") return {};
+  return stripSensitiveFields(obj as Record<string, unknown>) as Record<string, unknown>;
+}
+
+// Safe-logging wrappers that run every payload through stripSensitiveFields.
+// Call sites in app/admin/issuance/actions.ts and lib/admin-page-auth.ts should
+// use these rather than the raw logger so sensitive fields are never emitted.
+
+// Centralized safe-logging wrappers. Every call automatically scrubs the
+// payload through stripSensitiveFields so call sites cannot accidentally log
+// sensitive data. The underlying pino methods are invoked with the same
+// (obj, msg) argument order as before, preserving existing log structure.
+export function safeInfo(
+  obj: Record<string, unknown>,
+  msg?: string,
+  ...args: unknown[]
+): void {
+  logger.info(scrubPayload(obj), msg, ...args);
+}
+
+export function safeWarn(
+  obj: Record<string, unknown>,
+  msg?: string,
+  ...args: unknown[]
+): void {
+  logger.warn(scrubPayload(obj), msg, ...args);
+}
+
+export function safeError(
+  obj: Record<string, unknown>,
+  msg?: string,
+  ...args: unknown[]
+): void {
+  logger.error(scrubPayload(obj), msg, ...args);
 }

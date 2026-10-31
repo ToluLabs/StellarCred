@@ -5,7 +5,17 @@
 // and service context while guaranteeing zero sensitive payloads or PII escape.
 
 import type { NextRequest, NextResponse } from "next/server";
-import { logger, stripSensitiveFields } from "../logger";
+import { safeError, safeWarn, stripSensitiveFields } from "../logger";
+
+// Centralized safe logging wrappers: every log payload passes through
+// stripSensitiveFields before reaching the underlying logger.
+export function safeLogError(context: Record<string, unknown>, message: string): void {
+  safeError(stripSensitiveFields(context) as Record<string, unknown>, message);
+}
+
+export function safeLogWarn(context: Record<string, unknown>, message: string): void {
+  safeWarn(stripSensitiveFields(context) as Record<string, unknown>, message);
+}
 
 // This module is also imported from middleware.ts, which is bundled for the
 // Edge runtime and cannot resolve `node:crypto`. Web Crypto's getRandomValues
@@ -158,8 +168,8 @@ export class SentryClient {
       });
       return res.ok;
     } catch (err) {
-      logger.warn(
-        stripSensitiveFields({ event: "sentry_delivery_failed" }),
+      safeWarn(
+        { event: "sentry_delivery_failed" },
         `Failed to deliver error event to Sentry: ${(err as Error).message}`,
       );
       return false;
@@ -235,7 +245,7 @@ export class SentryClient {
     this.recordedEvents = [];
   }
 
-  private parseStack(stack: string): SentryEvent["exception"] extends undefined ? never : any {
+  private parseStack(stack: string): NonNullable<SentryEvent["exception"]>["values"][number]["stacktrace"] {
     const lines = stack.split("\n").slice(1);
     const frames = lines
       .map((line) => {
@@ -288,9 +298,9 @@ export async function captureServerException(
  * forwards to Sentry, and returns a sanitized 500 error response.
  */
 export function withSentryRouteHandler(
-  handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>,
+  handler: (req: NextRequest, ...args: unknown[]) => Promise<NextResponse>,
 ) {
-  return async (req: NextRequest, ...args: any[]): Promise<NextResponse> => {
+  return async (req: NextRequest, ...args: unknown[]): Promise<NextResponse> => {
     try {
       return await handler(req, ...args);
     } catch (error) {
@@ -305,19 +315,19 @@ export function withSentryRouteHandler(
         method,
         path,
         status: 500,
-        extra: {
+        extra: stripSensitiveFields({
           headers: sanitizeHeaders(req.headers),
-        },
+        }) as Record<string, unknown>,
       });
 
-      logger.error(
-        stripSensitiveFields({
+      safeError(
+        {
           event: "api_unhandled_server_error",
           requestId,
           method,
           path,
           sentryEventId: eventId,
-        }),
+        },
         `Unhandled API server exception on ${method} ${path}: ${(error as Error).message}`,
       );
 
