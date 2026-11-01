@@ -12,6 +12,14 @@ Closes #
 - [ ] Docs
 - [ ] CI / tooling
 
+## Checklist
+
+<!-- See CONTRIBUTING.md for code style, commit message format, and testing expectations. -->
+
+- [ ] Tests added or updated
+- [ ] Lint passes (`make lint` / `pnpm lint`)
+- [ ] CHANGELOG.md updated (user-facing changes)
+
 ## Merge requirements
 
 - [ ] **CI is green* * — `cargo test` (contracts), `pnpm tsc --noEmit` (frontend), `pnpm build` (frontend), circuit tests — all green

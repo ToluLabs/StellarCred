@@ -96,12 +96,17 @@ export function createSharedDb(dialect: SqlDialect): Db {
     return rows.map(toClaimRow);
   };
 
-  const claimsByIssuerRows = (issuer: string): Promise<ClaimRow[]> =>
+  const claimsByIssuerRows = (issuer: string, limit?: number): Promise<ClaimRow[]> =>
     claims(
-      `SELECT * FROM claims
+      limit === undefined
+        ? `SELECT * FROM claims
        WHERE issuer = ?
-       ORDER BY id DESC`,
-      [issuer],
+       ORDER BY id DESC`
+        : `SELECT * FROM claims
+       WHERE issuer = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+      limit === undefined ? [issuer] : [issuer, limit],
     );
 
   return {
@@ -274,8 +279,8 @@ export function createSharedDb(dialect: SqlDialect): Db {
       };
     },
 
-    async claimsByIssuer(issuer) {
-      return claimsByIssuerRows(issuer);
+    async claimsByIssuer(issuer, limit) {
+      return claimsByIssuerRows(issuer, limit);
     },
 
     async credentialEvents(

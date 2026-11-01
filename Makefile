@@ -18,6 +18,7 @@ NODE_MAJOR      := 20
 PNPM_MAJOR      := 9
 
 .PHONY: help all build test lint fmt clean check-api-reference doctor \
+        verify-deployment \
         build-contracts test-contracts lint-contracts \
         ci-cache-setup ci-cache-save build-contracts-fast \
         compile-circuits check-circuits \
@@ -37,6 +38,7 @@ help:
 	@echo ""
 	@echo "Top-Level Targets:"
 	@echo "  make doctor          - Check that every pinned toolchain version is installed correctly"
+	@echo "  make verify-deployment - Verify contract IDs, versions, WASM hashes, and VKs end to end (NETWORK=testnet|mainnet)"
 	@echo "  make all             - Run build, test, and lint across all workspaces"
 	@echo "  make build           - Build contracts, circuits, frontend, and indexer"
 	@echo "  make test            - Run all unit, integration, and contract test suites"
@@ -85,6 +87,11 @@ fmt:
 ## check-api-reference: Verify the ProofRegistry API reference matches the contract source
 check-api-reference:
 	node .github/scripts/check-api-reference.mjs
+
+## verify-deployment: Verify contract IDs, versions, WASM hashes, and VKs end to end for a network
+NETWORK ?= testnet
+verify-deployment:
+	bash ./scripts/verify-deployment.sh --network $(NETWORK)
 
 ## clean: Remove all target outputs and build artifacts
 clean:

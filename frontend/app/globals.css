@@ -36,8 +36,7 @@
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-card: 0 0 0 1px var(--border), 0 4px 24px rgba(0, 0, 0, 0.5);
-  --shadow-glow:
-    0 0 0 1px rgba(62, 207, 142, 0.25), 0 0 40px rgba(62, 207, 142, 0.08);
+  --shadow-glow: 0 0 0 1px rgba(62, 207, 142, 0.25), 0 0 40px rgba(62, 207, 142, 0.08);
 
   /* Shape */
   --radius-xs: 6px;
@@ -53,7 +52,7 @@
   color-scheme: light;
   --bg: #f9f9f8;
   --bg-raised: #ffffff;
-  --bg-soft: #f4f4f3;   
+  --bg-soft: #f4f4f3;
   --input: #ffffff;
   --card: #ffffff;
   --card-hover: #f3f3f1;
@@ -96,11 +95,7 @@ body {
   background-color: var(--bg);
   /* Radial green glow at top + dot grid */
   background-image:
-    radial-gradient(
-      ellipse 90% 55% at 50% -5%,
-      rgba(62, 207, 142, 0.07) 0%,
-      transparent 70%
-    ),
+    radial-gradient(ellipse 90% 55% at 50% -5%, rgba(62, 207, 142, 0.07) 0%, transparent 70%),
     radial-gradient(circle, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size:
     100% 100%,
@@ -281,7 +276,9 @@ p {
 /* Documentation Anchor Links */
 .heading-group .anchor-link-icon {
   opacity: 0;
-  transition: opacity 0.15s var(--ease), transform 0.15s var(--ease);
+  transition:
+    opacity 0.15s var(--ease),
+    transform 0.15s var(--ease);
 }
 
 .heading-group:hover .anchor-link-icon,
@@ -521,11 +518,7 @@ p {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    transparent 60%
-  );
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -1066,19 +1059,107 @@ textarea:focus-visible {
 
 /* ---- Onboarding Tour -------------------------------------------------------- */
 
-.tour-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.55);cursor:pointer;animation:tour-fade-in 0.3s ease}
-.tour-highlight{position:relative;z-index:9999!important;box-shadow:0 0 0 4px var(--accent,#3ecf8e),0 0 24px rgba(62,207,142,0.3)!important;border-radius:var(--radius,8px)!important}
-.tour-tooltip{position:fixed;z-index:10000;background:var(--bg-raised,#1a1a2e);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:var(--radius-lg,12px);padding:1.5rem;box-shadow:0 16px 48px rgba(0,0,0,0.4);animation:tour-slide-up 0.3s ease;min-width:280px}
-.tour-close{position:absolute;top:0.75rem;right:0.75rem;background:none;border:none;color:var(--muted,#888);cursor:pointer;padding:4px;border-radius:4px;display:grid;place-items:center}
-.tour-close:hover{color:var(--text,#fff);background:rgba(255,255,255,0.06)}
-.tour-step-indicator{font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted,#888);margin-bottom:0.75rem}
-.tour-title{font-size:1.1rem;font-weight:600;margin-bottom:0.5rem;color:var(--text,#fff)}
-.tour-body{font-size:0.875rem;line-height:1.6;color:var(--muted,#999);margin-bottom:1.25rem}
-.tour-actions{display:flex;gap:0.5rem;align-items:center}
-.tour-skip{display:block;margin-top:0.75rem;background:none;border:none;color:var(--muted,#777);font-size:0.75rem;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
-.tour-skip:hover{color:var(--text,#fff)}
-@keyframes tour-fade-in{from{opacity:0}to{opacity:1}}
-@keyframes tour-slide-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  animation: tour-fade-in 0.3s ease;
+}
+.tour-highlight {
+  position: relative;
+  z-index: 9999 !important;
+  box-shadow:
+    0 0 0 4px var(--accent, #3ecf8e),
+    0 0 24px rgba(62, 207, 142, 0.3) !important;
+  border-radius: var(--radius, 8px) !important;
+}
+.tour-tooltip {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-raised, #1a1a2e);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-lg, 12px);
+  padding: 1.5rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  animation: tour-slide-up 0.3s ease;
+  min-width: 280px;
+}
+.tour-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--muted, #888);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+}
+.tour-close:hover {
+  color: var(--text, #fff);
+  background: rgba(255, 255, 255, 0.06);
+}
+.tour-step-indicator {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted, #888);
+  margin-bottom: 0.75rem;
+}
+.tour-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--text, #fff);
+}
+.tour-body {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--muted, #999);
+  margin-bottom: 1.25rem;
+}
+.tour-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.tour-skip {
+  display: block;
+  margin-top: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--muted, #777);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tour-skip:hover {
+  color: var(--text, #fff);
+}
+@keyframes tour-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes tour-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 /* ---- Copy Button ------------------------------------------------------------ */
 
@@ -1246,8 +1327,12 @@ textarea:focus-visible {
 }
 
 @keyframes modal-overlay-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes modal-in {
@@ -1398,7 +1483,9 @@ textarea:focus-visible {
   justify-content: center;
   color: var(--muted);
   border-radius: var(--radius-sm);
-  transition: color var(--transition-normal, 0.15s var(--ease)), background var(--transition-normal, 0.15s var(--ease));
+  transition:
+    color var(--transition-normal, 0.15s var(--ease)),
+    background var(--transition-normal, 0.15s var(--ease));
 }
 
 .theme-toggle-btn:hover {
@@ -1425,7 +1512,9 @@ textarea:focus-visible {
   color: var(--muted);
   padding: var(--spacing-sm, 0.4rem) var(--spacing-md, 0.8rem);
   border-radius: 999px;
-  transition: color var(--transition-normal, 0.15s var(--ease)), background var(--transition-normal, 0.15s var(--ease));
+  transition:
+    color var(--transition-normal, 0.15s var(--ease)),
+    background var(--transition-normal, 0.15s var(--ease));
 }
 
 .nav-badge:hover {
@@ -1548,8 +1637,8 @@ textarea:focus-visible {
 .cta-strip-card {
   padding: var(--spacing-3xl, 3rem);
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, rgba(62,207,142,0.06) 0%, rgba(62,207,142,0.02) 100%);
-  border: 1px solid rgba(62,207,142,0.15);
+  background: linear-gradient(135deg, rgba(62, 207, 142, 0.06) 0%, rgba(62, 207, 142, 0.02) 100%);
+  border: 1px solid rgba(62, 207, 142, 0.15);
   text-align: center;
 }
 
@@ -1647,17 +1736,16 @@ textarea:focus-visible {
    =========================================================================== */
 
 @keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--card) 25%,
-    var(--card-hover) 50%,
-    var(--card) 75%
-  );
+  background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
   border-radius: var(--radius-sm);
@@ -1831,7 +1919,9 @@ textarea:focus-visible {
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: 0.875rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .form-input:focus-visible {
@@ -1844,6 +1934,13 @@ textarea:focus-visible {
   font-size: 0.775rem;
   color: #a0a0b2;
   margin: 0;
+  line-height: 1.4;
+}
+
+.form-error {
+  font-size: 0.775rem;
+  color: var(--danger);
+  margin: 0.35rem 0 0;
   line-height: 1.4;
 }
 

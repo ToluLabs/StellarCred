@@ -212,6 +212,12 @@ export interface SDKConfig {
   maxDelayMs?: number;
   jitter?: boolean;
   /**
+   * IssuerRegistry contract id. Only needed for the issuer reads in
+   * `issuers.ts` (`listIssuers`, `getIssuer`, `isValidIssuer`); claim checks
+   * never read it.
+   */
+  issuerRegistryId?: string;
+  /**
    * Base URL of a StellarCred indexer, e.g. `https://indexer.example.com`.
    * Required before any read can use `source: "indexer"` or
    * `source: "indexer-verified"`; without it those reads fail soft exactly as
@@ -267,6 +273,7 @@ const DEFAULT_CONFIG: Required<SDKConfig> = {
   requestTimeoutMs: 10_000,
   retries: 3,
   baseDelayMs: 500,
+  issuerRegistryId: env("STELLARCRED_ISSUER_REGISTRY_ID", "NEXT_PUBLIC_ISSUER_REGISTRY_ID"),
   maxDelayMs: 5000,
   jitter: true,
   indexerUrl: env("STELLARCRED_INDEXER_URL", "NEXT_PUBLIC_INDEXER_URL"),
