@@ -16,7 +16,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { IconSearch, IconX, IconChevronDown, IconSortAscending, IconSortDescending } from "@tabler/icons-react";
 import type { Credential } from "@/lib/credential";
-import { proofStatus, isExpiringSoon, daysRemaining } from "@/lib/proof-helpers";
+import { proofStatus, daysRemaining } from "@/lib/proof-helpers";
 
 export type CredentialType = "kyc" | "age" | "income" | "jurisdiction" | "funds";
 export type ProofStatus = "unproved" | "proved" | "expired";
