@@ -552,6 +552,22 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # size-limit-action measures the base branch by running `git checkout -f
+      # <base>` inside this workspace and does not switch back, so every step
+      # below would otherwise test the BASE tree instead of the PR (a PR that
+      # fixes failing tests on main could never go green). Put the checked-out
+      # PR commit back and re-link dependencies before running the tests.
+      - name: Restore PR checkout after bundle size check (#737)
+        if: github.event_name == 'pull_request'
+        working-directory: ${{ github.workspace }}
+        run: |
+          git fetch --no-tags --depth=1 origin ${{ github.sha }} || true
+          git checkout -f ${{ github.sha }}
+
+      - name: Reinstall dependencies for the PR tree (#737)
+        if: github.event_name == 'pull_request'
+        run: pnpm install --frozen-lockfile
+
       - name: Test frontend SDK
         run: pnpm test
 
