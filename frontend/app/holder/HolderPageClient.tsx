@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   IconArrowRight,
-  IconAlertTriangle,
   IconCertificate,
   IconDownload,
   IconFileExport,
@@ -22,7 +21,7 @@ import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
 import { IMPORT_PARAM } from "@/lib/transfer";
-import { removeCredential, type Credential } from "@/lib/credential";
+import { type Credential } from "@/lib/credential";
 import { proofStatus, isExpiringSoon, daysRemaining } from "@/lib/proof-helpers";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
@@ -30,6 +29,7 @@ import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
+import { ExpiryWarning } from "@/components/holder/ExpiryWarning";
 import { SectionLabel } from "@/components/holder/SectionLabel";
 import { ImportPanel } from "@/components/holder/ImportPanel";
 import { BatchBar } from "@/components/holder/BatchBar";
@@ -230,44 +230,7 @@ function HolderInner() {
         />
       ) : (
         <div className="stack reveal" style={{ gap: "1.5rem" }}>
-          {/* ── Expiry warning banner ── */}
-          {(expiringSoon.length > 0 || expired.length > 0) && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="card"
-              style={{
-                padding: "0.85rem 1.15rem",
-                backgroundColor:
-                  expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
-                borderColor:
-                  expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "1rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
-                <IconAlertTriangle
-                  size={18}
-                  style={{
-                    color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                  {expired.length > 0
-                    ? `${expired.length} proof${expired.length > 1 ? "s have" : " has"} expired and ${expired.length > 1 ? "need" : "needs"} re-proving.`
-                    : `${expiringSoon.length} proof${expiringSoon.length > 1 ? "s are" : " is"} expiring within 7 days.`}
-                </span>
-              </div>
-              <span className="mono faint" style={{ fontSize: "0.75rem" }}>
-                One-click re-prove available below
-              </span>
-            </div>
-          )}
+          <ExpiryWarning expiredCount={expired.length} expiringSoonCount={expiringSoon.length} />
 
           {/* ── Empty state ── */}
           {isLoaded && creds.length === 0 && !importing && (
