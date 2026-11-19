@@ -40,6 +40,7 @@ import { GuardianRecoveryControl } from "@/components/holder/GuardianRecoveryCon
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
 import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
+import { CredentialSearchFilter } from "@/components/holder/CredentialSearchFilter";
 
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer — load
@@ -75,6 +76,7 @@ function HolderInner() {
   const [importPayload, setImportPayload] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
+  const [filteredCreds, setFilteredCreds] = useState<Credential[] | null>(null);
 
   // A transfer QR opened directly (native camera app -> /holder?import=...)
   // lands here with the payload already in the URL — prompt for the
@@ -89,14 +91,16 @@ function HolderInner() {
   }, [searchParams]);
 
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  const unproved = displayCreds.filter((c) => proofStatus(c) === "unproved");
-  const expiringSoon = displayCreds
+  // The search filter's result (possibly empty); all credentials until it reports or when there are none.
+  const workingCreds = displayCreds.length > 0 && filteredCreds ? filteredCreds : displayCreds;
+  const unproved = workingCreds.filter((c) => proofStatus(c) === "unproved");
+  const expiringSoon = workingCreds
     .filter((c) => proofStatus(c) === "proved" && isExpiringSoon(c, 7))
     .sort((a, b) => daysRemaining(a) - daysRemaining(b));
-  const activeProved = displayCreds.filter(
+  const activeProved = workingCreds.filter(
     (c) => proofStatus(c) === "proved" && !isExpiringSoon(c, 7),
   );
-  const expired = displayCreds.filter((c) => proofStatus(c) === "expired");
+  const expired = workingCreds.filter((c) => proofStatus(c) === "expired");
 
   // Warm the UltraHonk backend for whatever credential types the user still
   // needs to prove, in the background, once the wallet is actually connected
@@ -176,6 +180,8 @@ function HolderInner() {
       </div>
 
       <OnboardingNudge />
+      {/* Search and filter for credential inventory (Issue #902) */}
+      {displayCreds.length > 0 && <CredentialSearchFilter credentials={displayCreds} onFilteredChange={setFilteredCreds} />}
 
       <ConfigBanner />
 
