@@ -11,6 +11,7 @@ import { Footer } from "@/components/Footer";
 import { LocaleMetaTags } from "@/components/LocaleMetaTags";
 import { WalletProvider } from "@/lib/wallet-context";
 import { ToastProvider } from "@/components/Toast";
+import { BrowserCapabilityBanner } from "@/components/BrowserCapabilityBanner";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import type { Locale } from "@/i18n.config";
 // OnboardingWizard is deferred via next/dynamic(ssr:false) inside this client
@@ -54,7 +55,7 @@ const mono = localFont({
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "StellarCred — Prove anything. Reveal nothing.",
+  title: "StellarCred â€” Prove anything. Reveal nothing.",
   description:
     "Zero-knowledge credentials on Stellar. Prove facts about yourself without the data ever touching the chain.",
 };
@@ -94,6 +95,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
+        <BrowserCapabilityBanner />
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ToastProvider>
             <WalletProvider>

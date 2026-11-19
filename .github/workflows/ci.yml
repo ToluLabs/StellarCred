@@ -552,6 +552,22 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # size-limit-action measures the base branch by running `git checkout -f
+      # <base>` inside this workspace and does not switch back, so every step
+      # below would otherwise test the BASE tree instead of the PR (a PR that
+      # fixes failing tests on main could never go green). Put the checked-out
+      # PR commit back and re-link dependencies before running the tests.
+      - name: Restore PR checkout after bundle size check (#737)
+        if: github.event_name == 'pull_request'
+        working-directory: ${{ github.workspace }}
+        run: |
+          git fetch --no-tags --depth=1 origin ${{ github.sha }} || true
+          git checkout -f ${{ github.sha }}
+
+      - name: Reinstall dependencies for the PR tree (#737)
+        if: github.event_name == 'pull_request'
+        run: pnpm install --frozen-lockfile
+
       - name: Test frontend SDK
         run: pnpm test
 
@@ -801,7 +817,7 @@ jobs:
         env:
           PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
           RPC_URL: https://soroban-testnet.stellar.org
-      - name: Run tests with coverage
+
       # One jest run per job, with coverage. The Postgres leg shares a
       # single database across every test in the suite, and beforeEach only
       # clears claims/cursor — a second jest invocation in the same job would
