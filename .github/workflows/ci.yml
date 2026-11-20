@@ -787,20 +787,9 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run DB test matrix (SQLite + Postgres) and unit tests
-        run: npm test
-        env:
-          # Dummy contract ID / RPC so the ingester tests run headlessly.
-          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
-          RPC_URL: https://soroban-testnet.stellar.org
-          # Point the Postgres leg of the DB matrix at the service container.
-          TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
-
-      # One jest run per job, with coverage. The Postgres leg shares a
-      # single database across every test in the suite, and beforeEach only
-      # clears claims/cursor — a second jest invocation in the same job would
-      # see leftover webhook_deliveries rows and fail the dedupe test.
-      - name: Run DB test matrix (SQLite + Postgres) with coverage
+      # Run Jest once: coverage is collected in the same pass so the shared
+      # Postgres service database is not reused across separate test processes.
+      - name: Run DB test matrix (SQLite + Postgres) and unit tests with coverage
         run: npm run test:coverage
         env:
           PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
