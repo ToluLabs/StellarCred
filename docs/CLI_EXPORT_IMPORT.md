@@ -21,7 +21,7 @@ open the holder page and import the resulting JSON file there.
 Encrypted backup envelopes are intentionally not decrypted by this CLI. Use
 the app's backup-import flow and its passphrase for those files. The `export`
 and `import` command names make the direction of the file transfer explicit;
-both operations validate the source before writing a new destination, and
+both operations validate the source before writing a new destination file, and
 will not overwrite an existing destination.
 
 ## Security
