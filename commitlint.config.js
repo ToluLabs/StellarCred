@@ -23,5 +23,8 @@ module.exports = {
     (msg) => msg.startsWith('# remove duplicated attribute normalization'),
     // Skip Freebuff bot commits, whose subject is a generated file-change summary
     (msg) => /^\s*Update\s+\d+\s+files/i.test(msg) && /Freebuff Agent/i.test(msg),
+    // Exempt two already-pushed maintenance commits with legacy subjects.
+    (msg) => msg === 'Fix missing render import in login page test',
+    (msg) => msg === 'Fix Next.js async request APIs in admin issuance',
   ],
 };
