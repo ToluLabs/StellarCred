@@ -2,7 +2,7 @@
 // function added in #899 and the core step-navigation state machine.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import { useOnboarding, ONBOARDING_STEPS } from "../onboarding";
 
 // localStorage mock — the hook reads/writes state here.
@@ -121,7 +121,10 @@ describe("useOnboarding — core navigation", () => {
   it("nextStep advances and marks completed at the end", async () => {
     ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 4, dismissed: false, completed: false }));
     const { result } = renderHook(() => useOnboarding());
-    await waitFor(() => expect(result.current.mounted).toBe(true));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.mounted).toBe(true);
 
     act(() => result.current.nextStep());
 
