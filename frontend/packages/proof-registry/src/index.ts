@@ -60,7 +60,14 @@ export const Errors = {
    * Two or more submissions in the batch share the same `credential_type`;
    * only the last write would survive, so the batch is rejected outright.
    */
-  9: {message:"DuplicateCredentialType"}
+  9: {message:"DuplicateCredentialType"},
+  10: {message:"AggregateLayoutInvalid"},
+  11: {message:"SubmissionsPaused"},
+  12: {message:"InvalidExpiry"},
+  13: {message:"RoleNotHeld"},
+  14: {message:"RoleHolderMismatch"},
+  15: {message:"NoPendingAdmin"},
+  16: {message:"NullifierAlreadyUsed"}
 }
 
 export type DataKey = {tag: "Admin", values: void} | {tag: "Verifier", values: void} | {tag: "IssuerRegistry", values: void} | {tag: "Proof", values: readonly [string, string]};

@@ -111,6 +111,35 @@ jobs:
             exit 1
           fi
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          targets: wasm32v1-none
+
+      - name: Build contract WASM artifacts
+        working-directory: .
+        run: cargo build --release --target wasm32v1-none --locked
+
+      - name: Generate release build provenance (#968)
+        working-directory: .
+        run: |
+          node scripts/generate-release-provenance.mjs \
+            --out-dir . \
+            --artifacts \
+              target/wasm32v1-none/release/credential_verifier.wasm \
+              target/wasm32v1-none/release/issuer_registry.wasm \
+              target/wasm32v1-none/release/proof_registry.wasm \
+              target/wasm32v1-none/release/gated_pool.wasm \
+              circuits/circuit-versions.json
+
+      - name: Verify release build provenance (#968)
+        working-directory: .
+        run: |
+          node scripts/verify-provenance.mjs \
+            --provenance build-provenance.json \
+            --artifacts-dir .
+
       # Create the GitHub Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -118,6 +147,14 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ env.RELEASE_NOTES }}
+          files: |
+            build-provenance.json
+            build-provenance.json.sha256
+            artifacts-checksums.txt
+            target/wasm32v1-none/release/credential_verifier.wasm
+            target/wasm32v1-none/release/issuer_registry.wasm
+            target/wasm32v1-none/release/proof_registry.wasm
+            target/wasm32v1-none/release/gated_pool.wasm
 
       # Build and publish @stellarcred/sdk to npm
       - name: Build SDK

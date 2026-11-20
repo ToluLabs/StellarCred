@@ -72,7 +72,16 @@ import {
   InvalidAddressError,
 } from "./claims";
 import {
-  RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
+  RpcError,
+  IndexerError,
+  ContractError,
+  ContractErrorCode,
+  IssuerRegistryErrorCode,
+  CredentialVerifierErrorCode,
+  GatedPoolErrorCode,
+  isContractErrorRetryable,
+  parseContractError,
+  TransactionSubmissionError,
 } from "./errors";
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
@@ -153,6 +162,10 @@ export const StellarCred = {
   IndexerError,
   ContractError,
   ContractErrorCode,
+  IssuerRegistryErrorCode,
+  CredentialVerifierErrorCode,
+  GatedPoolErrorCode,
+  isContractErrorRetryable,
   TransactionSubmissionError,
   CredentialValidationError,
   parseContractError,
