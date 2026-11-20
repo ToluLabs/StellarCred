@@ -796,11 +796,6 @@ jobs:
           # Point the Postgres leg of the DB matrix at the service container.
           TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
 
-      - name: Run indexer parsing and persistence tests (#820)
-        run: npm test -- --testPathPattern=tests/indexer
-        env:
-          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
-          RPC_URL: https://soroban-testnet.stellar.org
       # One jest run per job, with coverage. The Postgres leg shares a
       # single database across every test in the suite, and beforeEach only
       # clears claims/cursor — a second jest invocation in the same job would
