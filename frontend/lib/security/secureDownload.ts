@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { isTokenExpired } from '../auth';
 
 export interface DownloadTokenPayload {
   artifactId: string;
@@ -72,7 +73,7 @@ export function verifySecureDownloadToken(token: string): {
       Buffer.from(payloadString, 'base64url').toString('utf8')
     );
 
-    if (Date.now() > payload.expiresAt) {
+    if (isTokenExpired(payload.expiresAt)) {
       return { isValid: false, payload, error: 'Token has expired' };
     }
 

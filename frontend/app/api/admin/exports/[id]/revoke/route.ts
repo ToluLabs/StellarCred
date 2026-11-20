@@ -5,7 +5,7 @@ import {
   auditLogAppend,
   auditLogPersist,
 } from "@/lib/audit-log";
-import { checkAdminAuth, UNAUTHORIZED } from "@/lib/admin-auth";
+import { requireAdmin } from "@/app/api/_middleware";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +13,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!checkAdminAuth(req)) {
-    return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  }
+  const denied = requireAdmin(req);
+  if (denied) return denied;
 
   try {
     const { id } = await params;

@@ -25,6 +25,7 @@ describe("storage-keys", () => {
       expect(STORAGE_KEYS.ONBOARDING_LEGACY).toBe("stellarcred_onboarding_seen");
       expect(STORAGE_KEYS.WALLET_ID).toBe("stellarcred:wallet-id");
       expect(STORAGE_KEYS.THEME).toBe("theme");
+      expect(STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED).toBe("stellarcred:onboarding-nudge-dismissed");
     });
   });
 
@@ -74,6 +75,7 @@ describe("storage-keys", () => {
       expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING_LEGACY);
       expect(allKeys).toContain(STORAGE_KEYS.WALLET_ID);
       expect(allKeys).toContain(STORAGE_KEYS.THEME);
+      expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED);
       
       // Should include dynamic timeline keys
       expect(allKeys).toContain("proofTimeline:c1");
@@ -90,6 +92,7 @@ describe("storage-keys", () => {
       expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING);
       expect(allKeys).toContain(STORAGE_KEYS.WALLET_ID);
       expect(allKeys).toContain(STORAGE_KEYS.THEME);
+      expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED);
     });
   });
 
@@ -101,6 +104,7 @@ describe("storage-keys", () => {
       expect(isStellarCredKey(STORAGE_KEYS.ONBOARDING)).toBe(true);
       expect(isStellarCredKey(STORAGE_KEYS.WALLET_ID)).toBe(true);
       expect(isStellarCredKey(STORAGE_KEYS.THEME)).toBe(true);
+      expect(isStellarCredKey(STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED)).toBe(true);
     });
 
     it("identifies timeline keys by prefix", () => {

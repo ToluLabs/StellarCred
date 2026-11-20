@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAdminAuth, UNAUTHORIZED } from "@/lib/admin-auth";
+import { requireAdmin } from "@/app/api/_middleware";
 import { cancelQueuedJob } from "@/lib/export-scheduler";
 import {
   auditLogBootstrap,
@@ -10,9 +10,8 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  if (!checkAdminAuth(req)) {
-    return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  }
+  const denied = requireAdmin(req);
+  if (denied) return denied;
 
   try {
     let body: Record<string, unknown>;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { previewCredential, type CredentialType } from "@stellarcred/issuer";
 import { bodyErrorResponse } from "@/lib/request-limits";
 import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
+import { recordIssuance } from "@/lib/metrics";
 import {
   completedIdempotencyRecord,
   idempotencyGetAsync,
@@ -17,21 +19,22 @@ import {
   normalizeIssueRequest,
   parseIssueBody,
   resolveIssuerClient,
-  resolveRequestTenant,
   validateIssueRequest,
   validateIssuerRegistration,
   type ValidationFailure,
 } from "./handlers/validate";
 import { enforceIpRateLimit, enforceWalletRateLimit } from "./handlers/rateLimit";
 import { runIssuanceFlow } from "./handlers/issuanceFlow";
+import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
 
 /**
  * POST /api/issue — thin dispatcher.
  *
  * The work is split into focused modules so this file only sequences it:
  *
- *   handlers/validate.ts      tenant auth, parsing, normalisation, field,
- *                             tenant and issuer-registry checks
+ *   ../_middleware.ts         tenant authentication (shared auth guard)
+ *   handlers/validate.ts      parsing, normalisation, field, tenant and
+ *                             issuer-registry checks
  *   handlers/rateLimit.ts     the per-IP and per-wallet limits
  *   handlers/issuanceFlow.ts  Persona, Plaid, signing, deployment/circuit stamps
  *
@@ -140,16 +143,14 @@ async function executeRequest(
 
   // Tenant authentication comes first: a request that cannot prove which
   // tenant it belongs to must not have its body read or cached.
-  const tenantRes = await resolveRequestTenant(req);
+  const tenantRes = await authenticateTenant(req);
   if (!tenantRes.ok) {
     if (idempotencyKey) {
       idempotencyInFlightFail(idempotencyKey, new Error(tenantRes.error));
     }
-    const res = NextResponse.json({ error: tenantRes.error }, { status: tenantRes.status });
-    res.headers.set("x-request-id", requestId);
-    return res;
+    return authErrorResponse(tenantRes, requestId);
   }
-  const tenant = tenantRes.tenant;
+  const tenant = tenantRes.value;
 
   // A body that cannot be read or parsed is answered directly: it is not a
   // verdict on an issuance request, so it is neither cached nor logged as one.
@@ -207,6 +208,16 @@ async function executeRequest(
           requestId,
         }),
       );
+      // Record metrics for every completed issuance request.
+      recordIssuance(
+        type || "unknown",
+        outcome === "success" ? "success" : "failure",
+        durationMs,
+      );
+    }
+    // If no credential types were parsed yet (early rejection), record once.
+    if (credentialTypes.length === 0) {
+      recordIssuance("unknown", "invalid_request", durationMs);
     }
     return response;
   };
@@ -223,6 +234,28 @@ async function executeRequest(
 
   const validated = validateIssueRequest(request, requestId, tenant);
   if (!validated.ok) return sendResponse(failureResponse(validated.failure));
+
+  if (validated.request.preview === true) {
+    try {
+      const previews = await Promise.all(
+        Array.from(new Set(validated.request.credentialTypes), (type) =>
+          previewCredential({
+            type: type as CredentialType,
+            holder: validated.request.holder,
+            issuerId: validated.request.issuerId,
+            issuerName: validated.request.issuerName,
+            expiry: validated.request.expiry,
+            attribute: validated.request.attributes,
+            claimParams: validated.request.claimParams,
+          }),
+        ),
+      );
+      outcome = "success";
+      return sendResponse(NextResponse.json({ preview: true, credentials: previews }));
+    } catch (e) {
+      return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 400 }));
+    }
+  }
 
   const issuerClient = await resolveIssuerClient(tenant);
   const registrationFailure = await validateIssuerRegistration(

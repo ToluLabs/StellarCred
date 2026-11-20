@@ -18,11 +18,13 @@ NODE_MAJOR      := 20
 PNPM_MAJOR      := 9
 
 .PHONY: help all build test lint fmt clean check-api-reference doctor \
+        verify-deployment \
         build-contracts test-contracts lint-contracts \
         ci-cache-setup ci-cache-save build-contracts-fast \
         compile-circuits check-circuits \
         build-frontend test-frontend lint-frontend test-sdk test-example test-a11y \
-        build-indexer test-indexer lint-indexer run-indexer
+        build-indexer test-indexer lint-indexer run-indexer \
+        backfill backfill-resume
 
 # ------------------------------------------------------------------------------
 # Top-Level Orchestration Targets
@@ -36,6 +38,7 @@ help:
 	@echo ""
 	@echo "Top-Level Targets:"
 	@echo "  make doctor          - Check that every pinned toolchain version is installed correctly"
+	@echo "  make verify-deployment - Verify contract IDs, versions, WASM hashes, and VKs end to end (NETWORK=testnet|mainnet)"
 	@echo "  make all             - Run build, test, and lint across all workspaces"
 	@echo "  make build           - Build contracts, circuits, frontend, and indexer"
 	@echo "  make test            - Run all unit, integration, and contract test suites"
@@ -61,6 +64,8 @@ help:
 	@echo "  make test-indexer    - Run Jest test suite for indexer"
 	@echo "  make lint-indexer    - Run ESLint on indexer service code"
 	@echo "  make run-indexer     - Start local indexer service"
+	@echo "  make backfill        - Backfill a bounded ledger range (FROM=, TO=; TO defaults to head)"
+	@echo "  make backfill-resume - Resume an interrupted backfill from its checkpoint"
 
 ## all: Run build, test, and lint across all workspaces (CI mirror)
 all: build test lint
@@ -81,6 +86,11 @@ fmt:
 ## check-api-reference: Verify the ProofRegistry API reference matches the contract source
 check-api-reference:
 	node .github/scripts/check-api-reference.mjs
+
+## verify-deployment: Verify contract IDs, versions, WASM hashes, and VKs end to end for a network
+NETWORK ?= testnet
+verify-deployment:
+	bash ./scripts/verify-deployment.sh --network $(NETWORK)
 
 ## clean: Remove all target outputs and build artifacts
 clean:
@@ -291,3 +301,27 @@ lint-indexer:
 ## run-indexer: Start the indexer service locally
 run-indexer:
 	cd services/indexer && npm start
+
+# ------------------------------------------------------------------------------
+# Indexer Backfill (bounded, resumable, separate from the live poll loop)
+# ------------------------------------------------------------------------------
+# Usage:
+#   make backfill FROM=1000000 TO=1200000        # explicit range
+#   make backfill FROM=genesis                   # contract deployment to head
+#   make backfill-resume                         # continue from checkpoint
+# Progress is printed per batch; a checkpoint is persisted after each batch so
+# an interrupted run resumes without re-fetching completed ledgers.
+# Throughput is bound by Horizon rate limits (one request per page of up to
+# 200 events), so run time tracks event density rather than ledger count.
+
+FROM  ?= genesis
+TO    ?= head
+BATCH ?= 200
+
+## backfill: Index a bounded ledger range in batched, resumable mode
+backfill:
+	cd services/indexer && npm run backfill -- --from $(FROM) --to $(TO) --batch-size $(BATCH)
+
+## backfill-resume: Resume an interrupted backfill from its persisted checkpoint
+backfill-resume:
+	cd services/indexer && npm run backfill -- --resume --batch-size $(BATCH)

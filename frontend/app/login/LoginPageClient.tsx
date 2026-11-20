@@ -15,6 +15,26 @@ import {
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 
+const STELLAR_PUBKEY = /^G[A-Z2-7]{55}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ALLOWED_IDENTIFIER = /^[A-Za-z0-9@._+-]+$/;
+
+function validateIdentifier(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "Please enter your email or Stellar public key.";
+  if (trimmed.length < 3) return "Identifier must be at least 3 characters.";
+  if (trimmed.length > 254) return "Identifier must be at most 254 characters.";
+  if (!ALLOWED_IDENTIFIER.test(trimmed)) {
+    return "Identifier can only contain letters, numbers, and @ . _ + -";
+  }
+  if (trimmed.includes("@")) {
+    if (!EMAIL.test(trimmed)) return "Enter a valid email address.";
+  } else if (!STELLAR_PUBKEY.test(trimmed)) {
+    return "Enter a valid email or Stellar public key (starts with G, 56 characters).";
+  }
+  return null;
+}
+
 export function LoginPageClient() {
   const router = useRouter();
   const { address } = useWallet();
@@ -24,15 +44,18 @@ export function LoginPageClient() {
   const [passphrase, setPassphrase] = useState("");
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [identifierError, setIdentifierError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIdentifierError(null);
 
-    if (!identifier.trim()) {
-      setError("Please enter your email or Stellar public key.");
+    const idError = validateIdentifier(identifier);
+    if (idError) {
+      setIdentifierError(idError);
       return;
     }
     if (!passphrase.trim()) {
@@ -69,11 +92,7 @@ export function LoginPageClient() {
         </header>
 
         {/* Tab switcher for accessible mode selection */}
-        <div
-          role="tablist"
-          aria-label="Login methods"
-          className="login-tablist"
-        >
+        <div role="tablist" aria-label="Login methods" className="login-tablist">
           <button
             type="button"
             role="tab"
@@ -118,7 +137,8 @@ export function LoginPageClient() {
         >
           <div className="wallet-login-content">
             <p className="muted wallet-instructions">
-              Connect your Stellar wallet to authenticate automatically without sending secret keys or passwords over the network.
+              Connect your Stellar wallet to authenticate automatically without sending secret keys
+              or passwords over the network.
             </p>
 
             <div className="wallet-button-container">
@@ -126,14 +146,13 @@ export function LoginPageClient() {
             </div>
 
             {isConnected && address ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="wallet-status-connected"
-              >
+              <div role="status" aria-live="polite" className="wallet-status-connected">
                 <IconCheck size={18} color="var(--accent)" aria-hidden="true" />
                 <span>
-                  Connected as <code className="mono">{address.slice(0, 4)}...{address.slice(-4)}</code>
+                  Connected as{" "}
+                  <code className="mono">
+                    {address.slice(0, 4)}...{address.slice(-4)}
+                  </code>
                 </span>
                 <Link
                   href="/holder"
@@ -173,11 +192,7 @@ export function LoginPageClient() {
             )}
 
             {success && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="login-success-alert"
-              >
+              <div role="status" aria-live="polite" className="login-success-alert">
                 <IconCheck size={18} aria-hidden="true" />
                 <span>Credentials verified. Redirecting...</span>
               </div>
@@ -185,7 +200,10 @@ export function LoginPageClient() {
 
             <div className="form-group">
               <label htmlFor="login-identifier" className="form-label">
-                Email or Public Key <span aria-hidden="true" className="required-star">*</span>
+                Email or Public Key{" "}
+                <span aria-hidden="true" className="required-star">
+                  *
+                </span>
               </label>
               <input
                 id="login-identifier"
@@ -193,14 +211,24 @@ export function LoginPageClient() {
                 type="text"
                 autoComplete="username"
                 value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
+                onChange={(e) => {
+                  setIdentifier(e.target.value);
+                  if (identifierError) setIdentifierError(null);
+                }}
                 required
                 aria-required="true"
-                aria-invalid={error ? "true" : undefined}
-                aria-describedby={error ? "login-error" : "login-identifier-hint"}
+                aria-invalid={identifierError ? "true" : undefined}
+                aria-describedby={
+                  identifierError ? "login-identifier-error" : "login-identifier-hint"
+                }
                 placeholder="you@domain.com or G..."
                 className="form-input"
               />
+              {identifierError && (
+                <p id="login-identifier-error" role="alert" className="form-error">
+                  {identifierError}
+                </p>
+              )}
               <p id="login-identifier-hint" className="form-hint">
                 Enter your registered identifier or Stellar public key.
               </p>
@@ -208,7 +236,10 @@ export function LoginPageClient() {
 
             <div className="form-group">
               <label htmlFor="login-passphrase" className="form-label">
-                Passphrase or Backup Secret <span aria-hidden="true" className="required-star">*</span>
+                Passphrase or Backup Secret{" "}
+                <span aria-hidden="true" className="required-star">
+                  *
+                </span>
               </label>
               <input
                 id="login-passphrase"

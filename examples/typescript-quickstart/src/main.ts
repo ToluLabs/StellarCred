@@ -27,11 +27,15 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import StellarCred, {
+  buildVerifyUrl,
+  parseReturnParams,
   verifyWalletSignature,
+  type BuildVerifyUrlOptions,
   type Claim,
   type ClaimOptions,
   type ClaimType,
   type CredentialStatusResult,
+  type UntrustedReturnParams,
   type VerifyWalletClaimResult,
   type WalletChallenge,
 } from "@stellarcred/sdk";
@@ -156,6 +160,64 @@ export async function authenticate(params: {
 }
 
 // ---------------------------------------------------------------------------
+// 4. Verification redirect and response handling (buildVerifyUrl).
+// ---------------------------------------------------------------------------
+export function createVerificationRedirect(params: {
+  returnUrl: string;
+  claim: ClaimType;
+  minThreshold?: number;
+  wallet?: string;
+  state?: string;
+}): string {
+  const options: BuildVerifyUrlOptions = {
+    returnUrl: params.returnUrl,
+    claim: params.claim,
+    wallet: params.wallet,
+    state: params.state,
+    expiresInMinutes: 15,
+    singleUse: true,
+  };
+
+  if (params.claim === "age" && params.minThreshold !== undefined) {
+    options.claimParams = { threshold_years: params.minThreshold };
+  } else if (params.minThreshold !== undefined) {
+    options.claimParams = { threshold: params.minThreshold };
+  }
+
+  return buildVerifyUrl(options);
+}
+
+export async function handleVerificationReturn(params: {
+  returnUrlWithQuery: string;
+  challenge: WalletChallenge;
+  signature: string | Uint8Array;
+  requiredClaim: ClaimType;
+}): Promise<{ ok: boolean; wallet: string | null; error?: string }> {
+  const hints: UntrustedReturnParams = parseReturnParams(params.returnUrlWithQuery);
+
+  if (!hints.verified || !hints.wallet) {
+    return { ok: false, wallet: null, error: "Verification was not completed" };
+  }
+
+  const verification: VerifyWalletClaimResult = await StellarCred.verifyWalletClaim({
+    wallet: hints.wallet,
+    challenge: params.challenge,
+    signature: params.signature,
+    claim: params.requiredClaim,
+  });
+
+  if (!verification.ok) {
+    return {
+      ok: false,
+      wallet: hints.wallet,
+      error: `Authentication failed: ${verification.failureReason ?? "unverified"}`,
+    };
+  }
+
+  return { ok: true, wallet: verification.wallet };
+}
+
+// ---------------------------------------------------------------------------
 // Offline demo — no network calls, so it is safe to run in CI.
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
@@ -173,12 +235,19 @@ async function main(): Promise<void> {
     challengeSignature,
   );
 
+  const verifyUrl = createVerificationRedirect({
+    returnUrl: "https://example.com/callback",
+    claim: "kyc",
+    state: "sess_quickstart_demo",
+  });
+
   console.log(`signed transaction verifies : ${transactionValid}`);
   console.log(`signed challenge verifies   : ${challengeValid}`);
+  console.log(`verification URL generated   : ${verifyUrl.startsWith("https://")}`);
   console.log(`transaction hash            : ${transaction.hash().toString("hex")}`);
 
-  if (!transactionValid || !challengeValid) {
-    throw new Error("signature verification failed");
+  if (!transactionValid || !challengeValid || !verifyUrl) {
+    throw new Error("signature or URL verification failed");
   }
 
   // Set SC_CHECK_WALLET to run a live on-chain read against ProofRegistry.
