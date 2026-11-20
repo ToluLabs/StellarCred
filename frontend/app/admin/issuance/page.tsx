@@ -60,8 +60,8 @@ export default async function AdminIssuancePage({
             </option>
           ))}
         </select>
-        <input name="provider" placeholder="Provider" defaultValue={searchParams.provider ?? ""} />
-        <input name="q" placeholder="Event ID / type" defaultValue={searchParams.q ?? ""} />
+        <input name="provider" placeholder="Provider" defaultValue={sp?.provider ?? ""} />
+        <input name="q" placeholder="Event ID / type" defaultValue={sp?.q ?? ""} />
         <button type="submit">Filter</button>
       </form>
       <QueueTable initialRecords={records} />
