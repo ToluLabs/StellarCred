@@ -1,0 +1,372 @@
+{
+  "$schema": "./error-codes.schema.json",
+  "version": "1.0.0",
+  "updatedAt": "2026-11-20T00:00:00Z",
+  "description": "Canonical machine-readable error code registry for StellarCred smart contracts.",
+  "contracts": {
+    "proof_registry": {
+      "name": "ProofRegistry",
+      "contractIdEnv": "NEXT_PUBLIC_PROOF_REGISTRY_ID",
+      "description": "On-chain verification and proof registry caching verified claims and enforcing issuer trust.",
+      "errors": {
+        "1": {
+          "code": 1,
+          "name": "NotInitialized",
+          "category": "configuration",
+          "retryable": false,
+          "description": "Contracts not initialised - required contract addresses or admin state are unset.",
+          "retryGuidance": "Deploy and initialise the contract before invoking functions."
+        },
+        "2": {
+          "code": 2,
+          "name": "VerificationFailed",
+          "category": "validation",
+          "retryable": false,
+          "description": "Proof verification failed - the ZK proof is invalid or was generated against the wrong circuit VK.",
+          "retryGuidance": "Do not retry with the same proof. Regenerate the ZK proof using matching circuit verification keys."
+        },
+        "3": {
+          "code": 3,
+          "name": "NotAuthorized",
+          "category": "authorization",
+          "retryable": false,
+          "description": "Not authorised - wallet signature missing or wrong account.",
+          "retryGuidance": "Check that the calling wallet matches the required identity and provide valid authorization."
+        },
+        "4": {
+          "code": 4,
+          "name": "IssuerNotTrusted",
+          "category": "authorization",
+          "retryable": false,
+          "description": "Issuer not trusted - the issuer address is not registered for this credential type.",
+          "retryGuidance": "Verify the credential issuer against the IssuerRegistry before submitting."
+        },
+        "5": {
+          "code": 5,
+          "name": "IssuerKeyMismatch",
+          "category": "validation",
+          "retryable": false,
+          "description": "Issuer key mismatch - this credential was signed with a key that does not match what is registered on-chain.",
+          "retryGuidance": "Re-issue the credential with the current registered issuer signing key and try again."
+        },
+        "6": {
+          "code": 6,
+          "name": "ProofNotFound",
+          "category": "validation",
+          "retryable": false,
+          "description": "Proof not found - no on-chain proof exists for this holder and credential type.",
+          "retryGuidance": "Submit a valid proof before attempting to query or consume the claim."
+        },
+        "7": {
+          "code": 7,
+          "name": "BatchTooLarge",
+          "category": "validation",
+          "retryable": true,
+          "description": "Batch too large - the submission exceeds the maximum batch limit.",
+          "retryGuidance": "Reduce the batch size and submit in smaller chunks."
+        },
+        "8": {
+          "code": 8,
+          "name": "BatchEmpty",
+          "category": "validation",
+          "retryable": false,
+          "description": "Batch is empty - at least one proof submission is required.",
+          "retryGuidance": "Include one or more proof submissions in the batch."
+        },
+        "9": {
+          "code": 9,
+          "name": "DuplicateCredentialType",
+          "category": "validation",
+          "retryable": false,
+          "description": "Duplicate credential type - the batch contains multiple proofs for the same claim type.",
+          "retryGuidance": "Deduplicate submissions in the batch so each credential type appears at most once."
+        },
+        "10": {
+          "code": 10,
+          "name": "AggregateLayoutInvalid",
+          "category": "validation",
+          "retryable": false,
+          "description": "Aggregate proof layout invalid - the number of credentials or public inputs do not match expected format.",
+          "retryGuidance": "Re-generate the aggregate proof with the canonical public input ordering."
+        },
+        "11": {
+          "code": 11,
+          "name": "SubmissionsPaused",
+          "category": "operational",
+          "retryable": true,
+          "description": "Submissions paused - protocol admin has temporarily halted new proof submissions.",
+          "retryGuidance": "Transient state. Wait for the pauser or admin to resume submissions before retrying."
+        },
+        "12": {
+          "code": 12,
+          "name": "InvalidExpiry",
+          "category": "validation",
+          "retryable": false,
+          "description": "Invalid expiry - the credential expiry is either in the past or exceeds the maximum allowable future window.",
+          "retryGuidance": "Re-issue the credential with an expiry timestamp within valid limits."
+        },
+        "13": {
+          "code": 13,
+          "name": "RoleNotHeld",
+          "category": "authorization",
+          "retryable": false,
+          "description": "Caller does not hold the required role for this administrative function.",
+          "retryGuidance": "Ensure the transaction is signed with an address granted the appropriate role."
+        },
+        "14": {
+          "code": 14,
+          "name": "RoleHolderMismatch",
+          "category": "authorization",
+          "retryable": false,
+          "description": "revoke_role named an address that is not the current holder of the role.",
+          "retryGuidance": "Query role holders to inspect the active address before attempting revocation."
+        },
+        "15": {
+          "code": 15,
+          "name": "NoPendingAdmin",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "accept_admin was called when no pending admin proposal exists.",
+          "retryGuidance": "The existing admin must call propose_admin before the new admin can accept."
+        },
+        "16": {
+          "code": 16,
+          "name": "NullifierAlreadyUsed",
+          "category": "validation",
+          "retryable": false,
+          "description": "The nullifier has already been consumed in this application context.",
+          "retryGuidance": "A credential proof cannot be double-spent. Generate a new proof with an unused nullifier if supported."
+        }
+      }
+    },
+    "issuer_registry": {
+      "name": "IssuerRegistry",
+      "contractIdEnv": "NEXT_PUBLIC_ISSUER_REGISTRY_ID",
+      "description": "Trust root managing recognized credential issuers and rotating public keys.",
+      "errors": {
+        "1": {
+          "code": 1,
+          "name": "NotInitialized",
+          "category": "configuration",
+          "retryable": false,
+          "description": "IssuerRegistry has not been initialized with admin state.",
+          "retryGuidance": "Run contract constructor and initialize state before usage."
+        },
+        "2": {
+          "code": 2,
+          "name": "IssuerNotFound",
+          "category": "validation",
+          "retryable": false,
+          "description": "The specified issuer address is not registered in the system.",
+          "retryGuidance": "Register the issuer address via admin before querying or updating."
+        },
+        "3": {
+          "code": 3,
+          "name": "MetadataTooLong",
+          "category": "validation",
+          "retryable": false,
+          "description": "Issuer metadata string exceeds maximum permitted length.",
+          "retryGuidance": "Shorten name, url, or logo metadata payloads within the maximum byte limit."
+        },
+        "4": {
+          "code": 4,
+          "name": "RoleNotHeld",
+          "category": "authorization",
+          "retryable": false,
+          "description": "Caller does not hold the required administrative role for this operation.",
+          "retryGuidance": "Execute the transaction with an address holding the required role."
+        },
+        "5": {
+          "code": 5,
+          "name": "RoleHolderMismatch",
+          "category": "authorization",
+          "retryable": false,
+          "description": "revoke_role address does not match the active holder.",
+          "retryGuidance": "Confirm the current assigned role holder address before revoking."
+        },
+        "6": {
+          "code": 6,
+          "name": "KeyNotFound",
+          "category": "validation",
+          "retryable": false,
+          "description": "The public key is not part of this issuer live key set.",
+          "retryGuidance": "Verify the key was previously registered and that its validity window has not closed."
+        },
+        "7": {
+          "code": 7,
+          "name": "KeyAlreadyRevoked",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "The key was already emergency-revoked.",
+          "retryGuidance": "No action needed; the key is already inactive."
+        },
+        "8": {
+          "code": 8,
+          "name": "KeyAlreadyRetired",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "rotate_issuer_key attempted to install a key that is already retired.",
+          "retryGuidance": "Provide a fresh, previously unused secp256k1 public key for rotation."
+        },
+        "9": {
+          "code": 9,
+          "name": "KeyHistoryFull",
+          "category": "operational",
+          "retryable": true,
+          "description": "Issuer retains maximum number of retired keys inside active validity windows.",
+          "retryGuidance": "Wait for older retired keys to pass their validity window before rotating again."
+        },
+        "10": {
+          "code": 10,
+          "name": "InvalidKeyWindow",
+          "category": "validation",
+          "retryable": false,
+          "description": "Requested key validity window is zero or exceeds maximum retention limit.",
+          "retryGuidance": "Specify a validity window between 1 second and MAX_KEY_RETENTION_SECS."
+        },
+        "11": {
+          "code": 11,
+          "name": "KeyAlreadyCurrent",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "rotate_issuer_key was asked to install the key that is already active.",
+          "retryGuidance": "Provide a new public key distinct from the current key."
+        },
+        "12": {
+          "code": 12,
+          "name": "KeyChangeRequiresRotation",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "register_issuer attempted to change the pubkey of an existing issuer.",
+          "retryGuidance": "Use rotate_issuer_key so existing credentials remain verifiable within their validity window."
+        },
+        "13": {
+          "code": 13,
+          "name": "NoPendingAdmin",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "accept_admin was called with no pending admin proposal.",
+          "retryGuidance": "Admin must call propose_admin before accept_admin can succeed."
+        }
+      }
+    },
+    "credential_verifier": {
+      "name": "CredentialVerifier",
+      "contractIdEnv": "NEXT_PUBLIC_VERIFIER_ID",
+      "description": "Stateless verification contract executing host-native BN254 UltraHonk proof checks.",
+      "errors": {
+        "1": {
+          "code": 1,
+          "name": "NotInitialized",
+          "category": "configuration",
+          "retryable": false,
+          "description": "CredentialVerifier is uninitialized.",
+          "retryGuidance": "Initialize the verifier contract with admin address."
+        },
+        "2": {
+          "code": 2,
+          "name": "VkNotSet",
+          "category": "validation",
+          "retryable": false,
+          "description": "No verification key is registered for the specified credential type and version.",
+          "retryGuidance": "Register the circuit verification key before submitting proofs."
+        },
+        "3": {
+          "code": 3,
+          "name": "VkInvalid",
+          "category": "validation",
+          "retryable": false,
+          "description": "The verification key bytes are malformed or fail integrity checks.",
+          "retryGuidance": "Re-extract verification key from compiled circuit artifacts and re-register."
+        },
+        "4": {
+          "code": 4,
+          "name": "VersionDeprecated",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "The requested VK version has been deprecated by admin.",
+          "retryGuidance": "Upgrade to the latest circuit version and submit proofs against the current VK."
+        },
+        "5": {
+          "code": 5,
+          "name": "VkAlreadySet",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "A verification key is already registered at the requested version. VKs are immutable.",
+          "retryGuidance": "Increment the version number and register as a new version."
+        },
+        "6": {
+          "code": 6,
+          "name": "VkStillReferenceable",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "VK version cannot be purged while still referenceable by valid cached proofs.",
+          "retryGuidance": "Wait until all cached proofs referencing this version have expired."
+        },
+        "7": {
+          "code": 7,
+          "name": "RoleNotHeld",
+          "category": "authorization",
+          "retryable": false,
+          "description": "Caller does not hold the required role for this verifier function.",
+          "retryGuidance": "Invoke with an address granted the required role."
+        },
+        "8": {
+          "code": 8,
+          "name": "RoleHolderMismatch",
+          "category": "authorization",
+          "retryable": false,
+          "description": "revoke_role target address is not the current holder.",
+          "retryGuidance": "Verify current role holder before attempting revocation."
+        },
+        "9": {
+          "code": 9,
+          "name": "NoPendingAdmin",
+          "category": "lifecycle",
+          "retryable": false,
+          "description": "accept_admin called without an active proposal.",
+          "retryGuidance": "Admin must call propose_admin prior to accept_admin."
+        }
+      }
+    },
+    "gated_pool": {
+      "name": "GatedPool",
+      "contractIdEnv": "NEXT_PUBLIC_GATED_POOL_ID",
+      "description": "Demo DeFi pool gated on zero-knowledge KYC and claim verification.",
+      "errors": {
+        "1": {
+          "code": 1,
+          "name": "NotInitialized",
+          "category": "configuration",
+          "retryable": false,
+          "description": "GatedPool contract is not initialized.",
+          "retryGuidance": "Call constructor to set registry and required claim types."
+        },
+        "2": {
+          "code": 2,
+          "name": "NotKycVerified",
+          "category": "validation",
+          "retryable": false,
+          "description": "Caller does not possess a valid verified claim in ProofRegistry.",
+          "retryGuidance": "Complete credential verification and submit proof to ProofRegistry before joining the pool."
+        },
+        "3": {
+          "code": 3,
+          "name": "InvalidAmount",
+          "category": "validation",
+          "retryable": false,
+          "description": "Deposit or withdrawal amount must be greater than zero.",
+          "retryGuidance": "Specify a positive non-zero token amount."
+        },
+        "4": {
+          "code": 4,
+          "name": "InsufficientBalance",
+          "category": "operational",
+          "retryable": false,
+          "description": "Withdrawal amount exceeds caller deposited balance.",
+          "retryGuidance": "Request an amount less than or equal to current deposited balance."
+        }
+      }
+    }
+  }
+}

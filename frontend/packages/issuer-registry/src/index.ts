@@ -40,7 +40,18 @@ export const networks = {
 
 export const Errors = {
   1: {message:"NotInitialized"},
-  2: {message:"IssuerNotFound"}
+  2: {message:"IssuerNotFound"},
+  3: {message:"MetadataTooLong"},
+  4: {message:"RoleNotHeld"},
+  5: {message:"RoleHolderMismatch"},
+  6: {message:"KeyNotFound"},
+  7: {message:"KeyAlreadyRevoked"},
+  8: {message:"KeyAlreadyRetired"},
+  9: {message:"KeyHistoryFull"},
+  10: {message:"InvalidKeyWindow"},
+  11: {message:"KeyAlreadyCurrent"},
+  12: {message:"KeyChangeRequiresRotation"},
+  13: {message:"NoPendingAdmin"}
 }
 
 

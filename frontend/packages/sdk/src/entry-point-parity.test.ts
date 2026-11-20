@@ -49,6 +49,10 @@ const ERRORS_EXPORTS = [
   "RpcError",
   "ContractError",
   "ContractErrorCode",
+  "IssuerRegistryErrorCode",
+  "CredentialVerifierErrorCode",
+  "GatedPoolErrorCode",
+  "isContractErrorRetryable",
   "parseContractError",
 ] as const;
 
@@ -166,6 +170,10 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.RpcError).toBe(fromErrors.RpcError);
     expect(ns.ContractError).toBe(fromErrors.ContractError);
     expect(ns.ContractErrorCode).toBe(fromErrors.ContractErrorCode);
+    expect(ns.IssuerRegistryErrorCode).toBe(fromErrors.IssuerRegistryErrorCode);
+    expect(ns.CredentialVerifierErrorCode).toBe(fromErrors.CredentialVerifierErrorCode);
+    expect(ns.GatedPoolErrorCode).toBe(fromErrors.GatedPoolErrorCode);
+    expect(ns.isContractErrorRetryable).toBe(fromErrors.isContractErrorRetryable);
     expect(ns.parseContractError).toBe(fromErrors.parseContractError);
   });
 

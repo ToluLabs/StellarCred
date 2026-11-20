@@ -23,6 +23,10 @@
  *   AggregateLayoutInvalid  = 10
  *   SubmissionsPaused       = 11
  *   InvalidExpiry           = 12
+ *   RoleNotHeld             = 13
+ *   RoleHolderMismatch      = 14
+ *   NoPendingAdmin          = 15
+ *   NullifierAlreadyUsed    = 16
  */
 export const PROOF_REGISTRY_ERROR_MESSAGES: Record<number, string> = {
   1: "Contracts not initialised — check that all contract IDs are set in the environment.",
@@ -37,6 +41,10 @@ export const PROOF_REGISTRY_ERROR_MESSAGES: Record<number, string> = {
   10: "Aggregate proof layout invalid — the number of credentials or public inputs don't match the expected format. Re-generate the aggregate proof.",
   11: "Submissions paused — the protocol admin has temporarily halted new proof submissions. Try again later.",
   12: "Invalid expiry — the credential expiry is either in the past or too far in the future. Re-issue with a valid validity window.",
+  13: "Role not held - caller does not hold the required role for this action.",
+  14: "Role holder mismatch - specified address is not the current holder of the role.",
+  15: "No pending admin - accept admin called with no active admin proposal.",
+  16: "Nullifier already used - this credential has already been consumed in this context.",
 };
 
 /**
@@ -57,9 +65,85 @@ export const ContractErrorCode = {
   AggregateLayoutInvalid: 10,
   SubmissionsPaused: 11,
   InvalidExpiry: 12,
+  RoleNotHeld: 13,
+  RoleHolderMismatch: 14,
+  NoPendingAdmin: 15,
+  NullifierAlreadyUsed: 16,
 } as const;
 
 export type ContractErrorCodeType = (typeof ContractErrorCode)[keyof typeof ContractErrorCode];
+
+/**
+ * Error codes from the IssuerRegistry contract's `Error` enum.
+ */
+export const IssuerRegistryErrorCode = {
+  NotInitialized: 1,
+  IssuerNotFound: 2,
+  MetadataTooLong: 3,
+  RoleNotHeld: 4,
+  RoleHolderMismatch: 5,
+  KeyNotFound: 6,
+  KeyAlreadyRevoked: 7,
+  KeyAlreadyRetired: 8,
+  KeyHistoryFull: 9,
+  InvalidKeyWindow: 10,
+  KeyAlreadyCurrent: 11,
+  KeyChangeRequiresRotation: 12,
+  NoPendingAdmin: 13,
+} as const;
+
+export type IssuerRegistryErrorCodeType =
+  (typeof IssuerRegistryErrorCode)[keyof typeof IssuerRegistryErrorCode];
+
+/**
+ * Error codes from the CredentialVerifier contract's `Error` enum.
+ */
+export const CredentialVerifierErrorCode = {
+  NotInitialized: 1,
+  VkNotSet: 2,
+  VkInvalid: 3,
+  VersionDeprecated: 4,
+  VkAlreadySet: 5,
+  VkStillReferenceable: 6,
+  RoleNotHeld: 7,
+  RoleHolderMismatch: 8,
+  NoPendingAdmin: 9,
+} as const;
+
+export type CredentialVerifierErrorCodeType =
+  (typeof CredentialVerifierErrorCode)[keyof typeof CredentialVerifierErrorCode];
+
+/**
+ * Error codes from the GatedPool contract's `Error` enum.
+ */
+export const GatedPoolErrorCode = {
+  NotInitialized: 1,
+  NotKycVerified: 2,
+  InvalidAmount: 3,
+  InsufficientBalance: 4,
+} as const;
+
+export type GatedPoolErrorCodeType =
+  (typeof GatedPoolErrorCode)[keyof typeof GatedPoolErrorCode];
+
+export interface ContractErrorMetadata {
+  code: number;
+  name: string;
+  category: "configuration" | "validation" | "authorization" | "operational" | "lifecycle";
+  retryable: boolean;
+  description: string;
+  retryGuidance: string;
+}
+
+/**
+ * Helper to determine if a contract error is retryable.
+ */
+export function isContractErrorRetryable(contract: string, code: number): boolean {
+  if (contract === "proof_registry" || contract === "ProofRegistry") {
+    return code === ContractErrorCode.SubmissionsPaused || code === ContractErrorCode.BatchTooLarge;
+  }
+  return false;
+}
 
 /**
  * Typed error surfaced when a ProofRegistry transaction fails with a contract
@@ -129,6 +213,7 @@ export class ContractError extends Error {
       ContractErrorCode.IssuerKeyMismatch,
       ContractErrorCode.InvalidExpiry,
       ContractErrorCode.NotInitialized,
+      ContractErrorCode.NullifierAlreadyUsed,
     ];
     return terminalCodes.includes(this.code);
   }

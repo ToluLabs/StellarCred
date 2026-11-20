@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StellarCredContractErrorCodes",
+  "description": "JSON schema for StellarCred canonical machine-readable smart contract error codes.",
+  "type": "object",
+  "required": ["version", "updatedAt", "description", "contracts"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "description": {
+      "type": "string"
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "contractIdEnv", "description", "errors"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "contractIdEnv": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["code", "name", "category", "retryable", "description", "retryGuidance"],
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "name": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "configuration",
+                    "validation",
+                    "authorization",
+                    "operational",
+                    "lifecycle"
+                  ]
+                },
+                "retryable": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "retryGuidance": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

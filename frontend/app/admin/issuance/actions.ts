@@ -18,7 +18,8 @@ export type IssuanceActionResult =
 export async function loginAction(formData: FormData): Promise<void> {
   const key = String(formData.get("key") ?? "");
   if (!verifyApiKey(key, process.env.ADMIN_API_KEY)) return;
-  cookies().set(ADMIN_COOKIE, key, {
+  const cookieStore = await cookies();
+  cookieStore.set(ADMIN_COOKIE, key, {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",
@@ -33,7 +34,8 @@ export async function issuanceQueueAction(
   action: "retry" | "resolve",
   actor: string,
 ): Promise<IssuanceActionResult> {
-  if (!isAdminPageAuthorized()) return { success: false, error: "unauthorized" };
+  const authorized = await isAdminPageAuthorized();
+  if (!authorized) return { success: false, error: "unauthorized" };
   const who = actor.trim();
   if (!who) return { success: false, error: "actor is required" };
 

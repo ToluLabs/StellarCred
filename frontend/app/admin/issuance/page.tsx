@@ -16,12 +16,13 @@ export const dynamic = "force-dynamic";
 
 const STATUSES: QueueStatusFilter[] = ["all", "pending", "failed", "resolved"];
 
-export default function AdminIssuancePage({
+export default async function AdminIssuancePage({
   searchParams,
 }: {
-  searchParams: { status?: string; provider?: string; q?: string };
+  searchParams: Promise<{ status?: string; provider?: string; q?: string }>;
 }) {
-  if (!isAdminPageAuthorized()) {
+  const authorized = await isAdminPageAuthorized();
+  if (!authorized) {
     return (
       <section aria-labelledby="issuance-login">
         <h2 id="issuance-login">Admin sign-in required</h2>
@@ -36,13 +37,14 @@ export default function AdminIssuancePage({
     );
   }
 
-  const status = STATUSES.includes(searchParams.status as QueueStatusFilter)
-    ? (searchParams.status as QueueStatusFilter)
+  const sp = await searchParams;
+  const status = STATUSES.includes(sp?.status as QueueStatusFilter)
+    ? (sp?.status as QueueStatusFilter)
     : "all";
   const records = listIssuanceQueue({
     status,
-    provider: searchParams.provider || undefined,
-    search: searchParams.q || undefined,
+    provider: sp?.provider || undefined,
+    search: sp?.q || undefined,
   });
 
   return (
@@ -58,8 +60,8 @@ export default function AdminIssuancePage({
             </option>
           ))}
         </select>
-        <input name="provider" placeholder="Provider" defaultValue={searchParams.provider ?? ""} />
-        <input name="q" placeholder="Event ID / type" defaultValue={searchParams.q ?? ""} />
+        <input name="provider" placeholder="Provider" defaultValue={sp?.provider ?? ""} />
+        <input name="q" placeholder="Event ID / type" defaultValue={sp?.q ?? ""} />
         <button type="submit">Filter</button>
       </form>
       <QueueTable initialRecords={records} />
