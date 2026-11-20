@@ -119,7 +119,7 @@ describe("useOnboarding — core navigation", () => {
   });
 
   it("nextStep advances and marks completed at the end", async () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 4, dismissed: false, completed: false }));
+    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 5, dismissed: false, completed: false }));
     const { result } = renderHook(() => useOnboarding());
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
