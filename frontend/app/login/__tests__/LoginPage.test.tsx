@@ -114,7 +114,7 @@ describe("LoginPage Accessibility & Functionality (Issue #756)", () => {
   });
 
   it("shows inline errors for invalid identifiers before submit", async () => {
-    render(<LoginPageClient />);
+    renderWithIntl(<LoginPageClient />);
     fireEvent.click(screen.getByRole("tab", { name: /passphrase login/i }));
 
     const identifierInput = screen.getByLabelText(/email or public key/i);
