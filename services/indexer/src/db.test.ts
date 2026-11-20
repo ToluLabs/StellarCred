@@ -53,6 +53,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     integrityCheckEnabled: false,
     integrityCheckIntervalMs: 900_000,
     integrityCheckSampleSize: 25,
+    backfillBatchSize: 200,
     ...overrides,
   } as Config;
 }
@@ -92,6 +93,7 @@ function registerSuite(
       // order-independent (delete every claim and reset the cursor).
       await db.deleteClaimsAfter(0);
       await db.setLastLedger(0);
+      await db.setBackfillStartLedger(0);
     });
 
     afterEach(async () => {

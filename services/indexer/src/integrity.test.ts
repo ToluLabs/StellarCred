@@ -53,6 +53,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     startLedger: 0,
     port: 3001,
     finalityLag: 6,
+    backfillBatchSize: 200,
     corsOrigins: [],
     rateLimitWindowMs: 60000,
     rateLimitMax: 120,

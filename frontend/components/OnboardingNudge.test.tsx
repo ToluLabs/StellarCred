@@ -4,7 +4,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { OnboardingNudge } from "./OnboardingNudge";
-import { ONBOARDING_STEPS } from "@/lib/onboarding";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -17,7 +16,6 @@ let mockOnboardingState = {
 vi.mock("@/lib/onboarding", async (orig) => ({
   ...(await orig()),
   useOnboarding: () => mockOnboardingState,
-  ONBOARDING_STEPS,
 }));
 
 let mockWallet = { address: "GTEST" as string | null };

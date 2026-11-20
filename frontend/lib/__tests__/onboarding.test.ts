@@ -24,6 +24,7 @@ beforeEach(() => {
   ls = mockStorage();
   vi.stubGlobal("localStorage", ls);
   vi.stubGlobal("window", {
+    localStorage: ls,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
@@ -117,9 +118,13 @@ describe("useOnboarding — core navigation", () => {
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("nextStep advances and marks completed at the end", () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 4, dismissed: false, completed: false }));
+  it("nextStep advances and marks completed at the end", async () => {
+    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 5, dismissed: false, completed: false }));
     const { result } = renderHook(() => useOnboarding());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.mounted).toBe(true);
 
     act(() => result.current.nextStep());
 
