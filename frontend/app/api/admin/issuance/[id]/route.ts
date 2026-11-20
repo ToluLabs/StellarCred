@@ -5,7 +5,10 @@ import { auditLogAppend, auditLogBootstrap, auditLogPersist } from "@/lib/audit-
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
   const denied = requireAdmin(req);
   if (denied) return denied;
 
@@ -21,7 +24,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "action must be retry or resolve" }, { status: 400 });
   }
 
-  const id = decodeURIComponent(params.id);
+  const { id: rawId } = await context.params;
+  const id = decodeURIComponent(rawId);
   const result = body.action === "retry" ? retryIssuance(id) : resolveIssuance(id, actor);
   if (!result.ok) {
     return NextResponse.json(
