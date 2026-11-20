@@ -80,6 +80,25 @@ export interface IssueParams {
   claimParams?: ClaimParams;
 }
 
+export interface PreviewCredential {
+  type: CredentialType;
+  title: string;
+  claim: string;
+  issuer: string;
+  issuerId: string;
+  holder: string;
+  commitment: string;
+  issuedAt: number;
+  expiry: string;
+  claimParams?: ClaimParams;
+  publicInputs: {
+    commitment: string;
+    issuerId: string;
+    holder: string;
+  };
+  signed: false;
+}
+
 export interface IssuerClientOptions {
   /** 64-character hex secp256k1 private key. Server-side only — never NEXT_PUBLIC_. */
   privateKey: string;
@@ -116,12 +135,14 @@ function attributeToValue(type: CredentialType, attribute: Record<string, string
     }
     case "income": {
       const income = parseInt(attribute.income ?? "", 10);
-      if (!Number.isFinite(income) || income < 0) throw new Error("income credential requires a non-negative attribute.income");
+      if (!Number.isFinite(income) || income < 0)
+        throw new Error("income credential requires a non-negative attribute.income");
       return String(income);
     }
     case "jurisdiction": {
       const country = parseInt(attribute.country_code ?? "", 10);
-      if (!Number.isFinite(country)) throw new Error("jurisdiction credential requires attribute.country_code");
+      if (!Number.isFinite(country))
+        throw new Error("jurisdiction credential requires attribute.country_code");
       return String(country);
     }
     case "funds": {
@@ -131,7 +152,8 @@ function attributeToValue(type: CredentialType, attribute: Record<string, string
     }
     case "accreditation": {
       const netWorth = parseInt(attribute.net_worth ?? "", 10);
-      if (!Number.isFinite(netWorth)) throw new Error("accreditation credential requires attribute.net_worth");
+      if (!Number.isFinite(netWorth))
+        throw new Error("accreditation credential requires attribute.net_worth");
       return String(netWorth);
     }
     case "employment": {
@@ -158,11 +180,7 @@ async function poseidonCommit(value: string, salt: string): Promise<string> {
 // Including seniority in the preimage is what binds the issuer's signature to
 // the holder's specific tenure — otherwise a holder could self-select any
 // seniority >= min_seniority and still satisfy the circuit constraint.
-async function poseidonCommit3(
-  status: string,
-  seniority: string,
-  salt: string,
-): Promise<string> {
+async function poseidonCommit3(status: string, seniority: string, salt: string): Promise<string> {
   const { Noir } = await import("@noir-lang/noir_js");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const noir = new Noir(commit3Circuit as any);
@@ -275,9 +293,7 @@ export class IssuerClient {
         : await poseidonCommit(value, salt);
     const { sig, issuerX, issuerY } = signCommitment(commitment, this.privateKey);
     const employmentExtra =
-      type === "employment" && attribute.seniority
-        ? { seniority: attribute.seniority }
-        : {};
+      type === "employment" && attribute.seniority ? { seniority: attribute.seniority } : {};
     return {
       type,
       title: TYPE_TITLE[type],
@@ -294,7 +310,44 @@ export class IssuerClient {
       issuedAt,
       expiry: normalizeExpiry(expiry, issuedAt),
       ...employmentExtra,
-      ...(claimParams && Object.values(claimParams).some((v) => v !== undefined) ? { claimParams } : {}),
+      ...(claimParams && Object.values(claimParams).some((v) => v !== undefined)
+        ? { claimParams }
+        : {}),
     };
   }
+}
+
+/**
+ * Generate unsigned commitment metadata using the production attribute mapping.
+ * This path does not accept or access an issuer key and cannot produce a
+ * credential accepted by the proof verifier.
+ */
+export async function previewCredential(params: IssueParams): Promise<PreviewCredential> {
+  const { type, holder, issuerId, issuerName, expiry, attribute, claimParams } = params;
+  if (!CREDENTIAL_TYPES.includes(type)) {
+    throw new Error(`Unknown credential type: ${type as string}`);
+  }
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const value = attributeToValue(type, attribute);
+  const salt = randomField();
+  const commitment =
+    type === "employment"
+      ? await poseidonCommit3(value, attribute.seniority ?? "0", salt)
+      : await poseidonCommit(value, salt);
+  return {
+    type,
+    title: TYPE_TITLE[type],
+    claim: buildClaimLabel(type, claimParams),
+    issuer: issuerName,
+    issuerId,
+    holder,
+    commitment,
+    issuedAt,
+    expiry: normalizeExpiry(expiry, issuedAt),
+    ...(claimParams && Object.values(claimParams).some((v) => v !== undefined)
+      ? { claimParams }
+      : {}),
+    publicInputs: { commitment, issuerId, holder },
+    signed: false,
+  };
 }

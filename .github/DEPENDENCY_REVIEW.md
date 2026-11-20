@@ -170,6 +170,11 @@ This system handles **new dependencies only**. Existing dependencies are managed
   - Auto-opens PRs for updates
   - Checks advisories on updates
 
+- **Auto-labeling** (`.github/workflows/auto-label-deps.yml`)
+  - Labels Dependabot, Renovate, and manifest-only PRs with `deps`
+  - Override the label with the `DEPENDENCY_LABEL_NAME` repository variable
+  - Creates the label on first use if it does not exist
+
 - **npm audit** — Local developer checks
 
 ## Running Checks Locally
@@ -183,6 +188,14 @@ node .github/scripts/check-runtime-deps.mjs
 # Verify all npm licenses
 cd frontend
 node ../.github/scripts/verify-npm-licenses.mjs
+
+# Dry-run the dependency-PR classifier (no GitHub API calls)
+cd ..
+node .github/scripts/label-deps.mjs \
+  --author "dependabot[bot]" \
+  --branch "dependabot/npm_and_yarn/next-16" \
+  --title "Bump next from 16.1.0 to 16.2.0" \
+  --changed-files frontend/package.json,frontend/pnpm-lock.yaml
 ```
 
 ## FAQ

@@ -1,0 +1,45 @@
+{
+  "name": "stellarcred",
+  "version": "0.1.0",
+  "description": "Command-line client for StellarCred: check on-chain credentials, list issuers, build verify links, and manage issuer registration from scripts and CI.",
+  "license": "MIT",
+  "author": "Samuel Dahunsi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Psalmuel01/StellarCred",
+    "directory": "frontend/packages/cli"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "zk",
+    "credentials",
+    "cli"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "bin": {
+    "stellarcred": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist/cli.mjs --external:@stellar/stellar-sdk --alias:@stellarcred/sdk=../sdk/src/index.ts --banner:js=\"#!/usr/bin/env node\"",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^13.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.1.1"
+  }
+}

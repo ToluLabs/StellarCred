@@ -14,6 +14,7 @@ import {
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
+import { OnboardingNudge } from "@/components/OnboardingNudge";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings";
 import CredentialDetailModal from "@/components/CredentialDetailModal";
@@ -184,6 +185,8 @@ function HolderInner() {
           <WalletButton />
         </div>
       </div>
+
+      <OnboardingNudge />
 
       <ConfigBanner />
 

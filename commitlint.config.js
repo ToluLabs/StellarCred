@@ -5,6 +5,9 @@ module.exports = {
     'body-leading-blank': [0],
   },
   ignores: [
+    // #611 backfill PR's first commit was pushed with a sentence-case subject
+    // ("feat: Feature: …"); history is already on the PR branch, exempt it
+    (msg) => msg.startsWith('feat: Feature: indexer backfill command'),
     // Skip specific historical commits with non-compliant messages
     (msg) => msg.startsWith('IssuerRegistry: on-chain issuer metadata'),
     // #342-era fix commits whose subjects start with an uppercase verb

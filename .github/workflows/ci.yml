@@ -347,6 +347,9 @@ jobs:
       - name: Check verify-wasm.sh syntax
         run: bash -n ../scripts/verify-wasm.sh
 
+      - name: Check verify-deployment.sh syntax
+        run: bash -n ../scripts/verify-deployment.sh
+
       - name: Check deploy.sh syntax
         run: bash -n ../scripts/deploy.sh
 
@@ -469,6 +472,23 @@ jobs:
 
       - name: Typecheck
         run: pnpm exec tsc --noEmit
+
+      # `npx stellarcred` (frontend/packages/cli) reuses the SDK from source:
+      # typecheck, test (incl. the bundled binary), and build the package.
+      # Kept before the bundle-size report: size-limit-action checks out the
+      # base branch to measure it, so steps after it run against the base tree,
+      # where this package does not exist yet.
+      - name: Typecheck stellarcred CLI
+        working-directory: frontend/packages/cli
+        run: pnpm exec tsc --noEmit -p tsconfig.json
+
+      - name: Test stellarcred CLI
+        working-directory: frontend/packages/cli
+        run: pnpm exec vitest run
+
+      - name: Build stellarcred CLI
+        working-directory: frontend/packages/cli
+        run: npm run build && node dist/cli.mjs --version
 
       - name: Build
         id: build
@@ -609,12 +629,117 @@ jobs:
           npm run typecheck
           npm test
 
+      # Bundle size gate (#737). These steps run LAST, after every test and
+      # every consumer of the build artifact, because size-limit-action's
+      # base-branch measurement force-checkouts the base branch into the
+      # shared workspace (`git checkout -f <base>`, then pnpm install + build
+      # on that tree) and never restores it. Run before the tests, it silently
+      # replaces this PR's code with main's and `pnpm test` fails against the
+      # wrong tree; run last, the clobbering is confined to steps with nothing
+      # left to lose. continue-on-error lets the PR still land while iterating
+      # on size budget values; remove continue-on-error once the baseline is
+      # set.
+      #
+      # size-limit 13 imports `glob` from node:fs/promises, which only exists
+      # on Node >= 22: on the job's Node 20 the CLI throws
+      # "SyntaxError: ... does not provide an export named 'glob'" before it
+      # measures a single byte, so this gate needs its own newer runtime. No
+      # restore step follows — nothing else in the job runs after these.
+      - name: Setup Node for bundle size check (#737)
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Check bundle size budget (#737)
+        run: pnpm size
+        continue-on-error: true
+
+      - name: Report bundle size on PR (#737)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: andresz1/size-limit-action@94bc357df29c36c8f8d50ea497c3e225c3c95d1d
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          script: pnpm size --json
+          package_manager: pnpm
+          directory: frontend
       - name: Test TypeScript SDK example
         working-directory: examples/typescript
         run: |
           npm ci
           npm run typecheck
           npm test
+
+  # ── Windows smoke: catch path-separator / install flakiness (#874) ────────
+  # windows-latest runners are historically the flaky ones: pnpm install
+  # intermittently times out, scripts break on `\` vs `/`, and test runs hang
+  # without leaving a diagnosable log. This job pins the same toolchain as
+  # `frontend`, forces bash so path handling matches Linux, raises the job
+  # timeout, and uploads full logs on failure so the next flaky occurrence
+  # can be diagnosed from artifacts instead of a bare red X.
+  #
+  # Install + lint are the hard gates (they cover the path-separator and
+  # install-flakiness surface this job exists for). Typecheck and unit tests
+  # still run — that is where the historical Windows hangs happen — but are
+  # non-blocking while main itself is red on them (sentry.test.ts TS2300,
+  # packages/sdk deriveNullifier). Remove continue-on-error once those
+  # upstream breakages are fixed.
+  windows-smoke:
+    name: Windows smoke (frontend)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm (pinned)
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node (pinned)
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm exec tsc --noEmit 2>&1 | tee windows-smoke-typecheck.log
+
+      - name: Unit tests
+        id: unit-tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee windows-smoke-test.log
+
+      - name: Upload logs on failure
+        if: ${{ failure() || steps.typecheck.outcome == 'failure' || steps.unit-tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-smoke-logs-${{ github.sha }}
+          path: |
+            frontend/windows-smoke-*.log
+            frontend/test-results
+            frontend/coverage
+          retention-days: 7
+          if-no-files-found: ignore
 
   # ── Indexer: SQLite + Postgres test matrix ─────────────────────────────────
   # Runs in parallel with contracts, circuits, and frontend.
@@ -662,6 +787,21 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Run DB test matrix (SQLite + Postgres) and unit tests
+        run: npm test
+        env:
+          # Dummy contract ID / RPC so the ingester tests run headlessly.
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+          # Point the Postgres leg of the DB matrix at the service container.
+          TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
+
+      - name: Run indexer parsing and persistence tests (#820)
+        run: npm test -- --testPathPattern=tests/indexer
+        env:
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+      - name: Run tests with coverage
       # One jest run per job, with coverage. The Postgres leg shares a
       # single database across every test in the suite, and beforeEach only
       # clears claims/cursor — a second jest invocation in the same job would

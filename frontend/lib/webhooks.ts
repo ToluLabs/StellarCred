@@ -258,6 +258,10 @@ export function getIssuanceCallback(eventId: string): NormalizedIssuanceEvent | 
   return callbackStore.get(eventId);
 }
 
+export function listIssuanceCallbacks(): NormalizedIssuanceEvent[] {
+  return Array.from(callbackStore.values());
+}
+
 export function clearIssuanceCallbacks(): void {
   callbackStore.clear();
 }

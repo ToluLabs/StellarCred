@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auditLogBootstrap } from "@/lib/audit-log";
-import { checkAdminAuth, UNAUTHORIZED } from "@/lib/admin-auth";
+import { requireAdmin } from "@/app/api/_middleware";
 import { serveExportChunk } from "@/lib/export-chunks";
 
 export const dynamic = "force-dynamic";
@@ -16,15 +16,14 @@ export const dynamic = "force-dynamic";
  *     cursor calls. Defaults to DEFAULT_CHUNK_SIZE (100).
  *
  * Auth: `Authorization: Bearer <ADMIN_API_KEY>` (enforced here, before the
- * orchestrator runs). See lib/admin-auth.ts.
+ * orchestrator runs). See lib/auth.ts.
  */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!checkAdminAuth(req)) {
-    return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  }
+  const denied = requireAdmin(req);
+  if (denied) return denied;
 
   try {
     const { id } = await params;
