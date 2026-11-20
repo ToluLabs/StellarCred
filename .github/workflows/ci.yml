@@ -87,8 +87,7 @@ jobs:
         run: |
           npx --yes -p @commitlint/cli -p @commitlint/config-conventional commitlint \
             --from ${{ github.event.pull_request.base.sha }} \
-            --to ${{ github.event.pull_request.head.sha }} \
-            --ignore-pattern '^(Fix missing render import in login page test|Fix Next.js async request APIs in admin issuance)
+            --to ${{ github.event.pull_request.head.sha }}
 
   # ── Docs: contract API reference drift check (issue #525) ─────────────────
   # Cheap source-vs-docs gate: fails when a ProofRegistry entrypoint is added,
