@@ -24,6 +24,7 @@ beforeEach(() => {
   ls = mockStorage();
   vi.stubGlobal("localStorage", ls);
   vi.stubGlobal("window", {
+    localStorage: ls,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
