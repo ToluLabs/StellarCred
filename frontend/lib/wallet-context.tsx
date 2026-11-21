@@ -2,21 +2,16 @@
 
 // Global wallet connection state. Lives in the root layout so it survives client
 // navigation between pages (the layout never unmounts), and restores from
-// localStorage on a full page reload — so you connect once, not per page.
+// localStorage on a full page reload - so you connect once, not per page.
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   connect as kitConnect,
   restore as kitRestore,
   getNetworkOk,
   WalletConnectError,
 } from "./wallet";
+import { invalidateWalletSessionCache } from "./cache-invalidation";
 
 const STORAGE_KEY = "stellarcred:wallet-id";
 const NETWORK_POLL_MS = 4_000;
@@ -44,17 +39,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       saved = localStorage.getItem(STORAGE_KEY);
     } catch {
-      // storage unavailable (private mode / blocked) — skip restore
+      // storage unavailable (private mode / blocked) - skip restore
       return;
     }
     if (!saved) return;
     kitRestore(saved)
       .then(setAddress)
       .catch(() => {
+        invalidateWalletSessionCache({ reason: "disconnect" });
         try {
           localStorage.removeItem(STORAGE_KEY);
         } catch {
-          // storage unavailable — nothing to remove
+          // storage unavailable - nothing to remove
         }
       });
   }, []);
@@ -62,14 +58,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // Poll the wallet's live network while connected, so a network switch made
   // after connecting is caught without requiring a reconnect.
   useEffect(() => {
-    if (!address) {
-      setNetworkMismatch(false);
-      return;
-    }
+    if (!address) return;
     let cancelled = false;
     const check = () => {
       getNetworkOk().then((ok) => {
-        if (!cancelled) setNetworkMismatch(!ok);
+        if (!cancelled) {
+          setNetworkMismatch((prev) => {
+            const mismatch = !ok;
+            if (!prev && mismatch) {
+              invalidateWalletSessionCache({ reason: "network-change", address });
+            }
+            return mismatch;
+          });
+        }
       });
     };
     check();
@@ -84,31 +85,37 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setConnecting(true);
     setError(null);
     try {
-      const { address, walletId } = await kitConnect();
-      setAddress(address);
+      const { address: newAddress, walletId } = await kitConnect();
+      if (address && address !== newAddress) {
+        invalidateWalletSessionCache({ reason: "account-change", address: newAddress });
+      }
+      setAddress(newAddress);
       localStorage.setItem(STORAGE_KEY, walletId);
     } catch (e) {
-      const err = e instanceof WalletConnectError
-        ? e
-        : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
-      // Surface every kind — including "dismissed". Cancellations are rendered
+      const err =
+        e instanceof WalletConnectError
+          ? e
+          : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
+      // Surface every kind - including "dismissed". Cancellations are rendered
       // as a benign note (not a hard error) via WalletErrorInfo.benign, per
       // the per-kind error mapping requirement.
       setError(err);
     } finally {
       setConnecting(false);
     }
-  }, []);
+  }, [address]);
 
   const disconnect = useCallback(() => {
+    invalidateWalletSessionCache({ reason: "disconnect", address });
     setAddress("");
+    setNetworkMismatch(false);
     setError(null);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
-      // storage unavailable — nothing to remove
+      // storage unavailable - nothing to remove
     }
-  }, []);
+  }, [address]);
 
   return (
     <WalletContext.Provider
