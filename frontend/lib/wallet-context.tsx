@@ -2,21 +2,16 @@
 
 // Global wallet connection state. Lives in the root layout so it survives client
 // navigation between pages (the layout never unmounts), and restores from
-// localStorage on a full page reload — so you connect once, not per page.
+// localStorage on a full page reload - so you connect once, not per page.
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   connect as kitConnect,
   restore as kitRestore,
   getNetworkOk,
   WalletConnectError,
 } from "./wallet";
+import { useHydrated } from "./hooks/useHydrated";
 
 const STORAGE_KEY = "stellarcred:wallet-id";
 const NETWORK_POLL_MS = 4_000;
@@ -24,6 +19,8 @@ const NETWORK_POLL_MS = 4_000;
 interface WalletState {
   address: string;
   connecting: boolean;
+  restoring: boolean;
+  hydrated: boolean;
   error: WalletConnectError | null;
   networkMismatch: boolean;
   connect: () => Promise<void>;
@@ -35,6 +32,8 @@ const WalletContext = createContext<WalletState | null>(null);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [restoring, setRestoring] = useState(true);
+  const hydrated = useHydrated();
   const [error, setError] = useState<WalletConnectError | null>(null);
   const [networkMismatch, setNetworkMismatch] = useState(false);
 
@@ -44,18 +43,25 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       saved = localStorage.getItem(STORAGE_KEY);
     } catch {
-      // storage unavailable (private mode / blocked) — skip restore
+      // storage unavailable (private mode / blocked) - skip restore
+      setRestoring(false);
       return;
     }
-    if (!saved) return;
+    if (!saved) {
+      setRestoring(false);
+      return;
+    }
     kitRestore(saved)
       .then(setAddress)
       .catch(() => {
         try {
           localStorage.removeItem(STORAGE_KEY);
         } catch {
-          // storage unavailable — nothing to remove
+          // storage unavailable - nothing to remove
         }
+      })
+      .finally(() => {
+        setRestoring(false);
       });
   }, []);
 
@@ -63,7 +69,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // after connecting is caught without requiring a reconnect.
   useEffect(() => {
     if (!address) {
-      setNetworkMismatch(false);
       return;
     }
     let cancelled = false;
@@ -88,10 +93,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setAddress(address);
       localStorage.setItem(STORAGE_KEY, walletId);
     } catch (e) {
-      const err = e instanceof WalletConnectError
-        ? e
-        : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
-      // Surface every kind — including "dismissed". Cancellations are rendered
+      const err =
+        e instanceof WalletConnectError
+          ? e
+          : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
+      // Surface every kind - including "dismissed". Cancellations are rendered
       // as a benign note (not a hard error) via WalletErrorInfo.benign, per
       // the per-kind error mapping requirement.
       setError(err);
@@ -102,17 +108,27 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(() => {
     setAddress("");
+    setNetworkMismatch(false);
     setError(null);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
-      // storage unavailable — nothing to remove
+      // storage unavailable - nothing to remove
     }
   }, []);
 
   return (
     <WalletContext.Provider
-      value={{ address, connecting, error, networkMismatch, connect, disconnect }}
+      value={{
+        address,
+        connecting,
+        restoring,
+        hydrated,
+        error,
+        networkMismatch,
+        connect,
+        disconnect,
+      }}
     >
       {children}
     </WalletContext.Provider>
@@ -126,6 +142,7 @@ export function useWallet(): WalletState {
 }
 
 export function usePreviewMode(): boolean {
-  const { address } = useWallet();
+  const { address, hydrated, restoring } = useWallet();
+  if (!hydrated || restoring) return false;
   return !address;
 }

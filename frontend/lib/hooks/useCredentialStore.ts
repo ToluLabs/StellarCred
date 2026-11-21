@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * useCredentialStore — single source of truth for credential state.
+ * useCredentialStore - single source of truth for credential state.
  *
  * Combines:
  *   - initial load from localStorage
@@ -26,11 +26,14 @@ const STORAGE_KEY = "stellarcred:credentials";
 
 export function useCredentialStore() {
   const [creds, setCreds] = useState<Credential[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // ── Initial load ──────────────────────────────────────────────────────────
-  // The credential store is async, so hydrate on mount.
+  // Initial load: the credential store is async, so hydrate on mount.
   useEffect(() => {
-    loadCredentials().then(setCreds);
+    loadCredentials().then((loaded) => {
+      setCreds(loaded);
+      setLoading(false);
+    });
   }, []);
 
   // ── Cross-tab sync ────────────────────────────────────────────────────────
@@ -81,6 +84,7 @@ export function useCredentialStore() {
 
   return {
     creds,
+    loading,
     reload,
     save,
     remove,
