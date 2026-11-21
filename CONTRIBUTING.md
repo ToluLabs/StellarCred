@@ -730,28 +730,49 @@ To prevent breaking changes and supply chain regressions, strict threshold rules
 
 Releases are tag-driven. The GitHub Actions release workflow fires on any tag matching `v*` and:
 
-1. Regenerates `CHANGELOG.md` from the full conventional commit history.
-2. Commits the updated changelog back to `main`.
-3. Creates a GitHub Release with the changelog section for that version as the body.
-4. Builds and publishes `@stellarcred/sdk` to npm.
+1. Checks that the tag, `@stellarcred/sdk` and `@stellarcred/issuer` all carry the **same version**, and that each package's metadata is publishable (see [Package checks](#package-checks)). Nothing below runs if this fails.
+2. Builds both packages, inspects the tarballs, and does a `pnpm publish --dry-run` of each.
+3. Regenerates `CHANGELOG.md` from the full conventional commit history.
+4. Commits the updated changelog back to `main`.
+5. Creates a GitHub Release with the changelog section for that version as the body.
+6. Publishes `@stellarcred/sdk` and `@stellarcred/issuer` to npm **with provenance**.
+
+The two packages are released in lockstep: one tag, one version. The support and upgrade policy for each is in [SUPPORT_POLICY.md](SUPPORT_POLICY.md#sdk-versions) (SDK) and [SUPPORT_POLICY.md](SUPPORT_POLICY.md#issuer-package-versions) (issuer).
 
 ### Cutting a release
 
 ```bash
-# Bump the version in frontend/packages/sdk/package.json, then:
-git add frontend/packages/sdk/package.json
+# Bump "version" to the SAME value in both packages, then:
+#   frontend/packages/sdk/package.json
+#   frontend/packages/issuer/package.json
+git add frontend/packages/sdk/package.json frontend/packages/issuer/package.json
 git commit -m "chore: release v<version>"
 git tag v<version>
 git push origin main --tags
 ```
 
-The workflow handles everything else.
+The workflow handles everything else. A pre-release tag (`v1.0.0-rc.1`) is published under the `next` npm dist-tag and marked as a pre-release on GitHub; only a plain `vX.Y.Z` tag moves `latest`.
 
-### Required secret
+### Package checks
+
+The same checks run on every pull request that touches either package, the release workflow, or the release scripts (`.github/workflows/package-release-check.yml`), so a problem shows up on the PR rather than on the tag:
+
+```bash
+# from the repo root, after building both packages
+node .github/scripts/validate-release-packages.mjs --repo ToluLabs/StellarCred --packed
+bash .github/scripts/publish-packages.sh dry-run latest
+node --test .github/scripts/validate-release-packages.test.mjs
+```
+
+They verify version alignment, `repository.url` / `repository.directory`, `publishConfig.access`, the `files` allow-list and entry points, and that each tarball contains its build output and no sources, tests, env files or key material. A version that is already on npm is skipped by the dry run, because npm refuses to dry-run a published version.
+
+### Required secret and permissions
 
 The repository must have an `NPM_TOKEN` secret set under **Settings → Secrets and variables → Actions**.
-Generate the token at [npmjs.com](https://www.npmjs.com) with **Automation** type and **Read and write** scope for the `@stellarcred` scope (or the package name).
+Generate the token at [npmjs.com](https://www.npmjs.com) with **Automation** type and **Read and write** scope for the `@stellarcred` scope (or both package names, `@stellarcred/sdk` and `@stellarcred/issuer`).
 Never commit the token value.
+
+Provenance needs no extra secret: the release job has `id-token: write`, and npm signs the attestation with the workflow's OIDC identity. It only works for a package whose `repository.url` is this repository, which the checks above enforce.
 
 ## License
 

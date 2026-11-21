@@ -6,8 +6,11 @@
   "author": "Samuel Dahunsi",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Psalmuel01/StellarCred",
+    "url": "git+https://github.com/ToluLabs/StellarCred.git",
     "directory": "frontend/packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "stellar",
