@@ -23,6 +23,8 @@ const NETWORK_POLL_MS = 4_000;
 
 interface WalletState {
   address: string;
+  /** True while a previously saved connection is being restored on mount. */
+  restoring: boolean;
   connecting: boolean;
   error: WalletConnectError | null;
   networkMismatch: boolean;
@@ -34,29 +36,43 @@ const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState("");
+  const [restoring, setRestoring] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<WalletConnectError | null>(null);
   const [networkMismatch, setNetworkMismatch] = useState(false);
 
   // Restore a prior connection on mount (full reload).
   useEffect(() => {
+    let cancelled = false;
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(STORAGE_KEY);
     } catch {
       // storage unavailable (private mode / blocked) — skip restore
+      setRestoring(false);
       return;
     }
-    if (!saved) return;
+    if (!saved) {
+      setRestoring(false);
+      return;
+    }
     kitRestore(saved)
-      .then(setAddress)
+      .then((restored) => {
+        if (!cancelled) setAddress(restored);
+      })
       .catch(() => {
         try {
           localStorage.removeItem(STORAGE_KEY);
         } catch {
           // storage unavailable — nothing to remove
         }
+      })
+      .finally(() => {
+        if (!cancelled) setRestoring(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Poll the wallet's live network while connected, so a network switch made
@@ -112,7 +128,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WalletContext.Provider
-      value={{ address, connecting, error, networkMismatch, connect, disconnect }}
+      value={{ address, restoring, connecting, error, networkMismatch, connect, disconnect }}
     >
       {children}
     </WalletContext.Provider>

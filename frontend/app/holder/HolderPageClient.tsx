@@ -44,6 +44,7 @@ import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 // ── Components ────────────────────────────────────────────────────────────────
 import { CredCard } from "@/components/holder/CredCard";
+import { CredListSkeleton } from "@/components/holder/CredListSkeleton";
 import { ImportPanel } from "@/components/holder/ImportPanel";
 import { BatchBar } from "@/components/holder/BatchBar";
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
@@ -70,15 +71,21 @@ type PageView =
 // ── Main inner component ──────────────────────────────────────────────────────
 
 function HolderInner() {
-  const { address, connect } = useWallet();
-  const isPreview = usePreviewMode();
+  const { address, connect, restoring } = useWallet();
+  // While a saved wallet is restoring, `address` is briefly empty. Treating that
+  // as preview mode flashes demo credentials and banners before swapping in the
+  // real list, so hold loading UI until the restore settles.
+  const isPreview = usePreviewMode() && !restoring;
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
 
   // ── Credential store ───────────────────────────────────────────────────────
-  const { creds, save, remove, markCredentialProved, markCredentialsProved } =
+  const { creds, loading, save, remove, markCredentialProved, markCredentialsProved } =
     useCredentialStore();
+  // Show placeholders while credentials hydrate — never the "no credentials"
+  // empty state, which would then be replaced by a populated list.
+  const showSkeleton = loading && !isPreview;
 
   // ── Import/export ──────────────────────────────────────────────────────────
   const { downloadBackup } = useImportExport();
@@ -214,7 +221,11 @@ function HolderInner() {
         </div>
       )}
 
-      <div className="stack reveal" style={{ gap: "1.5rem" }}>
+      <div className="stack reveal" style={{ gap: "1.5rem" }} aria-busy={showSkeleton}>
+        {showSkeleton ? (
+          <CredListSkeleton rows={3} />
+        ) : (
+          <>
         {/* ── Expiry warning banner ── */}
         {(expiringSoon.length > 0 || expired.length > 0) && (
           <div
@@ -424,6 +435,9 @@ function HolderInner() {
           <p className="faint" style={{ fontSize: "0.8125rem" }}>
             Connect a wallet to generate and submit proofs.
           </p>
+        )}
+
+          </>
         )}
 
         {/* ── Import / export ── */}
