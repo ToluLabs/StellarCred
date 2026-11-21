@@ -199,20 +199,39 @@ export function serializeClaim(
 // keyset boundary of the last row on the page. It is opaque to clients: they
 // must echo it back verbatim, never construct or interpret it.
 
-function encodeCursor(cursor: RecentCursor): string {
+export function encodeCursor(cursor: RecentCursor): string {
   return Buffer.from(`${cursor.ledgerSequence}:${cursor.id}`, "utf8").toString(
     "base64url"
   );
 }
 
-function decodeCursor(raw: string): RecentCursor {
-  const decoded = Buffer.from(raw, "base64url").toString("utf8");
-  const [ledgerRaw, idRaw] = decoded.split(":");
+export function decodeCursor(raw: string): RecentCursor {
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new Error("invalid cursor");
+  }
+  const trimmed = raw.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) {
+    throw new Error("invalid cursor");
+  }
+  let decoded: string;
+  try {
+    decoded = Buffer.from(trimmed, "base64url").toString("utf8");
+  } catch {
+    throw new Error("invalid cursor");
+  }
+  const parts = decoded.split(":");
+  if (parts.length !== 2) {
+    throw new Error("invalid cursor");
+  }
+  const [ledgerRaw, idRaw] = parts;
+  if (!/^\d+$/.test(ledgerRaw) || !/^\d+$/.test(idRaw)) {
+    throw new Error("invalid cursor");
+  }
   const ledgerSequence = Number(ledgerRaw);
   const id = Number(idRaw);
   if (
-    !Number.isInteger(ledgerSequence) ||
-    !Number.isInteger(id) ||
+    !Number.isSafeInteger(ledgerSequence) ||
+    !Number.isSafeInteger(id) ||
     ledgerSequence < 0 ||
     id < 1
   ) {
