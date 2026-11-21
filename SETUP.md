@@ -1,10 +1,15 @@
 # StellarCred — Local Environment Setup
 
-This document is the single source of truth for setting up a working StellarCred
-development environment. It covers all four toolchains in the order you need them,
-with the exact pinned versions that CI uses.
+This document is the install reference for a StellarCred development
+environment. It covers all four toolchains in the order you need them, with the
+exact pinned versions that CI uses.
 
-Run `make doctor` after setup to confirm every version matches before you start.
+If you have not run anything from this repo yet, follow
+[START_HERE.md](START_HERE.md) — it is the linear clone-to-validation path and
+points back here for the detail. When everything below is installed,
+`make doctor` confirms every version matches; the per-component commands and
+their expected outputs are in
+[docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md).
 
 ---
 
@@ -20,17 +25,31 @@ Run `make doctor` after setup to confirm every version matches before you start.
 | pnpm | **9** | Frontend workspace manager |
 | npm | bundled with Node | Indexer service |
 
+> **pnpm 9 vs `frontend/package.json`.** `make doctor` and CI use pnpm **9**, but
+> `frontend/package.json` declares its own `packageManager` pnpm version (read the
+> field — it is not 9 today), and corepack honours that field per directory: with
+> corepack enabled, `pnpm` run **inside** `frontend/` is the declared version while
+> `pnpm --version` at the repo root is the one you activated. The committed
+> `frontend/pnpm-lock.yaml` is `lockfileVersion: 9.0`, which both read. A
+> `[FAIL] pnpm` line right after you installed the frontend dependencies is this
+> mismatch, not a broken install — follow the `packageManager` field for commands
+> run inside `frontend/`.
+
 > **Circuit toolchain warning — read this before touching circuits**
 >
 > The `nargo` and `bb` versions are load-bearing. The verification key (VK) that
 > a circuit produces is deterministic from the exact `(nargo, bb)` pair used to
-> compile it. If your local versions do not match the pins above, `make check-circuits`
-> will fail with a message like:
+> compile it. If your local versions do not match the pins above, rebuilding a
+> circuit derives a VK that differs from the committed `fixtures/<type>/vk`, and
+> CI's artifact-freshness step fails with a message like:
 >
 > ```
 > ::error::VK mismatch for kyc (fixtures/kyc/vk differs from freshly compiled circuit)
 > Run circuits/scripts/build.sh locally to regenerate staged artifacts
 > ```
+>
+> The local equivalent is `node circuits/scripts/testvectors.js check`, which
+> reports the same root cause as `kyc_proof... DRIFT (vk_hash)`.
 >
 > This looks like your change broke something, but it is actually a toolchain
 > version mismatch. Run `make doctor` to diagnose it before assuming your code
@@ -121,20 +140,27 @@ bb --version
 
 ### What a version mismatch looks like
 
-Running `make check-circuits` or `./circuits/scripts/build.sh` with the wrong
-versions produces a VK mismatch error:
+Running `./circuits/scripts/build.sh`, or the freshness checks CI runs after it
+(`node circuits/scripts/testvectors.js check`, `bash scripts/verify-vks.sh check`),
+with the wrong versions produces a VK mismatch error:
 
 ```
 ::error::VK mismatch for kyc (fixtures/kyc/vk differs from freshly compiled circuit)
 Run circuits/scripts/build.sh locally to regenerate staged artifacts
 ```
 
-Or a hash-mismatch from the test-vector check:
+Or a drift report from the test-vector check — which prints a warning line first
+when the installed pair is not the pinned one:
 
 ```
-FAIL  circuits/testvectors/kyc_proof.json
-  Expected vk_hash: 0xabc...
-  Got:              0xdef...
+warning: installed toolchain (nargo 1.0.x, bb 0.8x.x) does not match the pinned
+toolchain (nargo 1.0.0-beta.9 / bb 0.87.0) … Drift reported below may just be a
+local toolchain mismatch, not a real regression.
+
+kyc_proof... DRIFT (vk_hash)
+
+Deterministic proof-generation test vectors drifted from circuits/testvectors/*.json:
+  - kyc_proof: vk_hash
 ```
 
 Neither message means your circuit logic is wrong. Both mean `nargo` or `bb` (or
@@ -252,45 +278,70 @@ make doctor
 A clean machine looks like:
 
 ```
-[ok] rustc         1.93.1
-[ok] wasm32v1-none installed
-[ok] nargo         1.0.0-beta.9
-[ok] bb            0.87.0
-[ok] node          v20.x.x  (need 20.x)
-[ok] pnpm          9.x.x    (need 9.x)
-[ok] npm           bundled with node
+[ok]   rustc                  1.93.1
+[ok]   wasm32v1-none          installed
+[ok]   nargo                  1.0.0-beta.9
+[ok]   bb                     0.87.0
+[ok]   node                   v20.x.x  (need 20.x)
+[ok]   pnpm                   9.x.x    (need 9.x)
+[ok]   npm                    10.x.x
+
+All checks passed — environment is ready.
 ```
 
-Fix any `[FAIL]` lines before running `make build` or `make test`.
+Fix any `[FAIL]` lines before running `make build` or `make test`. `make` itself
+needs GNU Make and bash: on Windows run it from Git Bash or WSL, and with no
+Make available use the per-component commands in
+[docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md) instead.
 
 ---
 
 ## Docker alternative (skip local toolchain installs)
 
-If you only want to run tests or build artifacts without configuring your host:
+[`docker/Dockerfile.dev`](docker/Dockerfile.dev) is a pinned toolchain image —
+Rust with the `wasm32v1-none` target, Stellar CLI 27, nargo 1.0.0-beta.9,
+bb 0.87.0, Node 20 and pnpm 9 — so version mismatches are not possible inside
+the container. It is not a `docker compose` service; build and run it with the
+repo mounted:
 
 ```bash
-# Build the dev image (first time, or after Dockerfile changes)
-docker compose build
+docker build -f docker/Dockerfile.dev -t stellarcred-dev .
 
-# Frontend dev server on http://localhost:3000
-docker compose up frontend
+# Contract tests + WASM artifacts
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "cargo test --locked && cargo build --release --target wasm32v1-none --locked"
 
-# Contract tests
-docker compose run --rm contracts cargo test
+# Compile and stage all Noir circuits
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "bash ./circuits/scripts/build.sh"
 
-# Compile all Noir circuits
-docker compose run --rm circuits nargo compile --workspace
+# Frontend
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "cd frontend && pnpm install && pnpm build"
 ```
 
-The image pins Rust 1.93.1, nargo 1.0.0-beta.9, bb 0.87.0, Node 20, and pnpm 9,
-so version mismatches are not possible inside the container.
+The image has no GNU Make, so run the underlying commands rather than the
+`make` targets. `rust-toolchain.toml` selects the pinned compiler on the first
+`cargo` run inside the container, which needs network access.
+
+`docker compose`, by contrast, runs the **application** — it defines only the
+`indexer` and `frontend` services and reads contract IDs and keys from `.env`:
+
+```bash
+docker compose up            # indexer on 3001, frontend on 3000
+docker compose up frontend   # also starts the indexer — it is a dependency
+```
+
+There is no `contracts` or `circuits` compose service, so
+`docker compose run --rm contracts cargo test` fails with `no such service`.
 
 ---
 
 ## First build smoke test
 
-Once `make doctor` is green, confirm the full stack builds:
+Once `make doctor` is green, confirm the full stack builds. Each line below runs
+from the repo root — the `cd …` forms are subshells, so the next line still
+starts at the root:
 
 ```bash
 # Contracts (Rust → WASM)
@@ -300,10 +351,10 @@ cargo build --release --target wasm32v1-none --locked
 ./circuits/scripts/build.sh
 
 # Frontend
-cd frontend && pnpm build
+(cd frontend && pnpm build)
 
 # Indexer
-cd services/indexer && npm run build
+(cd services/indexer && npm run build)
 ```
 
 Or run all of them in one shot:
@@ -326,5 +377,7 @@ make build
 | `make doctor` reports `[FAIL] nargo` but nargo is installed | PATH missing `~/.nargo/bin` | Add `export PATH="$HOME/.nargo/bin:$PATH"` to your shell profile |
 | `make doctor` reports `[FAIL] bb` but bb is installed | PATH missing `~/.bb` | Add `export PATH="$HOME/.bb:$PATH"` to your shell profile |
 
-For issues not covered here, open a GitHub issue or ask in the project's
-discussion channel. Include the output of `make doctor` in your report.
+For issues not covered here, look through the failure-mode table in
+[docs/CONTRIBUTOR_CHECKLIST.md § 8](docs/CONTRIBUTOR_CHECKLIST.md), then open a
+GitHub issue or ask in the project's discussion channel. Include the output of
+`make doctor` in your report.

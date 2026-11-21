@@ -170,6 +170,11 @@ This system handles **new dependencies only**. Existing dependencies are managed
   - Auto-opens PRs for updates
   - Checks advisories on updates
 
+- **Auto-labeling** (`.github/workflows/auto-label-deps.yml`)
+  - Labels Dependabot, Renovate, and manifest-only PRs with `deps`
+  - Override the label with the `DEPENDENCY_LABEL_NAME` repository variable
+  - Creates the label on first use if it does not exist
+
 - **npm audit** — Local developer checks
 
 ## Running Checks Locally
@@ -183,6 +188,14 @@ node .github/scripts/check-runtime-deps.mjs
 # Verify all npm licenses
 cd frontend
 node ../.github/scripts/verify-npm-licenses.mjs
+
+# Dry-run the dependency-PR classifier (no GitHub API calls)
+cd ..
+node .github/scripts/label-deps.mjs \
+  --author "dependabot[bot]" \
+  --branch "dependabot/npm_and_yarn/next-16" \
+  --title "Bump next from 16.1.0 to 16.2.0" \
+  --changed-files frontend/package.json,frontend/pnpm-lock.yaml
 ```
 
 ## FAQ
@@ -216,6 +229,18 @@ This system exists because:
 3. **Abandoned deps are risk**: Unmaintained packages don't receive security patches.
 4. **License compliance is necessary**: Copyleft licenses (GPL, AGPL) are incompatible with Apache-2.0 and create legal risk.
 5. **Explicit decisions are auditable**: Recording exceptions in code allows security reviews to trace why a risky dependency was accepted.
+
+## What These Checks Do *Not* Catch
+
+This is defense-in-depth, not a complete supply-chain solution. In particular:
+
+- **Compromised or malicious code in an already-approved package** — advisories are checked at add-time only; Dependabot handles later updates.
+- **Zero-day vulnerabilities** — they exist before the advisory database knows about them.
+- **Behavioral malware** — no package code is statically analysed here.
+- **Typosquatting** — a misspelled package name with a clean license and no advisory passes every check; it is caught only in review.
+- **A private registry compromise** — the checks assume npm registry integrity.
+
+Keep reading dependency diffs, not just green checks.
 
 ## References
 

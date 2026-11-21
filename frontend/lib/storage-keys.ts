@@ -19,6 +19,9 @@ export const STORAGE_KEYS = {
   /** Encrypted credential wallet (lib/credential.ts) */
   CREDENTIALS: "stellarcred:credentials",
 
+  /** Per-field PII visibility preferences for credential exports */
+  EXPORT_VISIBILITY: "stellarcred:export-visibility",
+
   /** Local proof cache for performance optimization (lib/proof-cache.ts) */
   PROOF_CACHE: "stellarcred:proof-cache",
 
@@ -40,6 +43,9 @@ export const STORAGE_KEYS = {
 
   /** User theme preference: "light" | "dark" (lib/theme.ts) */
   THEME: "theme",
+
+  /** Dismissal flag for the onboarding re-entry nudge banner on /holder (#899) */
+  ONBOARDING_NUDGE_DISMISSED: "stellarcred:onboarding-nudge-dismissed",
 } as const;
 
 /**
@@ -69,11 +75,13 @@ export function getTimelineKeys(): string[] {
 export function getAllStorageKeys(): string[] {
   return [
     STORAGE_KEYS.CREDENTIALS,
+    STORAGE_KEYS.EXPORT_VISIBILITY,
     STORAGE_KEYS.PROOF_CACHE,
     STORAGE_KEYS.ONBOARDING,
     STORAGE_KEYS.ONBOARDING_LEGACY,
     STORAGE_KEYS.WALLET_ID,
     STORAGE_KEYS.THEME,
+    STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED,
     ...getTimelineKeys(),
   ];
 }

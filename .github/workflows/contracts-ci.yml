@@ -29,8 +29,12 @@ concurrency:
   group: contracts-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Shared cache configuration for the contracts job. The helper centralizes the
+# cache paths and key so local runs and CI stay in sync (see
+# scripts/ci-cache-helpers.sh and CI_TEST_GUIDE.md).
 env:
   CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: target
 
 jobs:
   contracts:
@@ -38,6 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - name: Prepare CI cache presteps
+        # Centralizes cache setup and common presteps so the workflow stays
+        # declarative. Safe to run on a cold cache.
+        run: bash scripts/ci-cache-helpers.sh prepare
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,17 +59,19 @@ jobs:
           targets: wasm32v1-none
 
       - name: Cache cargo registry + build products
-        # Restores ~/.cargo and ./target keyed on Cargo.lock, so unchanged
-        # dependency trees reuse the compiled artifacts and the job typically
-        # finishes in minutes instead of a cold full build.
+        # Restores ~/.cargo and ./target keyed on the toolchain and lockfile,
+        # so unchanged dependency trees reuse the compiled artifacts and the
+        # job typically finishes in minutes instead of a cold full build.
+        # Bump the cache version suffix to invalidate manually.
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-contracts-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          key: cargo-${{ runner.os }}-contracts-v1-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
+            cargo-${{ runner.os }}-contracts-v1-
             cargo-${{ runner.os }}-contracts-
 
       - name: Build WASM artifacts
@@ -74,3 +85,9 @@ jobs:
         # failures surface here as a red PR check with the failing tests in
         # the job log.
         run: cargo test --locked
+
+      - name: Report cache status
+        # Emits a short cache summary so contributors can tell whether a slow
+        # run was a cold cache or a real build regression.
+        if: always()
+        run: bash scripts/ci-cache-helpers.sh report

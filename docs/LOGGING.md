@@ -65,6 +65,38 @@ access tokens:
 
 ---
 
+## CSP Violation Reports
+
+The Content Security Policy endpoint (`POST /api/csp-report`) parses and logs violation telemetry emitted by browsers.
+
+### Events
+
+- **`csp_violation`**: Logged at `warn` level for each normalized violation report received. Includes `requestId` and a sanitized `cspViolation` object:
+  - `documentUri`: Origin and pathname of the document where the violation occurred (truncated to 200 chars).
+  - `blockedUri`: Origin and pathname of the blocked resource, bare token (`data`, `blob`, etc.), or keyword (`inline`, `eval`).
+  - `sourceFile`: Sanitized URL of the script or asset that caused the violation.
+  - `effectiveDirective`: Directive that was violated (e.g., `script-src`, `connect-src`) (unknown if unrecognized).
+  - `disposition`: Either `"report"` (for Report-Only headers) or `"enforce"` (or unknown if the browser sends something else).
+  - `lineNumber` / `columnNumber` / `statusCode`: Optional finite integers if reported by the browser.
+- **`csp_report_rate_limited`**: Logged at `warn` level when an IP exceeds the rate limit window on `/api/csp-report`. Includes requestId only. The client IP is not logged.
+
+### PII Safety
+
+CSP reports are strictly sanitized through `lib/csp-report.ts` and only the allowlisted cspViolation key reaches the log through stripSensitiveFields() in lib/logger.ts:
+- Query strings, URL fragments, and credentials are removed from all URLs.
+- Sensitive reporting fields (`script-sample`, `sample`, `original-policy`, `originalPolicy`, `referrer`) are stripped entirely and never logged.
+- Inline script or data payloads (`data:`, `blob:`, `filesystem:`, etc.) are reduced to scheme names only.
+
+### Rate Limiting
+
+The reporting endpoint is protected by an in-memory rate limiter configured via `RATE_LIMIT_CSP_REPORT_IP`:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `RATE_LIMIT_CSP_REPORT_IP` | No | `30` | Maximum CSP report requests permitted per IP per window (default window: 60 seconds, set by RATE_LIMIT_WINDOW_SECONDS). |
+
+---
+
 ## Shared outbound sink
 
 Telemetry, audit notifications, and unexpected 500 errors use one bounded,

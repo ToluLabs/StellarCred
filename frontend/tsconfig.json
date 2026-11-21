@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -23,12 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "@stellarcred/sdk": [
-        "./packages/sdk/src/index.ts"
-      ]
+      "@/*": ["./*"],
+      "@stellarcred/sdk": ["./packages/sdk/src/index.ts"]
     }
   },
   "include": [
@@ -47,6 +39,9 @@
     "packages/sdk/test",
     "packages/sdk/dist",
     "packages/sdk/vitest.config.ts",
+    // The stellarcred CLI is likewise standalone (own tsconfig and vitest
+    // config, typechecked and tested in its own CI steps).
+    "packages/cli",
     // Node built-in test runner suite (pnpm test:theme), not part of app tsc.
     "lib/theme.test.ts"
   ]

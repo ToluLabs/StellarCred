@@ -3,11 +3,7 @@ import { CREDENTIAL_TYPES, type ClaimParams, type Credential } from "@stellarcre
 import { fetchIssuerPubkey } from "@/lib/issuer-registry";
 import { circuitVersionStampFor } from "@/lib/circuit-versions";
 import { readJsonBody, bodyErrorResponse } from "@/lib/request-limits";
-import {
-  logger,
-  stripSensitiveFields,
-  resolveRequestId,
-} from "@/lib/logger";
+import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
 import { env } from "@/lib/env";
 import {
   checkLimit,
@@ -17,7 +13,9 @@ import {
   LIMITS,
 } from "@/lib/rate-limit";
 import {
-  completedIdempotencyRecord,
+  decryptEncryptedResponseIdempotencyRecord,
+  encryptedResponseIdempotencyRecord,
+  hasReplayEncryptionKey,
   idempotencyGetAsync,
   idempotencySetAsync,
   idempotencyInFlightBegin,
@@ -25,11 +23,18 @@ import {
   idempotencyInFlightFail,
   isValidIdempotencyKey,
   MAX_KEY_LENGTH_BYTES,
+  type IdempotencyRecord,
 } from "@/lib/idempotency";
 import {
   issueAndAuditCredentials,
   localIssuerPubkeyBytes,
+  resolveIssuerSigningKey,
+  createIssuerClient,
 } from "@/lib/issuer-service";
+import { validateTenantCredentialTypes } from "@/lib/tenancy";
+import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
+import { normalizeAttributes } from "@/lib/attribute-normalizer";
+import { equals } from "@/lib/crypto";
 
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -75,17 +80,20 @@ export async function POST(req: NextRequest) {
 
   // ── Idempotency-Key support ────────────────────────────────────────────────
   const rawKey = req.headers.get("Idempotency-Key")?.trim() || undefined;
-  const idempotencyKey =
-    rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
+  const idempotencyKey = rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
+  if (idempotencyKey && !hasReplayEncryptionKey()) {
+    return NextResponse.json(
+      { error: "Idempotent batch issuance is not configured for encrypted replay." },
+      { status: 503, headers: { "x-request-id": requestId } },
+    );
+  }
   if (rawKey && !idempotencyKey) {
     logger.warn(
       stripSensitiveFields({
         event: "idempotency_key_rejected",
         requestId,
         reason:
-          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES
-            ? "too_long"
-            : "invalid",
+          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES ? "too_long" : "invalid",
       }),
     );
   }
@@ -95,18 +103,16 @@ export async function POST(req: NextRequest) {
       const record = await idempotencyGetAsync(idempotencyKey);
       if (record) {
         logger.info(stripSensitiveFields({ event: "idempotency_hit", requestId }));
-        return replayIdempotencyRecord(requestId);
+        return replayIdempotencyRecord(record, requestId);
       }
 
       const inFlight = idempotencyInFlightBegin(idempotencyKey);
       if (!inFlight) break;
 
-      logger.info(
-        stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }),
-      );
+      logger.info(stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }));
       try {
-        await inFlight;
-        return replayIdempotencyRecord(requestId);
+        const record = await inFlight;
+        return replayIdempotencyRecord(record, requestId);
       } catch {
         // A failed leader releases the slot. Rejoining prevents simultaneous
         // retries from all becoming leaders.
@@ -142,18 +148,34 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function replayIdempotencyRecord(requestId: string): NextResponse {
+function replayIdempotencyRecord(record: IdempotencyRecord, requestId: string): NextResponse {
   const headers = new Headers({
     "x-request-id": requestId,
     "X-Idempotent": "true",
-    "X-Idempotency-Replay": "redacted",
   });
+
+  if (record.kind === "encrypted_response") {
+    try {
+      headers.set("Content-Type", "application/json");
+      headers.set("X-Idempotency-Replay", "restored");
+      return new NextResponse(decryptEncryptedResponseIdempotencyRecord(record), {
+        status: record.status,
+        headers,
+      });
+    } catch {
+      return NextResponse.json(
+        { error: "The encrypted idempotency response could not be restored." },
+        { status: 503, headers },
+      );
+    }
+  }
+
+  headers.set("X-Idempotency-Replay", "redacted");
 
   return NextResponse.json(
     {
       code: "IDEMPOTENCY_RESPONSE_REDACTED",
-      error:
-        "This Idempotency-Key already completed; credential data is not retained for replay.",
+      error: "This Idempotency-Key already completed; credential data is not retained for replay.",
     },
     { status: 409, headers },
   );
@@ -173,6 +195,15 @@ async function executeBatchRequest(
         batch?: BatchItemRequest[];
         items?: BatchItemRequest[];
       };
+
+  const tenantRes = await authenticateTenant(req);
+  if (!tenantRes.ok) {
+    if (idempotencyKey) {
+      idempotencyInFlightFail(idempotencyKey, new Error(tenantRes.error));
+    }
+    return authErrorResponse(tenantRes, requestId);
+  }
+  const tenant = tenantRes.value;
 
   const parsed = await readJsonBody<RawBatchBody>(req);
   if (!parsed.ok) {
@@ -198,7 +229,7 @@ async function executeBatchRequest(
     if (idempotencyKey) {
       try {
         if (response.status === 200) {
-          const record = completedIdempotencyRecord(
+          const record = encryptedResponseIdempotencyRecord(
             response.status,
             await response.clone().text(),
           );
@@ -237,6 +268,12 @@ async function executeBatchRequest(
     );
   }
 
+  let customIssuerClient: ReturnType<typeof createIssuerClient> | undefined;
+  if (tenant) {
+    const signingKey = await resolveIssuerSigningKey(tenant.config.signingKeySecretRef);
+    customIssuerClient = createIssuerClient(signingKey);
+  }
+
   // Pre-validate issuer registration if configured
   const cachedIssuerKeyCheck = new Map<string, boolean>();
 
@@ -251,18 +288,30 @@ async function executeBatchRequest(
     if (!item || typeof item !== "object") {
       results.push({ index, success: false, error: "Invalid item payload" });
       failed++;
-      continue;
+      break;
     }
 
     const holder = item.holder?.trim();
-    const issuerId = item.issuerId?.trim() ?? SIM_ACCOUNT;
-    const issuerName = item.issuerName ?? "StellarCred Authority";
+    const rawIssuerId = item.issuerId?.trim();
+    const issuerId = rawIssuerId ?? tenant?.config.issuerId ?? SIM_ACCOUNT;
+    const issuerName = item.issuerName ?? tenant?.config.issuerName ?? "StellarCred Authority";
     const expiry = item.expiry ?? "90 days";
 
     if (!holder) {
       results.push({ index, success: false, error: "holder address is required" });
       failed++;
-      continue;
+      break;
+    }
+
+    if (tenant && rawIssuerId && rawIssuerId !== tenant.config.issuerId) {
+      results.push({
+        index,
+        success: false,
+        holder,
+        error: `Unauthorized issuerId for tenant '${tenant.id}'. Configured issuerId is '${tenant.config.issuerId}'.`,
+      });
+      failed++;
+      break;
     }
 
     // Per-wallet rate limiting
@@ -279,7 +328,7 @@ async function executeBatchRequest(
         error: `Rate limit exceeded for holder. Try again in ${Math.ceil(walletResult.retryAfterMs / 1000)}s`,
       });
       failed++;
-      continue;
+      break;
     }
 
     const credentialTypes = item.credential_types ?? (item.type ? [item.type] : []);
@@ -291,7 +340,7 @@ async function executeBatchRequest(
         error: "credential_types must contain at least one type",
       });
       failed++;
-      continue;
+      break;
     }
 
     const invalidType = credentialTypes.find((t) => !VALID_TYPES.includes(t));
@@ -303,7 +352,21 @@ async function executeBatchRequest(
         error: `Invalid credential type: ${invalidType}`,
       });
       failed++;
-      continue;
+      break;
+    }
+
+    if (tenant) {
+      const typeCheck = validateTenantCredentialTypes(tenant, credentialTypes);
+      if (!typeCheck.allowed) {
+        results.push({
+          index,
+          success: false,
+          holder,
+          error: `Tenant '${tenant.id}' is not authorized to issue credential type '${typeCheck.disallowedType}'.`,
+        });
+        failed++;
+        break;
+      }
     }
 
     // Check issuer registry key match if configured
@@ -313,8 +376,8 @@ async function executeBatchRequest(
         if (!registered) {
           cachedIssuerKeyCheck.set(issuerId, false);
         } else {
-          const localKey = localIssuerPubkeyBytes();
-          const matches = Buffer.from(registered).equals(localKey);
+          const localKey = localIssuerPubkeyBytes(customIssuerClient);
+          const matches = equals(registered, localKey);
           cachedIssuerKeyCheck.set(issuerId, matches);
         }
       }
@@ -327,17 +390,15 @@ async function executeBatchRequest(
           error: "Selected issuer is not registered or private key mismatch on IssuerRegistry.",
         });
         failed++;
-        continue;
+        break;
       }
     }
 
-    const attributes: Record<string, string> = { ...(item.attributes ?? {}) };
-    if (item.attribute !== undefined && item.type) {
-      if (item.type === "age") attributes.date_of_birth ??= item.attribute;
-      else if (item.type === "income") attributes.income ??= item.attribute;
-      else if (item.type === "jurisdiction") attributes.country_code ??= item.attribute;
-      else if (item.type === "employment") attributes.seniority ??= item.attribute;
-    }
+    const attributes: Record<string, string> = normalizeAttributes(
+      item.type,
+      item.attribute,
+      item.attributes,
+    );
 
     try {
       const credentials = await issueAndAuditCredentials({
@@ -349,6 +410,7 @@ async function executeBatchRequest(
         attributes,
         claimParams: item.claimParams,
         requestId: `${requestId}-${i}`,
+        issuerClient: customIssuerClient,
       });
 
       results.push({
@@ -372,6 +434,7 @@ async function executeBatchRequest(
         error: (err as Error).message || "Signing failed",
       });
       failed++;
+      break;
     }
   }
 
@@ -386,12 +449,25 @@ async function executeBatchRequest(
     }),
   );
 
-  const payload: BatchIssueResponse = {
-    total: items.length,
-    successful,
-    failed,
-    results,
-  };
+  if (failed > 0) {
+    const failure = results.find((result) => !result.success);
+    const message = failure && !failure.success ? failure.error : "Batch issuance failed.";
+    const payload: BatchIssueResponse = {
+      total: items.length,
+      successful: 0,
+      failed: items.length,
+      results: items.map((_, index) => ({
+        index,
+        success: false,
+        error:
+          index === (failure?.index ?? -1)
+            ? message
+            : "Batch aborted because another item failed.",
+      })),
+    };
+    return sendResponse(NextResponse.json(payload, { status: 422 }));
+  }
 
+  const payload: BatchIssueResponse = { total: items.length, successful, failed: 0, results };
   return sendResponse(NextResponse.json(payload, { status: 200 }));
 }

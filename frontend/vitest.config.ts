@@ -20,6 +20,7 @@ export default defineConfig({
       // mapping mirrored here (#386's presets.ts is the first lib module to
       // import @stellarcred/sdk from outside the sdk package's own tests).
       "@stellarcred/sdk": path.resolve(__dirname, "packages/sdk/src/index.ts"),
+      "@stellarcred/issuer": path.resolve(__dirname, "packages/issuer/src/index.ts"),
       // lib/proof.ts loads bb.js at runtime via a native, non-bundled
       // `import("/bb/index.js")` (see the comments there) that only the
       // browser ever resolves, against /public/bb/index.js. Vite refuses to
@@ -45,6 +46,11 @@ export default defineConfig({
       "components/**/*.test.{js,ts,tsx}",
     ],
     testTimeout: 30000,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      reportsDirectory: "./coverage",
+    },
     env: {
       // Module-scope constants (e.g. app/verify/page.tsx's DEMO_ISSUER_ID) read
       // this at import time, before any test file body runs — must be set here.

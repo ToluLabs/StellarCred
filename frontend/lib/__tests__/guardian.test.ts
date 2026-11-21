@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import type { Credential } from "../credential";
 import {
   createGuardianRecoverySetup,
@@ -9,6 +9,11 @@ import {
   parseRecoveryKit,
   GuardianRecoveryError,
 } from "../guardian";
+import { STORAGE_KEYS } from "../storage-keys";
+
+afterEach(() => {
+  localStorage.removeItem(STORAGE_KEYS.EXPORT_VISIBILITY);
+});
 
 const SAMPLE_CREDENTIALS: Credential[] = [
   {
@@ -89,6 +94,21 @@ describe("lib/guardian.ts - Guardian Recovery Setup & Restoration", () => {
     // Test restoration with all 3 shares
     const recoveredAll = await recoverCredentialsFromShares(setup.backup, setup.shares);
     expect(recoveredAll).toEqual(SAMPLE_CREDENTIALS);
+  });
+
+  it("omits opted-out fields from Guardian recovery exports", async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.EXPORT_VISIBILITY,
+      JSON.stringify({ value: false, holder: false }),
+    );
+    const setup = await createGuardianRecoverySetup(SAMPLE_CREDENTIALS, {
+      totalShares: 2,
+      threshold: 2,
+    });
+
+    await expect(
+      recoverCredentialsFromShares(setup.backup, setup.shares),
+    ).rejects.toThrow(/value must be a non-empty/);
   });
 
   it("works with 3-of-5 threshold setup", async () => {

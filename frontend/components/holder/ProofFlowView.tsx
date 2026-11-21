@@ -14,7 +14,7 @@ import { NetworkMismatchBanner } from "@/components/NetworkMismatchBanner";
 import CopyButton from "@/components/CopyButton";
 import { Check } from "@/components/Check";
 import { proofSubmissionConfigured } from "@/lib/config";
-import { truncateHash } from "@/lib/format";
+import { truncateHash, truncateTxHash } from "@/lib/format";
 import { EXPLORER_TX } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
 import { useToast } from "@/components/Toast";
@@ -216,7 +216,7 @@ export function ProofFlowView({
                     className="row accent"
                     style={{ gap: "0.3rem", fontSize: "0.775rem" }}
                   >
-                    {txHash.slice(0, 8)}...{txHash.slice(-6)}
+                    {truncateTxHash(txHash)}
                     <IconExternalLink size={12} />
                   </a>
                   <CopyButton value={txHash} />

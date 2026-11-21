@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const isVerified = vi.fn();
 const checkClaim = vi.fn();
@@ -733,5 +733,26 @@ describe("buildVerifyUrl expiry + single-use", () => {
     const a = new URL(buildVerifyUrl({ ...base, singleUse: true })).searchParams.get("jti");
     const b = new URL(buildVerifyUrl({ ...base, singleUse: true })).searchParams.get("jti");
     expect(a).not.toBe(b);
+  });
+});
+
+describe("unique personhood and nullifier support (#395)", () => {
+  it("derives deterministic nullifier within the same context", () => {
+    const n1 = StellarCred.deriveNullifier("secret_123", "app_context_a");
+    const n2 = StellarCred.deriveNullifier("secret_123", "app_context_a");
+    expect(n1).toBe(n2);
+    expect(n1).toHaveLength(64);
+  });
+
+  it("derives unlinkable nullifiers across different contexts for same secret", () => {
+    const n_a = StellarCred.deriveNullifier("secret_123", "app_context_a");
+    const n_b = StellarCred.deriveNullifier("secret_123", "app_context_b");
+    expect(n_a).not.toBe(n_b);
+  });
+
+  it("derives different nullifiers for different secrets in same context", () => {
+    const n1 = StellarCred.deriveNullifier("secret_1", "app_context_a");
+    const n2 = StellarCred.deriveNullifier("secret_2", "app_context_a");
+    expect(n1).not.toBe(n2);
   });
 });

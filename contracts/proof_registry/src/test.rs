@@ -2816,3 +2816,99 @@ fn test_storage_archived_vs_expired_observable_behavior() {
     // Bumping an archived claim panics with ProofNotFound
     assert!(h.registry.try_bump_claim(&holder, &cred).is_err());
 }
+
+// ── Nullifier tests (#395) ───────────────────────────────────────────────────
+
+#[test]
+fn test_nullifier_recording_and_duplicate_rejection_in_same_context() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    let h = deploy(&env);
+
+    let app_context = BytesN::from_array(&env, &[1u8; 32]);
+    let nullifier = BytesN::from_array(&env, &[2u8; 32]);
+
+    // Initially unused
+    assert!(!h.registry.is_nullifier_used(&app_context, &nullifier));
+
+    // First recording succeeds
+    h.registry.record_nullifier(&app_context, &nullifier);
+    assert!(h.registry.is_nullifier_used(&app_context, &nullifier));
+
+    // Reusing the same nullifier in the same app context is rejected on-chain
+    let err = h.registry.try_record_nullifier(&app_context, &nullifier);
+    assert!(err.is_err(), "Duplicate nullifier in the same context must be rejected");
+}
+
+#[test]
+fn test_nullifier_cross_context_independence_and_unlinkability() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    let h = deploy(&env);
+
+    let app_context_a = BytesN::from_array(&env, &[10u8; 32]);
+    let app_context_b = BytesN::from_array(&env, &[20u8; 32]);
+    let nullifier_a = BytesN::from_array(&env, &[100u8; 32]);
+    let nullifier_b = BytesN::from_array(&env, &[200u8; 32]);
+
+    // Record in context A
+    h.registry.record_nullifier(&app_context_a, &nullifier_a);
+    assert!(h.registry.is_nullifier_used(&app_context_a, &nullifier_a));
+
+    // Context B is independent and not marked used
+    assert!(!h.registry.is_nullifier_used(&app_context_b, &nullifier_a));
+    assert!(!h.registry.is_nullifier_used(&app_context_b, &nullifier_b));
+
+    // Recording nullifier in context B succeeds independently
+    h.registry.record_nullifier(&app_context_b, &nullifier_b);
+    assert!(h.registry.is_nullifier_used(&app_context_b, &nullifier_b));
+}
+
+#[test]
+fn test_submit_proof_with_nullifier_rejects_sybil_reuse() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+    let h = deploy(&env);
+
+    let holder = Address::generate(&env);
+    let app_context = BytesN::from_array(&env, &[42u8; 32]);
+    let nullifier = BytesN::from_array(&env, &[99u8; 32]);
+
+    let proof = KYC.proof_bytes(&env);
+    let public_inputs = KYC.public_inputs_bytes(&env);
+    let expiry = 1000;
+
+    // First submission with nullifier succeeds
+    h.registry.submit_proof_with_nullifier(
+        &holder,
+        &h.issuer,
+        &symbol_short!("kyc"),
+        &proof,
+        &public_inputs,
+        &None,
+        &expiry,
+        &app_context,
+        &nullifier,
+    );
+
+    assert!(h.registry.is_nullifier_used(&app_context, &nullifier));
+    assert!(h.registry.check_claim(&holder, &symbol_short!("kyc"), &None, &None));
+
+    // A second submission by another (or same) holder with the same nullifier in that app context MUST be rejected
+    let second_holder = Address::generate(&env);
+    let second_attempt = h.registry.try_submit_proof_with_nullifier(
+        &second_holder,
+        &h.issuer,
+        &symbol_short!("kyc"),
+        &proof,
+        &public_inputs,
+        &None,
+        &expiry,
+        &app_context,
+        &nullifier,
+    );
+    assert!(second_attempt.is_err(), "Second submission with same nullifier in same context must revert");
+}

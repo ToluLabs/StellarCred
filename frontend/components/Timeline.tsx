@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { IconCheck, IconExternalLink, IconAlertTriangle, IconCertificate, IconCpu, IconCloudUpload, IconShieldCheck } from "@tabler/icons-react";
 import { EXPLORER_TX } from "@/lib/stellar";
+import { truncateTxHash } from "@/lib/format";
 import type { TimelineEvent } from "@/lib/useProofTimeline";
 
 interface TimelineProps {
@@ -96,7 +97,7 @@ export function Timeline({ events }: TimelineProps) {
                     href={EXPLORER_TX(event.txHash)}
                     target="_blank"
                     rel="noreferrer"
-                    aria-label={`View transaction ${event.txHash.slice(0, 8)}...${event.txHash.slice(-6)} on explorer`}
+                    aria-label={`View transaction ${truncateTxHash(event.txHash)} on explorer`}
                     className="mono accent"
                     style={{ 
                       display: "inline-flex", 
@@ -109,7 +110,7 @@ export function Timeline({ events }: TimelineProps) {
                       textUnderlineOffset: "2px",
                     }}
                   >
-                    {event.txHash.slice(0, 8)}...{event.txHash.slice(-6)}
+                    {truncateTxHash(event.txHash)}
                     <IconExternalLink size={11} aria-hidden="true" />
                   </a>
                 )}

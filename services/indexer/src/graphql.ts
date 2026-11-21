@@ -53,55 +53,12 @@ const typeDefs = /* GraphQL */ `
   }
 `;
 
-function encodeCursor(ledgerSequence: number, id: number): string {
-  return Buffer.from(`${ledgerSequence}:${id}`, "utf8").toString("base64url");
-}
-
-function decodeCursor(cursor: string): { ledgerSequence: number; id: number } | null {
-  try {
-    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
-    const [ledgerSequence, id] = decoded.split(":").map(Number);
-    if (Number.isNaN(ledgerSequence) || Number.isNaN(id)) return null;
-    return { ledgerSequence, id };
-  } catch {
-    return null;
-  }
-}
-
-function buildWhereClause(filter: any, params: (string | number)[]): string {
-  const conditions: string[] = [];
-
-  if (filter?.wallet) {
-    conditions.push("wallet = ?");
-    params.push(filter.wallet);
-  }
-  if (filter?.credentialType) {
-    conditions.push("credential_type = ?");
-    params.push(filter.credentialType);
-  }
-  if (filter?.issuer) {
-    conditions.push("issuer = ?");
-    params.push(filter.issuer);
-  }
-  if (filter?.active === true) {
-    conditions.push("revoked = 0");
-  }
-  if (filter?.revoked === true) {
-    conditions.push("revoked = 1");
-  }
-  if (filter?.verifiedAfter !== undefined) {
-    conditions.push("verified_at >= ?");
-    params.push(filter.verifiedAfter);
-  }
-  if (filter?.verifiedBefore !== undefined) {
-    conditions.push("verified_at <= ?");
-    params.push(filter.verifiedBefore);
-  }
-
-  return conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-}
-
-export function createGraphQLSchema(db: Db) {
+// Cursor paging and the claim filter predicates (wallet / credentialType /
+// issuer / active / revoked / verifiedAfter / verifiedBefore) are applied by
+// Db.queryClaims, which both drivers implement — see db-shared.ts. The GraphQL
+// layer used to carry its own copies of those helpers; the resolvers delegate,
+// so the schema takes no query-building code.
+export function createGraphQLSchema(_db: Db) {
   return createSchema<GraphQLContext>({
     typeDefs,
     resolvers: {

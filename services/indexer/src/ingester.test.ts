@@ -477,7 +477,7 @@ describe("Ingester reconcile", () => {
     const ingester = createIngester(config, db);
 
     // Reconcile from ledger 15
-    const processed = await ingester.reconcile(15);
+    await ingester.reconcile(15);
 
     // GA1 (ledger 10, below the reorg point) should still exist
     const a1 = await db.claimsByWallet("GA1");

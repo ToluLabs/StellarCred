@@ -148,23 +148,44 @@ function loadCommitted(name) {
 
 function main() {
   const mode = process.argv[2] || "check";
+  const targetCircuit = process.argv[3];
+
   if (!["check", "update"].includes(mode)) {
-    console.error(`usage: node ${path.basename(__filename)} [check|update]`);
+    console.error(`usage: node ${path.basename(__filename)} [check|update] [circuit_name]`);
+    process.exit(2);
+  }
+
+  const circuits = targetCircuit ? [targetCircuit] : CIRCUITS;
+  if (targetCircuit && !CIRCUITS.includes(targetCircuit)) {
+    console.error(`Unknown circuit "${targetCircuit}". Available circuits: ${CIRCUITS.join(", ")}`);
     process.exit(2);
   }
 
   const toolchain = toolVersions();
   if (toolchain.nargoVersion !== NOIR_VERSION || toolchain.bbVersion !== BB_VERSION) {
-    console.warn(
-      `warning: installed toolchain (nargo ${toolchain.nargoVersion}, bb ${toolchain.bbVersion}) ` +
-        `does not match the pinned toolchain (nargo ${NOIR_VERSION}, bb ${BB_VERSION}) that ` +
-        `circuits/testvectors/*.json were generated with. Drift reported below may just be a ` +
-        `local toolchain mismatch, not a real regression.\n`,
-    );
+    const errorMsg =
+      `\n[TOOLCHAIN MISMATCH] Installed Noir/Barretenberg toolchain has drifted:\n` +
+      `  - Installed: nargo ${toolchain.nargoVersion}, bb ${toolchain.bbVersion}\n` +
+      `  - Pinned:    nargo ${NOIR_VERSION}, bb ${BB_VERSION}\n\n` +
+      `This check enforces the pinned toolchain. To fix toolchain mismatch:\n` +
+      `  noirup -v ${NOIR_VERSION}\n` +
+      `  bbup -v ${BB_VERSION}\n\n` +
+      `If this toolchain upgrade was intentional, update NOIR_VERSION and BB_VERSION in:\n` +
+      `  - circuits/scripts/testvectors.js\n` +
+      `  - circuits/scripts/build.sh\n` +
+      `  - circuits/README.md\n` +
+      `then regenerate test vectors with: node circuits/scripts/testvectors.js update\n`;
+
+    if (mode === "check") {
+      console.error(errorMsg);
+      process.exit(1);
+    } else {
+      console.warn(errorMsg);
+    }
   }
 
   const drifted = [];
-  for (const name of CIRCUITS) {
+  for (const name of circuits) {
     process.stdout.write(`${name}... `);
     const fresh = buildVector(name, toolchain);
 
@@ -219,14 +240,16 @@ function main() {
   }
 
   if (mode === "check" && drifted.length) {
-    console.error("\nDeterministic proof-generation test vectors drifted from circuits/testvectors/*.json:");
+    console.error("\n[CIRCUIT DRIFT] Deterministic proof-generation test vectors drifted from circuits/testvectors/*.json:");
     for (const d of drifted) console.error(`  - ${d.name}: ${d.reason}`);
     console.error(
-      `\nPinned toolchain: nargo ${NOIR_VERSION} / bb ${BB_VERSION} (see circuits/README.md).\n` +
-        `If you changed a circuit or bumped the toolchain on purpose, first bump its entry in\n` +
-        `circuits/circuit-versions.json, then regenerate the vectors with:\n` +
-        `  node circuits/scripts/testvectors.js update\n` +
-        `and commit the result. Otherwise this is a real regression — do not update the vectors to hide it.`,
+      `\nToolchain verified as pinned: nargo ${NOIR_VERSION} / bb ${BB_VERSION}.\n` +
+        `Because the toolchain matches, this drift indicates circuit code or witness changes.\n` +
+        `If you made a deliberate circuit update:\n` +
+        `  1. Bump its entry in circuits/circuit-versions.json\n` +
+        `  2. Regenerate the vectors with: node circuits/scripts/testvectors.js update ${circuits.length === 1 ? circuits[0] : ""}\n` +
+        `  3. Stage and commit the updated fixtures and test vectors.\n` +
+        `Otherwise, this is an unintended circuit regression — do not update vectors to hide it.\n`,
     );
     process.exit(1);
   }
@@ -234,4 +257,17 @@ function main() {
   console.log(mode === "check" ? "\nAll test vectors match." : "\nAll test vectors regenerated.");
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  NOIR_VERSION,
+  BB_VERSION,
+  CIRCUITS,
+  toolVersions,
+  parseProverToml,
+  buildVector,
+  loadCommitted,
+  main,
+};

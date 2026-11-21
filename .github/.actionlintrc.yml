@@ -1,0 +1,15 @@
+# actionlint configuration for the StellarCred repository.
+#
+# The repository's CI workflows keep least-privilege permissions explicitly;
+# actionlint flags guessed top-level defaults, so we pin them as documentation.
+issues:
+  # Permissive defaults are intentional in our existing workflows and the
+  # dependency PR labels are emitted by this repo's own bot accounts, not by
+  # fork PR content.
+  confusing-bash-pipe: warning
+  # We intentionally avoid duplicate goroutines and run shallow clones where
+  # PR merges need fetch-depth.
+  bash-record: warning
+  # The label PR step relies on a missing label being a no-op fallback, which
+  # actionlint cannot distinguish from a real failure.
+  use-typescript: disable

@@ -1,0 +1,9 @@
+node_modules/
+.next/
+dist/
+out/
+target/
+*.wasm
+public/bb/
+public/circuits/
+circuits/target/

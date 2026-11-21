@@ -11,6 +11,7 @@ const PAGES = [
   "/apps/lendfi",
   "/developers",
   "/docs",
+  "/login",
 ];
 
 const KNOWN_EXCEPTIONS: { rule: string; rationale: string; path?: string }[] = [

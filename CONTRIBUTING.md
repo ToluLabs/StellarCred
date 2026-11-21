@@ -2,6 +2,13 @@
 
 Thanks for your interest in contributing. StellarCred is a ZK credential layer for Stellar — contributions that improve correctness, security, or developer experience are especially welcome.
 
+**First time in this repo?** Work through
+[START_HERE.md](START_HERE.md) — one linear path from `git clone` to the same
+checks CI runs on your PR. This file is the reference for everything after that:
+project layout, workflow, review routing, trust-model invariants and PR rules.
+The per-component commands, expected outputs and known failure modes are
+collected in [docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md).
+
 ## Project layout
 
 ```
@@ -12,6 +19,50 @@ services/     Indexer & off-chain services (see services/indexer/README.md)
 scripts/      deploy.sh — wires all contracts on testnet
 fixtures/     real vk / proof / public_inputs used by contract tests
 ```
+
+### Where a markdown file belongs
+
+The repository tracks documentation in two places, and the split has one rule:
+
+- **Repository root** — the entry points a person or a tool is expected to find
+  without looking: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`,
+  `ROADMAP.md`, `LICENSE`. A component directory keeps its own `README.md`
+  (`services/indexer/README.md`, `frontend/packages/sdk/README.md`) as that
+  component's entry point.
+- **`docs/`** — everything else: specifications, integration guides, runbooks,
+  operational references (`docs/EVENTS.md`, `docs/THREAT_MODEL.md`,
+  `docs/ISSUER_ONBOARDING.md`, …), with decision records in `docs/adr/`.
+
+Two rules follow. The first is the one whose absence produced the duplicated
+`EVENTS.md` (issue #687):
+
+1. **One topic, one file.** Never mirror a document into a second path for
+   visibility. If it must stay reachable from the root `README.md`, link it from
+   there — a contract such as the event schema read by indexers and integrators
+   cannot exist in two copies, because one of them will go stale and its readers
+   will decode events wrong with no error to show them.
+2. **Link with a path that resolves from the file you are editing.** From the
+   root, `docs/EVENTS.md`; from another file in `docs/`, the sibling `EVENTS.md`;
+   from a component, the full walk up (`../../docs/EVENTS.md`).
+
+### Export pipeline
+
+The admin export system (issues [#783](https://github.com/ToluLabs/StellarCred/issues/783), [#784](https://github.com/ToluLabs/StellarCred/issues/784), and [#788](https://github.com/ToluLabs/StellarCred/issues/788)) lives under:
+
+```
+frontend/lib/export-store.ts          ExportRecord store (create/list/get/revoke)
+frontend/lib/export-job-store.ts      Chunked ExportJob model and cursor handles
+frontend/lib/export-cursor.ts         HMAC-signed resumable cursor tokens
+frontend/lib/export-chunks.ts         serveExportChunk orchestrator
+frontend/lib/export-throttle.ts       Per-tenant rate limiting
+frontend/lib/export-concurrency.ts    Global concurrency cap
+frontend/lib/export-scheduler.ts      Cost-aware priority queue
+frontend/lib/export-metrics.ts        Backpressure metrics aggregator
+frontend/app/api/admin/exports/       API routes (list, get, revoke, audit, chunks, queue)
+frontend/app/admin/exports/           Admin web UI (Server Component + Server Action)
+```
+
+Full API reference, schema documentation, cURL and TypeScript examples, a contributor checklist, and testing guidance are in **[docs/exports.md](docs/exports.md)**.
 
 ### Writing a contract test
 
@@ -54,10 +105,15 @@ covered by `cargo test` and by `cargo clippy --workspace`.
 
 ## Setting up your environment
 
-Full install instructions — including exact commands, PATH configuration, and
-a troubleshooting table — are in **[SETUP.md](SETUP.md)**.
+[**START_HERE.md**](START_HERE.md) is the ordered path from a fresh clone to a
+green local build. [**SETUP.md**](SETUP.md) is the install reference behind it —
+exact commands per toolchain, PATH configuration, and the troubleshooting table.
+[**docs/CONTRIBUTOR_CHECKLIST.md**](docs/CONTRIBUTOR_CHECKLIST.md) lists the
+validation command for each component, what its output looks like when it passes,
+and the failure modes contributors hit most often.
 
-After following SETUP.md, run:
+Install only what your change needs (contracts do not need `nargo`/`bb`; the
+committed test fixtures already contain the real artifacts), then verify:
 
 ```bash
 make doctor
@@ -77,7 +133,10 @@ is wrong before you hit a confusing CI failure. A passing run looks like:
 All checks passed — environment is ready.
 ```
 
-Fix any `[FAIL]` lines before running `make build` or `make test`.
+Fix any `[FAIL]` lines before running `make build` or `make test`. The Makefile
+needs GNU Make **and** bash — on Windows run it from Git Bash or WSL, and if you
+have no Make, run the per-component commands from
+[docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md) instead.
 
 ### Pinned versions at a glance
 
@@ -90,37 +149,64 @@ Fix any `[FAIL]` lines before running `make build` or `make test`.
 | Node | **20** | Frontend and indexer |
 | pnpm | **9** | Frontend workspace manager |
 
+`frontend/package.json` also declares its own `packageManager` pnpm version, which
+corepack honours for commands run inside `frontend/`; SETUP.md § "Quick reference"
+explains how the two interact and what to do if they disagree.
+
 > **Circuit toolchain warning:** the `nargo` and `bb` versions are load-bearing.
 > A mismatch produces a VK that differs from the committed fixture, and CI fails
 > with `VK mismatch for <circuit>` — which looks like your change broke
 > something but is actually a version problem. Run `make doctor` first.
 
-## Docker quickstart
+## Docker
 
-Skip local toolchain installs — use the pinned dev image:
+Two different things live in Docker here, and mixing them up is a common early
+stumble.
+
+**The pinned toolchain image** — [`docker/Dockerfile.dev`](docker/Dockerfile.dev)
+— is what you use instead of installing Rust, Noir, Barretenberg, Node and pnpm
+on your host. It has no `docker compose` service, so build and run it directly,
+mounting the repo at `/workspace`:
 
 ```bash
-# Build the dev image (first time, or after Dockerfile changes)
-docker compose build
+docker build -f docker/Dockerfile.dev -t stellarcred-dev .
 
-# Frontend dev server on http://localhost:3000
-docker compose up frontend
+# Contract tests / WASM build
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "cargo test --locked && cargo build --release --target wasm32v1-none --locked"
 
-# Contract tests (21 tests)
-docker compose run --rm contracts cargo test
+# Circuits
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "bash ./circuits/scripts/build.sh"
 
-# Compile all Noir circuits
-docker compose run --rm circuits nargo compile --workspace
+# Frontend
+docker run --rm -v "$PWD":/workspace -w /workspace stellarcred-dev \
+  bash -lc "cd frontend && pnpm install && pnpm build"
 ```
 
-The image pins Rust 1.93.1, nargo 1.0.0-beta.9, bb 0.87.0, Node 20, and pnpm 9,
-so version mismatches are not possible inside the container.
+The image pins nargo 1.0.0-beta.9, bb 0.87.0, Node 20, pnpm 9 and Stellar CLI
+27; Rust itself comes from `rust:1-bookworm` and `rust-toolchain.toml` selects
+the pinned compiler on the first `cargo` run inside the container, so that run
+needs network access.
+
+**`docker compose`** runs the *application*, not the toolchain: it defines only
+the `indexer` and `frontend` containers, reads contract IDs and keys from `.env`
+(see [`.env.example`](.env.example) and `services/indexer/.env.example`), and the
+frontend waits for the indexer's `/health` check:
+
+```bash
+docker compose up            # indexer on 3001, frontend on 3000
+docker compose up frontend   # also starts the indexer — it is a dependency
+```
+
+There is no `contracts` or `circuits` compose service; a `docker compose run
+--rm contracts …` command fails with `no such service`.
 
 ## Getting started
 
 ```bash
-# contracts
-cargo test                        # 21 tests, real BN254 verification
+# contracts — real BN254 verification against the committed fixtures/ artifacts
+cargo test
 
 # circuits (optional — pre-built artifacts are committed)
 ./circuits/scripts/build.sh       # compile all, stage to frontend/public/circuits
@@ -134,9 +220,14 @@ pnpm dev
 # indexer (optional — off-chain Soroban event indexing)
 cd services/indexer
 cp .env.example .env
-npm install
+npm ci
 npm run dev
 ```
+
+To validate rather than just run a component, use the checklist's per-component
+tables ([§ 3–§ 6](docs/CONTRIBUTOR_CHECKLIST.md)) — they pair each command with
+the output that means it passed. `make build && make test && make lint` (or
+`make all`) mirrors the CI build/test/lint jobs across every workspace.
 
 ## Holder page architecture
 
@@ -155,18 +246,195 @@ there**. Everything else has a designated home:
 2. Write the UI in `components/holder/`.
 3. Import and wire them in HolderPageClient.
 
-A CI guard (`scripts/check-holder-size.sh`) enforces a hard line-count ceiling on
-HolderPageClient.tsx. Adding inline feature code will fail CI. The guard was added
-in [#606](https://github.com/ToluLabs/StellarCred/issues/606).
+A CI guard (`scripts/check-page-client-size.sh`) enforces a hard line-count
+ceiling on the page-client shells — `HolderPageClient.tsx`, `VerifyPageClient.tsx`
+and `DocsPageClient.tsx`. Caps are pinned at their current sizes and only go down,
+so adding inline feature code fails CI. The guard was added in
+[#606](https://github.com/ToluLabs/StellarCred/issues/606) and extended in
+[#685](https://github.com/ToluLabs/StellarCred/issues/685).
 
 ## Development workflow
 
 1. **Pick and claim an issue** (see [Picking up an issue](#picking-up-an-issue) below), then **fork** the repo and create a branch from `main`.
 2. Make your changes. Keep commits focused — one logical change per commit.
-3. For contract changes: run `cargo test` and confirm all tests pass.
+3. For contract changes: run `cargo test --locked`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo fmt --all` before committing (formatting the files you did not touch would bloat the diff — revert those).
 4. For circuit changes: run `./circuits/scripts/build.sh` and update the relevant `fixtures/<type>/` artifacts, then regenerate the regression test vectors with `node circuits/scripts/testvectors.js update` (see `circuits/README.md` — "Test Vectors") and commit the result. CI runs `node circuits/scripts/testvectors.js check` and fails if a circuit or toolchain change silently altered proof output without the vectors being updated.
-5. For frontend changes: run `pnpm tsc --noEmit` (zero errors required) and `pnpm build`.
-6. Open a pull request against `main` with a clear description of what changed and why.
+5. For frontend changes: run `pnpm lint`, `pnpm exec tsc --noEmit` (zero errors required), `pnpm test`, `pnpm format:check` and `pnpm build`. For the SDK, the examples and the indexer, use the matching table in [docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md).
+6. Before pushing, walk [docs/CONTRIBUTOR_CHECKLIST.md § 9](docs/CONTRIBUTOR_CHECKLIST.md) — the CI job → command map there is how you reproduce anything red on the PR.
+7. Open a pull request against `main` with a clear description of what changed and why.
+
+### Process documents belong in the PR description
+
+An implementation summary, review checklist, status report, test summary or
+"final verification" write-up is a **PR artifact, not a repository file**. Put it
+in the pull request description (or a PR comment), where it is read once, stays
+attached to the diff it describes, and is searchable from the PR. Do not commit it.
+
+- **Why:** such a document describes a change, and a change ends at merge. In the
+  tree it is wrong within days — every later edit to the code it documents makes
+  its claims stale while its file name still asserts authority — and it is never
+  updated, only re-created by the next contributor. It also buries the documents
+  that stay true: the root directory is where a newcomer looks for `README`,
+  `CONTRIBUTING`, `SETUP`, `ROADMAP`, `SECURITY`.
+- **What to do instead:** if something in your summary is worth keeping after the
+  merge, it is documentation, so move that part into the doc that owns the topic
+  (`circuits/README.md` for a circuit, `docs/` for a subsystem, the component's
+  own `README.md`) and let the rest live in the PR.
+- **Enforced:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) fails a PR
+  that *adds* a file whose name matches a process-artifact pattern
+  (`*IMPLEMENTATION_SUMMARY`, `*IMPLEMENTATION_DETAILS`, `*IMPLEMENTATION_NOTES`,
+  `*REVIEW_SUMMARY`, `*STATUS_REPORT`, `PR_DESCRIPTION*`, `*_COMPLETE`,
+  `START_HERE`, `FILES_MODIFIED`, `CRITICAL_FIX_NEEDED`, `READY_FOR_BUILD` — any
+  extension). Only new files are checked; the legacy ones still in the tree are
+  being removed separately. If you genuinely mean to add a durable document under
+  one of those names, add it with a reason to the allowlist in
+  [`.github/scripts/check-process-docs.mjs`](.github/scripts/check-process-docs.mjs)
+  and justify it in the PR.
+
+## Testing guide
+
+Everything here runs locally, and CI (the **CI** workflow, on every PR against
+`main`) runs the same commands — the bar is "CI green", not "green on my
+machine". One command covers every unit suite: **`make test`** (contracts +
+frontend + indexer + the canonical example). If you are not sure your toolchain
+matches the pinned versions, run **`make doctor`** first; it checks every pinned
+binary and exits non-zero on a mismatch.
+
+### Contracts (Rust / Soroban)
+
+```bash
+make test-contracts      # cargo test --locked at the repo root
+make lint-contracts      # cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Keep `--locked`: the CI job runs `cargo test --locked`, and the wasm build is
+pinned by `rust-toolchain.toml`. The host-only test-harness crate is a workspace
+member — a bare `cargo build` skips it, the lint target does not.
+
+### Circuits (Noir / Barretenberg)
+
+`make compile-circuits` runs `circuits/scripts/build.sh`. If a circuit changes,
+regenerate the regression vectors
+(`node circuits/scripts/testvectors.js update`) and commit them — CI runs the
+`check` variant and fails on silent proof-output changes. The property-based
+circuit-fuzz job exercises the compiled circuits further.
+
+### Frontend (Next.js, pnpm)
+
+From `frontend/`:
+
+```bash
+pnpm test               # vitest unit suites
+pnpm test:coverage      # same suites with coverage (CI uploads the report)
+pnpm test:theme         # theme helpers via node:test
+pnpm --filter @stellarcred/issuer test    # issuer package, incl. cross-boundary circuit test
+pnpm exec tsc --noEmit  # zero errors required
+pnpm lint
+```
+
+One command for the common set: `make test-frontend`.
+
+### SDK
+
+Two SDKs live in this repo, and both are tested:
+
+- **`frontend/packages/sdk` (`@stellarcred/sdk`)** — the browser package.
+  `make test-sdk` runs `pnpm typecheck && pnpm test:integration` there; CI also
+  checks the barrel exports (`pnpm test:barrel`). The integration suite talks to
+  testnet and skips gracefully when credentials are absent.
+- **`sdk/` (root, standalone)** — `pnpm test` (vitest), `pnpm typecheck`, and
+  `pnpm bundle-check` for the bundle-size guard.
+
+### Indexer (Node.js, npm + jest)
+
+```bash
+make test-indexer        # cd services/indexer && npm test (jest)
+cd services/indexer && npm run build   # tsc must be clean
+```
+
+The DB suite is a **SQLite + Postgres matrix** in CI (a `postgres:16` service
+container). Locally the Postgres leg is gated on `TEST_POSTGRES_URL` (falling
+back to `DATABASE_URL`) and is *skipped* when unset — so a local run that
+reports fewer DB tests than CI is normal, not broken. Point `TEST_POSTGRES_URL`
+at any Postgres 16 (e.g. `docker compose up indexer`'s database) to run both
+legs.
+
+### E2E locally (Playwright, testnet)
+
+```bash
+cd frontend
+pnpm exec playwright install --with-deps chromium   # first time only
+pnpm test:e2e
+```
+
+Playwright starts its own dev server unless `PLAYWRIGHT_BASE_URL` is set, in
+which case it drives whatever is already running. The full happy-path flow
+(deploy → issue → prove → verify) needs a live testnet deployment and funded
+issuer keys: use [`scripts/e2e-testnet.sh`](scripts/e2e-testnet.sh) and the
+variables in the relevant `.env.example` files. Note the distinction in CI:
+the `Accessibility (axe-core)` job runs as part of every PR, while the
+ephemeral-testnet happy path
+([`.github/workflows/e2e.yml`](.github/workflows/e2e.yml)) is scheduled /
+manually dispatched, not a PR gate.
+
+### Docker
+
+`docker-compose.yml` wires the two long-running services:
+
+```bash
+docker compose up indexer     # indexer API on :4100
+docker compose up frontend    # web app on :3000
+```
+
+Use these for a quick smoke test when you would rather not install the full
+toolchain; the dev-image commands for contract/circuit work are in the
+[Docker quickstart](#docker-quickstart).
+
+### What CI runs on your PR
+
+The `CI` workflow contains these jobs — **all must pass before merge**:
+
+| Job | What it does |
+| --- | --- |
+| Dependency review | advisories / license / maintenance checks on changed packages |
+| Lint commit messages | commitlint — Conventional Commits are enforced |
+| Contract API reference drift check | `docs/PROOF_REGISTRY_API.md` vs the contract source |
+| Process artifact check | fails PRs that *add* process docs (see above) |
+| Contract tests & build | `cargo test --locked` + pinned wasm build |
+| Circuit compile / Property-based circuit fuzzing | pinned `nargo` + `bb`; test-vector check |
+| Frontend typecheck & build | vitest, coverage, `tsc --noEmit`, issuer + SDK barrel tests, identity-leak gate |
+| Indexer tests (SQLite + Postgres) | build + jest against both DB backends |
+| SDK integration tests (testnet) | `frontend/packages/sdk` integration suite |
+| Accessibility (axe-core) | Playwright + axe against the built app |
+| Coverage gate | merges frontend + indexer coverage and enforces thresholds (`.github/scripts/check-coverage.mjs`) |
+
+Two jobs are environment-dependent and may not run on your PR: the SDK
+integration job only starts when the repository variables it needs
+(`SC_TEST_WALLET`, `STELLARCRED_REGISTRY_ID`) are set — fork PRs cannot see
+maintainer secrets, which is by design — and the ephemeral-testnet E2E lives in
+its own scheduled workflow. Neither is a reason to skip local testing of the
+code you changed.
+
+### Debugging and common gotchas
+
+- **Start with `make doctor`.** A `nargo`/`bb` version mismatch is the worst
+  one: it silently produces wrong verification keys and the artifact-freshness
+  check fails with a confusing diff. Install the pinned versions it prints.
+- **Node 20 and pnpm 9** are the pinned JS toolchain (mirrored in
+  `Makefile` and `ci.yml`); other majors produce lockfile churn.
+- **`pnpm install` in `frontend/` runs a postinstall** that builds
+  `packages/issuer`. If that fails, build the issuer package directly to see
+  the real error.
+- **Commit message fails CI?** commitlint wants Conventional Commits
+  (`feat(scope): …`, `fix: …`, `docs: …`) — see
+  [Commit messages](#commit-messages).
+- **Playwright "browser not found"** → re-run
+  `pnpm exec playwright install --with-deps chromium`.
+- **Indexer Postgres leg "skipped"** in local output is the gating described
+  above, not a failure; CI is the place both legs actually run.
+- **Coverage gate failure** means your diff lowered coverage below the
+  threshold — add tests for the code you changed rather than adjusting the
+  gate.
 
 ## Picking up an issue
 
@@ -363,12 +631,56 @@ CODEOWNERS routes the *request*; it does not change branch protection. To make a
 
 Please do **not** open a public issue for security vulnerabilities. See [SECURITY.md](SECURITY.md).
 
-## Code style
+## Code style & Linting
 
-- **Rust**: `cargo fmt` before committing. Follow the existing contract structure — cross-contract calls use `#[contractclient]` interface traits, not crate dependencies.
-- **TypeScript**: ESLint + Prettier (enforced by `pnpm lint`). No `NEXT_PUBLIC_` prefix on server-only env vars.
-- **Noir**: keep circuits as simple as possible — constraint count directly affects browser proving time.
-- **Comments**: only when the *why* is non-obvious (a constraint, a workaround, a subtle invariant). Don't explain what the code does.
+- **Rust**: `cargo fmt` before committing. Follow the existing contract structure — cross-contract calls use `#[contractclient]` interface traits, not crate dependencies. No CI job runs `cargo fmt --check` today and parts of the tree are unformatted, so keep the reformat to the files your PR touches.
+- **TypeScript & Web**: ESLint and Prettier are configured across the repository.
+  - Run linting: `pnpm --dir frontend lint` (or `pnpm --dir frontend/packages/sdk lint` for SDK).
+  - Check formatting: `pnpm --dir frontend format:check`.
+  - Auto-format code: `pnpm --dir frontend format`.
+- **Pre-commit hooks**: Husky and `lint-staged` run automatically on staged TypeScript, JavaScript, CSS, and JSON files on `git commit` to maintain format and lint standards.
+- **Noir**: Keep circuits as simple as possible — constraint count directly affects browser proving time.
+- **Comments**: Only when the *why* is non-obvious (a constraint, a workaround, a subtle invariant). Don't explain what the code does.
+
+## Linting
+
+Every TypeScript workspace carries its own ESLint 9 flat config next to the code
+it lints, and `.github/workflows/lint.yml` runs all of them on push and pull
+request. A lint job fails on any **error**; it prints **warnings** and carries on.
+
+| Workspace | Config | Run locally |
+|-----------|--------|-------------|
+| Frontend app | [frontend/eslint.config.mjs](frontend/eslint.config.mjs) | `cd frontend && pnpm lint` (or `make lint-frontend`) |
+| Indexer service | [services/indexer/eslint.config.mjs](services/indexer/eslint.config.mjs) | `cd services/indexer && npm run lint` (or `make lint-indexer`) |
+
+`make lint` runs clippy plus both ESLint jobs.
+
+**Documented exceptions.** These are deliberate, not leftovers — each one has its
+rationale written into the config header:
+
+- `react-hooks/set-state-in-effect` and `react-hooks/refs` are warnings in the
+  frontend config: 34 pre-existing, working patterns from the Next.js 16 upgrade,
+  tracked for a dedicated refactor.
+- `@typescript-eslint/no-explicit-any` is a warning in both configs: the existing
+  uses sit at untyped boundaries (XDR and SDK values), so tightening them is a
+  typing task rather than a linting one. New code should avoid `any` anyway.
+- `prefer-const` is a frontend warning.
+- Inline `// eslint-disable-next-line` notes are used where a rule conflicts with
+  a deliberate design, e.g. the lazy `require()` of the optional `pg` /
+  `better-sqlite3` drivers in the indexer. Keep the suppression on the line, with
+  the reason in the comment above it.
+
+The indexer's lint toolchain (`eslint`, `@eslint/js`, `typescript-eslint`) is not
+in its `package-lock.json`, because `npm ci` in the build and test jobs fails when
+`package.json` and the lockfile disagree. On a fresh clone, install it once:
+
+```bash
+cd services/indexer && npm install --no-save --no-package-lock eslint@9 @eslint/js@9 typescript-eslint@8
+```
+
+Adding a rule is cheap; switching one to `error` is a repo-wide change, since the
+lint job then fails on every existing violation. Prefer a warning plus a tracked
+follow-up over a bulk reformat, and never silence a rule repo-wide to get green.
 
 ## Commit messages
 
@@ -396,6 +708,23 @@ chore: bump soroban-sdk to 26.0.1
 Breaking changes: add `BREAKING CHANGE:` in the commit footer, or append `!` after the type (`feat!:`).
 
 Commit messages are linted automatically on pull requests via `commitlint`.
+
+## Automated Dependency Updates & Auto-Merge Policy
+
+To keep dependencies secure and current without manual overhead, minor and patch dependency updates are automatically merged when all test suites pass.
+
+### Auto-Merge Criteria
+Pull requests are automatically evaluated and merged when:
+1. The PR carries the configured auto-merge label (default: `deps` or `dependencies`).
+2. All CI workflows and status checks pass (green build).
+3. The PR only modifies dependency manifests and lockfiles (`package.json`, `pnpm-lock.yaml`, `Cargo.toml`, `Cargo.lock`, etc.).
+
+### Safeguards & Threshold Rules
+To prevent breaking changes and supply chain regressions, strict threshold rules are enforced:
+- **Major Version Bumps Blocked:** Any update that increments the major semver version (e.g. `v1.2.0` → `v2.0.0`, or breaking `0.x` transitions such as `0.1.0` → `0.2.0`) is **strictly barred** from auto-merging. Major version upgrades require manual maintainer review, audit, and approval.
+- **Pinned Core Dependencies:** Cryptographic and zero-knowledge toolchain dependencies (`@aztec/bb.js`, `@noir-lang/*`, `soroban-sdk`, `ultrahonk_soroban_verifier`) are explicitly pinned in `.github/dependabot.yml` and cannot be bumped automatically.
+- **Source Code Protection:** If a dependency PR contains modifications to application source files (e.g. `src/`, `lib/`, `contracts/`, `circuits/`), auto-merge is immediately rejected.
+- **Configurable Label:** The required label can be configured via repository variable `AUTOMERGE_DEPS_LABEL` (defaulting to `deps`).
 
 ## Releasing
 

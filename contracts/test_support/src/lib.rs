@@ -300,6 +300,10 @@ impl Contracts {
     /// Deploy IssuerRegistry, CredentialVerifier, and a ProofRegistry wired to
     /// both, all sharing one generated admin address.
     pub fn deploy(env: &Env) -> Self {
+        // Reserve adequate budget / gas headroom for multi-step nested contract operations
+        // to prevent unexpected reverts during simulation or execution.
+        env.cost_estimate().budget().reset_unlimited();
+
         let admin = Address::generate(env);
 
         let issuer_registry_id = env.register(IssuerRegistry, (admin.clone(),));

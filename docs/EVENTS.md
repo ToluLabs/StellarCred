@@ -2,6 +2,11 @@
 
 This document authoritatively specifies every event emitted by StellarCred's Soroban contracts, their exact topic structure, payload data types, emission triggers, and stability guarantees for off-chain indexers and protocol integrators.
 
+> **Canonical location: `docs/EVENTS.md`.** There is exactly one copy of this
+> specification in the repository, and it is this file. There is no root-level
+> `EVENTS.md`; if a link or comment points at one, it is stale — fix the
+> reference rather than restoring the file.
+
 ---
 
 ## Architecture & Topic Convention
@@ -644,4 +649,4 @@ and webhook payload schemas.
 
 1. **Immutable Topic Schemas**: Topic position and symbol values are guaranteed stable across contract upgrades.
 2. **Deterministic Payload Layout**: Field names, types, and ordering in `#[contracttype]` structs are preserved.
-3. **Continuous Drift Protection**: Contract test suites in `contracts/*/src/test.rs` assert exact topic tuples and serialized payload structures against this document on every build and CI run.
+3. **Continuous Drift Protection**: The event-shape suites added for issue #429 — `contracts/proof_registry/src/test.rs`, `contracts/issuer_registry/src/test.rs`, and `contracts/credential_verifier/src/test.rs` — assert the exact topic tuples and serialized payload structures documented here on every `cargo test` and CI run. The assertions hardcode the shapes from this file rather than reading it from disk, so a contract-side event change fails CI while a doc-side change is caught only in review. Point new event tests at the single `docs/EVENTS.md` copy, never a second one.

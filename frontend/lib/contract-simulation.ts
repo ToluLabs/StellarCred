@@ -128,7 +128,7 @@ export async function checkClaim(
         : nativeToScVal(null, { type: "void" }),
     );
     const tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
+      fee: (BigInt(BASE_FEE) * 2n).toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(op)
@@ -195,7 +195,7 @@ export async function isVerified(
         : nativeToScVal(null, { type: "void" }),
     );
     const tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
+      fee: (BigInt(BASE_FEE) * 2n).toString(),
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(op)

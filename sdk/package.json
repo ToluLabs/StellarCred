@@ -1,0 +1,32 @@
+{
+  "name": "@sdk/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --config vitest.config.ts --exclude tests/bundle/**",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "bundle-check": "vitest run --config vitest.config.ts --dir tests/bundle"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.2",
+    "vitest": "^1.6.0",
+    "esbuild": "^0.20.12"
+  }
+}

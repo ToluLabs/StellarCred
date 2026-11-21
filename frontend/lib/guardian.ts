@@ -2,6 +2,7 @@
 
 import type { Credential } from "./credential";
 import { parseCredential } from "./credential";
+import { filterCredentialsForExport } from "./export-visibility";
 import { splitSecret, combineShares, type RawShare } from "./shamir";
 import {
   KEY_BYTES,
@@ -122,7 +123,8 @@ export async function createGuardianRecoverySetup(
   // 2. Encrypt credentials with the consolidated envelope scheme (RAW kdf:
   // the wrap key is handed to sealWithKey directly, never passphrase-derived)
   const cryptoKey = await importCredentialKey(rawKey);
-  const sealed = await sealWithKey(JSON.stringify(credentials), cryptoKey);
+  const exportableCredentials = filterCredentialsForExport(credentials);
+  const sealed = await sealWithKey(JSON.stringify(exportableCredentials), cryptoKey);
 
   const backup: GuardianEncryptedBackup = {
     version: 2,
@@ -136,7 +138,7 @@ export async function createGuardianRecoverySetup(
     ciphertext: sealed.ciphertext,
     keyFingerprint,
     guardianLabels: guardianLabels?.slice(0, totalShares),
-    credentialCount: credentials.length,
+    credentialCount: exportableCredentials.length,
   };
 
   // 3. Split symmetric key into Shamir shares

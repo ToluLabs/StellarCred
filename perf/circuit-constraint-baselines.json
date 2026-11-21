@@ -1,0 +1,83 @@
+{
+  "$comment": [
+    "Per-circuit constraint baselines and proving-time projections (GitHub #534).",
+    "Tracks ACIR opcode counts, backend gate approximations, and proving times across all 12 circuits.",
+    "Used by circuits/scripts/track-constraints.js to detect proving regressions in CI."
+  ],
+  "version": 1,
+  "defaultThreshold": 0.15,
+  "circuits": {
+    "commit": {
+      "acirOpcodes": 4,
+      "estimatedGates": 200,
+      "estimatedProvingSeconds": 0.05,
+      "description": "Witness-only commitment helper"
+    },
+    "commit3": {
+      "acirOpcodes": 6,
+      "estimatedGates": 300,
+      "estimatedProvingSeconds": 0.08,
+      "description": "Witness-only 3-element commitment helper"
+    },
+    "kyc_proof": {
+      "acirOpcodes": 582,
+      "estimatedGates": 33200,
+      "estimatedProvingSeconds": 2.30,
+      "description": "Baseline KYC credential proof (Poseidon2 + ECDSA)"
+    },
+    "age_proof": {
+      "acirOpcodes": 601,
+      "estimatedGates": 35200,
+      "estimatedProvingSeconds": 2.45,
+      "description": "Age verification with date division"
+    },
+    "income_proof": {
+      "acirOpcodes": 588,
+      "estimatedGates": 33250,
+      "estimatedProvingSeconds": 2.32,
+      "description": "Income threshold proof"
+    },
+    "funds_proof": {
+      "acirOpcodes": 588,
+      "estimatedGates": 33250,
+      "estimatedProvingSeconds": 2.32,
+      "description": "Balance threshold proof"
+    },
+    "accreditation_proof": {
+      "acirOpcodes": 588,
+      "estimatedGates": 33250,
+      "estimatedProvingSeconds": 2.32,
+      "description": "Accreditation net worth proof"
+    },
+    "jurisdiction_proof": {
+      "acirOpcodes": 607,
+      "estimatedGates": 33500,
+      "estimatedProvingSeconds": 2.40,
+      "description": "Jurisdiction unrolled country exclusion"
+    },
+    "employment_proof": {
+      "acirOpcodes": 588,
+      "estimatedGates": 33250,
+      "estimatedProvingSeconds": 2.32,
+      "description": "Employment status and threshold proof"
+    },
+    "range_proof": {
+      "acirOpcodes": 18,
+      "estimatedGates": 800,
+      "estimatedProvingSeconds": 0.25,
+      "description": "Generic range verification"
+    },
+    "set_membership": {
+      "acirOpcodes": 590,
+      "estimatedGates": 33300,
+      "estimatedProvingSeconds": 2.35,
+      "description": "Merkle membership proof"
+    },
+    "aggregate_proof": {
+      "acirOpcodes": 1210,
+      "estimatedGates": 66500,
+      "estimatedProvingSeconds": 4.60,
+      "description": "2-credential aggregate proof (KYC + Age)"
+    }
+  }
+}

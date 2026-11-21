@@ -7,8 +7,8 @@ use soroban_sdk::{
     vec, Address, Bytes, Env, IntoVal, Symbol,
 };
 use test_support::{
-    deploy_credential_verifier, fixture, setup_verifier, verify_with, AGE, EMPLOYMENT, INCOME,
-    JURISDICTION, KYC, RANGE, SET_MEMBERSHIP,
+    deploy_credential_verifier, fixture, setup_verifier, setup_verifier_under, verify_with, AGE,
+    EMPLOYMENT, INCOME, JURISDICTION, KYC, RANGE, SET_MEMBERSHIP,
 };
 
 // The circuit catalog (KYC, AGE, ...) lives in `test_support` and holds the
@@ -27,6 +27,9 @@ fn verifies_kyc() {
 #[test]
 fn verifies_age() {
     let env = Env::default();
+    let admin = Address::generate(&env);
+    let contract_id = env.register(CredentialVerifier, (admin,));
+    let _client = CredentialVerifierClient::new(&env, &contract_id);
     env.mock_all_auths();
     let c = setup_verifier(&env, &AGE, 1);
     assert!(verify_with(&c, &env, &AGE, None));
@@ -249,6 +252,112 @@ fn rejects_proof_from_wrong_circuit_type() {
         ),
         &None,
     ));
+}
+
+/// Registers a negative fixture's own VK under the credential type its case name
+/// is derived from (see `circuits/scripts/gen_negative_fixtures.js`) and asserts
+/// the contract rejects that fixture's proof. A macro because `fixture!` expands
+/// to `include_bytes!`, so every case name has to be a literal.
+macro_rules! assert_negative_fixture_rejected {
+    ($credential_type:literal, $vk:expr, $proof:expr, $public_inputs:expr) => {{
+        let env = Env::default();
+        env.mock_all_auths();
+        let credential_type = Symbol::new(&env, $credential_type);
+        let verifier = setup_verifier_under(&env, &credential_type, 1, $vk);
+        assert!(
+            !verifier.verify_proof(
+                &credential_type,
+                &Bytes::from_slice(&env, $proof),
+                &Bytes::from_slice(&env, $public_inputs),
+                &None,
+            ),
+            concat!("negative fixture ", $credential_type, " must be rejected")
+        );
+    }};
+}
+
+// The remaining cases from `fixtures/negative/`, one per credential type that
+// `gen_negative_fixtures.js` covers. Each mutates a valid proof's public inputs
+// so the verification equation fails: an unmet threshold, a denylisted country,
+// a wrong Merkle root, a truncated aggregate layout.
+#[test]
+fn rejects_age_unmet_threshold() {
+    assert_negative_fixture_rejected!(
+        "age",
+        fixture!("negative/age_unmet_threshold", "vk"),
+        fixture!("negative/age_unmet_threshold", "proof"),
+        fixture!("negative/age_unmet_threshold", "public_inputs")
+    );
+}
+
+#[test]
+fn rejects_income_unmet_threshold() {
+    assert_negative_fixture_rejected!(
+        "income",
+        fixture!("negative/income_unmet_threshold", "vk"),
+        fixture!("negative/income_unmet_threshold", "proof"),
+        fixture!("negative/income_unmet_threshold", "public_inputs")
+    );
+}
+
+#[test]
+fn rejects_funds_unmet_threshold() {
+    assert_negative_fixture_rejected!(
+        "funds",
+        fixture!("negative/funds_unmet_threshold", "vk"),
+        fixture!("negative/funds_unmet_threshold", "proof"),
+        fixture!("negative/funds_unmet_threshold", "public_inputs")
+    );
+}
+
+#[test]
+fn rejects_range_unmet_threshold() {
+    assert_negative_fixture_rejected!(
+        "range",
+        fixture!("negative/range_unmet_threshold", "vk"),
+        fixture!("negative/range_unmet_threshold", "proof"),
+        fixture!("negative/range_unmet_threshold", "public_inputs")
+    );
+}
+
+#[test]
+fn rejects_jurisdiction_denylisted() {
+    assert_negative_fixture_rejected!(
+        "jurisdiction",
+        fixture!("negative/jurisdiction_denylisted", "vk"),
+        fixture!("negative/jurisdiction_denylisted", "proof"),
+        fixture!("negative/jurisdiction_denylisted", "public_inputs")
+    );
+}
+
+#[test]
+fn rejects_set_membership_wrong_root() {
+    assert_negative_fixture_rejected!(
+        "set_membership",
+        fixture!("negative/set_membership_wrong_root", "vk"),
+        fixture!("negative/set_membership_wrong_root", "proof"),
+        fixture!("negative/set_membership_wrong_root", "public_inputs")
+    );
+}
+
+#[test]
+fn rejects_aggregate_malformed_layout() {
+    assert_negative_fixture_rejected!(
+        "aggregate",
+        fixture!("negative/aggregate_malformed_layout", "vk"),
+        fixture!("negative/aggregate_malformed_layout", "proof"),
+        fixture!("negative/aggregate_malformed_layout", "public_inputs")
+    );
+}
+
+#[test]
+fn rejects_employment_invalid_proof() {
+    assert_negative_fixture_rejected!(
+        "employment",
+        fixture!("negative/employment_invalid_proof", "vk"),
+        fixture!("negative/employment_invalid_proof", "proof"),
+        fixture!("negative/employment_invalid_proof", "public_inputs")
+    );
 }
 
 #[test]

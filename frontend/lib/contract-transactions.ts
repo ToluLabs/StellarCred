@@ -207,8 +207,9 @@ async function sendAndConfirm(
   const contract = new Contract(CONTRACTS.proofRegistry);
   const op = buildOp(contract);
 
+  const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
   const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
+    fee: inclusionFee,
     networkPassphrase: NETWORK_PASSPHRASE,
   })
     .addOperation(op)
@@ -216,6 +217,10 @@ async function sendAndConfirm(
     .build();
 
   const prepared = await srv.prepareTransaction(tx);
+  // Add 25% safety headroom buffer for nested contract calls and execution variance
+  const feeNum = BigInt(prepared.fee || 0);
+  prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
+
   const signedXdr = await signTx(prepared.toXDR(), holder);
   const sent = await srv.sendTransaction(
     TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE),
@@ -286,8 +291,9 @@ async function runPreflight(
     const contract = new Contract(CONTRACTS.proofRegistry);
     const op = buildOp(contract);
 
+    const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
     const tx = new TransactionBuilder(account, {
-      fee: BASE_FEE,
+      fee: inclusionFee,
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(op)
@@ -491,8 +497,9 @@ export async function submitProofs(params: {
   const now = Math.floor(Date.now() / 1000);
   const op = buildSubmitProofsOp(contract, holder, submissions, now);
 
+  const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
   const tx = new TransactionBuilder(account, {
-    fee: BASE_FEE,
+    fee: inclusionFee,
     networkPassphrase: NETWORK_PASSPHRASE,
   })
     .addOperation(op)
@@ -500,6 +507,10 @@ export async function submitProofs(params: {
     .build();
 
   const prepared = await srv.prepareTransaction(tx);
+  // Add 25% safety headroom buffer for nested contract calls and execution variance
+  const feeNum = BigInt(prepared.fee || 0);
+  prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
+
   const signedXdr = await signTx(prepared.toXDR(), holder);
   const sent = await srv.sendTransaction(
     TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE),

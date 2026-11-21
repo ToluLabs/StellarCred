@@ -82,7 +82,6 @@ export function Footer() {
           </a>
           <a href="/developers" className="footer-link">
             {t("footer.docs")}
-            Docs
           </a>
 
           {/* Version Info Toggle */}

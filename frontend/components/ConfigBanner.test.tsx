@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithIntl } from "@/lib/test-utils";
 import { describe, expect, it } from "vitest";
 import { ConfigBanner } from "./ConfigBanner";
 
@@ -10,7 +11,7 @@ import { ConfigBanner } from "./ConfigBanner";
 // the "App not fully configured" branch — deterministic without extra setup.
 describe("ConfigBanner", () => {
   it("renders exactly one new-style banner with no legacy markup spliced in", () => {
-    const { container } = render(<ConfigBanner />);
+    const { container } = renderWithIntl(<ConfigBanner />);
 
     expect(container.querySelectorAll(".config-banner")).toHaveLength(1);
     expect(container.querySelectorAll(".config-banner__icon")).toHaveLength(1);
@@ -26,7 +27,7 @@ describe("ConfigBanner", () => {
   });
 
   it("lists the active network and the missing env vars", () => {
-    render(<ConfigBanner />);
+    renderWithIntl(<ConfigBanner />);
 
     const bannerText = screen.getByText(/Active network:/);
     expect(bannerText.textContent).toContain("Active network:");
