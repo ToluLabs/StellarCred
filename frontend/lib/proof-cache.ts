@@ -58,7 +58,9 @@ export const DEFAULT_VK_VERSION = "circuit-v1";
 // --------------------------------------------------------------------------- //
 
 /** Keep a stable object shape so the JSON key is order-independent. */
-function canonicalClaimParams(p?: Credential["claimParams"]): Credential["claimParams"] | undefined {
+function canonicalClaimParams(
+  p?: Credential["claimParams"],
+): Credential["claimParams"] | undefined {
   if (!p) return undefined;
   const out: Credential["claimParams"] = {};
   if (p.threshold_years !== undefined) out.threshold_years = p.threshold_years;
@@ -237,10 +239,24 @@ export function invalidateProof(key: string, storage?: ProofCacheStorage | null)
 }
 
 /** Remove every cached proof belonging to a credential commitment. */
-export function removeCredentialProofs(commitment: string, storage?: ProofCacheStorage | null): void {
+export function removeCredentialProofs(
+  commitment: string,
+  storage?: ProofCacheStorage | null,
+): void {
   const entries = loadProofCache(storage);
   const next = entries.filter((e) => e.commitment !== commitment);
   persistProofCache(next, storage);
+}
+
+/** Clear all cached proofs entirely. */
+export function clearAllProofCache(storage?: ProofCacheStorage | null): void {
+  const store = storage ?? defaultStorage();
+  if (!store) return;
+  try {
+    store.removeItem(CACHE_KEY);
+  } catch {
+    // storage unavailable
+  }
 }
 
 // --------------------------------------------------------------------------- //
