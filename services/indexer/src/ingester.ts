@@ -498,6 +498,8 @@ export interface Ingester {
    * Deletes claims newer than `reorgPoint` and re-indexes up to the new head.
    */
   reconcile(reorgPoint: number): Promise<number>;
+  /** Drain pending webhook deliveries (delivery otherwise runs in the background). */
+  flushWebhooks(): Promise<void>;
   /** Start a continuous polling loop. */
   start(): void;
   /** Stop the polling loop. */
@@ -529,7 +531,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     ? createWebhookDispatcher(db, config.webhookSigningSecret)
     : undefined;
 
-  async function processWebhookQueue(): Promise<void> {
+  async function runWebhookCycle(): Promise<void> {
     if (!webhookDispatcher) return;
     try {
       await webhookDispatcher.enqueueExpiredClaims();
@@ -537,6 +539,23 @@ export function createIngester(config: Config, db: Db): Ingester {
     } catch (error) {
       console.error("[indexer] webhook delivery cycle failed:", error);
     }
+  }
+
+  // Webhook delivery runs in the background (single-flight) so slow receivers
+  // never block ingestion throughput. If a cycle is already running, the
+  // pending rows are picked up by the next cycle.
+  let webhookInFlight: Promise<void> | null = null;
+  function processWebhookQueue(): void {
+    if (!webhookDispatcher || webhookInFlight) return;
+    webhookInFlight = runWebhookCycle().finally(() => {
+      webhookInFlight = null;
+    });
+  }
+
+  /** Wait for the running delivery cycle, then run one more to drain the queue. */
+  async function flushWebhooks(): Promise<void> {
+    if (webhookInFlight) await webhookInFlight;
+    await runWebhookCycle();
   }
 
   // ── Prometheus metrics state ──────────────────────────────────────────
@@ -688,7 +707,7 @@ export function createIngester(config: Config, db: Db): Ingester {
 
   async function tick(): Promise<number> {
     const tickStart = Date.now();
-    await processWebhookQueue();
+    processWebhookQueue();
 
     const lastLedger = await db.getLastLedger();
 
@@ -775,7 +794,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     if (maxLedger > lastLedger) {
       await db.setLastLedger(maxLedger);
     }
-    await processWebhookQueue();
+    processWebhookQueue();
 
     const tickEnd = Date.now();
     // Lint suppression (#855): the exported `dbWriteLatencySeconds` metric is
@@ -840,6 +859,7 @@ export function createIngester(config: Config, db: Db): Ingester {
   return {
     tick,
     reconcile,
+    flushWebhooks,
     start() {
       if (running) return;
       running = true;
@@ -866,6 +886,7 @@ export function createIngester(config: Config, db: Db): Ingester {
         console.log("[indexer] Waiting for in-flight tick…");
         await inFlightTick;
       }
+      if (webhookInFlight !== null) await webhookInFlight;
       console.log("[indexer] Ingester stopped.");
     },
     getHealth() {

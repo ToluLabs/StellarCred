@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import { createSqliteDb } from "./db";
 import type { Config } from "./config";
-import { createWebhookDispatcher } from "./webhooks";
+import { createWebhookDispatcher, MAX_WEBHOOK_DELIVERY_ATTEMPTS } from "./webhooks";
 
 function makeConfig(sqlitePath: string): Config {
   return {
@@ -136,6 +136,47 @@ describe("claim lifecycle webhooks", () => {
         attempts: 2,
         delivered_at: now,
         last_error: null,
+      }),
+    ]);
+  });
+
+  it("stops retrying after the maximum number of attempts", async () => {
+    let now = 1_800_000_000;
+    await db.createWebhookSubscription({
+      url: "https://protocol.example/events",
+      wallet: "GALICE",
+      credential_type: "kyc",
+    });
+    await db.enqueueWebhookEvent({
+      event_id: "revoked:tx:GALICE:kyc",
+      type: "revoked",
+      wallet: "GALICE",
+      credential_type: "kyc",
+      expiry: now + 10_000,
+      ledger_sequence: 42,
+      occurred_at: now,
+      reason_code: "issuer_revoked",
+    });
+    let sends = 0;
+    const dispatcher = createWebhookDispatcher(db, "test-signing-secret-123456789012", {
+      now: () => now,
+      send: async () => {
+        sends += 1;
+        throw new Error("down");
+      },
+    });
+
+    for (let i = 0; i < MAX_WEBHOOK_DELIVERY_ATTEMPTS + 2; i += 1) {
+      await dispatcher.dispatchPending();
+      now += 4000;
+    }
+    expect(sends).toBe(MAX_WEBHOOK_DELIVERY_ATTEMPTS);
+    const subscription = (await db.listWebhookSubscriptions())[0];
+    expect(await db.webhookDeliveries(subscription!.id, 10)).toMatchObject([
+      expect.objectContaining({
+        attempts: MAX_WEBHOOK_DELIVERY_ATTEMPTS,
+        delivered_at: null,
+        last_error: "down",
       }),
     ]);
   });
