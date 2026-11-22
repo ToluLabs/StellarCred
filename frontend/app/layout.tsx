@@ -5,6 +5,7 @@ import localFont from "next/font/local";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { SiteNav } from "@/components/SiteNav";
+import { BrowserFallbackBanner } from "@/components/BrowserFallbackBanner";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { RpcStatusBanner } from "@/components/RpcStatusBanner";
 import { Footer } from "@/components/Footer";
@@ -99,6 +100,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <WalletProvider>
               <OnboardingOverlays />
               <SiteNav />
+              <BrowserFallbackBanner />
               <NetworkBanner />
               <RpcStatusBanner />
               <main id="main-content" tabIndex={-1} className="container">
