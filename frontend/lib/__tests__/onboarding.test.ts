@@ -23,7 +23,9 @@ let ls: ReturnType<typeof mockStorage>;
 beforeEach(() => {
   ls = mockStorage();
   vi.stubGlobal("localStorage", ls);
+  // lib/safe-storage reads window.localStorage, so the stubbed window must expose it.
   vi.stubGlobal("window", {
+    localStorage: ls,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
@@ -117,8 +119,19 @@ describe("useOnboarding — core navigation", () => {
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("nextStep advances and marks completed at the end", () => {
+  it("nextStep advances into the final 'unlock' step without completing", () => {
     ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 4, dismissed: false, completed: false }));
+    const { result } = renderHook(() => useOnboarding());
+
+    act(() => result.current.nextStep());
+
+    expect(result.current.state.step).toBe(5);
+    expect(result.current.currentStep).toBe("unlock");
+    expect(result.current.state.completed).toBe(false);
+  });
+
+  it("nextStep from the final step stays on it and marks completed", () => {
+    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 5, dismissed: false, completed: false }));
     const { result } = renderHook(() => useOnboarding());
 
     act(() => result.current.nextStep());

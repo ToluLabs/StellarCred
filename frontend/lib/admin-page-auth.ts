@@ -9,9 +9,10 @@ import { verifyApiKey } from "@/lib/auth";
 
 export const ADMIN_COOKIE = "admin_session";
 
-export function isAdminPageAuthorized(): boolean {
+export async function isAdminPageAuthorized(): Promise<boolean> {
   const configured = process.env.ADMIN_API_KEY;
-  const bearer = headers().get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
+  // Next 15+: headers()/cookies() are async request APIs.
+  const bearer = (await headers()).get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
   if (verifyApiKey(bearer, configured)) return true;
-  return verifyApiKey(cookies().get(ADMIN_COOKIE)?.value, configured);
+  return verifyApiKey((await cookies()).get(ADMIN_COOKIE)?.value, configured);
 }
