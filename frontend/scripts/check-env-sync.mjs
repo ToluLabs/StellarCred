@@ -18,6 +18,8 @@ const EXCLUDE_FILE_PATTERNS = [
   /\.test\.(ts|tsx|js|mjs|jsx)$/,
   /\.spec\.(ts|tsx|js|mjs|jsx)$/,
   /validate-deploy-env\.mjs$/,
+  // Lists forbidden NEXT_PUBLIC_ secret names to detect bundle leaks; they must never be documented.
+  /assert-no-issuer-secrets-in-bundle\.mjs$/,
 ];
 
 function stripComments(line) {
