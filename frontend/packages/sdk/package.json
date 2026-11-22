@@ -31,13 +31,18 @@
       "types": "./dist/server.d.ts",
       "import": "./dist/server.mjs",
       "require": "./dist/server.js"
+    },
+    "./core": {
+      "types": "./dist/core-entry.d.ts",
+      "import": "./dist/core-entry.mjs",
+      "require": "./dist/core-entry.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/server.ts --format cjs,esm --dts --clean",
+    "build": "tsup src/index.ts src/server.ts src/core-entry.ts --format cjs,esm --dts --clean",
     "test": "vitest run",
     "test:integration": "vitest run test/integration.test.ts",
     "test:retry": "vitest run src/submit-retry.test.ts",
