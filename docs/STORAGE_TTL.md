@@ -128,3 +128,17 @@ Understanding the difference between an **Archived Entry** (storage TTL lapsed) 
 2. **Maintenance Responsibility**:
    - Holders wishing to keep historical proof verification records accessible on-chain past 90 days without re-proving must call `bump_claim(holder, credential_type)` periodically or ensure verifiers call `claim_expiry`.
    - If an entry lapses into archival state, the holder must either restore the persistent entry via a Stellar archival restoration transaction or re-prove and submit a fresh proof.
+
+---
+
+## 4. Lifecycle Comparison: Proof Expiry vs Storage TTL vs Indexer Retention (#980)
+
+To eliminate ambiguity for integrators, the table below maps the exact behavior across the three distinct lifetimes:
+
+| Stage | Proof Expiry (`expiry`) | Storage TTL (`rent`) | Off-Chain Indexer | UI Status | SDK / Contract Gate |
+|:---|:---|:---|:---|:---|:---|
+| **Active & Valid** | `now < expiry` | `TTL > 0` | Ingested & indexed | `proved` (green) | Allowed (`check_claim == true`) |
+| **Claim Expired** | `now >= expiry` | `TTL > 0` | Retained as expired | `expired` (amber) | Rejected (`check_claim == false`) |
+| **Storage Archived** | `now` (any) | `TTL == 0` | Retained with archival flag | `unproved` (grey) | Rejected (record absent) |
+| **Audited History** | Expired / Archived | N/A | Preserved permanently | Reviewable | Auditable via Indexer API |
+
