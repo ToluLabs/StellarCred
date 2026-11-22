@@ -12,6 +12,14 @@
  * Imports verify the checksum before any record is applied, so tampered,
  * truncated, or otherwise corrupted bundles are rejected with an actionable
  * error instead of being partially restored.
+ *
+ * Environment safety objective:
+ * Bundles are bound to the environment that produced them via an
+ * `environment` label in the integrity envelope. Imports refuse bundles whose
+ * label does not match the target environment, preventing accidental restore
+ * of credentials into the wrong deployment.
+ *
+ * See docs/credential-bundle-safety.md for the export/restore procedure.
  */
 
 import { createHash, timingSafeEqual } from "crypto";
@@ -24,10 +32,12 @@ export const MAX_IMPORT_STRING_LENGTH = 4096;
 
 export const BUNDLE_FORMAT_VERSION = 1;
 export const BUNDLE_CHECKSUM_ALGORITHM = "sha256";
+export const MAX_ENVIRONMENT_LABEL_LENGTH = 64;
 
 /**
  * Integrity envelope attached to every exported credential bundle.
  * `checksum` is the hex SHA-256 of the canonical JSON serialization of `records`.
+ * `environment` identifies the deployment that produced the bundle.
  */
 export interface BundleIntegrity {
   version: number;
@@ -35,6 +45,7 @@ export interface BundleIntegrity {
   checksum: string;
   recordCount: number;
   exportedAt: number;
+  environment: string;
 }
 
 export interface CredentialBundle {
@@ -68,10 +79,35 @@ export function computeBundleChecksum(records: unknown[]): string {
 }
 
 /**
+ * Normalizes an environment label to a bounded, lowercase identifier.
+ * Throws if the label is empty, too long, or contains unsafe characters.
+ */
+export function normalizeEnvironmentLabel(label: string): string {
+  const normalized = String(label ?? "").trim().toLowerCase();
+  if (normalized.length === 0) {
+    throw new Error("Environment label must not be empty");
+  }
+  if (normalized.length > MAX_ENVIRONMENT_LABEL_LENGTH) {
+    throw new Error(
+      `Environment label exceeds maximum length of ${MAX_ENVIRONMENT_LABEL_LENGTH} characters`,
+    );
+  }
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(normalized)) {
+    throw new Error(
+      `Environment label "${label}" is invalid: use letters, digits, dots, dashes, or underscores`,
+    );
+  }
+  return normalized;
+}
+
+/**
  * Wraps credential records in an integrity-protected bundle suitable for export.
+ * The bundle is tagged with the producing `environment` so that it cannot be
+ * silently restored into a different deployment.
  */
 export function createCredentialBundle(
   records: unknown[],
+  environment: string,
   exportedAt: number = Date.now(),
 ): CredentialBundle {
   if (records.length > MAX_IMPORT_RECORD_COUNT) {
@@ -86,6 +122,7 @@ export function createCredentialBundle(
       checksum: computeBundleChecksum(records),
       recordCount: records.length,
       exportedAt,
+      environment: normalizeEnvironmentLabel(environment),
     },
     records,
   };
@@ -93,9 +130,14 @@ export function createCredentialBundle(
 
 /**
  * Verifies a parsed bundle's integrity envelope against its records.
+ * When `expectedEnvironment` is provided, the bundle must have been produced
+ * by that same environment or verification fails.
  * Throws descriptive errors for each failure mode so users can act on them.
  */
-export function verifyCredentialBundle(bundle: unknown): unknown[] {
+export function verifyCredentialBundle(
+  bundle: unknown,
+  expectedEnvironment?: string,
+): unknown[] {
   if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
     throw new Error("Bundle is not a valid object: expected an integrity envelope with records");
   }
@@ -140,6 +182,21 @@ export function verifyCredentialBundle(bundle: unknown): unknown[] {
     throw new Error(
       "Bundle integrity check failed: content does not match its checksum. The file appears corrupted or was tampered with. Re-export from the source environment and try again",
     );
+  }
+
+  if (typeof integrity.environment !== "string") {
+    throw new Error(
+      "Bundle is missing its source environment label. Re-export it with a supported version to enable environment checks",
+    );
+  }
+  if (expectedEnvironment !== undefined) {
+    const target = normalizeEnvironmentLabel(expectedEnvironment);
+    const source = normalizeEnvironmentLabel(integrity.environment);
+    if (source !== target) {
+      throw new Error(
+        `Bundle was exported from environment "${source}" but this app is running as "${target}". Refusing to import to avoid restoring credentials into the wrong environment. Export from "${target}" or import into "${source}"`,
+      );
+    }
   }
 
   return records;
@@ -217,13 +274,14 @@ export function validateStringLengths(
 
 /**
  * Validates an import payload string against file size, nesting depth,
- * JSON validity, record count, string length bounds, and bundle integrity.
+ * JSON validity, record count, string length bounds, bundle integrity, and
+ * (optionally) the source environment label.
  *
  * Bundles (objects with an `integrity` envelope) are checksum-verified and
  * their records are returned. Legacy bare arrays are still accepted under the
  * same bounds, since they predate integrity metadata.
  */
-export function validateImportPayload(raw: string): unknown {
+export function validateImportPayload(raw: string, expectedEnvironment?: string): unknown {
   if (typeof raw !== "string" || raw.trim().length === 0) {
     throw new Error("Import payload must be a non-empty string");
   }
@@ -265,7 +323,7 @@ export function validateImportPayload(raw: string): unknown {
   }
 
   if ("integrity" in parsed) {
-    const records = verifyCredentialBundle(parsed);
+    const records = verifyCredentialBundle(parsed, expectedEnvironment);
     if (records.length === 0) {
       throw new Error("Bundle contains no records to import");
     }

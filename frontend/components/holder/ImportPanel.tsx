@@ -2,14 +2,31 @@
 
 import { useState } from "react";
 import { parseCredential, type Credential } from "@/lib/credential";
+import {
+  validateImportPayload,
+  BUNDLE_FORMAT_VERSION,
+} from "@/lib/credential-import-bounds";
 
-// Integrity envelope produced by export: { version, payload, checksum }
-// where checksum = SHA-256 (hex) over the canonical JSON of payload.
+/**
+ * Verifies an exported credential file before it is applied.
+ *
+ * Accepted formats:
+ *  - Integrity bundle `{ version, payload, checksum }` where `checksum` is the
+ *    hex SHA-256 of the canonical JSON of `payload`. Checked before parsing.
+ *  - Legacy bare credential JSON, accepted with a console warning because it
+ *    carries no integrity data.
+ *
+ * Every failure throws a user-facing error that says what went wrong and what
+ * to do next. Corrupt, truncated, or tampered input never reaches parseCredential.
+ */
+
 type BundleEnvelope = {
   version: number;
   payload: unknown;
   checksum: string;
 };
+
+const HEX_SHA256 = /^[0-9a-f]{64}$/;
 
 async function sha256Hex(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
@@ -43,21 +60,22 @@ function canonicalize(value: unknown): string {
 }
 
 export async function verifyBundle(raw: string): Promise<Credential> {
-  let envelope: BundleEnvelope;
-  try {
-    envelope = JSON.parse(raw);
-  } catch {
-    throw new Error(
-      "This doesn't look like valid JSON. Paste the exact contents of the exported file without edits."
-    );
+  // Size, depth, length, and JSON-validity bounds run first. These throw
+  // actionable messages for malformed or oversized input.
+  const parsed = validateImportPayload(raw) as unknown;
+
+  // Bundles produced by the shared integrity envelope (`integrity` key) are
+  // already checksum-verified by validateImportPayload and are not handled here.
+  // The envelope below is the holder-facing format written by the export flow.
+  let envelope: BundleEnvelope | null = null;
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const candidate = parsed as Partial<BundleEnvelope>;
+    if (typeof candidate.checksum === "string" && candidate.payload !== undefined) {
+      envelope = candidate as BundleEnvelope;
+    }
   }
 
-  if (
-    !envelope ||
-    typeof envelope !== "object" ||
-    typeof envelope.checksum !== "string" ||
-    envelope.payload === undefined
-  ) {
+  if (!envelope) {
     // Legacy bare credentials carry no integrity check. Accept them, but
     // callers should surface that the file is unverified.
     console.warn(
@@ -66,14 +84,21 @@ export async function verifyBundle(raw: string): Promise<Credential> {
     return parseCredential(raw);
   }
 
-  if (typeof envelope.version !== "number" || envelope.version > 1) {
+  if (typeof envelope.version !== "number" || envelope.version > BUNDLE_FORMAT_VERSION) {
     throw new Error(
       `Unsupported bundle version (${String(envelope.version)}). Update the app before importing this file.`
     );
   }
 
+  const checksum = envelope.checksum.toLowerCase();
+  if (!HEX_SHA256.test(checksum)) {
+    throw new Error(
+      "Bundle checksum is malformed. The file may be corrupted. Re-export it from the source and try again."
+    );
+  }
+
   const actual = await sha256Hex(canonicalize(envelope.payload));
-  if (actual !== envelope.checksum.toLowerCase()) {
+  if (actual !== checksum) {
     throw new Error(
       "Integrity check failed: the file was modified or corrupted after export. Re-export it from the source and try again."
     );
