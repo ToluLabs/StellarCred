@@ -30,6 +30,27 @@ import type { Config } from "./config";
 const POSTGRES_URL =
   process.env.TEST_POSTGRES_URL ?? process.env.DATABASE_URL;
 
+/**
+ * Empty the webhook tables on the shared Postgres database.
+ *
+ * The Db API has no bulk delete for these (unsubscribing deliberately keeps
+ * delivery history), so without this a second jest invocation against the same
+ * database - CI runs the suite more than once per job - finds deliveries left
+ * by the previous run and the webhook dedupe test fails.
+ */
+async function resetPostgresWebhooks(databaseUrl: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pool } = require("pg") as typeof import("pg");
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    await pool.query(
+      "TRUNCATE TABLE webhook_deliveries, webhook_subscriptions RESTART IDENTITY",
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
 function baseConfig(overrides: Partial<Config> = {}): Config {
   return {
     stellarNetwork: "testnet",
@@ -92,6 +113,9 @@ function registerSuite(
       // order-independent (delete every claim and reset the cursor).
       await db.deleteClaimsAfter(0);
       await db.setLastLedger(0);
+      if (cfg.dbDriver === "postgres" && cfg.databaseUrl) {
+        await resetPostgresWebhooks(cfg.databaseUrl);
+      }
     });
 
     afterEach(async () => {
