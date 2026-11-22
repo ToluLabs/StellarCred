@@ -26,6 +26,8 @@ const CLAIMS_EXPORTS = [
   "getClaim",
   "getClaimRecord",
   "checkClaimStatus",
+  "getClaimOutcome",
+  "checkClaimOutcome",
   "hasClaims",
   "verifyPreset",
   "getClaims",
