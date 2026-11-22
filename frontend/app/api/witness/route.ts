@@ -12,7 +12,9 @@ import {
 import {
   isProverResourceExhaustion,
   normalizeRestricted,
+  prepareAcvmInputs,
   validateWitnessCredential,
+  type CircuitAbi,
   type ClaimParams,
 } from "../../../lib/witness-input";
 import { witnessCircuitVersionMismatch } from "../../../lib/circuit-versions";
@@ -135,7 +137,7 @@ async function buildInputs(
         ...sigInputs,
         commitment,
         restricted: normalizeRestricted(params.restricted ?? DEFAULT_RESTRICTED),
-        mode: params.mode ?? "0",
+        mode: asFieldString(params.mode, "0"),
       };
     case "funds":
       return {
@@ -160,7 +162,7 @@ async function buildInputs(
         salt,
         ...sigInputs,
         commitment,
-        min_seniority: params.threshold ?? String(cred.seniority ?? "3"),
+        min_seniority: asFieldString(params.threshold, String(cred.seniority ?? "3")),
       };
     case "aggregate":
       return {
@@ -318,9 +320,34 @@ export async function POST(req: NextRequest) {
 
     const { Noir } = await import("@noir-lang/noir_js");
     const circuit = circuitFor(type);
-    const noir = new Noir(circuit as never);
     const inputs = await buildInputs(type, credential, currentDate);
-    const { witness } = await noir.execute(inputs);
+
+    // Pre-flight ABI validation and sanitation before invoking ACVM.
+    const prepared = prepareAcvmInputs(circuit.abi as CircuitAbi, inputs);
+    if (!prepared.ok) {
+      const first = prepared.errors[0];
+      logger.warn(
+        stripSensitiveFields({
+          event: "witness_request_rejected",
+          credentialType: type,
+          outcome: "invalid_witness_input",
+          requestId,
+        }),
+      );
+      return sendResponse(
+        NextResponse.json(
+          {
+            error: `${first.field} ${first.message}`,
+            code: "invalid_witness_input",
+            field: first.field,
+          },
+          { status: 400 },
+        ),
+      );
+    }
+
+    const noir = new Noir(circuit as never);
+    const { witness } = await noir.execute(prepared.inputs as InputMap);
     // Serialize Uint8Array —→ hex string for JSON transport.
     const hex = Buffer.from(witness).toString("hex");
     logger.info(
