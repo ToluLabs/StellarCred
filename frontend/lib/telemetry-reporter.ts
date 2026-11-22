@@ -12,6 +12,8 @@ import {
   type StageTiming,
 } from "./proof-perf";
 
+export type { ProofRun };
+
 // ---------------------------------------------------------------------------
 // Aggregates (for the debug view and the reported payload)
 // ---------------------------------------------------------------------------
