@@ -18,11 +18,6 @@
 <div class="tsd-description">
 <div class="tsd-comment tsd-typography"><p>Returns <code>true</code> if <code>wallet</code> has a currently-valid, unexpired proof of
 <code>claimType</code> in the StellarCred ProofRegistry.</p>
-<p>For parameterised claim types (age, income, funds), pass <code>minThreshold</code> to
-enforce that the proof was generated with at least that threshold — e.g. a
-proof for &quot;balance ≥ 200,000&quot; satisfies <code>minThreshold: 50000</code>, but a proof
-for &quot;balance ≥ 10,000&quot; does not. The check is performed on-chain and is
-fully trustless.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -30,30 +25,9 @@ fully trustless.</p>
 <li><span><span class="tsd-kind-parameter">wallet</span>: <span class="tsd-signature-type">string</span></span></li>
 <li><span><span class="tsd-kind-parameter">claimType</span>: <span class="tsd-signature-type">string</span></span></li>
 <li><span><code class="tsd-tag">Optional</code><span class="tsd-kind-parameter">opts</span>: <a href="../interfaces/index.ClaimOptions.html" class="tsd-signature-type tsd-kind-interface">ClaimOptions</a></span></li></ul></div>
-<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">&gt;</span></h4>
-<div class="tsd-comment tsd-typography">
-<div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example">Example<a href="#example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">// Binary claim — no threshold needed</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-2">&quot;G1ABC…&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span>
-</code><button type="button">Copy</button></pre>
-
-</div>
-<div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example-1">Example<a href="#example-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">// Funds gate — require balance ≥ $50,000</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-2">&quot;G1ABC…&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">, { </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">50000</span><span class="hl-1"> });</span>
-</code><button type="button">Copy</button></pre>
-
-</div>
-<div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example-2">Example<a href="#example-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">// Age gate — require age ≥ 21</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-2">&quot;G1ABC…&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">, { </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">21</span><span class="hl-1"> });</span>
-</code><button type="button">Copy</button></pre>
-
-</div>
-<div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example-3">Example<a href="#example-3" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">// Only accept KYC from specific issuers, e.g. Persona or Jumio</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-2">&quot;G1ABC…&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-3">trustedIssuers:</span><span class="hl-1"> [</span><span class="hl-2">&quot;G...PERSONA_ISSUER&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;G...JUMIO_ISSUER&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">});</span>
-</code><button type="button">Copy</button></pre>
-
-</div></div><aside class="tsd-sources">
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/vaishnavidesai09/StellarCred/blob/3f151b3043bc059c316c15c74d47e80f73cf8f15/frontend/packages/sdk/src/index.ts#L225">packages/sdk/src/index.ts:225</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in src/claims.ts:1395</li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

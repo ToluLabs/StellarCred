@@ -72,7 +72,12 @@ import {
   InvalidAddressError,
 } from "./claims";
 import {
-  RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
+  RpcError,
+  IndexerError,
+  ContractError,
+  ContractErrorCode,
+  parseContractError,
+  TransactionSubmissionError,
 } from "./errors";
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";

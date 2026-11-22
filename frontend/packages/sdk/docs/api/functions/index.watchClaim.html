@@ -16,10 +16,6 @@
 <li class="">
 <div class="tsd-signature tsd-anchor-link" id="watchclaim"><span class="tsd-kind-call-signature">watchClaim</span><span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">wallet</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">claimType</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">opts</span><span class="tsd-signature-symbol">?:</span> <a href="../interfaces/index.WatchClaimOptions.html" class="tsd-signature-type tsd-kind-interface">WatchClaimOptions</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">&gt;</span><a href="#watchclaim" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
-<div class="tsd-comment tsd-typography"><p>Polls for a claim to become verified.</p>
-<p>In Promise form (without <code>onChange</code>), it resolves <code>true</code> when the claim is verified,
-or rejects with <code>TimeoutError</code> after <code>timeoutMs</code>.</p>
-</div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
 <ul class="tsd-parameter-list">
@@ -28,14 +24,10 @@ or rejects with <code>TimeoutError</code> after <code>timeoutMs</code>.</p>
 <li><span><code class="tsd-tag">Optional</code><span class="tsd-kind-parameter">opts</span>: <a href="../interfaces/index.WatchClaimOptions.html" class="tsd-signature-type tsd-kind-interface">WatchClaimOptions</a></span></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/vaishnavidesai09/StellarCred/blob/3f151b3043bc059c316c15c74d47e80f73cf8f15/frontend/packages/sdk/src/index.ts#L324">packages/sdk/src/index.ts:324</a></li></ul></aside></div></li>
+<li>Defined in src/claims.ts:1844</li></ul></aside></div></li>
 <li class="">
 <div class="tsd-signature tsd-anchor-link" id="watchclaim-1"><span class="tsd-kind-call-signature">watchClaim</span><span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">wallet</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">claimType</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">opts</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/index.WatchClaimCallbackOptions.html" class="tsd-signature-type tsd-kind-interface">WatchClaimCallbackOptions</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">()</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><a href="#watchclaim-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
-<div class="tsd-comment tsd-typography"><p>Polls for a claim to become verified.</p>
-<p>In Callback form (with <code>onChange</code>), it fires the callback whenever the status changes
-(e.g. from false to true). Returns a <code>stop</code> function to cancel polling.</p>
-</div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
 <ul class="tsd-parameter-list">
@@ -44,7 +36,7 @@ or rejects with <code>TimeoutError</code> after <code>timeoutMs</code>.</p>
 <li><span><span class="tsd-kind-parameter">opts</span>: <a href="../interfaces/index.WatchClaimCallbackOptions.html" class="tsd-signature-type tsd-kind-interface">WatchClaimCallbackOptions</a></span></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-symbol">()</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/vaishnavidesai09/StellarCred/blob/3f151b3043bc059c316c15c74d47e80f73cf8f15/frontend/packages/sdk/src/index.ts#L336">packages/sdk/src/index.ts:336</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in src/claims.ts:1850</li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

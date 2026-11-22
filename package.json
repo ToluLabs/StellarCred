@@ -10,7 +10,8 @@
     "coverage:report": "nyc report --reporter=text-summary --reporter=lcov",
     "check:page-client-size": "node .github/scripts/check-page-client-size.mjs",
     "ci": "pnpm run check:page-client-size && pnpm run test",
-    "test:export": "vitest run src/tests/exportObservability.test.ts"
+    "test:export": "vitest run src/tests/exportObservability.test.ts",
+    "docs:sdk": "pnpm --dir frontend/packages/sdk docs:api"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -137,7 +137,7 @@ Install the SDK:
 npm install @stellarcred/sdk
 ```
 
-> Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
+> Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [API Reference](https://psalmuel01.github.io/StellarCred/) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
 >
 > **Canonical Integration Example**: Looking for a complete, runnable end-to-end integration with wallet control challenge proof and server-side route gating? See [`examples/canonical-integration`](examples/canonical-integration).
 >

@@ -133,6 +133,70 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
+  # ── SDK Docs: build API reference and publish to GitHub Pages ─────────────
+  # Generates the browsable TypeDoc API reference from SDK TSDoc on every push
+  # and PR, and publishes to GitHub Pages on main.
+  sdk-docs:
+    name: SDK API reference (TypeDoc)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Install SDK dependencies
+        working-directory: frontend/packages/sdk
+        run: pnpm install --frozen-lockfile --ignore-workspace
+
+      - name: Build SDK API reference
+        working-directory: frontend/packages/sdk
+        run: pnpm docs:api
+
+      - name: Upload API reference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-api-reference
+          path: frontend/packages/sdk/docs/api
+          retention-days: 7
+
+      - name: Setup Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/packages/sdk/docs/api
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Deploy to gh-pages branch (fallback)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: frontend/packages/sdk/docs/api
+
   # ── Contracts: Rust / WASM / Clippy ────────────────────────────────────────
   # Runs in parallel with circuits, frontend, and indexer.
   contracts:

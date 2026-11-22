@@ -15,24 +15,58 @@
 <pre><code class="bash"><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">install</span><span class="hl-1"> </span><span class="hl-2">@stellarcred/sdk</span>
 </code><button type="button">Copy</button></pre>
 
+<blockquote>
+<p><strong>Note on NPM Publication</strong>:
+Official <code>@stellarcred/sdk</code> releases are cut via git tags (e.g. <code>v0.1.1</code>).
+In local development environments or before an upstream npm publish token is configured, you can consume the SDK directly from this repository:</p>
+<pre><code class="bash"><span class="hl-3"># Build the SDK inside the monorepo:</span><br/><span class="hl-0">cd</span><span class="hl-1"> </span><span class="hl-2">frontend/packages/sdk</span><br/><span class="hl-0">pnpm</span><span class="hl-1"> </span><span class="hl-2">install</span><br/><span class="hl-0">pnpm</span><span class="hl-1"> </span><span class="hl-2">build</span><br/><br/><span class="hl-3"># Link or import directly into your project:</span><br/><span class="hl-0">pnpm</span><span class="hl-1"> </span><span class="hl-2">link</span><span class="hl-1"> </span><span class="hl-2">./frontend/packages/sdk</span>
+</code><button type="button">Copy</button></pre>
+
+</blockquote>
 <h2 id="api-reference" class="tsd-anchor-link">API Reference<a href="#api-reference" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
-<p>Generate the SDK API documentation locally:</p>
+<p>The comprehensive, searchable API reference generated from the SDK TSDoc is automatically published on every update to <code>main</code>:</p>
+<p>👉 <strong><a href="https://psalmuel01.github.io/StellarCred/">Browse the StellarCred SDK API Reference</a></strong></p>
+<p>It includes full documentation, signatures, options, and return types for:</p>
+<ul>
+<li>Core claim verification (<code>hasClaim</code>, <code>hasClaims</code>, <code>getClaim</code>, <code>getClaims</code>, <code>watchClaim</code>)</li>
+<li>URL generation and redirect handling (<code>buildVerifyUrl</code>, <code>parseReturnParams</code>)</li>
+<li>Anti-spoofing challenge and signature verification (<code>createWalletChallenge</code>, <code>verifyWalletClaim</code>)</li>
+<li>React integration (<code>useStellarCred</code>)</li>
+<li>Server-side runtime utilities (<code>@stellarcred/sdk/server</code>)</li>
+<li>Error types and taxonomy (<code>RpcError</code>, <code>ContractError</code>, <code>ConfigError</code>, <code>IndexerError</code>, etc.)</li>
+</ul>
+<h3 id="generate-locally" class="tsd-anchor-link">Generate locally<a href="#generate-locally" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>You can also generate the API reference locally from source:</p>
 <pre><code class="bash"><span class="hl-0">pnpm</span><span class="hl-1"> </span><span class="hl-2">docs:api</span>
 </code><button type="button">Copy</button></pre>
 
-<p>The generated documentation is written to:</p>
-<pre><code><span class="hl-3">docs</span><span class="hl-1">/</span><span class="hl-3">api</span><span class="hl-1">/</span>
+<p>The generated HTML documentation is written to:</p>
+<pre><code><span class="hl-4">docs</span><span class="hl-1">/</span><span class="hl-4">api</span><span class="hl-1">/</span>
 </code><button>Copy</button></pre>
 
+<p>Open <code>docs/api/index.html</code> in your browser to view it.</p>
 <h2 id="quick-start" class="tsd-anchor-link">Quick start<a href="#quick-start" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
-<pre><code class="ts"><span class="hl-4">import</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1"> </span><span class="hl-4">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-5">// Configure once at startup</span><br/><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-3">registryId:</span><span class="hl-1"> </span><span class="hl-3">process</span><span class="hl-1">.</span><span class="hl-3">env</span><span class="hl-1">.</span><span class="hl-6">PROOF_REGISTRY_ID</span><span class="hl-1">,</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">// Check a claim — returns true/false</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">eligible</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">walletAddress</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1"> </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-3">// Configure once at startup</span><br/><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">registryId:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">PROOF_REGISTRY_ID</span><span class="hl-1">,</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// Check a claim — returns true/false</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">eligible</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">walletAddress</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span>
 </code><button type="button">Copy</button></pre>
 
+<blockquote>
+<p><strong>TypeScript example</strong>: a minimal, CI-typechecked walkthrough — typed claim
+reads, creating and signing a transaction, and the challenge flow — lives in
+<a href="media/typescript-quickstart"><code>examples/typescript-quickstart</code></a> and
+is explained in
+<a href="media/SDK_TYPESCRIPT_EXAMPLE.md"><code>docs/SDK_TYPESCRIPT_EXAMPLE.md</code></a>.</p>
+</blockquote>
 <h2 id="configuration" class="tsd-anchor-link">Configuration<a href="#configuration" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <p>Call <code>configure()</code> once before any other call, or set environment variables — both approaches work in Node.js, Next.js, and edge runtimes.</p>
-<pre><code class="ts"><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-3">registryId:</span><span class="hl-1"> </span><span class="hl-2">&quot;C...&quot;</span><span class="hl-1">,                              </span><span class="hl-5">// ProofRegistry contract ID</span><br/><span class="hl-1">  </span><span class="hl-3">rpcUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://soroban-testnet.stellar.org&quot;</span><span class="hl-1">,   </span><span class="hl-5">// defaults to testnet</span><br/><span class="hl-1">  </span><span class="hl-3">networkPassphrase:</span><span class="hl-1"> </span><span class="hl-2">&quot;Test SDF Network ; September 2015&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">baseUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://stellarcred.xyz&quot;</span><span class="hl-1">,              </span><span class="hl-5">// used by buildVerifyUrl</span><br/><span class="hl-1">});</span>
+<pre><code class="ts"><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">registryId:</span><span class="hl-1"> </span><span class="hl-2">&quot;C...&quot;</span><span class="hl-1">, </span><span class="hl-3">// ProofRegistry contract ID</span><br/><span class="hl-1">  </span><span class="hl-4">rpcUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://soroban-testnet.stellar.org&quot;</span><span class="hl-1">, </span><span class="hl-3">// defaults to testnet</span><br/><span class="hl-1">  </span><span class="hl-4">networkPassphrase:</span><span class="hl-1"> </span><span class="hl-2">&quot;Test SDF Network ; September 2015&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">baseUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://stellarcred.xyz&quot;</span><span class="hl-1">, </span><span class="hl-3">// used by buildVerifyUrl</span><br/><span class="hl-1">  </span><span class="hl-4">requestTimeoutMs:</span><span class="hl-1"> </span><span class="hl-8">10000</span><span class="hl-1">, </span><span class="hl-3">// max time for each RPC read</span><br/><span class="hl-1">});</span>
 </code><button type="button">Copy</button></pre>
 
+<p>Each <code>is_verified</code> / <code>check_claim</code> simulation is bounded by <code>requestTimeoutMs</code>,
+which defaults to 10 seconds. The timeout covers retries as well as the
+underlying RPC call, so a stalled Soroban node cannot leave <code>hasClaim</code> or
+<code>getClaims</code> pending indefinitely. A timed out read follows the normal failure
+behavior: it returns <code>false</code> or an empty result by default, and throws
+<code>RpcError</code> when <code>throwOnError: true</code> is used.</p>
 <p><strong>Environment variables</strong> (auto-read at import time, no <code>configure()</code> needed):</p>
 <table>
 <thead>
@@ -58,39 +92,199 @@
 <td><code>STELLARCRED_BASE_URL</code></td>
 <td><code>NEXT_PUBLIC_STELLARCRED_BASE_URL</code></td>
 </tr>
+<tr>
+<td><code>STELLARCRED_INDEXER_URL</code></td>
+<td><code>NEXT_PUBLIC_INDEXER_URL</code></td>
+</tr>
+<tr>
+<td><code>STELLARCRED_INDEXER_API_KEY</code></td>
+<td><em>(no browser alias — it is a secret)</em></td>
+</tr>
 </tbody>
 </table>
+<p>Setting <code>STELLARCRED_INDEXER_URL</code> alone changes nothing: reads still go to the
+chain until you pass <code>source</code> explicitly. See
+<a href="#indexer-fast-path-optional">Indexer fast path</a>.</p>
+<h3 id="claim-cache-optional" class="tsd-anchor-link">Claim cache (optional)<a href="#claim-cache-optional" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Calling <code>hasClaim</code> on every render sends one RPC simulation per render. Turn on
+the in-memory claim cache to answer repeated reads locally:</p>
+<pre><code class="ts"><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">claimCache:</span><span class="hl-1"> </span><span class="hl-7">true</span><span class="hl-1">, </span><span class="hl-3">// off by default</span><br/><span class="hl-1">  </span><span class="hl-4">claimCacheTtlMs:</span><span class="hl-1"> </span><span class="hl-8">30_000</span><span class="hl-1">, </span><span class="hl-3">// default 30s</span><br/><span class="hl-1">  </span><span class="hl-4">claimCacheMaxEntries:</span><span class="hl-1"> </span><span class="hl-8">1000</span><span class="hl-1">, </span><span class="hl-3">// default; oldest entries are evicted first</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">); </span><span class="hl-3">// RPC</span><br/><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">); </span><span class="hl-3">// served from memory for 30s</span><br/><br/><span class="hl-3">// After a submission you know about, drop the stale answer:</span><br/><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">invalidate</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">); </span><span class="hl-3">// or invalidate(wallet) for every type</span>
+</code><button type="button">Copy</button></pre>
+
+<ul>
+<li>Entries are keyed by wallet, credential type, <code>minThreshold</code>, the
+<code>trustedIssuers</code> set and <code>source</code>, so different questions never share an
+answer. <code>hasClaim</code>, <code>hasClaims</code>, <code>getClaim</code> and <code>verifyPreset</code> share the cache;
+<code>getClaims</code>, <code>getClaimRecord</code> and <code>checkClaimStatus</code> always read the source.</li>
+<li>Only successful reads are cached. A fail-soft <code>false</code> caused by an RPC error,
+a timeout or missing configuration is not, so a transient outage cannot pin a
+wallet to <code>false</code> for the TTL.</li>
+<li>A cached <code>valid</code> answer never outlives the credential's on-chain expiry.</li>
+<li>Pass <code>fresh: true</code> to skip the cache for one read (the result still refreshes
+it). <code>watchClaim</code> polls and the <code>refetch</code> of <code>useStellarCred</code> and
+<code>createClaimGate</code> always read fresh.</li>
+<li><code>configure()</code> empties the cache; <code>clearClaimCache()</code> does so explicitly. A
+read already in flight when you call <code>invalidate</code> is not stored.</li>
+<li>The cache lives in the current process (or browser tab). It is per-instance,
+not shared between servers.</li>
+</ul>
+<h2 id="bootstrapping-from-a-deployment-capability-descriptor" class="tsd-anchor-link">Bootstrapping from a deployment (capability descriptor)<a href="#bootstrapping-from-a-deployment-capability-descriptor" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>Instead of supplying contract IDs one by one, the SDK can configure itself
+from a deployment's machine-readable capability descriptor (issue #639) —
+you supply a single URL and the descriptor provides the network passphrase,
+RPC URL, and ProofRegistry contract ID:</p>
+<pre><code class="ts"><span class="hl-3">// One-URL setup: fetch {base}/api/capabilities and apply it.</span><br/><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">bootstrap</span><span class="hl-1">({ </span><span class="hl-4">descriptorUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://app.example.com/api/capabilities&quot;</span><span class="hl-1"> });</span><br/><br/><span class="hl-3">// ...or rely on the configured/default baseUrl:</span><br/><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">bootstrap</span><span class="hl-1">(); </span><span class="hl-3">// fetches {baseUrl}/api/capabilities</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<p><code>bootstrap()</code> throws <code>ConfigError</code> when the descriptor is unreachable,
+malformed, or has no <code>proof_registry</code> contract ID. The descriptor is public
+and cacheable — nothing sensitive — and also reports the credential types the
+deployment supports, a registered-issuer summary, the public indexer URL (when
+configured), whether sponsored submission is available, and the SDK version
+range known to work. Helpers <code>fetchCapabilities()</code> and
+<code>validateCapabilitiesDescriptor()</code> are exported for integrators that want the
+raw descriptor without reconfiguring.</p>
+<h2 id="contract-deployments" class="tsd-anchor-link">Contract Deployments<a href="#contract-deployments" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>For the authoritative list of deployed StellarCred contract IDs, contract
+versions, WASM hashes, and deployment dates by network, see
+<a href="media/DEPLOYMENTS.md"><code>DEPLOYMENTS.md</code></a>.</p>
+<p>Use the deployment registry when configuring the SDK for a specific network
+rather than relying on <code>.env.example</code> placeholders or undocumented contract
+IDs.</p>
 <h2 id="api" class="tsd-anchor-link">API<a href="#api" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <h3 id="_" class="tsd-anchor-link"><code>hasClaim(wallet, claimType, opts?)</code><a href="#_" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <p>Returns <code>true</code> if <code>wallet</code> has a currently valid, unexpired proof of <code>claimType</code>.</p>
 <p>For parameterised claims (age, income, funds), pass <code>minThreshold</code> to enforce the threshold on-chain. A proof generated with threshold=200,000 satisfies <code>minThreshold: 50000</code> — the check is <code>stored &gt;= required</code>.</p>
-<pre><code class="ts"><span class="hl-5">// Binary claims — no threshold needed</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">kycOk</span><span class="hl-1">   = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">jurisOk</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;jurisdiction&quot;</span><span class="hl-1">);</span><br/><br/><span class="hl-5">// Threshold claims — enforced on-chain, fully trustless</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ageOk</span><span class="hl-1">   = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">,    { </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">21</span><span class="hl-1"> });</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">incOk</span><span class="hl-1">   = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;income&quot;</span><span class="hl-1">, { </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">200000</span><span class="hl-1"> });</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">fundsOk</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">,  { </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">50000</span><span class="hl-1"> });</span>
+<pre><code class="ts"><span class="hl-3">// Binary claims — no threshold needed</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">kycOk</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">jurisOk</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;jurisdiction&quot;</span><span class="hl-1">);</span><br/><br/><span class="hl-3">// Threshold claims — enforced on-chain, fully trustless</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ageOk</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">, { </span><span class="hl-4">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">21</span><span class="hl-1"> });</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">incOk</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;income&quot;</span><span class="hl-1">, { </span><span class="hl-4">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">200000</span><span class="hl-1"> });</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">fundsOk</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">, { </span><span class="hl-4">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">50000</span><span class="hl-1"> });</span>
 </code><button type="button">Copy</button></pre>
 
 <p>Pass <code>trustedIssuers</code> to restrict which issuer(s) a proof must come from — e.g. accept <code>kyc</code> only from Persona or Jumio, not a self-attested issuer. This is enforced on-chain by <code>ProofRegistry</code>; omit it (or leave it <code>undefined</code>) to accept a proof from any registered issuer, matching current behaviour. An empty array rejects every issuer.</p>
-<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">kycOk</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-3">trustedIssuers:</span><span class="hl-1"> [</span><span class="hl-2">&quot;G...PERSONA_ISSUER&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;G...JUMIO_ISSUER&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">// Combine with a threshold — both must hold</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">incomeOk</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;income&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">100000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">trustedIssuers:</span><span class="hl-1"> [</span><span class="hl-2">&quot;G...PLAID_ISSUER&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">});</span>
+<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">kycOk</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-4">trustedIssuers:</span><span class="hl-1"> [</span><span class="hl-2">&quot;G...PERSONA_ISSUER&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;G...JUMIO_ISSUER&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">  </span><span class="hl-4">requestTimeoutMs:</span><span class="hl-1"> </span><span class="hl-8">5000</span><span class="hl-1">,</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// Combine with a threshold — both must hold</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">incomeOk</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;income&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-4">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">100000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">trustedIssuers:</span><span class="hl-1"> [</span><span class="hl-2">&quot;G...PLAID_ISSUER&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">});</span>
 </code><button type="button">Copy</button></pre>
 
-<h3 id="_-1" class="tsd-anchor-link"><code>getClaims(wallet)</code><a href="#_-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<h3 id="_-1" class="tsd-anchor-link"><code>getClaim(wallet, claimType, opts?)</code><a href="#_-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Returns the full claim record with <code>verifiedAt</code> and <code>expiry</code> timestamps, or <code>null</code> if the wallet has no current proof of that type. Respects <code>trustedIssuers</code>.</p>
+<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">claim</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">getClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span><br/><span class="hl-5">if</span><span class="hl-1"> (</span><span class="hl-4">claim</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">claim</span><span class="hl-1">); </span><span class="hl-3">// { valid: true, verifiedAt: 1719000000, expiry: 1726776000 }</span><br/><span class="hl-1">}</span><br/><br/><span class="hl-3">// Restrict to a trusted issuer</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">trustedClaim</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">getClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-4">trustedIssuers:</span><span class="hl-1"> [</span><span class="hl-2">&quot;G...PERSONA_ISSUER&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="_-2" class="tsd-anchor-link"><code>getClaimRecord(wallet, claimType, opts?)</code><a href="#_-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Fetches the low-level on-chain <code>ProofRecord</code> containing <code>verifiedAt</code>, <code>expiry</code>, <code>threshold</code>, <code>revoked</code>, <code>issuer</code>, and <code>vkVersion</code>, or <code>null</code> if no record exists.</p>
+<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">record</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">getClaimRecord</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">);</span><br/><span class="hl-5">if</span><span class="hl-1"> (</span><span class="hl-4">record</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">record</span><span class="hl-1">.</span><span class="hl-4">revoked</span><span class="hl-1">); </span><span class="hl-3">// false</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">record</span><span class="hl-1">.</span><span class="hl-4">expiry</span><span class="hl-1">); </span><span class="hl-3">// 1780000000n</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">record</span><span class="hl-1">.</span><span class="hl-4">threshold</span><span class="hl-1">); </span><span class="hl-3">// 21n</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">record</span><span class="hl-1">.</span><span class="hl-4">issuer</span><span class="hl-1">); </span><span class="hl-3">// &quot;G...&quot;</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="_-3" class="tsd-anchor-link"><code>checkClaimStatus(wallet, claimType, opts?)</code><a href="#_-3" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Performs diagnostic analysis of a credential claim, returning the granular failure or success state. Useful for presenting actionable feedback to users.</p>
+<p>Possible statuses:</p>
+<ul>
+<li><code>&quot;valid&quot;</code>: Active, unrevoked, unexpired credential satisfying threshold and issuer requirements</li>
+<li><code>&quot;not_verified&quot;</code>: No on-chain proof record found for this wallet and claim type</li>
+<li><code>&quot;expired&quot;</code>: Record found, but its expiry timestamp is in the past</li>
+<li><code>&quot;revoked&quot;</code>: Record found, but the issuer or admin marked it revoked</li>
+<li><code>&quot;unmet_threshold&quot;</code>: Record found, but the proved threshold is below <code>minThreshold</code></li>
+<li><code>&quot;wrong_issuer&quot;</code>: Record found, but issued by an entity outside <code>trustedIssuers</code></li>
+</ul>
+<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">result</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">checkClaimStatus</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">, { </span><span class="hl-4">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">21</span><span class="hl-1"> });</span><br/><span class="hl-5">switch</span><span class="hl-1"> (</span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">status</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;valid&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">    </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">&quot;Verified! Expires:&quot;</span><span class="hl-1">, </span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">record</span><span class="hl-1">?.</span><span class="hl-4">expiry</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;expired&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">    </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">warn</span><span class="hl-1">(</span><span class="hl-2">&quot;Credential has expired. Please re-prove at StellarCred.&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;revoked&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">    </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">error</span><span class="hl-1">(</span><span class="hl-2">&quot;Credential was revoked.&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;unmet_threshold&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">    </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">warn</span><span class="hl-1">(</span><span class="hl-2">&quot;Proved threshold below requirement:&quot;</span><span class="hl-1">, </span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">record</span><span class="hl-1">?.</span><span class="hl-4">threshold</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;wrong_issuer&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">    </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">warn</span><span class="hl-1">(</span><span class="hl-2">&quot;Issuer not in trusted list:&quot;</span><span class="hl-1">, </span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">record</span><span class="hl-1">?.</span><span class="hl-4">issuer</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;not_verified&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">    </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">info</span><span class="hl-1">(</span><span class="hl-2">&quot;No record found. Please verify at StellarCred.&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<h4 id="typed-errors-" class="tsd-anchor-link">Typed errors (<code>throwOnError</code>)<a href="#typed-errors-" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h4>
+<p>By default <code>hasClaim</code> / <code>getClaims</code> are <strong>fail-soft</strong>: a missing <code>registryId</code> or an RPC/simulation failure returns <code>false</code> / <code>[]</code>, which is indistinguishable from &quot;not verified.&quot; Pass <code>{ throwOnError: true }</code> to surface a typed error instead:</p>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Error class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Missing <code>registryId</code></td>
+<td><code>ConfigError</code></td>
+</tr>
+<tr>
+<td>Network / simulation failure</td>
+<td><code>RpcError</code></td>
+</tr>
+<tr>
+<td>Holder not verified</td>
+<td>still returns <code>false</code> (not an error)</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">, { </span><span class="hl-4">ConfigError</span><span class="hl-1">, </span><span class="hl-4">RpcError</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-5">try</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, { </span><span class="hl-4">throwOnError:</span><span class="hl-1"> </span><span class="hl-7">true</span><span class="hl-1"> });</span><br/><span class="hl-1">  </span><span class="hl-3">// ok === false means &quot;not verified&quot;; ok === true means verified</span><br/><span class="hl-1">} </span><span class="hl-5">catch</span><span class="hl-1"> (</span><span class="hl-4">err</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-5">if</span><span class="hl-1"> (</span><span class="hl-4">err</span><span class="hl-1"> </span><span class="hl-7">instanceof</span><span class="hl-1"> </span><span class="hl-9">ConfigError</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-3">// SDK misconfigured — fix registryId</span><br/><span class="hl-1">  } </span><span class="hl-5">else</span><span class="hl-1"> </span><span class="hl-5">if</span><span class="hl-1"> (</span><span class="hl-4">err</span><span class="hl-1"> </span><span class="hl-7">instanceof</span><span class="hl-1"> </span><span class="hl-9">RpcError</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-3">// Couldn&#39;t reach the chain — retry / degrade UI</span><br/><span class="hl-1">  } </span><span class="hl-5">else</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-5">throw</span><span class="hl-1"> </span><span class="hl-4">err</span><span class="hl-1">;</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p><code>TimeoutError</code> remains the rejection used by <code>watchClaim</code> when its poll window expires.</p>
+<h3 id="_-4" class="tsd-anchor-link"><code>getClaims(wallet)</code><a href="#_-4" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <p>Returns all active claims a wallet has proved, across all known credential types.</p>
-<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">claims</span><span class="hl-1"> = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">getClaims</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">);</span><br/><span class="hl-5">// [{ type: &quot;kyc&quot;, verifiedAt: 1719000000, expiry: 1726776000 }, ...]</span>
+<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">claims</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">getClaims</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">);</span><br/><span class="hl-3">// {</span><br/><span class="hl-3">//   kyc:          { verified: true,  expiry: 1780000000 },</span><br/><span class="hl-3">//   age:          { verified: true,  threshold: 21, expiry: 1780000000 },</span><br/><span class="hl-3">//   income:       { verified: false },</span><br/><span class="hl-3">//   jurisdiction: { verified: true,  expiry: 1780000000 },</span><br/><span class="hl-3">//   funds:        { verified: false },</span><br/><span class="hl-3">// }</span>
 </code><button type="button">Copy</button></pre>
 
-<h3 id="_-2" class="tsd-anchor-link"><code>watchClaim(wallet, claimType, opts?)</code><a href="#_-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<h3 id="_-5" class="tsd-anchor-link"><code>watchClaim(wallet, claimType, opts?)</code><a href="#_-5" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <p>A polling helper that checks <code>hasClaim</code> on an interval. It either resolves a Promise or fires a callback when the claim is verified. Works with <code>minThreshold</code> for parameterised claims.</p>
 <p><strong>Promise form</strong> — resolves <code>true</code> when verified, or rejects with <code>TimeoutError</code> after a timeout:</p>
-<pre><code class="ts"><span class="hl-4">try</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">watchClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&#39;kyc&#39;</span><span class="hl-1">, { </span><br/><span class="hl-1">    </span><span class="hl-3">pollMs:</span><span class="hl-1"> </span><span class="hl-8">3000</span><span class="hl-1">, </span><br/><span class="hl-1">    </span><span class="hl-3">timeoutMs:</span><span class="hl-1"> </span><span class="hl-8">120_000</span><span class="hl-1"> </span><br/><span class="hl-1">  });</span><br/><span class="hl-1">  </span><span class="hl-3">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">&quot;Verified!&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">} </span><span class="hl-4">catch</span><span class="hl-1"> (</span><span class="hl-3">err</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-3">console</span><span class="hl-1">.</span><span class="hl-0">error</span><span class="hl-1">(</span><span class="hl-2">&quot;Timeout waiting for verification&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">}</span>
+<pre><code class="ts"><span class="hl-5">try</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">watchClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">    </span><span class="hl-4">pollMs:</span><span class="hl-1"> </span><span class="hl-8">3000</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">timeoutMs:</span><span class="hl-1"> </span><span class="hl-8">120_000</span><span class="hl-1">,</span><br/><span class="hl-1">  });</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">&quot;Verified!&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">} </span><span class="hl-5">catch</span><span class="hl-1"> (</span><span class="hl-4">err</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">error</span><span class="hl-1">(</span><span class="hl-2">&quot;Timeout waiting for verification&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">}</span>
 </code><button type="button">Copy</button></pre>
 
 <p><strong>Callback form</strong> — fires <code>onChange</code> whenever the status changes. Returns a <code>stop()</code> function to cancel polling:</p>
-<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">stop</span><span class="hl-1"> = </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">watchClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&#39;funds&#39;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">50000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">pollMs:</span><span class="hl-1"> </span><span class="hl-8">3000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">timeoutMs:</span><span class="hl-1"> </span><span class="hl-8">120_000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-0">onChange</span><span class="hl-3">:</span><span class="hl-1"> (</span><span class="hl-3">verified</span><span class="hl-1">) </span><span class="hl-7">=&gt;</span><span class="hl-1"> </span><span class="hl-3">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">&#39;verified:&#39;</span><span class="hl-1">, </span><span class="hl-3">verified</span><span class="hl-1">),</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">// Cancel polling manually (e.g. on component unmount)</span><br/><span class="hl-5">// stop();</span>
+<pre><code class="ts"><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">stop</span><span class="hl-1"> = </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">watchClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-4">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">50000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">pollMs:</span><span class="hl-1"> </span><span class="hl-8">3000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">timeoutMs:</span><span class="hl-1"> </span><span class="hl-8">120_000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-0">onChange</span><span class="hl-4">:</span><span class="hl-1"> (</span><span class="hl-4">verified</span><span class="hl-1">) </span><span class="hl-7">=&gt;</span><span class="hl-1"> </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">&quot;verified:&quot;</span><span class="hl-1">, </span><span class="hl-4">verified</span><span class="hl-1">),</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// Cancel polling manually (e.g. on component unmount)</span><br/><span class="hl-3">// stop();</span>
 </code><button type="button">Copy</button></pre>
 
-<h3 id="_-3" class="tsd-anchor-link"><code>buildVerifyUrl(options)</code><a href="#_-3" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
-<p>Builds a StellarCred verification URL to redirect users to. After verifying, StellarCred returns the user to <code>returnUrl</code> with <code>?sc_verified=true&amp;sc_wallet=&lt;address&gt;&amp;sc_claims=&lt;claim-types&gt;</code> appended. <code>sc_claims</code> is a comma-separated list of the claim types issued in the current session (not all-time claims), allowing protocols to optimistically update their UI before an on-chain read completes.</p>
-<pre><code class="ts"><span class="hl-5">// Basic — redirect to verify KYC</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/deposit&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">// With threshold — user proves balance &gt;= $50,000</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/vault&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">claimParams:</span><span class="hl-1"> { </span><span class="hl-3">threshold:</span><span class="hl-1"> </span><span class="hl-2">&quot;50000&quot;</span><span class="hl-1"> },</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">// Age gate — require 21+</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/markets&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">claimParams:</span><span class="hl-1"> { </span><span class="hl-3">threshold_years:</span><span class="hl-1"> </span><span class="hl-2">&quot;21&quot;</span><span class="hl-1"> },</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">// Jurisdiction — block specific countries (ISO 3166-1 numeric codes)</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/app&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;jurisdiction&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">claimParams:</span><span class="hl-1"> { </span><span class="hl-3">restricted:</span><span class="hl-1"> [</span><span class="hl-2">&quot;840&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;364&quot;</span><span class="hl-1">] },</span><br/><span class="hl-1">});</span>
+<h3 id="-real-time-subscriptions-" class="tsd-anchor-link"><code>subscribeClaims(options)</code> — real-time subscriptions (<code>#392</code>)<a href="#-real-time-subscriptions-" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>A push-style subscription helper for protocol backends: watch a <strong>set of wallets</strong> across a <strong>set of claim types</strong> with a single subscription and receive <code>gained</code> / <code>lost</code> change events, instead of running one <code>watchClaim</code> poll per wallet against the chain.</p>
+<p>It consumes the indexer HTTP API (<code>services/indexer</code>) rather than ProofRegistry RPC:</p>
+<table>
+<thead>
+<tr>
+<th>Indexer endpoint</th>
+<th>Used for</th>
+<th>Cadence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /recent?limit=100[&amp;cursor=…]</code></td>
+<td>the cursor-ordered verified-claims feed — every row newer than the previous <code>(ledger_sequence, id)</code> cursor is a potential <code>gained</code> for a watched wallet</td>
+<td>every <code>pollMs</code> (default 10 s)</td>
+</tr>
+<tr>
+<td><code>GET /claims?wallet=G…</code></td>
+<td>authoritative per-wallet snapshots (<code>revoked</code> flag + <code>expiry</code>) — detects <code>lost (revoked)</code> and reconciles state after downtime or reorg rollback</td>
+<td>every <code>resyncMs</code> (default 60 s)</td>
+</tr>
+</tbody>
+</table>
+<p>Expiry losses need no request at all: the indexer stores each proof's <code>expiry</code> timestamp, so a claim that lapses is reported as <code>lost</code> within one <code>pollMs</code> window. Event topic semantics match the on-chain <code>proof_reg.submitted</code> / <code>proof_reg.revoked</code> events documented in <a href="media/EVENTS.md">docs/EVENTS.md</a>; the subscription is eventually consistent with the indexer's configured <code>FINALITY_LAG</code> (≈30 s on defaults).</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">subscribeClaims</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk/server&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">stop</span><span class="hl-1"> = </span><span class="hl-0">subscribeClaims</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">wallets:</span><span class="hl-1"> [</span><span class="hl-2">&quot;GABC…&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;GDEF…&quot;</span><span class="hl-1">], </span><span class="hl-3">// any number of wallets</span><br/><span class="hl-1">  </span><span class="hl-4">claims:</span><span class="hl-1"> [</span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;accreditation&quot;</span><span class="hl-1">], </span><span class="hl-3">// defaults to all known claim types</span><br/><span class="hl-1">  </span><span class="hl-3">// baseUrl: &quot;https://indexer.yourdomain.xyz&quot;, // or configure({ indexerUrl }) / STELLARCRED_INDEXER_URL</span><br/><span class="hl-1">  </span><span class="hl-4">pollMs:</span><span class="hl-1"> </span><span class="hl-8">10_000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-0">onGained</span><span class="hl-4">:</span><span class="hl-1"> (</span><span class="hl-4">e</span><span class="hl-1">) </span><span class="hl-7">=&gt;</span><span class="hl-1"> </span><span class="hl-0">grantAccess</span><span class="hl-1">(</span><span class="hl-4">e</span><span class="hl-1">.</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-4">e</span><span class="hl-1">.</span><span class="hl-4">claim</span><span class="hl-1">),</span><br/><span class="hl-1">  </span><span class="hl-0">onLost</span><span class="hl-4">:</span><span class="hl-1"> (</span><span class="hl-4">e</span><span class="hl-1">) </span><span class="hl-7">=&gt;</span><span class="hl-1"> </span><span class="hl-0">revokeAccess</span><span class="hl-1">(</span><span class="hl-4">e</span><span class="hl-1">.</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-4">e</span><span class="hl-1">.</span><span class="hl-4">claim</span><span class="hl-1">, </span><span class="hl-4">e</span><span class="hl-1">.</span><span class="hl-4">reason</span><span class="hl-1">), </span><span class="hl-3">// &quot;revoked&quot; | &quot;expired&quot;</span><br/><span class="hl-1">  </span><span class="hl-0">onError</span><span class="hl-4">:</span><span class="hl-1"> (</span><span class="hl-4">err</span><span class="hl-1">) </span><span class="hl-7">=&gt;</span><span class="hl-1"> </span><span class="hl-4">logger</span><span class="hl-1">.</span><span class="hl-0">warn</span><span class="hl-1">(</span><span class="hl-4">err</span><span class="hl-1">),</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// later — stop feeding events</span><br/><span class="hl-0">stop</span><span class="hl-1">();</span>
 </code><button type="button">Copy</button></pre>
 
+<p>Registering a webhook instead of (or in addition to) in-process callbacks lets a worker fleet receive the push:</p>
+<pre><code class="ts"><span class="hl-0">subscribeClaims</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">wallets:</span><span class="hl-1"> </span><span class="hl-4">watchedWallets</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">webhook:</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-4">url:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://api.yourprotocol.xyz/hooks/stellarcred&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-4">secret:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">STELLARCRED_WEBHOOK_SECRET</span><span class="hl-1">, </span><span class="hl-3">// sent as X-StellarCred-Webhook-Secret</span><br/><span class="hl-1">  },</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Each change is POSTed as JSON with headers <code>X-StellarCred-Event: claim_gained | claim_lost</code> and, when a <code>secret</code> is configured, <code>X-StellarCred-Webhook-Secret</code> — your receiver should reject requests that don't match it. Deliveries retry on non-2xx up to <code>webhook.retries</code> times and report exhaustion through <code>onError</code>. Payload shape:</p>
+<pre><code class="json"><span class="hl-1">{</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;event&quot;</span><span class="hl-1">: </span><span class="hl-2">&quot;claim_gained&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;kind&quot;</span><span class="hl-1">: </span><span class="hl-2">&quot;gained&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;wallet&quot;</span><span class="hl-1">: </span><span class="hl-2">&quot;GABC…&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;claim&quot;</span><span class="hl-1">: </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;reason&quot;</span><span class="hl-1">: </span><span class="hl-7">null</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;at&quot;</span><span class="hl-1">: </span><span class="hl-8">1700000000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;issuer&quot;</span><span class="hl-1">: </span><span class="hl-2">&quot;GISS…&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;verifiedAt&quot;</span><span class="hl-1">: </span><span class="hl-8">1699999000</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;expiry&quot;</span><span class="hl-1">: </span><span class="hl-8">1700604800</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;ledgerSequence&quot;</span><span class="hl-1">: </span><span class="hl-8">54321</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-10">&quot;threshold&quot;</span><span class="hl-1">: </span><span class="hl-7">null</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Options: <code>wallets</code> (required, validated as Stellar Ed25519 keys), <code>claims</code>, <code>baseUrl</code> (indexer origin; falls back to <code>configure({ indexerUrl })</code> / <code>STELLARCRED_INDEXER_URL</code> / the SDK <code>baseUrl</code>), <code>apiKey</code> (sent as <code>Authorization: Bearer</code> for indexers running with <code>API_KEY</code> set), <code>pollMs</code>, <code>resyncMs</code>, <code>emitInitialState</code> (also replay currently-active claims as <code>gained</code>), <code>requestTimeoutMs</code>, <code>onChange</code> / <code>onGained</code> / <code>onLost</code> / <code>onError</code>, <code>webhook</code>.</p>
+<p>Notes:</p>
+<ul>
+<li>Sizing: each poll is one <code>/recent</code> call regardless of watch-list size; each resync is one <code>/claims</code> call per wallet. Keep <code>resyncMs</code> within your indexer's per-IP rate limit (<code>RATE_LIMIT_MAX</code>, default 120 req/60 s), or raise it there for large watch lists.</li>
+<li>Holder self-revocation (<code>revoke_proof</code>) emits no contract event, so it surfaces as <code>lost (expired)</code> when the indexed proof expires; issuer revocations surface as <code>lost (revoked)</code> on the next resync.</li>
+<li>Prefer <code>@stellarcred/sdk/server</code> — subscriptions belong in a backend process, and browser bundles cannot guard webhook secrets.</li>
+</ul>
+<h3 id="_-6" class="tsd-anchor-link"><code>buildVerifyUrl(options)</code><a href="#_-6" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Builds a StellarCred verification URL to redirect users to. <code>BuildVerifyUrlOptions</code> and <code>BuildVerifyUrlClaimParams</code> are exported from the package. After verifying, StellarCred returns the user to <code>returnUrl</code> with <code>?sc_verified=true&amp;sc_wallet=&lt;address&gt;&amp;sc_claims=&lt;claim-types&gt;</code> appended. <code>sc_claims</code> is a comma-separated list of the claim types issued in the current session (not all-time claims), allowing protocols to optimistically update their UI before an on-chain read completes.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">buildVerifyUrl</span><span class="hl-1">, </span><span class="hl-5">type</span><span class="hl-1"> </span><span class="hl-4">BuildVerifyUrlOptions</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">options</span><span class="hl-1"> = {</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/markets&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">threshold_years:</span><span class="hl-1"> </span><span class="hl-2">&quot;21&quot;</span><span class="hl-1"> },</span><br/><span class="hl-1">  </span><span class="hl-4">expiresInMinutes:</span><span class="hl-1"> </span><span class="hl-8">15</span><span class="hl-1">,</span><br/><span class="hl-1">} </span><span class="hl-5">satisfies</span><span class="hl-1"> </span><span class="hl-9">BuildVerifyUrlOptions</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">(</span><span class="hl-4">options</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<p>Builds a strongly typed StellarCred verification URL to redirect users to. After verifying, StellarCred returns the user to <code>returnUrl</code> with <code>?sc_verified=true&amp;sc_wallet=&lt;address&gt;&amp;sc_claims=&lt;claim-types&gt;</code> appended. <code>sc_claims</code> is a comma-separated list of the claim types issued in the current session (not all-time claims), allowing protocols to optimistically update their UI before an on-chain read completes.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-4">buildVerifyUrl</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-5">type</span><span class="hl-1"> </span><span class="hl-4">BuildVerifyUrlOptions</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-5">type</span><span class="hl-1"> </span><span class="hl-4">AgeVerifyUrlOptions</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-5">type</span><span class="hl-1"> </span><span class="hl-4">ThresholdVerifyUrlOptions</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-5">type</span><span class="hl-1"> </span><span class="hl-4">JurisdictionVerifyUrlOptions</span><span class="hl-1">,</span><br/><span class="hl-1">} </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-3">// 1. Basic — redirect to verify KYC (absolute or relative returnUrl)</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">kycUrl</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/deposit&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// Relative returnUrl is also supported</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">localUrl</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;/dashboard&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// 2. Financial claims with threshold — number or string accepted</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">fundsUrl</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/vault&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">threshold:</span><span class="hl-1"> </span><span class="hl-8">50_000</span><span class="hl-1"> }, </span><span class="hl-3">// proves balance &gt;= $50,000</span><br/><span class="hl-1">} </span><span class="hl-5">satisfies</span><span class="hl-1"> </span><span class="hl-9">ThresholdVerifyUrlOptions</span><span class="hl-1">);</span><br/><br/><span class="hl-3">// 3. Age gate — minimum age in years (number or string)</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ageUrl</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/markets&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">threshold_years:</span><span class="hl-1"> </span><span class="hl-8">21</span><span class="hl-1"> }, </span><span class="hl-3">// require 21+</span><br/><span class="hl-1">} </span><span class="hl-5">satisfies</span><span class="hl-1"> </span><span class="hl-9">AgeVerifyUrlOptions</span><span class="hl-1">);</span><br/><br/><span class="hl-3">// 4. Jurisdiction — block specific countries (array or comma-separated string)</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">geoUrl</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/app&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;jurisdiction&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">restricted:</span><span class="hl-1"> [</span><span class="hl-2">&quot;840&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;364&quot;</span><span class="hl-1">] }, </span><span class="hl-3">// ISO 3166-1 numeric codes</span><br/><span class="hl-1">} </span><span class="hl-5">satisfies</span><span class="hl-1"> </span><span class="hl-9">JurisdictionVerifyUrlOptions</span><span class="hl-1">);</span><br/><br/><span class="hl-3">// 5. Multi-claim verification request</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">multiUrl</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/onboarding&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claims:</span><span class="hl-1"> [</span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">threshold:</span><span class="hl-1"> </span><span class="hl-2">&quot;10000&quot;</span><span class="hl-1"> },</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// 6. Security options: expiry, single-use token (jti), and CSRF state</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">secureUrl</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/callback&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">wallet:</span><span class="hl-1"> </span><span class="hl-2">&quot;GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVWGS&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">state:</span><span class="hl-1"> </span><span class="hl-2">&quot;opaque_csrf_session_id&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">expiresInMinutes:</span><span class="hl-1"> </span><span class="hl-8">15</span><span class="hl-1">, </span><span class="hl-3">// link expires in 15 minutes</span><br/><span class="hl-1">  </span><span class="hl-4">singleUse:</span><span class="hl-1"> </span><span class="hl-7">true</span><span class="hl-1">, </span><span class="hl-3">// embeds unique jti consumed on first visit</span><br/><span class="hl-1">  </span><span class="hl-4">trustedIssuers:</span><span class="hl-1"> [</span><span class="hl-2">&quot;GCFXHS4GMXBYRBAPOH2KZIGNDQBMV5DNZD5WT6VHGQ3M7N2TRB664BXO&quot;</span><span class="hl-1">],</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<blockquote>
+<p>⚠️ <strong>Security Notice (Issue #543):</strong>
+Query parameters in the return URL (<code>sc_verified</code>, <code>sc_wallet</code>) are <strong>untrusted hints</strong>. Never grant access solely based on <code>sc_verified=true</code> or <code>sc_wallet</code>. Always require the holder to sign a challenge via <code>verifyWalletClaim</code> to prove key control and confirm on-chain credentials.</p>
+</blockquote>
 <h2 id="claim-types" class="tsd-anchor-link">Claim types<a href="#claim-types" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <table>
 <thead>
@@ -133,11 +327,29 @@
 </tr>
 </tbody>
 </table>
+<h2 id="validating-credential-json" class="tsd-anchor-link">Validating credential JSON<a href="#validating-credential-json" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>Use the validator whenever credential JSON crosses a trust boundary — a user
+pasting an exported credential, a QR scan, an import file, or a request body
+from another service. It rejects malformed shapes before they reach storage or
+a verification flow, and reports every problem at once with the offending field
+path.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">parseCredentialJson</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">result</span><span class="hl-1"> = </span><span class="hl-0">parseCredentialJson</span><span class="hl-1">(</span><span class="hl-4">pastedJson</span><span class="hl-1">);</span><br/><span class="hl-5">if</span><span class="hl-1"> (!</span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">valid</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-3">// e.g. &quot;issuerId — must be a non-empty string.&quot;</span><br/><span class="hl-1">  </span><span class="hl-5">return</span><span class="hl-1"> { </span><span class="hl-4">errors:</span><span class="hl-1"> </span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">errors</span><span class="hl-1"> };</span><br/><span class="hl-1">}</span><br/><br/><span class="hl-3">// result.credential is typed as CredentialJson.</span><br/><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-0">storeLocally</span><span class="hl-1">(</span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">credential</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<p>If you already have an object (for example <code>await req.json()</code>), call
+<code>validateCredential(value)</code> instead. Server handlers that prefer exceptions can
+use <code>assertValidCredential(value)</code>, which throws a <code>CredentialValidationError</code>
+carrying the same <code>issues</code> list.</p>
+<p>The helper only checks shape and required metadata (<code>type</code>, <code>issuerId</code>, <code>holder</code>,
+<code>value</code>, <code>salt</code>, <code>commitment</code>, signature/public-key byte arrays, and expiry). It
+does <strong>not</strong> prove the credential on-chain or verify that the commitment is
+valid — for that, keep using <code>hasClaim</code> / <code>checkClaimStatus</code>, which read from
+ProofRegistry.</p>
 <h2 id="types" class="tsd-anchor-link">Types<a href="#types" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <p>The package exports its public types so you can type your own wrappers without
 duplicating the union. They appear in <code>dist/index.d.ts</code> after <code>pnpm build</code> and
 are available from <code>@stellarcred/sdk</code> directly.</p>
-<pre><code class="ts"><span class="hl-4">import</span><span class="hl-1"> </span><span class="hl-4">type</span><span class="hl-1"> { </span><span class="hl-3">ClaimType</span><span class="hl-1">, </span><span class="hl-3">ClaimOptions</span><span class="hl-1"> } </span><span class="hl-4">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-5">// `ClaimType` is exactly the credential union published with the SDK.</span><br/><span class="hl-5">// `ClaimOptions.minThreshold` / `.trustedIssuers` are forwarded to `hasClaim`&#39;s</span><br/><span class="hl-5">// on-chain `check_claim` / `is_verified` checks.</span><br/><span class="hl-7">function</span><span class="hl-1"> </span><span class="hl-0">gate</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">: </span><span class="hl-9">string</span><span class="hl-1">, </span><span class="hl-3">claim</span><span class="hl-1">: </span><span class="hl-9">ClaimType</span><span class="hl-1">, </span><span class="hl-3">opts</span><span class="hl-1">?: </span><span class="hl-9">ClaimOptions</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-4">return</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-3">claim</span><span class="hl-1">, </span><span class="hl-3">opts</span><span class="hl-1">);</span><br/><span class="hl-1">}</span>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-5">type</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-4">ClaimType</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">ClaimOptions</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">BuildVerifyUrlOptions</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">BuildVerifyUrlClaimParams</span><span class="hl-1">,</span><br/><span class="hl-1">} </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-3">// `ClaimType` is exactly the credential union published with the SDK.</span><br/><span class="hl-3">// `ClaimOptions.minThreshold` / `.trustedIssuers` are forwarded to `hasClaim`&#39;s</span><br/><span class="hl-3">// on-chain `check_claim` / `is_verified` checks.</span><br/><span class="hl-7">function</span><span class="hl-1"> </span><span class="hl-0">gate</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">: </span><span class="hl-9">string</span><span class="hl-1">, </span><span class="hl-4">claim</span><span class="hl-1">: </span><span class="hl-9">ClaimType</span><span class="hl-1">, </span><span class="hl-4">opts</span><span class="hl-1">?: </span><span class="hl-9">ClaimOptions</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-5">return</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-4">claim</span><span class="hl-1">, </span><span class="hl-4">opts</span><span class="hl-1">);</span><br/><span class="hl-1">}</span>
 </code><button type="button">Copy</button></pre>
 
 <table>
@@ -156,8 +368,8 @@ are available from <code>@stellarcred/sdk</code> directly.</p>
 </tr>
 <tr>
 <td><code>ClaimOptions</code></td>
-<td><code>{ minThreshold?: number; trustedIssuers?: string[] }</code></td>
-<td>Optional settings for <code>hasClaim</code>. <code>minThreshold</code> is forwarded to the on-chain <code>check_claim</code> for parameterised claim types and ignored for binary claims (<code>kyc</code>, <code>jurisdiction</code>). <code>trustedIssuers</code> restricts which issuer(s) the proof must come from, for any claim type — omit to accept any registered issuer.</td>
+<td><code>{ minThreshold?: number; trustedIssuers?: string[]; requestTimeoutMs?: number }</code></td>
+<td>Optional settings for <code>hasClaim</code>. <code>minThreshold</code> is forwarded to the on-chain <code>check_claim</code> for parameterised claim types and ignored for binary claims (<code>kyc</code>, <code>jurisdiction</code>). <code>trustedIssuers</code> restricts which issuer(s) the proof must come from, for any claim type — omit to accept any registered issuer. <code>requestTimeoutMs</code> bounds the individual read and defaults to 10 seconds.</td>
 </tr>
 <tr>
 <td><code>Claim</code></td>
@@ -169,10 +381,55 @@ are available from <code>@stellarcred/sdk</code> directly.</p>
 <td><code>readonly ClaimType[]</code></td>
 <td>The runtime constant. Use <code>as const</code> strings for compile-time narrowing.</td>
 </tr>
+<tr>
+<td><code>Claim</code></td>
+<td><code>{ type: string; verifiedAt: number; expiry: number }</code></td>
+<td>Shape returned by <code>getClaims</code>.</td>
+</tr>
+<tr>
+<td><code>CLAIM_TYPES</code></td>
+<td><code>readonly ClaimType[]</code></td>
+<td>The runtime constant. Use <code>as const</code> strings for compile-time narrowing.</td>
+</tr>
+<tr>
+<td><code>validateCredential</code></td>
+<td><code>(value: unknown) =&gt; CredentialValidationResult</code></td>
+<td>Validates an already-parsed credential object and returns <code>{ valid, credential }</code> or <code>{ valid: false, errors }</code>.</td>
+</tr>
+<tr>
+<td><code>parseCredentialJson</code></td>
+<td><code>(json: string) =&gt; CredentialValidationResult</code></td>
+<td>Parses and validates credential JSON text without throwing.</td>
+</tr>
+<tr>
+<td><code>assertValidCredential</code></td>
+<td><code>(value: unknown) =&gt; asserts value is CredentialJson</code></td>
+<td>Throws <code>CredentialValidationError</code> (with an <code>issues</code> array) for invalid input.</td>
+</tr>
+<tr>
+<td><code>CredentialJson</code></td>
+<td>interface</td>
+<td>The canonical credential shape accepted by the validator.</td>
+</tr>
+<tr>
+<td><code>BuildVerifyUrlOptions</code></td>
+<td><code>{ returnUrl: string; claim?: ClaimType; ... }</code></td>
+<td>Strongly typed options accepted by <code>buildVerifyUrl</code>.</td>
+</tr>
+<tr>
+<td><code>BuildVerifyUrlClaimParams</code></td>
+<td><code>{ threshold?: string | number; threshold_years?: string | number; restricted?: string | number | (string | number)[]; ... }</code></td>
+<td>Strongly typed claim parameters for <code>buildVerifyUrl</code>.</td>
+</tr>
+<tr>
+<td><code>UntrustedReturnParams</code></td>
+<td><code>{ verified: boolean; wallet: string | null; claims: string[]; state: string | null }</code></td>
+<td>Shape of parsed return-URL parameters returned by <code>parseReturnParams</code>.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="full-integration-example" class="tsd-anchor-link">Full integration example<a href="#full-integration-example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
-<pre><code class="ts"><span class="hl-4">import</span><span class="hl-1"> </span><span class="hl-3">StellarCred</span><span class="hl-1"> </span><span class="hl-4">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({ </span><span class="hl-3">registryId:</span><span class="hl-1"> </span><span class="hl-3">process</span><span class="hl-1">.</span><span class="hl-3">env</span><span class="hl-1">.</span><span class="hl-6">PROOF_REGISTRY_ID</span><span class="hl-1"> });</span><br/><br/><span class="hl-7">async</span><span class="hl-1"> </span><span class="hl-7">function</span><span class="hl-1"> </span><span class="hl-0">handleDeposit</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">: </span><span class="hl-9">string</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-5">// Check all required claims</span><br/><span class="hl-1">  </span><span class="hl-7">const</span><span class="hl-1"> [</span><span class="hl-6">kycOk</span><span class="hl-1">, </span><span class="hl-6">fundsOk</span><span class="hl-1">] = </span><span class="hl-4">await</span><span class="hl-1"> </span><span class="hl-9">Promise</span><span class="hl-1">.</span><span class="hl-0">all</span><span class="hl-1">([</span><br/><span class="hl-1">    </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">),</span><br/><span class="hl-1">    </span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">, { </span><span class="hl-3">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">50000</span><span class="hl-1"> }),</span><br/><span class="hl-1">  ]);</span><br/><br/><span class="hl-1">  </span><span class="hl-4">if</span><span class="hl-1"> (!</span><span class="hl-3">kycOk</span><span class="hl-1"> || !</span><span class="hl-3">fundsOk</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-5">// Redirect to verify the missing claim</span><br/><span class="hl-1">    </span><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">missing</span><span class="hl-1"> = !</span><span class="hl-3">kycOk</span><span class="hl-1"> ? </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1"> : </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">;</span><br/><span class="hl-1">    </span><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">opts</span><span class="hl-1"> = </span><span class="hl-3">missing</span><span class="hl-1"> === </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1"> ? { </span><span class="hl-3">claimParams:</span><span class="hl-1"> { </span><span class="hl-3">threshold:</span><span class="hl-1"> </span><span class="hl-2">&quot;50000&quot;</span><span class="hl-1"> } } : {};</span><br/><span class="hl-1">    </span><span class="hl-4">return</span><span class="hl-1"> </span><span class="hl-0">redirect</span><span class="hl-1">(</span><span class="hl-3">StellarCred</span><span class="hl-1">.</span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">      </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/deposit&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">      </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-3">missing</span><span class="hl-1">,</span><br/><span class="hl-1">      ...</span><span class="hl-3">opts</span><span class="hl-1">,</span><br/><span class="hl-1">    }));</span><br/><span class="hl-1">  }</span><br/><br/><span class="hl-1">  </span><span class="hl-5">// All claims verified — proceed</span><br/><span class="hl-1">  </span><span class="hl-0">processDeposit</span><span class="hl-1">(</span><span class="hl-3">wallet</span><span class="hl-1">);</span><br/><span class="hl-1">}</span>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1"> </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({ </span><span class="hl-4">registryId:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">PROOF_REGISTRY_ID</span><span class="hl-1"> });</span><br/><br/><span class="hl-7">async</span><span class="hl-1"> </span><span class="hl-7">function</span><span class="hl-1"> </span><span class="hl-0">handleDeposit</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">: </span><span class="hl-9">string</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-3">// Check all required claims</span><br/><span class="hl-1">  </span><span class="hl-7">const</span><span class="hl-1"> [</span><span class="hl-6">kycOk</span><span class="hl-1">, </span><span class="hl-6">fundsOk</span><span class="hl-1">] = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-9">Promise</span><span class="hl-1">.</span><span class="hl-0">all</span><span class="hl-1">([</span><br/><span class="hl-1">    </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">),</span><br/><span class="hl-1">    </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">, { </span><span class="hl-4">minThreshold:</span><span class="hl-1"> </span><span class="hl-8">50000</span><span class="hl-1"> }),</span><br/><span class="hl-1">  ]);</span><br/><br/><span class="hl-1">  </span><span class="hl-5">if</span><span class="hl-1"> (!</span><span class="hl-4">kycOk</span><span class="hl-1"> || !</span><span class="hl-4">fundsOk</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-3">// Redirect to verify the missing claim</span><br/><span class="hl-1">    </span><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">missing</span><span class="hl-1"> = !</span><span class="hl-4">kycOk</span><span class="hl-1"> ? </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1"> : </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">;</span><br/><span class="hl-1">    </span><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">opts</span><span class="hl-1"> = </span><span class="hl-4">missing</span><span class="hl-1"> === </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1"> ? { </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">threshold:</span><span class="hl-1"> </span><span class="hl-2">&quot;50000&quot;</span><span class="hl-1"> } } : {};</span><br/><span class="hl-1">    </span><span class="hl-5">return</span><span class="hl-1"> </span><span class="hl-0">redirect</span><span class="hl-1">(</span><br/><span class="hl-1">      </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">        </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/deposit&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">        </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-4">missing</span><span class="hl-1">,</span><br/><span class="hl-1">        ...</span><span class="hl-4">opts</span><span class="hl-1">,</span><br/><span class="hl-1">      }),</span><br/><span class="hl-1">    );</span><br/><span class="hl-1">  }</span><br/><br/><span class="hl-1">  </span><span class="hl-3">// All claims verified — proceed</span><br/><span class="hl-1">  </span><span class="hl-0">processDeposit</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">);</span><br/><span class="hl-1">}</span>
 </code><button type="button">Copy</button></pre>
 
 <h2 id="peer-dependency" class="tsd-anchor-link">Peer dependency<a href="#peer-dependency" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
@@ -180,11 +437,415 @@ are available from <code>@stellarcred/sdk</code> directly.</p>
 <pre><code class="bash"><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">install</span><span class="hl-1"> </span><span class="hl-2">@stellar/stellar-sdk</span>
 </code><button type="button">Copy</button></pre>
 
+<h2 id="trust-boundary" class="tsd-anchor-link">Trust boundary<a href="#trust-boundary" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>The SDK is designed to work in both browsers and Node.js, but there is an
+important boundary between public client-side config and private server-side
+config. Understanding this boundary prevents accidental secret leakage.</p>
+<h3 id="what-is-safe-to-expose-to-the-client" class="tsd-anchor-link">What is safe to expose to the client<a href="#what-is-safe-to-expose-to-the-client" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<table>
+<thead>
+<tr>
+<th>Config</th>
+<th>Safe for browser?</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>registryId</code> (ProofRegistry contract ID)</td>
+<td>✅ Yes</td>
+<td>A public Stellar contract address — no secret</td>
+</tr>
+<tr>
+<td><code>rpcUrl</code></td>
+<td>✅ Yes</td>
+<td>A public RPC endpoint — no secret</td>
+</tr>
+<tr>
+<td><code>networkPassphrase</code></td>
+<td>✅ Yes</td>
+<td>A well-known network identifier — no secret</td>
+</tr>
+<tr>
+<td><code>baseUrl</code></td>
+<td>✅ Yes</td>
+<td>The StellarCred public URL — no secret</td>
+</tr>
+</tbody>
+</table>
+<p>Pass these via <code>NEXT_PUBLIC_*</code> (Next.js) or <code>VITE_*</code> (Vite) env vars so they
+are available in browser bundles:</p>
+<pre><code class="bash"><span class="hl-3"># .env.local (Next.js)</span><br/><span class="hl-4">NEXT_PUBLIC_PROOF_REGISTRY_ID</span><span class="hl-1">=</span><span class="hl-2">C...</span><br/><span class="hl-4">NEXT_PUBLIC_RPC_URL</span><span class="hl-1">=</span><span class="hl-2">https://soroban-testnet.stellar.org</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="what-must-stay-server-side-only" class="tsd-anchor-link">What must stay server-side only<a href="#what-must-stay-server-side-only" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<table>
+<thead>
+<tr>
+<th>Config / Package</th>
+<th>Server-only?</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ISSUER_PRIVATE_KEY</code></td>
+<td>✅ Server-only</td>
+<td>Signs credentials — exposure lets anyone forge credentials</td>
+</tr>
+<tr>
+<td><code>@stellarcred/issuer</code></td>
+<td>✅ Server-only</td>
+<td>Contains the signing key; throws if imported in a browser</td>
+</tr>
+<tr>
+<td>Server-side <code>hasClaim</code> checks</td>
+<td>✅ Server-only for access control</td>
+<td>Client-side checks are optimistic UI only (see below)</td>
+</tr>
+</tbody>
+</table>
+<p>Never use <code>NEXT_PUBLIC_</code> on <code>ISSUER_PRIVATE_KEY</code> or any other secret.</p>
+<h3 id="server-side-re-verification-is-required" class="tsd-anchor-link">Server-side re-verification is required<a href="#server-side-re-verification-is-required" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Client-side claim checks (via <code>hasClaim</code> in the browser, <code>useStellarCred</code>,
+etc.) are optimistic UI only — they improve UX by providing immediate feedback
+but they <strong>cannot be trusted for access control</strong>:</p>
+<ul>
+<li>The browser environment is not trusted; results can be spoofed by the user.</li>
+<li><code>sc_verified=true</code> return-URL params are untrusted URL hints, not proofs.</li>
+</ul>
+<p><strong>Always re-verify claims server-side before granting access</strong>, using the
+wallet address the user has actually authenticated with (not one from a URL
+param):</p>
+<pre><code class="ts"><span class="hl-3">// ✅ Server-side gate (API route, middleware, server component)</span><br/><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1"> </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk/server&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">authenticatedWallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span><br/><span class="hl-5">if</span><span class="hl-1"> (!</span><span class="hl-4">ok</span><span class="hl-1">) </span><span class="hl-5">return</span><span class="hl-1"> </span><span class="hl-4">res</span><span class="hl-1">.</span><span class="hl-0">status</span><span class="hl-1">(</span><span class="hl-8">403</span><span class="hl-1">).</span><span class="hl-0">json</span><span class="hl-1">({ </span><span class="hl-4">error:</span><span class="hl-1"> </span><span class="hl-2">&quot;KYC required&quot;</span><span class="hl-1"> });</span>
+</code><button type="button">Copy</button></pre>
+
+<pre><code class="ts"><span class="hl-3">// ⚠️  Client-side check — optimistic UI only, not a security gate</span><br/><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1"> </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span><br/><span class="hl-5">if</span><span class="hl-1"> (!</span><span class="hl-4">ok</span><span class="hl-1">) </span><span class="hl-4">router</span><span class="hl-1">.</span><span class="hl-0">push</span><span class="hl-1">(</span><span class="hl-2">&quot;/verify&quot;</span><span class="hl-1">); </span><span class="hl-3">// redirect to verify, but server will also check</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="server-entry-point" class="tsd-anchor-link">Server entry point: <code>@stellarcred/sdk/server</code><a href="#server-entry-point" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>When importing the SDK in server-side code (API routes, middleware, server
+components, Lambda handlers, etc.), use the dedicated server entry point:</p>
+<pre><code class="ts"><span class="hl-3">// ✅ Explicit server-side import</span><br/><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1"> </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk/server&quot;</span><span class="hl-1">;</span><br/><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">hasClaim</span><span class="hl-1">, </span><span class="hl-4">configure</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk/server&quot;</span><span class="hl-1">;</span>
+</code><button type="button">Copy</button></pre>
+
+<p>This is a thin re-export of the same SDK — the API is identical. The separate
+path makes the intent explicit at the import site and suppresses the
+development-mode warning described below.</p>
+<h3 id="development-mode-boundary-warning" class="tsd-anchor-link">Development-mode boundary warning<a href="#development-mode-boundary-warning" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>In development (<code>NODE_ENV !== &quot;production&quot;</code>), the SDK emits a <strong>one-time
+<code>console.warn</code></strong> when <code>configure()</code> is called from a browser context with
+values that appear to come from server-only environment variables (e.g.
+<code>STELLARCRED_REGISTRY_ID</code> or bare <code>PROOF_REGISTRY_ID</code> without a <code>NEXT_PUBLIC_</code>
+prefix). This catches the common mistake:</p>
+<pre><code class="ts"><span class="hl-3">// ⚠️  Wrong — uses a server-only env var name</span><br/><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({ </span><span class="hl-4">registryId:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">PROOF_REGISTRY_ID</span><span class="hl-1"> });</span><br/><br/><span class="hl-3">// ✅ Right — uses the public Next.js alias</span><br/><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({ </span><span class="hl-4">registryId:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">NEXT_PUBLIC_PROOF_REGISTRY_ID</span><span class="hl-1"> });</span>
+</code><button type="button">Copy</button></pre>
+
+<p>The warning only fires once per page load, only in development (when <code>NODE_ENV</code>
+is not <code>&quot;production&quot;</code>), and only in a browser context. It is silent in
+production, in Node.js, and when no suspicious indicators are present.</p>
+<p>To silence the warning permanently for server-side code, import from
+<code>@stellarcred/sdk/server</code> — the warning is only relevant for browser bundles.</p>
+<h2 id="indexer-fast-path-optional" class="tsd-anchor-link">Indexer fast path (optional)<a href="#indexer-fast-path-optional" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>By default every read simulates against <code>ProofRegistry</code>. That is the correct
+trust model — the only thing your protocol needs to trust is the contract — but
+it costs a round trip to a Soroban RPC node per credential type, and the chain
+cannot answer questions like &quot;what has this issuer ever issued?&quot; or &quot;what
+happened recently?&quot;.</p>
+<p>A StellarCred <a href="media/indexer">indexer</a> answers those faster. The SDK
+can read from one, <strong>off by default and only when you ask for it per call</strong>.</p>
+<blockquote>
+<h3 id="⚠️-read-this-before-you-gate-anything-on-it" class="tsd-anchor-link">⚠️ Read this before you gate anything on it<a href="#⚠️-read-this-before-you-gate-anything-on-it" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>An indexer is an <strong>off-chain cache of public chain data, operated by someone</strong>.
+It can be stale, lagging, misconfigured, or dishonest. A claim read with
+<code>source: &quot;indexer&quot;</code> is <em>not</em> a proof.</p>
+<p><strong>Never use <code>source: &quot;indexer&quot;</code> as the sole basis for a security decision.</strong>
+Gate access with <code>source: &quot;chain&quot;</code> (the default) or <code>source: &quot;indexer-verified&quot;</code>.
+Use plain <code>&quot;indexer&quot;</code> for UI, analytics, previews, and anywhere a wrong answer
+costs you a flicker rather than an authorisation bypass.</p>
+</blockquote>
+<h3 id="the-three-sources" class="tsd-anchor-link">The three sources<a href="#the-three-sources" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1"> </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">configure</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">registryId:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">PROOF_REGISTRY_ID</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">indexerUrl:</span><span class="hl-1"> </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">STELLARCRED_INDEXER_URL</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">// indexerApiKey: process.env.STELLARCRED_INDEXER_API_KEY,  // only if the indexer gates /claims</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// 1. Default — trust-minimised. Use this for gating.</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">ok</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">);</span><br/><br/><span class="hl-3">// 2. Fast path — trusts the indexer operator. Not for security decisions.</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">preview</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, { </span><span class="hl-4">source:</span><span class="hl-1"> </span><span class="hl-2">&quot;indexer&quot;</span><span class="hl-1"> });</span><br/><br/><span class="hl-3">// 3. Trust anchor — reads the indexer, then confirms on-chain and returns the</span><br/><span class="hl-3">//    CHAIN&#39;s answer. Use when you want drift detection alongside the read.</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">gated</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">hasClaim</span><span class="hl-1">(</span><span class="hl-4">wallet</span><span class="hl-1">, </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-4">source:</span><span class="hl-1"> </span><span class="hl-2">&quot;indexer-verified&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<p><code>source</code> is accepted by <code>hasClaim</code>, <code>getClaim</code>, <code>hasClaims</code>, <code>getClaims</code>,
+<code>verifyPreset</code>, and <code>watchClaim</code>, and is inherited by <code>createClaimGate</code> and
+<code>useStellarCred</code> through the options they forward.</p>
+<p><strong><code>&quot;indexer-verified&quot;</code> is not faster than <code>&quot;chain&quot;</code>.</strong> It still performs a chain
+read, because the chain is what makes the answer trustworthy. Its value is that
+a disagreement between the two is logged, which tells you your indexer has
+drifted before your users are affected by it:</p>
+<pre><code><span class="hl-1">[</span><span class="hl-4">StellarCred</span><span class="hl-1">] </span><span class="hl-4">Indexer</span><span class="hl-1"> </span><span class="hl-4">disagreed</span><span class="hl-1"> </span><span class="hl-5">with</span><span class="hl-1"> </span><span class="hl-4">the</span><span class="hl-1"> </span><span class="hl-4">chain</span><span class="hl-1"> </span><span class="hl-4">for</span><span class="hl-1"> </span><span class="hl-4">claim</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">: </span><span class="hl-4">indexer</span><span class="hl-1"> </span><span class="hl-4">said</span><br/><span class="hl-7">true</span><span class="hl-1">, </span><span class="hl-4">ProofRegistry</span><span class="hl-1"> </span><span class="hl-4">said</span><span class="hl-1"> </span><span class="hl-4">false</span><span class="hl-1">. </span><span class="hl-4">The</span><span class="hl-1"> </span><span class="hl-4">chain</span><span class="hl-1"> </span><span class="hl-4">result</span><span class="hl-1"> </span><span class="hl-4">was</span><span class="hl-1"> </span><span class="hl-4">used</span><span class="hl-1">. …</span>
+</code><button>Copy</button></pre>
+
+<p>That warning is rate-limited to once per process and — unlike the SDK's other
+warnings — fires in production too, because an integrity signal you only see in
+development is not much use.</p>
+<h3 id="what-the-fast-path-does-and-does-not-change" class="tsd-anchor-link">What the fast path does and does not change<a href="#what-the-fast-path-does-and-does-not-change" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>minThreshold</code> and <code>trustedIssuers</code> are both honoured on the indexer path. The
+SDK re-evaluates them from the raw claim row using the same predicates the
+contract uses, so a call is drop-in compatible across sources:</p>
+<table>
+<thead>
+<tr>
+<th>Contract rule</th>
+<th>Indexer equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>!revoked</code></td>
+<td><code>row.revoked === 0</code></td>
+</tr>
+<tr>
+<td><code>expiry &gt; ledger.timestamp()</code></td>
+<td><code>expiry &gt; Date.now()/1000</code></td>
+</tr>
+<tr>
+<td><code>issuer_is_trusted(list, issuer)</code></td>
+<td>same, with an empty issuer treated as the contract's <code>None</code> and therefore rejected when a filter is set</td>
+</tr>
+<tr>
+<td><code>threshold.unwrap_or(0) &gt;= min</code></td>
+<td><code>(row.threshold ?? 0) &gt;= min</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="known-divergences" class="tsd-anchor-link">Known divergences<a href="#known-divergences" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>These are inherent to reading a cache rather than the chain, and are the reason
+<code>&quot;indexer&quot;</code> must not gate access:</p>
+<ul>
+<li><strong>Clock source.</strong> The contract compares <code>expiry</code> against the ledger timestamp;
+the SDK compares against your local wall clock. Near an expiry boundary the two
+can disagree, in either direction.</li>
+<li><strong>Lag.</strong> The indexer trails the chain by its finality lag plus poll interval
+(seconds by default, longer if it is unhealthy). A just-submitted claim can
+read as absent, and a just-revoked claim can still read as valid. Check the
+indexer's <code>GET /health</code> for <code>lag</code> and <code>status</code> if you depend on freshness.</li>
+<li><strong>Trust.</strong> You are trusting the indexer operator to serve you honest data.
+<code>&quot;chain&quot;</code> and <code>&quot;indexer-verified&quot;</code> do not ask you to.</li>
+</ul>
+<h3 id="fan-out-and-caching" class="tsd-anchor-link">Fan-out and caching<a href="#fan-out-and-caching" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>GET /claims?wallet=…</code> returns <em>all</em> of a wallet's claims in one response, so a
+<code>getClaims</code> fan-out over the six credential types issues <strong>one</strong> HTTP request,
+not six. To do that the SDK memoises indexer rows per wallet for
+<code>indexerCacheMs</code> (default <code>2000</code>, set <code>0</code> to disable).</p>
+<p>This cache applies only to <code>&quot;indexer&quot;</code> and <code>&quot;indexer-verified&quot;</code> reads. Chain
+reads are only cached when you opt in to the
+<a href="#claim-cache-optional">claim cache</a>; otherwise every <code>source: &quot;chain&quot;</code> call is
+a fresh simulation.</p>
+<h3 id="failure-behaviour" class="tsd-anchor-link">Failure behaviour<a href="#failure-behaviour" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The indexer path follows the SDK's existing fail-soft convention: an unreachable
+indexer, an HTTP error, or a malformed body yields <code>false</code> / <code>null</code> / <code>[]</code> rather
+than throwing, and throws <code>IndexerError</code> (or <code>ConfigError</code> when <code>indexerUrl</code> is
+missing) under <code>throwOnError: true</code>. Failed responses are not cached.</p>
+<p>For <code>source: &quot;indexer-verified&quot;</code> a failed indexer read is not fatal — the chain
+read still happens and still decides the result.</p>
+<h3 id="the-api-key-is-a-secret" class="tsd-anchor-link">The API key is a secret<a href="#the-api-key-is-a-secret" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>indexerApiKey</code> is sent as <code>Authorization: Bearer</code>. There is deliberately no
+<code>NEXT_PUBLIC_</code> alias for it, and configuring one from a browser context warns in
+development: shipping it to the browser hands it to every visitor. Either read
+from the browser without a key, or proxy indexer reads through your own backend.</p>
+<p>Note also that the indexer's CORS policy does not allow an <code>X-API-Key</code> header
+through a browser preflight, which is why the SDK uses <code>Authorization</code>.</p>
 <h2 id="how-it-works" class="tsd-anchor-link">How it works<a href="#how-it-works" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <p>StellarCred stores ZK proofs on Stellar. A holder proves a claim once (in their browser, using UltraHonk / Barretenberg); the result is cached in the <code>ProofRegistry</code> contract. Your protocol reads it with a single free simulation — no wallet connection, no fee, no personal data.</p>
 <p>The <code>minThreshold</code> check calls <code>ProofRegistry.check_claim</code> on-chain, which compares the threshold stored in the proof's public inputs against your required minimum. It is not a frontend check — the contract enforces it.</p>
+<h3 id="contract-events-indexing" class="tsd-anchor-link">Contract Events &amp; Indexing<a href="#contract-events-indexing" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>For backend indexers, analytics services, or event-driven integrations monitoring proof submissions, revocations, and lifecycle events, see the authoritative <a href="media/EVENTS.md">docs/EVENTS.md</a> for complete topic schemas, payload structures, and drift guarantees.</p>
 <h2 id="license" class="tsd-anchor-link">License<a href="#license" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <p>MIT</p>
+<h2 id="using-stellarcred-outside-react" class="tsd-anchor-link">Using StellarCred outside React<a href="#using-stellarcred-outside-react" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>The SDK exports a framework-agnostic <code>createClaimGate</code> core that exposes a subscribe/unsubscribe API. Use it anywhere — Vue, Svelte, vanilla JS, or any other framework.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">createClaimGate</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">gate</span><span class="hl-1"> = </span><span class="hl-0">createClaimGate</span><span class="hl-1">({ </span><span class="hl-4">wallet:</span><span class="hl-1"> </span><span class="hl-2">&quot;G…&quot;</span><span class="hl-1"> });</span><br/><span class="hl-4">gate</span><span class="hl-1">.</span><span class="hl-0">subscribe</span><span class="hl-1">((</span><span class="hl-4">state</span><span class="hl-1">) </span><span class="hl-7">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">state</span><span class="hl-1">.</span><span class="hl-4">claims</span><span class="hl-1">); </span><span class="hl-3">// { kyc: true, age: true, ... }</span><br/><span class="hl-1">  </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">state</span><span class="hl-1">.</span><span class="hl-4">loading</span><span class="hl-1">); </span><span class="hl-3">// false</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// Re-check claims later</span><br/><span class="hl-4">gate</span><span class="hl-1">.</span><span class="hl-0">refetch</span><span class="hl-1">();</span><br/><br/><span class="hl-3">// Clean up when done</span><br/><span class="hl-4">gate</span><span class="hl-1">.</span><span class="hl-0">destroy</span><span class="hl-1">();</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="api-1" class="tsd-anchor-link">API<a href="#api-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="ts"><span class="hl-0">createClaimGate</span><span class="hl-1">(</span><span class="hl-4">config</span><span class="hl-1">: </span><span class="hl-4">ClaimGateConfig</span><span class="hl-1">): </span><span class="hl-4">ClaimGate</span>
+</code><button type="button">Copy</button></pre>
+
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>subscribe(fn)</code></td>
+<td><code>(ClaimGateState) =&gt; void</code></td>
+<td>Subscribe to state changes; returns unsubscribe</td>
+</tr>
+<tr>
+<td><code>unsubscribe(fn)</code></td>
+<td><code>void</code></td>
+<td>Remove a listener</td>
+</tr>
+<tr>
+<td><code>getSnapshot()</code></td>
+<td><code>ClaimGateState</code></td>
+<td>Get current state synchronously</td>
+</tr>
+<tr>
+<td><code>refetch()</code></td>
+<td><code>void</code></td>
+<td>Re-run all claim checks</td>
+</tr>
+<tr>
+<td><code>destroy()</code></td>
+<td><code>void</code></td>
+<td>Stop polling, clear listeners</td>
+</tr>
+</tbody>
+</table>
+<h3 id="typescript" class="tsd-anchor-link">TypeScript<a href="#typescript" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> </span><span class="hl-5">type</span><span class="hl-1"> { </span><span class="hl-4">ClaimGate</span><span class="hl-1">, </span><span class="hl-4">ClaimGateState</span><span class="hl-1">, </span><span class="hl-4">ClaimGateConfig</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="react" class="tsd-anchor-link">React<a href="#react" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The existing <code>useStellarCred</code> React hook is a React wrapper around the batched <code>hasClaims</code> read. It is a separate implementation from <code>createClaimGate</code> (the framework-agnostic per-claim gate) — both expose the same claim status, so pick whichever fits your framework.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">useStellarCred</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><span class="hl-3">// Works exactly as before</span><br/><span class="hl-7">const</span><span class="hl-1"> { </span><span class="hl-6">claims</span><span class="hl-1">, </span><span class="hl-6">loading</span><span class="hl-1">, </span><span class="hl-6">error</span><span class="hl-1">, </span><span class="hl-6">refetch</span><span class="hl-1"> } = </span><span class="hl-0">useStellarCred</span><span class="hl-1">(</span><span class="hl-4">walletAddress</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="vue-example" class="tsd-anchor-link">Vue example<a href="#vue-example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>See <a href="media/ClaimGate.vue"><code>examples/vue-gate/ClaimGate.vue</code></a> for a complete Vue 3 component using <code>createClaimGate</code>.</p>
+<pre><code class="vue"><span class="hl-11">&lt;</span><span class="hl-12">script</span><span class="hl-1"> </span><span class="hl-13">setup</span><span class="hl-1"> </span><span class="hl-13">lang</span><span class="hl-1">=</span><span class="hl-14">&quot;ts&quot;</span><span class="hl-11">&gt;</span><br/><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">createClaimGate</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">ref</span><span class="hl-1">, </span><span class="hl-4">onMounted</span><span class="hl-1">, </span><span class="hl-4">onUnmounted</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;vue&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">props</span><span class="hl-1"> = </span><span class="hl-0">defineProps</span><span class="hl-1">&lt;{ </span><span class="hl-4">wallet</span><span class="hl-1">: </span><span class="hl-9">string</span><span class="hl-1"> }&gt;();</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">state</span><span class="hl-1"> = </span><span class="hl-0">ref</span><span class="hl-1">({ </span><span class="hl-4">claims:</span><span class="hl-1"> </span><span class="hl-7">null</span><span class="hl-1">, </span><span class="hl-4">loading:</span><span class="hl-1"> </span><span class="hl-7">true</span><span class="hl-1">, </span><span class="hl-4">error:</span><span class="hl-1"> </span><span class="hl-7">null</span><span class="hl-1"> });</span><br/><span class="hl-7">let</span><span class="hl-1"> </span><span class="hl-4">gate</span><span class="hl-1">;</span><br/><br/><span class="hl-0">onMounted</span><span class="hl-1">(() </span><span class="hl-7">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-4">gate</span><span class="hl-1"> = </span><span class="hl-0">createClaimGate</span><span class="hl-1">({ </span><span class="hl-4">wallet:</span><span class="hl-1"> </span><span class="hl-4">props</span><span class="hl-1">.</span><span class="hl-4">wallet</span><span class="hl-1"> });</span><br/><span class="hl-1">  </span><span class="hl-4">gate</span><span class="hl-1">.</span><span class="hl-0">subscribe</span><span class="hl-1">((</span><span class="hl-4">s</span><span class="hl-1">) </span><span class="hl-7">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-4">state</span><span class="hl-1">.</span><span class="hl-4">value</span><span class="hl-1"> = </span><span class="hl-4">s</span><span class="hl-1">;</span><br/><span class="hl-1">  });</span><br/><span class="hl-1">});</span><br/><span class="hl-0">onUnmounted</span><span class="hl-1">(() </span><span class="hl-7">=&gt;</span><span class="hl-1"> </span><span class="hl-4">gate</span><span class="hl-1">?.</span><span class="hl-0">destroy</span><span class="hl-1">());</span><br/><span class="hl-11">&lt;/</span><span class="hl-12">script</span><span class="hl-11">&gt;</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="svelte-example" class="tsd-anchor-link">Svelte example<a href="#svelte-example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>See <a href="media/ClaimGate.svelte"><code>examples/svelte-gate/ClaimGate.svelte</code></a> for a complete Svelte component.</p>
+<pre><code class="svelte"><span class="hl-11">&lt;</span><span class="hl-12">script</span><span class="hl-1"> </span><span class="hl-13">lang</span><span class="hl-1">=</span><span class="hl-2">&quot;ts&quot;</span><span class="hl-11">&gt;</span><br/><span class="hl-15">  </span><span class="hl-5">import</span><span class="hl-15"> { </span><span class="hl-4">createClaimGate</span><span class="hl-15"> } </span><span class="hl-5">from</span><span class="hl-15"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-15">;</span><br/><span class="hl-15">  </span><span class="hl-5">import</span><span class="hl-15"> { </span><span class="hl-4">onMount</span><span class="hl-15">, </span><span class="hl-4">onDestroy</span><span class="hl-15"> } </span><span class="hl-5">from</span><span class="hl-15"> </span><span class="hl-2">&quot;svelte&quot;</span><span class="hl-15">;</span><br/><br/><span class="hl-15">  </span><span class="hl-5">export</span><span class="hl-15"> </span><span class="hl-7">let</span><span class="hl-15"> </span><span class="hl-4">wallet</span><span class="hl-1">:</span><span class="hl-15"> </span><span class="hl-9">string</span><span class="hl-15">;</span><br/><span class="hl-15">  </span><span class="hl-7">let</span><span class="hl-15"> </span><span class="hl-4">state</span><span class="hl-15"> </span><span class="hl-1">=</span><span class="hl-15"> { </span><span class="hl-4">claims:</span><span class="hl-15"> </span><span class="hl-7">null</span><span class="hl-15">, </span><span class="hl-4">loading:</span><span class="hl-15"> </span><span class="hl-7">true</span><span class="hl-15">, </span><span class="hl-4">error:</span><span class="hl-15"> </span><span class="hl-7">null</span><span class="hl-15"> };</span><br/><span class="hl-15">  </span><span class="hl-7">let</span><span class="hl-15"> </span><span class="hl-4">gate</span><span class="hl-15">;</span><br/><br/><span class="hl-15">  </span><span class="hl-0">onMount</span><span class="hl-15">(() </span><span class="hl-7">=&gt;</span><span class="hl-15"> {</span><br/><span class="hl-15">    </span><span class="hl-4">gate</span><span class="hl-15"> </span><span class="hl-1">=</span><span class="hl-15"> </span><span class="hl-0">createClaimGate</span><span class="hl-15">({ </span><span class="hl-4">wallet</span><span class="hl-15"> });</span><br/><span class="hl-15">    </span><span class="hl-4">gate</span><span class="hl-15">.</span><span class="hl-0">subscribe</span><span class="hl-15">((</span><span class="hl-4">s</span><span class="hl-15">) </span><span class="hl-7">=&gt;</span><span class="hl-15"> { </span><span class="hl-4">state</span><span class="hl-15"> </span><span class="hl-1">=</span><span class="hl-15"> </span><span class="hl-4">s</span><span class="hl-15">; });</span><br/><span class="hl-15">  });</span><br/><span class="hl-15">  </span><span class="hl-0">onDestroy</span><span class="hl-15">(() </span><span class="hl-7">=&gt;</span><span class="hl-15"> </span><span class="hl-4">gate</span><span class="hl-15">?.</span><span class="hl-0">destroy</span><span class="hl-15">());</span><br/><span class="hl-11">&lt;/</span><span class="hl-12">script</span><span class="hl-11">&gt;</span><br/><br/><span class="hl-1">{#</span><span class="hl-5">if</span><span class="hl-15"> </span><span class="hl-4">state</span><span class="hl-15">.</span><span class="hl-4">loading</span><span class="hl-1">}</span><span class="hl-11">&lt;</span><span class="hl-12">p</span><span class="hl-11">&gt;</span><span class="hl-1">Checking claims…</span><span class="hl-11">&lt;/</span><span class="hl-12">p</span><span class="hl-11">&gt;</span><br/><span class="hl-1">{:</span><span class="hl-5">else</span><span class="hl-1">}{#</span><span class="hl-5">each</span><span class="hl-1"> </span><span class="hl-4">Object</span><span class="hl-15">.</span><span class="hl-0">entries</span><span class="hl-15">(</span><span class="hl-4">state</span><span class="hl-15">.</span><span class="hl-4">claims</span><span class="hl-15"> </span><span class="hl-1">||</span><span class="hl-15"> {})</span><span class="hl-1"> </span><span class="hl-5">as</span><span class="hl-1"> </span><span class="hl-15">[</span><span class="hl-4">type</span><span class="hl-15">, </span><span class="hl-4">ok</span><span class="hl-15">]</span><span class="hl-1">}</span><br/><span class="hl-1">  </span><span class="hl-11">&lt;</span><span class="hl-12">p</span><span class="hl-11">&gt;</span><span class="hl-7">{</span><span class="hl-4">type</span><span class="hl-7">}</span><span class="hl-1">: </span><span class="hl-7">{</span><span class="hl-4">ok</span><span class="hl-15"> </span><span class="hl-1">?</span><span class="hl-15"> </span><span class="hl-2">&#39;✅&#39;</span><span class="hl-15"> </span><span class="hl-1">:</span><span class="hl-15"> </span><span class="hl-2">&#39;❌&#39;</span><span class="hl-7">}</span><span class="hl-11">&lt;/</span><span class="hl-12">p</span><span class="hl-11">&gt;</span><br/><span class="hl-1">{/</span><span class="hl-5">each</span><span class="hl-1">}{/</span><span class="hl-5">if</span><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<hr>
+<h2 id="server-side-wallet-challenge-verification-" class="tsd-anchor-link">Server-Side Wallet Challenge &amp; Verification (<code>verifyWalletClaim</code>)<a href="#server-side-wallet-challenge-verification-" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<blockquote>
+<p>⚠️ <strong>CRITICAL SECURITY WARNING: The Wallet Spoofing Pitfall</strong></p>
+<p><strong>Do NOT use <code>hasClaim(wallet, ...)</code> alone to gate server-side resources or create authenticated sessions.</strong></p>
+<p>Anyone can look up a verified public key on-chain and pass it in a request body, query parameter, or header. Checking <code>hasClaim(untrustedAddress, &quot;kyc&quot;)</code> only proves that <em>someone</em> owns credentials for that address, <strong>not</strong> that the current HTTP caller controls that address!</p>
+<p>To securely gate access, your server must issue a cryptographic challenge, have the client sign it with their Stellar wallet (Freighter, Albedo, etc.), and verify both the signature and on-chain credential claim.</p>
+</blockquote>
+<h3 id="1-issue-a-challenge-server" class="tsd-anchor-link">1. Issue a Challenge (Server)<a href="#1-issue-a-challenge-server" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">createWalletChallenge</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-3">// In your GET /api/auth/challenge endpoint:</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">challenge</span><span class="hl-1"> = </span><span class="hl-0">createWalletChallenge</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">domain:</span><span class="hl-1"> </span><span class="hl-2">&quot;yourapp.com&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">statement:</span><span class="hl-1"> </span><span class="hl-2">&quot;Sign in to access accredited investor pool&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">ttlMs:</span><span class="hl-1"> </span><span class="hl-8">5</span><span class="hl-1"> * </span><span class="hl-8">60</span><span class="hl-1"> * </span><span class="hl-8">1000</span><span class="hl-1">, </span><span class="hl-3">// 5 minutes validity</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-3">// Send `challenge` JSON to frontend</span><br/><span class="hl-4">res</span><span class="hl-1">.</span><span class="hl-0">json</span><span class="hl-1">(</span><span class="hl-4">challenge</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="2-sign-challenge-client-wallet" class="tsd-anchor-link">2. Sign Challenge (Client / Wallet)<a href="#2-sign-challenge-client-wallet" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="ts"><span class="hl-3">// In your frontend with Freighter or wallet of choice:</span><br/><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">signMessage</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellar/freighter-api&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">signature</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-0">signMessage</span><span class="hl-1">(</span><span class="hl-4">challenge</span><span class="hl-1">.</span><span class="hl-4">message</span><span class="hl-1">);</span><br/><span class="hl-3">// Send { wallet, challenge, signature } to POST /api/auth/verify</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="3-verify-wallet-control-on-chain-claim-in-one-call-server" class="tsd-anchor-link">3. Verify Wallet Control &amp; On-Chain Claim in One Call (Server)<a href="#3-verify-wallet-control-on-chain-claim-in-one-call-server" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">verifyWalletClaim</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-3">// In your POST /api/auth/verify endpoint:</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">result</span><span class="hl-1"> = </span><span class="hl-5">await</span><span class="hl-1"> </span><span class="hl-0">verifyWalletClaim</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">wallet:</span><span class="hl-1"> </span><span class="hl-4">req</span><span class="hl-1">.</span><span class="hl-4">body</span><span class="hl-1">.</span><span class="hl-4">wallet</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">challenge:</span><span class="hl-1"> </span><span class="hl-4">req</span><span class="hl-1">.</span><span class="hl-4">body</span><span class="hl-1">.</span><span class="hl-4">challenge</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">signature:</span><span class="hl-1"> </span><span class="hl-4">req</span><span class="hl-1">.</span><span class="hl-4">body</span><span class="hl-1">.</span><span class="hl-4">signature</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-3">// Optional threshold or issuer requirements:</span><br/><span class="hl-1">  </span><span class="hl-3">// claimOptions: { minThreshold: 50000, trustedIssuers: [&quot;G...&quot;] },</span><br/><span class="hl-1">});</span><br/><br/><span class="hl-5">if</span><span class="hl-1"> (!</span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">ok</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-3">// Returns detailed diagnostics:</span><br/><span class="hl-1">  </span><span class="hl-3">// result.signatureValid === false (spoofing attempt or altered challenge)</span><br/><span class="hl-1">  </span><span class="hl-3">// result.claimValid === false (wallet doesn&#39;t hold the on-chain claim)</span><br/><span class="hl-1">  </span><span class="hl-5">return</span><span class="hl-1"> </span><span class="hl-4">res</span><span class="hl-1">.</span><span class="hl-0">status</span><span class="hl-1">(</span><span class="hl-8">403</span><span class="hl-1">).</span><span class="hl-0">json</span><span class="hl-1">({ </span><span class="hl-4">error:</span><span class="hl-1"> </span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">error</span><span class="hl-1"> });</span><br/><span class="hl-1">}</span><br/><br/><span class="hl-3">// ✅ Proven wallet control AND valid on-chain KYC credential!</span><br/><span class="hl-3">// Proceed with issuing session cookie or JWT:</span><br/><span class="hl-0">createSession</span><span class="hl-1">(</span><span class="hl-4">req</span><span class="hl-1">, </span><span class="hl-4">result</span><span class="hl-1">.</span><span class="hl-4">wallet</span><span class="hl-1">);</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="complete-runnable-reference-applications" class="tsd-anchor-link">Complete Runnable Reference Applications<a href="#complete-runnable-reference-applications" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<ul>
+<li><strong>Canonical Integration Example</strong>: A complete, runnable application implementing this entire pattern end-to-end (redirect, return handling, challenge generation, signature verification, on-chain re-verification, session route gating, and failure-state diagnosis) is available at <a href="media/canonical-integration"><code>examples/canonical-integration</code></a>.</li>
+<li><strong>TypeScript SDK Example</strong>: A minimal, typed example demonstrating SDK initialization, credential verification, wallet challenge signing, and credential-gated Stellar transaction creation with <code>@stellar/stellar-sdk</code> is available at <a href="media/typescript"><code>examples/typescript</code></a>.</li>
+</ul>
+<hr>
+<h2 id="release-process" class="tsd-anchor-link">Release Process<a href="#release-process" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>The SDK follows <a href="https://semver.org/">Semantic Versioning</a>. Releases are fully automated through <code>.github/workflows/release.yml</code>.</p>
+<h3 id="how-releases-work" class="tsd-anchor-link">How Releases Work:<a href="#how-releases-work" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<ol>
+<li><strong>Version Declaration</strong>: The canonical version is maintained in <code>frontend/packages/sdk/package.json</code> (e.g. <code>&quot;version&quot;: &quot;0.1.1&quot;</code>).</li>
+<li><strong>Cutting a Release</strong>:
+<ul>
+<li>Update <code>package.json</code> version and document changes in <code>frontend/packages/sdk/CHANGELOG.md</code> and root <code>CHANGELOG.md</code>.</li>
+<li>Create and push a signed git tag matching the version with a <code>v</code> prefix:<pre><code class="bash"><span class="hl-0">git</span><span class="hl-1"> </span><span class="hl-2">tag</span><span class="hl-1"> </span><span class="hl-7">-a</span><span class="hl-1"> </span><span class="hl-2">v0.1.1</span><span class="hl-1"> </span><span class="hl-7">-m</span><span class="hl-1"> </span><span class="hl-2">&quot;Release v0.1.1&quot;</span><br/><span class="hl-0">git</span><span class="hl-1"> </span><span class="hl-2">push</span><span class="hl-1"> </span><span class="hl-2">origin</span><span class="hl-1"> </span><span class="hl-2">v0.1.1</span>
+</code><button type="button">Copy</button></pre>
+
+</li>
+</ul>
+</li>
+<li><strong>Workflow Execution</strong>:
+<ul>
+<li><code>.github/workflows/release.yml</code> triggers on <code>v*</code> tag pushes.</li>
+<li>It validates that the git tag version strictly matches <code>package.json</code>.</li>
+<li>Runs <code>pnpm build</code> to compile the dual CJS/ESM distribution bundles with TypeScript definitions.</li>
+<li>Generates release notes from conventional commit messages.</li>
+<li>Creates an official GitHub Release with release artifacts.</li>
+<li>Publishes <code>@stellarcred/sdk</code> with public access to the npm registry using <code>NPM_TOKEN</code>.</li>
+</ul>
+</li>
+</ol>
+<h2 id="credential-version-compatibility" class="tsd-anchor-link">Credential version compatibility<a href="#credential-version-compatibility" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>StellarCred stamps every issued credential with the deployment and circuit version it was issued against. When a ZK circuit is upgraded, the verifying key changes — a proof generated by the old circuit cannot be verified on-chain. The version helpers let you detect stale credentials before the holder starts the proof flow.</p>
+<h3 id="_-7" class="tsd-anchor-link"><code>getDeploymentCircuitVersion(network, proofRegistryId)</code><a href="#_-7" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Returns the circuit version for a deployment, without needing a credential.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">getDeploymentCircuitVersion</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">current</span><span class="hl-1"> = </span><span class="hl-0">getDeploymentCircuitVersion</span><span class="hl-1">(</span><br/><span class="hl-1">  </span><span class="hl-2">&quot;testnet&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">process</span><span class="hl-1">.</span><span class="hl-4">env</span><span class="hl-1">.</span><span class="hl-6">NEXT_PUBLIC_PROOF_REGISTRY_ID</span><span class="hl-1">,</span><br/><span class="hl-1">);</span><br/><span class="hl-3">// &quot;1.0.0-beta.9+0.87.0&quot;  or  null (unrecognised deployment)</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="_-8" class="tsd-anchor-link"><code>getCredentialCircuitVersion(credential)</code><a href="#_-8" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Extracts the circuit version that was active when a credential was issued.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">getCredentialCircuitVersion</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">info</span><span class="hl-1"> = </span><span class="hl-0">getCredentialCircuitVersion</span><span class="hl-1">(</span><span class="hl-4">credential</span><span class="hl-1">);</span><br/><span class="hl-3">// {</span><br/><span class="hl-3">//   circuitVersion:  &quot;1.0.0-beta.9+0.87.0&quot;,  // null for legacy credentials</span><br/><span class="hl-3">//   network:         &quot;testnet&quot;,</span><br/><span class="hl-3">//   proofRegistryId: &quot;C...&quot;,</span><br/><span class="hl-3">//   issuedAt:        1700000000,</span><br/><span class="hl-3">// }</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="_-9" class="tsd-anchor-link"><code>isCompatibleCredential(credential, expectedVersion)</code><a href="#_-9" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Returns <code>true</code> when a credential's circuit version matches the current deployment.</p>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">isCompatibleCredential</span><span class="hl-1">, </span><span class="hl-4">getDeploymentCircuitVersion</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">current</span><span class="hl-1"> = </span><span class="hl-0">getDeploymentCircuitVersion</span><span class="hl-1">(</span><span class="hl-2">&quot;testnet&quot;</span><span class="hl-1">, </span><span class="hl-4">registryId</span><span class="hl-1">) ?? </span><span class="hl-2">&quot;&quot;</span><span class="hl-1">;</span><br/><span class="hl-5">if</span><span class="hl-1"> (!</span><span class="hl-0">isCompatibleCredential</span><span class="hl-1">(</span><span class="hl-4">credential</span><span class="hl-1">, </span><span class="hl-4">current</span><span class="hl-1">)) {</span><br/><span class="hl-1">  </span><span class="hl-3">// Prompt the holder to re-verify before starting the proof flow.</span><br/><span class="hl-1">  </span><span class="hl-0">redirectToReVerify</span><span class="hl-1">();</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="_-10" class="tsd-anchor-link"><code>getCredentialVersionStatus(credential, expectedVersion)</code><a href="#_-10" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>Returns a typed discriminant for richer UI handling:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&quot;compatible&quot;</code></td>
+<td>Version matches — safe to prove</td>
+</tr>
+<tr>
+<td><code>&quot;incompatible&quot;</code></td>
+<td>Version differs — holder must re-verify</td>
+</tr>
+<tr>
+<td><code>&quot;legacy&quot;</code></td>
+<td>No deployment field — issued before version stamping</td>
+</tr>
+<tr>
+<td><code>&quot;unknown&quot;</code></td>
+<td>Deployment recognised but not in the version registry</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="ts"><span class="hl-5">import</span><span class="hl-1"> { </span><span class="hl-4">StellarCred</span><span class="hl-1">, </span><span class="hl-4">getDeploymentCircuitVersion</span><span class="hl-1"> } </span><span class="hl-5">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@stellarcred/sdk&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">current</span><span class="hl-1"> = </span><span class="hl-0">getDeploymentCircuitVersion</span><span class="hl-1">(</span><span class="hl-2">&quot;testnet&quot;</span><span class="hl-1">, </span><span class="hl-4">registryId</span><span class="hl-1">) ?? </span><span class="hl-2">&quot;&quot;</span><span class="hl-1">;</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">status</span><span class="hl-1"> = </span><span class="hl-4">StellarCred</span><span class="hl-1">.</span><span class="hl-0">getCredentialVersionStatus</span><span class="hl-1">(</span><span class="hl-4">credential</span><span class="hl-1">, </span><span class="hl-4">current</span><span class="hl-1">);</span><br/><br/><span class="hl-5">switch</span><span class="hl-1"> (</span><span class="hl-4">status</span><span class="hl-1">) {</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;compatible&quot;</span><span class="hl-1">:    </span><span class="hl-0">startProofFlow</span><span class="hl-1">(</span><span class="hl-4">credential</span><span class="hl-1">); </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;incompatible&quot;</span><span class="hl-1">:  </span><span class="hl-0">showReVerifyBanner</span><span class="hl-1">(); </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;legacy&quot;</span><span class="hl-1">:        </span><span class="hl-0">showLegacyWarning</span><span class="hl-1">(); </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">  </span><span class="hl-5">case</span><span class="hl-1"> </span><span class="hl-2">&quot;unknown&quot;</span><span class="hl-1">:       </span><span class="hl-0">showUnknownDeploymentError</span><span class="hl-1">(); </span><span class="hl-5">break</span><span class="hl-1">;</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="recommended-protocol-flow-for-stale-credentials" class="tsd-anchor-link">Recommended protocol flow for stale credentials<a href="#recommended-protocol-flow-for-stale-credentials" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<ol>
+<li>At app startup (or when the holder's credential is loaded), call <code>getDeploymentCircuitVersion()</code> once to get the current expected version.</li>
+<li>Before entering the proof flow, call <code>getCredentialVersionStatus(credential, current)</code>.</li>
+<li>If the status is not <code>&quot;compatible&quot;</code>, show a banner explaining the circuit was upgraded and offer a &quot;Re-verify&quot; button that links to <code>/verify</code>.</li>
+<li>On re-verify completion, the holder receives a fresh credential stamped with the latest circuit version — subsequent compatibility checks will pass.</li>
+</ol>
+<blockquote>
+<p><strong>Why re-verify instead of re-prove?</strong> The ZK proof is tied to the commitment and circuit verifying key. A proof generated by an old circuit does not verify against the new key. The credential itself is also bound to the issuer's signature, so only the issuer can re-stamp it for the new circuit — the holder must go through a new issuance flow.</p>
+</blockquote>
+<hr>
+<h2 id="tree-shaking-bundle-optimization" class="tsd-anchor-link">Tree-Shaking &amp; Bundle Optimization<a href="#tree-shaking-bundle-optimization" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p><code>@stellarcred/sdk</code> is designed for minimal bundle overhead across both browser and server applications:</p>
+<ul>
+<li><strong><code>sideEffects: false</code></strong>: Configured in <code>package.json</code> to enable full dead-code elimination in modern bundlers (Webpack, Vite, Rollup, Next.js).</li>
+<li><strong>Subpath entrypoints</strong>:
+<ul>
+<li><code>import StellarCred from &quot;@stellarcred/sdk&quot;</code>: Primary client entrypoint.</li>
+<li><code>import StellarCred from &quot;@stellarcred/sdk/server&quot;</code>: Node.js and Edge backend runtimes.</li>
+</ul>
+</li>
+<li><strong>Dynamic On-Demand Module Loading</strong>:
+<ul>
+<li>Heavy RPC modules and Soroban contract bindings (<code>@stellar/stellar-sdk</code> and <code>proof-registry</code>) are loaded on-demand via dynamic <code>import()</code> only when on-chain contract queries (<code>hasClaim</code>, <code>getClaim</code>) are executed.</li>
+<li>Offline helpers like <code>buildVerifyUrl()</code>, <code>buildBadgeUrl()</code>, <code>buildBadgeEmbedCode()</code>, <code>CLAIM_TYPES</code>, <code>TimeoutError</code>, and <code>createClaimGate()</code> execute with zero network overhead and without loading heavy Soroban dependencies.</li>
+</ul>
+</li>
+</ul>
 </div></div>
 <div class="col-sidebar">
 <div class="page-menu">
@@ -203,21 +864,86 @@ are available from <code>@stellarcred/sdk</code> directly.</p>
 <ul>
 <li><a href="#install"><span>Install</span></a></li>
 <li><a href="#api-reference"><span>API <wbr/>Reference</span></a></li>
+<li>
+<ul>
+<li><a href="#generate-locally"><span>Generate locally</span></a></li></ul></li>
 <li><a href="#quick-start"><span>Quick start</span></a></li>
 <li><a href="#configuration"><span>Configuration</span></a></li>
+<li>
+<ul>
+<li><a href="#claim-cache-optional"><span>Claim cache (optional)</span></a></li></ul></li>
+<li><a href="#bootstrapping-from-a-deployment-capability-descriptor"><span>Bootstrapping from a deployment (capability descriptor)</span></a></li>
+<li><a href="#contract-deployments"><span>Contract <wbr/>Deployments</span></a></li>
 <li><a href="#api"><span>API</span></a></li>
 <li>
 <ul>
 <li><a href="#_"><span></span></a></li>
 <li><a href="#_-1"><span></span></a></li>
 <li><a href="#_-2"><span></span></a></li>
-<li><a href="#_-3"><span></span></a></li></ul></li>
+<li><a href="#_-3"><span></span></a></li>
+<li>
+<ul>
+<li><a href="#typed-errors-"><span>Typed errors ()</span></a></li></ul></li>
+<li><a href="#_-4"><span></span></a></li>
+<li><a href="#_-5"><span></span></a></li>
+<li><a href="#-real-time-subscriptions-"><span> — real-<wbr/>time subscriptions ()</span></a></li>
+<li><a href="#_-6"><span></span></a></li></ul></li>
 <li><a href="#claim-types"><span>Claim types</span></a></li>
+<li><a href="#validating-credential-json"><span>Validating credential <wbr/>JSON</span></a></li>
 <li><a href="#types"><span>Types</span></a></li>
 <li><a href="#full-integration-example"><span>Full integration example</span></a></li>
 <li><a href="#peer-dependency"><span>Peer dependency</span></a></li>
+<li><a href="#trust-boundary"><span>Trust boundary</span></a></li>
+<li>
+<ul>
+<li><a href="#what-is-safe-to-expose-to-the-client"><span>What is safe to expose to the client</span></a></li>
+<li><a href="#what-must-stay-server-side-only"><span>What must stay server-<wbr/>side only</span></a></li>
+<li><a href="#server-side-re-verification-is-required"><span>Server-<wbr/>side re-<wbr/>verification is required</span></a></li>
+<li><a href="#server-entry-point"><span>Server entry point: </span></a></li>
+<li><a href="#development-mode-boundary-warning"><span>Development-<wbr/>mode boundary warning</span></a></li></ul></li>
+<li><a href="#indexer-fast-path-optional"><span>Indexer fast path (optional)</span></a></li>
+<li>
+<ul>
+<li><a href="#⚠️-read-this-before-you-gate-anything-on-it"><span>⚠️ <wbr/>Read this before you gate anything on it</span></a></li>
+<li><a href="#the-three-sources"><span>The three sources</span></a></li>
+<li><a href="#what-the-fast-path-does-and-does-not-change"><span>What the fast path does and does not change</span></a></li>
+<li><a href="#known-divergences"><span>Known divergences</span></a></li>
+<li><a href="#fan-out-and-caching"><span>Fan-<wbr/>out and caching</span></a></li>
+<li><a href="#failure-behaviour"><span>Failure behaviour</span></a></li>
+<li><a href="#the-api-key-is-a-secret"><span>The <wbr/>API key is a secret</span></a></li></ul></li>
 <li><a href="#how-it-works"><span>How it works</span></a></li>
-<li><a href="#license"><span>License</span></a></li></ul></div></details></div>
+<li>
+<ul>
+<li><a href="#contract-events-indexing"><span>Contract <wbr/>Events &amp; <wbr/>Indexing</span></a></li></ul></li>
+<li><a href="#license"><span>License</span></a></li>
+<li><a href="#using-stellarcred-outside-react"><span>Using <wbr/>Stellar<wbr/>Cred outside <wbr/>React</span></a></li>
+<li>
+<ul>
+<li><a href="#api-1"><span>API</span></a></li>
+<li><a href="#typescript"><span>Type<wbr/>Script</span></a></li>
+<li><a href="#react"><span>React</span></a></li>
+<li><a href="#vue-example"><span>Vue example</span></a></li>
+<li><a href="#svelte-example"><span>Svelte example</span></a></li></ul></li>
+<li><a href="#server-side-wallet-challenge-verification-"><span>Server-<wbr/>Side <wbr/>Wallet <wbr/>Challenge &amp; <wbr/>Verification ()</span></a></li>
+<li>
+<ul>
+<li><a href="#1-issue-a-challenge-server"><span>1. <wbr/>Issue a <wbr/>Challenge (<wbr/>Server)</span></a></li>
+<li><a href="#2-sign-challenge-client-wallet"><span>2. <wbr/>Sign <wbr/>Challenge (<wbr/>Client / <wbr/>Wallet)</span></a></li>
+<li><a href="#3-verify-wallet-control-on-chain-claim-in-one-call-server"><span>3. <wbr/>Verify <wbr/>Wallet <wbr/>Control &amp; <wbr/>On-<wbr/>Chain <wbr/>Claim in <wbr/>One <wbr/>Call (<wbr/>Server)</span></a></li>
+<li><a href="#complete-runnable-reference-applications"><span>Complete <wbr/>Runnable <wbr/>Reference <wbr/>Applications</span></a></li></ul></li>
+<li><a href="#release-process"><span>Release <wbr/>Process</span></a></li>
+<li>
+<ul>
+<li><a href="#how-releases-work"><span>How <wbr/>Releases <wbr/>Work:</span></a></li></ul></li>
+<li><a href="#credential-version-compatibility"><span>Credential version compatibility</span></a></li>
+<li>
+<ul>
+<li><a href="#_-7"><span></span></a></li>
+<li><a href="#_-8"><span></span></a></li>
+<li><a href="#_-9"><span></span></a></li>
+<li><a href="#_-10"><span></span></a></li>
+<li><a href="#recommended-protocol-flow-for-stale-credentials"><span>Recommended protocol flow for stale credentials</span></a></li></ul></li>
+<li><a href="#tree-shaking-bundle-optimization"><span>Tree-<wbr/>Shaking &amp; <wbr/>Bundle <wbr/>Optimization</span></a></li></ul></div></details></div>
 <div class="site-menu">
 <nav class="tsd-navigation"><a href="modules.html">@stellarcred/sdk</a>
 <ul class="tsd-small-nested-navigation" id="tsd-nav-container">
