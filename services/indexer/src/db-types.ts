@@ -214,6 +214,12 @@ export interface Db {
   /** Return a subscription's recent delivery history. */
   webhookDeliveries(subscriptionId: number, limit: number): WebhookDelivery[] | Promise<WebhookDelivery[]>;
 
+  /**
+   * Connections currently checked out of the pool and serving a query.
+   * Absent (or 0) for backends without a pool, such as SQLite.
+   */
+  poolActiveConnections?(): number;
+
   /** Close the underlying connection / pool. */
   close(): void | Promise<void>;
 }

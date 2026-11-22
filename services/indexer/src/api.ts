@@ -380,6 +380,35 @@ export function buildApp(
       );
       lines.push(`indexer_ledgers_behind_head ${metrics.lag}`);
 
+      // Operational gauges for alerting (#1079).
+      lines.push(
+        `# HELP ledger_processing_lag Ledgers between network head and last processed ledger (-1 until the head is known).`,
+      );
+      lines.push(`# TYPE ledger_processing_lag gauge`);
+      lines.push(`ledger_processing_lag ${metrics.lag}`);
+
+      const ingestionRate =
+        metrics.uptimeSeconds > 0
+          ? metrics.eventsProcessedTotal / metrics.uptimeSeconds
+          : 0;
+      lines.push(
+        `# HELP event_ingestion_rate Average events ingested per second since the ingester started.`,
+      );
+      lines.push(`# TYPE event_ingestion_rate gauge`);
+      lines.push(`event_ingestion_rate ${ingestionRate}`);
+
+      lines.push(
+        `# HELP rpc_latency_seconds Duration of the most recent Horizon RPC request in seconds.`,
+      );
+      lines.push(`# TYPE rpc_latency_seconds gauge`);
+      lines.push(`rpc_latency_seconds ${metrics.rpcLatencySeconds ?? 0}`);
+
+      lines.push(
+        `# HELP db_pool_active_connections Database pool connections currently in use (0 for unpooled backends).`,
+      );
+      lines.push(`# TYPE db_pool_active_connections gauge`);
+      lines.push(`db_pool_active_connections ${db.poolActiveConnections?.() ?? 0}`);
+
       // â”€â”€ On-chain data integrity (#612) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // `indexer_state_mismatches` is the alerting series: it holds the number
       // of claims in the last completed check that disagreed with the
