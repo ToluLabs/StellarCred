@@ -748,6 +748,15 @@ export function ExportDataModal({
                         <span style={{ color: "var(--faint, #888)" }}>
                           Requested: {new Date(job.createdAt).toLocaleTimeString()} · Job ID:{" "}
                           <span className="mono">{job.id.slice(0, 10)}</span>
+                      {job.status === "ready" && job.checksum && (
+                        <div
+                          id={`export-checksum-${job.id}`}
+                          className="mono"
+                          style={{ fontSize: "0.7rem", color: "var(--faint, #888)", wordBreak: "break-all" }}
+                        >
+                          SHA-256: {job.checksum} · Verify before import; mismatched hashes indicate tampering.
+                        </div>
+                      )}
                         </span>
 
                         {job.status === "ready" && !isExpired && job.downloadUrl && (

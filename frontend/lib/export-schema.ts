@@ -19,6 +19,16 @@
 /** Current export artifact schema version. New writes always use this value. */
 export const EXPORT_SCHEMA_VERSION = 1;
 
+/** Algorithm used for the artifact integrity checksum. */
+export const EXPORT_INTEGRITY_ALGORITHM = "SHA-256";
+
+/** Integrity metadata embedded alongside the artifact payload. */
+export interface IntegrityMetadata {
+  algorithm: typeof EXPORT_INTEGRITY_ALGORITHM;
+  /** Lowercase hex digest of the canonical payload (entries + count + generation). */
+  checksum: string;
+}
+
 /** Identifies the legacy file a backfilled artifact was read from. */
 export type SourceFormat = "legacy-json" | "legacy-csv";
 
@@ -57,6 +67,8 @@ export interface GenerationMetadata {
 export interface ExportArtifactV1 {
   schemaVersion: 1;
   generation: GenerationMetadata;
+  /** Optional for backward compatibility with pre-checksum artifacts. */
+  integrity?: IntegrityMetadata;
   /** Number of entries carried in `entries` after safety validation. */
   count: number;
   entries: ExportEntry[];
@@ -75,6 +87,9 @@ export interface BackfillReport {
 
 /** Raised for structurally unreadable input (not per-entry validation). */
 export class LegacyExportError extends Error {}
+
+/** Raised when an artifact fails integrity verification on import. */
+export class ArtifactIntegrityError extends Error {}
 
 // ── Legacy parsing ──────────────────────────────────────────────────────────
 
@@ -330,31 +345,12 @@ export function planBackfill(
     entries: kept,
   };
 
-  return {
-    artifact,
-    report: {
-      sourceFormat: options.sourceFormat,
-      inputCount: legacyEntries.length,
-      outputCount: kept.length,
-      skipped,
-    },
+  const report: BackfillReport = {
+    sourceFormat: options.sourceFormat,
+    inputCount: legacyEntries.length,
+    outputCount: kept.length,
+    skipped,
   };
-}
 
-/** Serialize an artifact deterministically (stable key order, 2-space JSON). */
-export function serializeArtifact(artifact: ExportArtifactV1): string {
-  return JSON.stringify(artifact, null, 2) + "\n";
-}
-
-/** True when `value` is a well-formed schema v1 artifact. */
-export function isExportArtifact(value: unknown): value is ExportArtifactV1 {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    v["schemaVersion"] === EXPORT_SCHEMA_VERSION &&
-    typeof v["generation"] === "object" &&
-    v["generation"] !== null &&
-    Array.isArray(v["entries"]) &&
-    v["count"] === (v["entries"] as unknown[]).length
-  );
+  return { artifact, report };
 }

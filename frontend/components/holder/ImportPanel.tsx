@@ -3,6 +3,91 @@
 import { useState } from "react";
 import { parseCredential, type Credential } from "@/lib/credential";
 
+// Integrity envelope produced by export: { version, payload, checksum }
+// where checksum = SHA-256 (hex) over the canonical JSON of payload.
+type BundleEnvelope = {
+  version: number;
+  payload: unknown;
+  checksum: string;
+};
+
+async function sha256Hex(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Deterministic JSON: object keys sorted recursively so checksums are stable.
+function canonicalize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return "[" + value.map(canonicalize).join(",") + "]";
+  }
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>).sort();
+    return (
+      "{" +
+      keys
+        .map(
+          (k) =>
+            JSON.stringify(k) +
+            ":" +
+            canonicalize((value as Record<string, unknown>)[k])
+        )
+        .join(",") +
+      "}"
+    );
+  }
+  return JSON.stringify(value);
+}
+
+export async function verifyBundle(raw: string): Promise<Credential> {
+  let envelope: BundleEnvelope;
+  try {
+    envelope = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "This doesn't look like valid JSON. Paste the exact contents of the exported file without edits."
+    );
+  }
+
+  if (
+    !envelope ||
+    typeof envelope !== "object" ||
+    typeof envelope.checksum !== "string" ||
+    envelope.payload === undefined
+  ) {
+    // Legacy bare credentials carry no integrity check. Accept them, but
+    // callers should surface that the file is unverified.
+    console.warn(
+      "Imported a legacy credential without an integrity checksum. Re-export it to enable tamper detection."
+    );
+    return parseCredential(raw);
+  }
+
+  if (typeof envelope.version !== "number" || envelope.version > 1) {
+    throw new Error(
+      `Unsupported bundle version (${String(envelope.version)}). Update the app before importing this file.`
+    );
+  }
+
+  const actual = await sha256Hex(canonicalize(envelope.payload));
+  if (actual !== envelope.checksum.toLowerCase()) {
+    throw new Error(
+      "Integrity check failed: the file was modified or corrupted after export. Re-export it from the source and try again."
+    );
+  }
+
+  try {
+    return parseCredential(JSON.stringify(envelope.payload));
+  } catch (e) {
+    throw new Error(
+      `The bundle is authentic but its credential data is invalid: ${(e as Error).message}`
+    );
+  }
+}
+
 export function ImportPanel({
   onImport,
   onCancel,
@@ -12,12 +97,18 @@ export function ImportPanel({
 }) {
   const [json, setJson] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  function onAdd() {
+  async function onAdd() {
+    setError("");
+    setBusy(true);
     try {
-      onImport(parseCredential(json));
+      const credential = await verifyBundle(json);
+      onImport(credential);
     } catch (e) {
-      setError((e as Error).message);
+      setError((e as Error).message || "Import failed for an unknown reason.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -26,19 +117,26 @@ export function ImportPanel({
       <span className="eyebrow">Import credential</span>
       <textarea
         rows={5}
-        placeholder='{"type":"kyc","commitment":"0x...", ...}'
+        placeholder='{"version":1,"payload":{"type":"kyc","commitment":"0x..."},"checksum":"..."}'
         value={json}
         onChange={(e) => setJson(e.target.value)}
         style={{ marginTop: "0.75rem" }}
       />
       {error && (
-        <p style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.5rem" }}>
+        <p
+          role="alert"
+          style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.5rem" }}
+        >
           {error}
         </p>
       )}
       <div className="row" style={{ marginTop: "1rem", gap: "0.6rem" }}>
-        <button className="btn btn-primary btn-sm" onClick={onAdd} disabled={!json.trim()}>
-          Add credential
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={onAdd}
+          disabled={!json.trim() || busy}
+        >
+          {busy ? "Verifying..." : "Add credential"}
         </button>
         <button className="btn btn-ghost btn-sm" onClick={onCancel}>
           Cancel
