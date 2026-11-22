@@ -214,6 +214,13 @@ export interface Db {
   /** Return a subscription's recent delivery history. */
   webhookDeliveries(subscriptionId: number, limit: number): WebhookDelivery[] | Promise<WebhookDelivery[]>;
 
+  /**
+   * Run `fn` atomically: every write made through the `Db` handed to `fn`
+   * (event rows and the ledger checkpoint alike) commits together, or none do
+   * if `fn` throws. Optional so lightweight test doubles need not implement it.
+   */
+  transaction?<T>(fn: (tx: Db) => Promise<T>): Promise<T>;
+
   /** Close the underlying connection / pool. */
   close(): void | Promise<void>;
 }

@@ -122,6 +122,28 @@ function registerSuite(
       expect(await db.getLastLedger()).toBe(123_456);
     });
 
+    it("commits event writes and the checkpoint atomically", async () => {
+      await db.transaction!(async (tx) => {
+        await tx.upsertClaim(makeClaim({ ledger_sequence: 200 }));
+        await tx.setLastLedger(200);
+      });
+      expect(await db.claimsByWallet("GALICE")).toHaveLength(1);
+      expect(await db.getLastLedger()).toBe(200);
+    });
+
+    it("rolls back claims and checkpoint together when the batch fails", async () => {
+      await db.setLastLedger(50);
+      await expect(
+        db.transaction!(async (tx) => {
+          await tx.upsertClaim(makeClaim({ ledger_sequence: 200 }));
+          await tx.setLastLedger(200);
+          throw new Error("crash mid-batch");
+        }),
+      ).rejects.toThrow("crash mid-batch");
+      expect(await db.claimsByWallet("GALICE")).toHaveLength(0);
+      expect(await db.getLastLedger()).toBe(50);
+    });
+
     it("upserts a new claim and updates an existing one", async () => {
       await db.upsertClaim(makeClaim());
 
