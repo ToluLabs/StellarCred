@@ -41,6 +41,7 @@ export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
+export * from "./wasm";
 
 import {
   configure,
@@ -97,6 +98,16 @@ import {
   CredentialValidationError,
 } from "./validateCredential";
 import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
+import {
+  clearWasmCache,
+  compileWasm,
+  detectWasmRuntime,
+  getWasmCacheSize,
+  initWasm,
+  isStreamingSupported,
+  isWasmSupported,
+  WasmLoadError,
+} from "./wasm";
 
 export const StellarCred = {
   configure,
@@ -156,5 +167,14 @@ export const StellarCred = {
   TransactionSubmissionError,
   CredentialValidationError,
   parseContractError,
+  // Universal WASM helpers
+  initWasm,
+  compileWasm,
+  detectWasmRuntime,
+  isWasmSupported,
+  isStreamingSupported,
+  clearWasmCache,
+  getWasmCacheSize,
+  WasmLoadError,
 };
 export default StellarCred;
