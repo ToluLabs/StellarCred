@@ -26,11 +26,34 @@ export interface PostgresConnection {
     values?: SqlParam[],
   ): Promise<{ rows: unknown[] }>;
   end(): Promise<void>;
+  /** Present on a Pool: check out a dedicated client for a transaction. */
+  connect?(): Promise<PostgresConnection & { release(): void }>;
 }
 
 export function createPostgresDialect(conn: PostgresConnection): SqlDialect {
-  return {
+  const dialect: SqlDialect = {
     name: "postgres",
+
+    async transaction<T>(fn: (tx: SqlDialect) => Promise<T>): Promise<T> {
+      const client = conn.connect ? await conn.connect() : null;
+      const target = client ?? conn;
+      const tx = client ? createPostgresDialect(client) : dialect;
+      await target.query("BEGIN");
+      try {
+        const result = await fn(tx);
+        await target.query("COMMIT");
+        return result;
+      } catch (err) {
+        try {
+          await target.query("ROLLBACK");
+        } catch {
+          // Connection already broken; surface the original error.
+        }
+        throw err;
+      } finally {
+        client?.release();
+      }
+    },
 
     async exec(sql) {
       // No values ⇒ simple query protocol, which allows a multi-statement batch.
@@ -115,6 +138,7 @@ export function createPostgresDialect(conn: PostgresConnection): SqlDialect {
       `);
     },
   };
+  return dialect;
 }
 
 export function createPostgresDb(config: Config): Db {

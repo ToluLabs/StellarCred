@@ -39,6 +39,12 @@ export interface SqlDialect {
   insert(sql: string, params?: SqlParam[]): Promise<number>;
   /** Close the underlying connection / pool. */
   close(): Promise<void>;
+  /**
+   * Run `fn` inside one database transaction. `fn` receives a dialect bound to
+   * the transaction; everything it runs commits together or rolls back together
+   * if `fn` throws.
+   */
+  transaction<T>(fn: (tx: SqlDialect) => Promise<T>): Promise<T>;
 
   /** Spelling of the nth (1-based) bind parameter. */
   placeholder(index: number): string;

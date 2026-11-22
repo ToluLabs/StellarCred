@@ -70,6 +70,22 @@ export function createSqliteDialect(raw: SqliteDatabase): SqlDialect {
       raw.close();
     },
 
+    async transaction<T>(fn: (tx: SqlDialect) => Promise<T>): Promise<T> {
+      raw.exec("BEGIN IMMEDIATE");
+      try {
+        const result = await fn(dialect);
+        raw.exec("COMMIT");
+        return result;
+      } catch (err) {
+        try {
+          raw.exec("ROLLBACK");
+        } catch {
+          // Transaction already gone; surface the original error.
+        }
+        throw err;
+      }
+    },
+
     placeholder(index) {
       return SQLITE_PLACEHOLDERS.placeholder(index);
     },

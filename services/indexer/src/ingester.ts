@@ -638,7 +638,10 @@ export function createIngester(config: Config, db: Db): Ingester {
   }
 
   /** Process a batch of events, upserting/revoking claims. Returns count. */
-  async function processEvents(events: HorizonContractEvent[]): Promise<number> {
+  async function processEvents(
+    events: HorizonContractEvent[],
+    db: Db,
+  ): Promise<number> {
     let processed = 0;
     for (const ev of events) {
       const parsed = parseEvent(ev, config.proofRegistryContractId);
@@ -763,18 +766,26 @@ export function createIngester(config: Config, db: Db): Ingester {
     }
 
     // 5. Process events and update cursor.
-    const processed = await processEvents(events);
-    eventsProcessedTotal += processed;
-
-    // Advance cursor to the highest ledger among processed events.
     let maxLedger = lastLedger;
     for (const ev of events) {
       const evLedger = typeof ev.ledger === "string" ? parseInt(ev.ledger, 10) : ev.ledger;
       if (evLedger > maxLedger) maxLedger = evLedger;
     }
-    if (maxLedger > lastLedger) {
-      await db.setLastLedger(maxLedger);
-    }
+
+    // Event writes and the checkpoint commit in ONE transaction: a crash can
+    // never leave events written without the cursor advancing (or vice versa),
+    // so a restart resumes exactly after the last committed ledger.
+    const commit = async (target: Db): Promise<number> => {
+      const n = await processEvents(events, target);
+      if (maxLedger > lastLedger) {
+        await target.setLastLedger(maxLedger);
+      }
+      return n;
+    };
+    const processed = db.transaction
+      ? await db.transaction(commit)
+      : await commit(db);
+    eventsProcessedTotal += processed;
     await processWebhookQueue();
 
     const tickEnd = Date.now();
@@ -811,10 +822,13 @@ export function createIngester(config: Config, db: Db): Ingester {
     console.log(`[indexer] Reconciling from ledger ${reorgPoint}`);
 
     // Roll back: delete all claims with ledger_sequence beyond the reorg point.
-    await db.deleteClaimsAfter(reorgPoint);
-
-    // Reset cursor so we re-fetch from the reorg point.
-    await db.setLastLedger(reorgPoint);
+    // Rollback and cursor reset commit atomically.
+    const rollback = async (target: Db): Promise<void> => {
+      await target.deleteClaimsAfter(reorgPoint);
+      await target.setLastLedger(reorgPoint);
+    };
+    if (db.transaction) await db.transaction(rollback);
+    else await rollback(db);
 
     // Now run a normal tick — it will fetch events from reorgPoint onward
     // up to the new finality ceiling.

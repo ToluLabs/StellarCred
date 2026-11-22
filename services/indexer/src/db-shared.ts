@@ -110,6 +110,10 @@ export function createSharedDb(dialect: SqlDialect): Db {
     );
 
   return {
+    transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
+      return dialect.transaction((txDialect) => fn(createSharedDb(txDialect)));
+    },
+
     async migrate() {
       // Order matters: tables first, then the legacy `claims.id` upgrade, then
       // the indexes (which reference `claims.id`).
