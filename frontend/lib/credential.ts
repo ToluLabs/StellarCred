@@ -6,6 +6,7 @@ import { deploymentMismatchMessage, type DeploymentRef } from "./deployment";
 import { circuitVersionMismatchMessage } from "./circuit-versions";
 import { isStorageAvailable } from "./safe-storage";
 import { filterCredentialsForExport } from "./export-visibility";
+import { removeCredentialProofs } from "./proof-cache";
 import {
   ENVELOPE_VERSION,
   PBKDF2_ITERATIONS,
@@ -203,9 +204,7 @@ async function setFreshKey(passphrase: string): Promise<void> {
 
 async function encryptWithCachedKey(plaintext: string): Promise<CredentialEnvelope> {
   if (!_cachedKey || !_unlockSalt) {
-    throw new Error(
-      "Credential store is locked. Call unlockCredentialStore(passphrase) first.",
-    );
+    throw new Error("Credential store is locked. Call unlockCredentialStore(passphrase) first.");
   }
   return sealWithKey(plaintext, _cachedKey, {
     kdf: "PBKDF2-SHA256",
@@ -370,30 +369,48 @@ export async function saveCredential(cred: Credential): Promise<Credential[]> {
   const all = await loadCredentials();
   const next = [
     cred,
-    ...all.filter(
-      (c) => !(c.type === cred.type && c.commitment === cred.commitment),
-    ),
+    ...all.filter((c) => !(c.type === cred.type && c.commitment === cred.commitment)),
   ];
   await persistCredentials(next);
   return next;
 }
 
+/**
+ * Returns an updater function for saving a credential using React's functional setState.
+ * Prevents race conditions when credentials are saved while other operations are in progress.
+ */
+export function createSaveCredentialUpdater(cred: Credential) {
+  return (prevCreds: Credential[]): Credential[] => [
+    cred,
+    ...prevCreds.filter((c) => !(c.type === cred.type && c.commitment === cred.commitment)),
+  ];
+}
+
 export async function markProved(commitment: string, txHash: string): Promise<Credential[]> {
   const all = await loadCredentials();
+  const now = Math.floor(Date.now() / 1000);
   const next = all.map((c) =>
-    c.commitment === commitment
-      ? { ...c, provedAt: Math.floor(Date.now() / 1000), provedTxHash: txHash }
-      : c,
+    c.commitment === commitment ? { ...c, provedAt: now, provedTxHash: txHash } : c,
   );
   await persistCredentials(next);
   return next;
 }
 
+/**
+ * Returns an updater function for use with React's functional setState pattern.
+ * This ensures the update is applied to the latest state, avoiding race conditions
+ * when network responses return after cache updates.
+ */
+export function createMarkProvedUpdater(commitment: string, txHash: string) {
+  const now = Math.floor(Date.now() / 1000);
+  return (prevCreds: Credential[]): Credential[] =>
+    prevCreds.map((c) =>
+      c.commitment === commitment ? { ...c, provedAt: now, provedTxHash: txHash } : c,
+    );
+}
+
 /** Mark multiple credentials as proved in a single localStorage write. */
-export async function markAllProved(
-  commitments: string[],
-  txHash: string,
-): Promise<Credential[]> {
+export async function markAllProved(commitments: string[], txHash: string): Promise<Credential[]> {
   const set = new Set(commitments);
   const now = Math.floor(Date.now() / 1000);
   const all = await loadCredentials();
@@ -404,11 +421,66 @@ export async function markAllProved(
   return next;
 }
 
+/**
+ * Returns an updater function for batch proof updates using React's functional setState.
+ * Prevents stale data when multiple credentials are proved simultaneously.
+ */
+export function createMarkAllProvedUpdater(commitments: string[], txHash: string) {
+  const set = new Set(commitments);
+  const now = Math.floor(Date.now() / 1000);
+  return (prevCreds: Credential[]): Credential[] =>
+    prevCreds.map((c) =>
+      set.has(c.commitment) ? { ...c, provedAt: now, provedTxHash: txHash } : c,
+    );
+}
+
 export async function removeCredential(commitment: string): Promise<Credential[]> {
   const all = await loadCredentials();
   const next = all.filter((c) => c.commitment !== commitment);
   await persistCredentials(next);
+  if (typeof window !== "undefined") {
+    try {
+      removeCredentialProofs(commitment);
+    } catch {
+      // storage unavailable or non-browser environment
+    }
+  }
   return next;
+}
+
+/**
+ * Returns an updater function for removing a credential using React's functional setState.
+ * Prevents race conditions when credentials are removed while other operations are in progress.
+ */
+export function createRemoveCredentialUpdater(commitment: string) {
+  return (prevCreds: Credential[]): Credential[] =>
+    prevCreds.filter((c) => c.commitment !== commitment);
+}
+
+/** Remove multiple credentials in a single storage write. */
+export async function removeCredentials(commitments: string[]): Promise<Credential[]> {
+  const set = new Set(commitments);
+  const all = await loadCredentials();
+  const next = all.filter((c) => !set.has(c.commitment));
+  await persistCredentials(next);
+  if (typeof window !== "undefined") {
+    try {
+      for (const commitment of commitments) {
+        removeCredentialProofs(commitment);
+      }
+    } catch {
+      // storage unavailable or non-browser environment
+    }
+  }
+  return next;
+}
+
+/**
+ * Returns an updater function for removing multiple credentials using React's functional setState.
+ */
+export function createRemoveAllCredentialsUpdater(commitments: string[]) {
+  const set = new Set(commitments);
+  return (prevCreds: Credential[]): Credential[] => prevCreds.filter((c) => !set.has(c.commitment));
 }
 
 /**
@@ -417,9 +489,7 @@ export async function removeCredential(commitment: string): Promise<Credential[]
  */
 async function serializeEncrypted(plaintext: string): Promise<string> {
   if (!_cachedKey) {
-    throw new Error(
-      "Credential store is locked. Call unlockCredentialStore(passphrase) first.",
-    );
+    throw new Error("Credential store is locked. Call unlockCredentialStore(passphrase) first.");
   }
   const envelope = await encryptWithCachedKey(plaintext);
   return JSON.stringify(envelope);
@@ -444,13 +514,8 @@ function isFieldString(v: unknown): v is string {
 export function parseCredential(json: string): Credential {
   const c = JSON.parse(json) as Record<string, unknown>;
 
-  if (
-    typeof c.type !== "string" ||
-    !(CREDENTIAL_TYPES as readonly string[]).includes(c.type)
-  ) {
-    throw new Error(
-      `Not a valid credential: type must be one of ${CREDENTIAL_TYPES.join(", ")}.`,
-    );
+  if (typeof c.type !== "string" || !(CREDENTIAL_TYPES as readonly string[]).includes(c.type)) {
+    throw new Error(`Not a valid credential: type must be one of ${CREDENTIAL_TYPES.join(", ")}.`);
   }
   if (!isFieldString(c.value)) {
     throw new Error("Not a valid credential: value must be a non-empty numeric/field string.");
@@ -465,19 +530,25 @@ export function parseCredential(json: string): Credential {
     throw new Error("Not a valid credential: issuerId must be a non-empty string.");
   }
   if (!isByteArray(c.sig, 64)) {
-    throw new Error("Not a valid credential: sig must be an array of 64 bytes, each an integer in [0, 255].");
+    throw new Error(
+      "Not a valid credential: sig must be an array of 64 bytes, each an integer in [0, 255].",
+    );
   }
   if (!isByteArray(c.issuerPubX, 32)) {
-    throw new Error("Not a valid credential: issuerPubX must be an array of 32 bytes, each an integer in [0, 255].");
+    throw new Error(
+      "Not a valid credential: issuerPubX must be an array of 32 bytes, each an integer in [0, 255].",
+    );
   }
   if (!isByteArray(c.issuerPubY, 32)) {
-    throw new Error("Not a valid credential: issuerPubY must be an array of 32 bytes, each an integer in [0, 255].");
+    throw new Error(
+      "Not a valid credential: issuerPubY must be an array of 32 bytes, each an integer in [0, 255].",
+    );
   }
   // Expiry is a duration string (e.g. "90 days") that the holder page turns
   // into a TTL by extracting its leading number — reject anything that has no
   // digit to parse.
   if (typeof c.expiry !== "string" || !/\d/.test(c.expiry)) {
-    throw new Error("Not a valid credential: expiry must be a parseable string (e.g. \"90 days\").");
+    throw new Error('Not a valid credential: expiry must be a parseable string (e.g. "90 days").');
   }
   // Cross-deployment guard (#545): a credential minted against another
   // network or another set of contract IDs can never be proven here (the

@@ -1,4 +1,4 @@
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, render } from "@testing-library/react";
 import { renderWithIntl } from "@/lib/test-utils";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { LoginPageClient } from "../LoginPageClient";
