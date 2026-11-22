@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CONTRACTS } from "@/lib/stellar";
 import CopyButton from "@/components/CopyButton";
 import SDKPlayground from "@/components/SDKPlaygroundLazy";
+import CredentialSchemaPlayground from "@/components/CredentialSchemaPlaygroundLazy";
 
 export const metadata: Metadata = {
   title: "StellarCred — Developers",
@@ -365,6 +366,8 @@ require!(kyc_ok, Error::KycRequired);`}</Code>
       </Section>
 
       <SDKPlayground />
+
+      <CredentialSchemaPlayground />
 
       <Section title="Credential version compatibility">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
