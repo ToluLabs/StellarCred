@@ -23,18 +23,32 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 // Copied from public/circuits/{commit,commit3}.json by scripts/sync-circuit.mjs (prebuild).
 import commitCircuit from "./commit-circuit.json";
 import commit3Circuit from "./commit3-circuit.json";
+import { type CredentialType, parseIssueParams, parseIssuerClientOptions } from "./schemas";
 
-export const CREDENTIAL_TYPES = [
-  "kyc",
-  "age",
-  "jurisdiction",
-  "income",
-  "funds",
-  "accreditation",
-  "employment",
-] as const;
-
-export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
+export {
+  CREDENTIAL_TYPES,
+  type CredentialType,
+  CredentialTypeSchema,
+  IssuerClientOptionsSchema,
+  ClaimParamsSchema,
+  ExpirySchema,
+  KycAttributeSchema,
+  AgeAttributeSchema,
+  IncomeAttributeSchema,
+  JurisdictionAttributeSchema,
+  FundsAttributeSchema,
+  AccreditationAttributeSchema,
+  EmploymentAttributeSchema,
+  IssueParamsSchema,
+  IssuerValidationError,
+  type IssuerValidationIssue,
+  type IssueParamsValidationResult,
+  type ValidatedIssueParams,
+  formatZodIssues,
+  validateIssueParams,
+  parseIssueParams,
+  parseIssuerClientOptions,
+} from "./schemas";
 
 export interface ClaimParams {
   threshold_years?: string;
@@ -249,12 +263,8 @@ function normalizeExpiry(expiry: string | number, issuedAt: number): string {
   return `${days} days`;
 }
 
-function parsePrivateKey(privateKey: string): Uint8Array {
-  if (!/^[0-9a-fA-F]{64}$/.test(privateKey)) {
-    throw new Error(
-      "IssuerClient requires a 64-character hex secp256k1 private key (set ISSUER_PRIVATE_KEY server-side, never NEXT_PUBLIC_)",
-    );
-  }
+function parsePrivateKey(opts: IssuerClientOptions): Uint8Array {
+  const { privateKey } = parseIssuerClientOptions(opts);
   return Uint8Array.from(Buffer.from(privateKey, "hex"));
 }
 
@@ -262,7 +272,7 @@ export class IssuerClient {
   private readonly privateKey: Uint8Array;
 
   constructor(opts: IssuerClientOptions) {
-    this.privateKey = parsePrivateKey(opts?.privateKey);
+    this.privateKey = parsePrivateKey(opts);
   }
 
   /** The issuer's secp256k1 public key — register this with IssuerRegistry. */
@@ -276,10 +286,9 @@ export class IssuerClient {
    * the issuer key.
    */
   async issue(params: IssueParams): Promise<Credential> {
-    const { type, holder, issuerId, issuerName, expiry, attribute, claimParams } = params;
-    if (!CREDENTIAL_TYPES.includes(type)) {
-      throw new Error(`Unknown credential type: ${type as string}`);
-    }
+    const validated = parseIssueParams(params);
+    const { type, holder, issuerId, issuerName, expiry, claimParams } = validated;
+    const attribute = validated.attribute as Record<string, string>;
     const issuedAt = Math.floor(Date.now() / 1000);
     const value = attributeToValue(type, attribute);
     const salt = randomField();
@@ -323,10 +332,9 @@ export class IssuerClient {
  * credential accepted by the proof verifier.
  */
 export async function previewCredential(params: IssueParams): Promise<PreviewCredential> {
-  const { type, holder, issuerId, issuerName, expiry, attribute, claimParams } = params;
-  if (!CREDENTIAL_TYPES.includes(type)) {
-    throw new Error(`Unknown credential type: ${type as string}`);
-  }
+  const validated = parseIssueParams(params);
+  const { type, holder, issuerId, issuerName, expiry, claimParams } = validated;
+  const attribute = validated.attribute as Record<string, string>;
   const issuedAt = Math.floor(Date.now() / 1000);
   const value = attributeToValue(type, attribute);
   const salt = randomField();
