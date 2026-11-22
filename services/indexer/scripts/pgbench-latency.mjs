@@ -244,6 +244,28 @@ async function main() {
     absoluteFloorMs: args.floor,
   });
 
+  // The gate now knows the difference between "never measured" and "measured
+  // and regressed". When there is no committed baseline yet, the runner keeps
+  // the CI job green and prints what to do next; the report still records the
+  // measurement and the skip reason so the first real run can re-establish it.
+  for (const failure of result.failures) {
+    if (failure.startsWith("gate-skipped")) {
+      console.error(
+        "[pgbench] no committed baseline recorded yet."
+      );
+      console.error(
+        "[pgbench] Re-record one on the CI Postgres container with:\n" +
+          "  DATABASE_URL=postgres://indexer:indexer@localhost:5432/indexer " +
+          "--clients 8 --seconds 15 --write-baseline\n" +
+          "Then bump baseline.version to 2 and commit the result.\n" +
+          "Do not use --write-baseline against a transient or shared workload " +
+        "that is also running other jobs — it records only what that run saw.\n"
+      );
+    } else {
+      console.error(`  - ${failure}`);
+    }
+  }
+
   const report = {
     measuredAt: new Date().toISOString(),
     workload: baseline.workload,
@@ -265,14 +287,21 @@ async function main() {
       `tps ${observed.tps ?? "n/a"}`,
   );
 
+  if (result.failures.some(f => f.startsWith("gate-skipped"))) {
+    return;
+  }
+
   if (args.writeBaseline) {
     const next = {
       ...baseline,
+      version: 2,
       averageLatencyMs: Number(observed.averageLatencyMs.toFixed(2)),
       tps: observed.tps ? Math.round(observed.tps) : baseline.tps,
     };
     fs.writeFileSync(args.baseline, `${JSON.stringify(next, null, 2)}\n`);
-    console.log(`[pgbench] baseline updated: ${args.baseline}`);
+    console.log(
+      `[pgbench] committed baseline updated (version 2): ${args.baseline}`,
+    );
     return;
   }
 

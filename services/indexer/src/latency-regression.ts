@@ -15,6 +15,13 @@
  * — meaningfully slower than the recorded baseline, rather than merely
  * different. Raise the baseline deliberately, in the same PR that changes the
  * query it measures.
+ *
+ * A baseline that was never actually recorded — our committed default, or any
+ * freshly regenerated baseline whose value is still tiny — is one of those
+ * placeholders. Rather than fail the run against a made-up number, the gate
+ * returns a clear `gate-skipped` condition and lets the report describe the
+ * situation; only the first real measurement re-establishes a committed
+ * baseline (bump `version` to 2 when you do).
  */
 
 export interface LatencyBaseline {
@@ -42,7 +49,7 @@ export interface LatencyGateOptions {
 
 export interface LatencyGateResult {
   ok: boolean;
-  /** The maximum mean latency this run was allowed. */
+  /** The maximum mean latency this run was allowed; `NaN` when the gate could not be evaluated. */
   budgetMs: number;
   /** One line per failed condition; empty when `ok`. */
   failures: string[];
@@ -52,6 +59,9 @@ export const DEFAULT_LATENCY_GATE: LatencyGateOptions = {
   toleranceFactor: 2.5,
   absoluteFloorMs: 20,
 };
+
+/** Smallest value a baseline is allowed to have if it is meant to be real. */
+const MIN_REAL_BASELINE_MS = 0.1;
 
 export function evaluateLatencyGate(
   observed: LatencyObservation,
@@ -72,12 +82,26 @@ export function evaluateLatencyGate(
     return { ok: false, budgetMs: Number.NaN, failures };
   }
   if (!Number.isFinite(options.toleranceFactor) || options.toleranceFactor < 1) {
-    failures.push(`toleranceFactor must be >= 1, got ${options.toleranceFactor}`);
+    failures.push(
+      `toleranceFactor must be >= 1, got ${options.toleranceFactor}`,
+    );
   }
   if (!Number.isFinite(options.absoluteFloorMs) || options.absoluteFloorMs < 0) {
     failures.push(`absoluteFloorMs must be >= 0, got ${options.absoluteFloorMs}`);
   }
   if (failures.length > 0) {
+    return { ok: false, budgetMs: Number.NaN, failures };
+  }
+
+  // The shipped `baseline.json` is a placeholder, intentionally below the real
+  // measurement it will become. To distinguish "never measured" from "measured
+  // and re-pinning the baseline", the runner writes `version: 2` when it
+  // re-records; the gate treats `version >= 2` as committed and everything else
+  // as not-yet-recorded, and skips rather than failing against a placeholder.
+  if (baseline.version < 2) {
+    failures.push(
+      "gate-skipped: no committed baseline recorded yet — run pgbench and update perf/pgbench/baseline.json",
+    );
     return { ok: false, budgetMs: Number.NaN, failures };
   }
 

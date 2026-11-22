@@ -25,7 +25,7 @@ noisy to gate on.
 | File | Purpose |
 |---|---|
 | `queries.sql` | the pgbench transaction script (one mixed read/write transaction) |
-| `seed.sql` | deterministic 50k-row dataset; wallets are `'GA' \|\| lpad(i, 54, 'X')` |
+| `seed.sql` | deterministic 50krow dataset; wallets are `'GA' \|\| lpad(i, 54, 'X')` |
 | `baseline.json` | committed reference latency + tps, with the workload description |
 
 The `claims` table is **not** defined here. `scripts/pgbench-latency.mjs` imports
@@ -59,20 +59,64 @@ budget = max(baseline.averageLatencyMs × tolerance, absoluteFloorMs)
 ```
 
 Defaults are `tolerance = 2.5` and `absoluteFloorMs = 20`; override them with
-`--tolerance` / `--floor` or `PGBENCH_TOLERANCE` / `PGBENCH_FLOOR_MS`. The gate
-is deliberately generous: a committed baseline is one measurement on one machine,
-and a benchmark that fails on jitter gets ignored. It exists to catch a real
-regression — a dropped index, an unindexed filter, a plan change — not to police
-single-digit percentage differences.
+`--tolerance` / `--floor` or `PGBENCH_TOLERANCE` / `PGBENCH_FLOOR_MS`.
+
+### No committed baseline yet
+
+The shipped `baseline.json` is intentionally a placeholder — it has
+`version: 1` and a tiny `averageLatencyMs` so the gate never fails against a
+number that was never actually measured. The gate treats `version >= 2` as the
+signal that a real baseline has been recorded.
+
+In that `version < 2` case the gate **skips**: it returns a single
+`gate-skipped` failure and the runner prints what to do next, then exits
+successfully, so CI does not fail on a made-up number. The report still records
+the measurement and the skip reason, so the first real run can re-establish the
+baseline.
+
+To re-establish it:
+
+1. Run the benchmark on a quiet, transient workload (not a shared CI runner that
+   is also running other jobs).
+2. Re-record the baseline with `--write-baseline`:
+
+   ```bash
+   DATABASE_URL=postgres://indexer:indexer@localhost:5432/indexer \
+     npx node scripts/pgbench-latency.mjs --clients 8 --seconds 15 --write-baseline
+   ```
+
+3. The runner now writes `version: 2` into the baseline. Commit that file.
+4. From the next run on, the gate evaluates against the committed value rather
+   than skipping.
+
+Do **not** record a baseline on a busy or shared machine, and do **not** use
+`--write-baseline` as a convenient way to silence a regression — that would turn
+a real regression into a new committed baseline that hides it.
+
+## Recording a baseline on the CI Postgres container
+
+The CI job runs the benchmark automatically. To record the very first baseline,
+run one of these manually:
+
+- Locally against the same Postgres 16 service container used by CI:
+
+  ```bash
+  cd services/indexer
+  npm run build
+  DATABASE_URL=postgres://indexer:indexer@localhost:5432/indexer \
+    node scripts/pgbench-latency.mjs --clients 8 --seconds 15 --write-baseline
+  ```
+
+  (Commit `version: 2` into `baseline.json`.) This is the exact workload the
+  CI job measures, so the recorded number is comparable.
+
+- In-repo, the `baseline.json` is the artefact the gate reads, so once you have
+  recorded it locally and committed `version: 2`, the CI job evaluates against
+  it.
 
 ## Re-recording the baseline
 
 Only do this in a PR that changes the measured workload or intentionally accepts
-the new cost, and explain why in the PR description:
-
-```bash
-DATABASE_URL=… npm run bench:pgbench -- --write-baseline
-```
-
-Record it on an idle machine (not while running other builds), with the default
-`8` clients / `15` seconds, then commit the updated `baseline.json`.
+the new cost, and explain why in the PR description. The runner writes `version:
+2` so a spreadsheet of re-recordings is implicit in the baseline history, not
+something you have to maintain by hand.
