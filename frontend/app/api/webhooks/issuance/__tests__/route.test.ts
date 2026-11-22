@@ -10,7 +10,7 @@ const TEST_SECRET = "test_issuance_secret_123456";
 function makeSignedRequest(
   body: string,
   secret = TEST_SECRET,
-  headerName = "x-issuance-signature"
+  headerName = "x-issuance-signature",
 ) {
   const sig = createHmac("sha256", secret).update(body).digest("hex");
   const headers = new Headers({
@@ -30,10 +30,10 @@ describe("POST /api/webhooks/issuance (#846)", () => {
   afterAll(() => {
     // Restore the ambient secret so this suite does not leak its mutation into
     // other test files running in the same worker process.
-    if (originalSecret === undefined) {
-      delete process.env.ISSUANCE_WEBHOOK_SECRET;
-    } else {
+    if (originalSecret !== undefined) {
       process.env.ISSUANCE_WEBHOOK_SECRET = originalSecret;
+    } else {
+      delete process.env.ISSUANCE_WEBHOOK_SECRET;
     }
   });
 

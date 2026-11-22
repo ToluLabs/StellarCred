@@ -23,7 +23,12 @@
     "  commitments and never proven, so there is no VK to tie a version to.",
     "- Both fields are also asserted against circuits/testvectors/*.json by",
     "  circuits/scripts/testvectors.js, so a circuit edit that forgets to bump",
-    "  the version fails CI."
+    "  the version fails CI.",
+    "",
+    "COMPOSITE POLICY (issue #633): composite_eligibility_proof evaluates a",
+    "bounded boolean policy over several committed attributes and outputs a",
+    "single pass/fail. The policy encoding is documented in",
+    "circuits/composite_eligibility_proof/POLICY.MD."
   ],
   "circuits": {
     "kyc_proof": { "version": "1.0.0", "vkVersion": 1 },
@@ -36,6 +41,7 @@
     "date_range": { "version": "1.0.0", "vkVersion": 1 },
     "employment_proof": { "version": "1.0.0", "vkVersion": 1 },
     "aggregate_proof": { "version": "1.0.0", "vkVersion": 1 },
-    "set_membership": { "version": "1.0.0", "vkVersion": 1 }
+    "set_membership": { "version": "1.0.0", "vkVersion": 1 },
+    "composite_eligibility_proof": { "version": "1.0.0", "vkVersion": 1 }
   }
 }

@@ -87,6 +87,134 @@ pub fn assert_committed_and_signed(
     assert(verify_signature(issuer_x, issuer_y, sig, z));
 }
 
+// ---------------------------------------------------------------------------
+// Composite eligibility policy
+// ---------------------------------------------------------------------------
+//
+// A bounded boolean policy over several committed attributes, evaluated in a
+// single circuit so a holder can prove a small formula like
+//   (accredited OR income >= X) AND jurisdiction_eligible
+// in one proof, revealing only the final pass/fail bit.
+//
+// Policy encoding (documented, fixed-shape):
+//
+//   A policy is a list of up to MAX_TERMS terms. Each term is one of:
+//     - Threshold { attr, op, threshold }  : attr <op> threshold
+//     - Membership { attr, set_root }      : attr is in the committed set
+//   where `op` is one of LT / LE / GT / GE / EQ (encoded as u8 0..=4).
+//
+//   Terms are grouped into clauses joined by OR, and clauses are joined by
+//   AND. The shape is fixed at compile time by MAX_TERMS and MAX_CLAUSES so
+//   the circuit stays provable. Concretely the policy is:
+//
+//     AND over c in 0..MAX_CLAUSES of ( OR over t in clause c of term_t )
+//
+//   A clause with no active terms is treated as vacuously true (identity for
+//   AND); a term slot marked inactive is skipped. This lets callers express
+//   arbitrary small formulas within the bound without changing the circuit.
+//
+// Each attribute is a private witness `value` bound to a public `commitment`
+// via the same Poseidon2([value, salt], 2) commitment used everywhere else.
+// The issuer signature check is delegated to `assert_committed_and_signed`
+// per attribute so the trust foundation is identical to every other circuit.
+
+pub global MAX_TERMS: u32 = 8;
+pub global MAX_CLAUSES: u32 = 4;
+
+// Operator encoding for Threshold terms.
+pub global OP_LT: u8 = 0;
+pub global OP_LE: u8 = 1;
+pub global OP_GT: u8 = 2;
+pub global OP_GE: u8 = 3;
+pub global OP_EQ: u8 = 4;
+
+// A single policy term. `active` gates whether the term participates in its
+// clause. `is_membership` selects between Threshold and Membership semantics.
+pub struct Term {
+    active: bool,
+    is_membership: bool,
+    attr_index: u32,
+    op: u8,
+    threshold: Field,
+    set_root: Field,
+}
+
+// Evaluate one threshold comparison. Returns a boolean encoded as Field 0/1.
+fn eval_threshold(value: Field, op: u8, threshold: Field) -> Field {
+    let lt = (value as u64) < (threshold as u64);
+    let eq = value == threshold;
+    let result = if op == OP_LT {
+        lt
+    } else if op == OP_LE {
+        lt | eq
+    } else if op == OP_GT {
+        !lt & !eq
+    } else if op == OP_GE {
+        !lt
+    } else {
+        // OP_EQ (and any unknown op falls back to equality, which is the
+        // strictest safe interpretation).
+        eq
+    };
+    if result { 1 } else { 0 }
+}
+
+// Evaluate the full bounded policy. `values` are the private attribute
+// witnesses; `terms` is the fixed-shape policy; `clause_of` maps each term
+// slot to its clause index. Returns 1 if the policy passes, 0 otherwise.
+//
+// Membership is checked as Poseidon2([value, set_root], 2) == membership_tag,
+// where `membership_tag` is supplied per term as the committed set element.
+// This keeps the circuit bounded: the set is committed off-circuit and the
+// prover supplies the matching tag.
+pub fn eval_policy(
+    values: [Field; MAX_TERMS],
+    terms: [Term; MAX_TERMS],
+    clause_of: [u32; MAX_TERMS],
+    membership_tags: [Field; MAX_TERMS],
+) -> Field {
+    // Per-clause OR accumulators, initialised to 0 (false).
+    let mut clause_acc: [Field; MAX_CLAUSES] = [0; MAX_CLAUSES];
+
+    for i in 0..MAX_TERMS {
+        let t = terms[i];
+        if t.active {
+            let v = values[t.attr_index];
+            let term_result = if t.is_membership {
+                let tag = Poseidon2::hash([v, t.set_root], 2);
+                if tag == membership_tags[i] { 1 } else { 0 }
+            } else {
+                eval_threshold(v, t.op, t.threshold)
+            };
+            let c = clause_of[i];
+            // OR into the clause accumulator.
+            clause_acc[c] = if (clause_acc[c] == 1) | (term_result == 1) {
+                1
+            } else {
+                0
+            };
+        }
+    }
+
+    // AND across clauses. A clause with no active terms stays 0 here, which
+    // would incorrectly fail; callers must mark at least one term per clause
+    // they intend to be non-vacuous. To keep the documented "empty clause is
+    // true" semantics we track whether each clause saw any active term.
+    let mut clause_seen: [Field; MAX_CLAUSES] = [0; MAX_CLAUSES];
+    for i in 0..MAX_TERMS {
+        if terms[i].active {
+            clause_seen[clause_of[i]] = 1;
+        }
+    }
+
+    let mut result: Field = 1;
+    for c in 0..MAX_CLAUSES {
+        let clause_value = if clause_seen[c] == 1 { clause_acc[c] } else { 1 };
+        result = if (result == 1) & (clause_value == 1) { 1 } else { 0 };
+    }
+    result
+}
+
 /// Derives a deterministic per-app-context nullifier: Poseidon2([secret, app_context], 2).
 /// Unlocks Sybil-resistant, one-per-human gating within an `app_context`
 /// without linking identities across different applications (#395).

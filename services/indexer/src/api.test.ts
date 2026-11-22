@@ -125,7 +125,18 @@ describe("GET /health", () => {
     const res = await request(app).get("/health");
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("error");
+    expect(res.body.ready).toBe(false);
     expect(res.body.lag).toBe(120);
+  });
+
+  it("includes service and version metadata", async () => {
+    const res = await request(app).get("/health");
+    expect(res.body.service).toBe("stellarcred-indexer");
+    expect(typeof res.body.version).toBe("string");
+    expect(res.body.version.length).toBeGreaterThan(0);
+    expect(res.body.ready).toBe(true);
+    expect(typeof res.body.uptimeSeconds).toBe("number");
+    expect(Number.isNaN(Date.parse(res.body.timestamp))).toBe(false);
   });
 });
 

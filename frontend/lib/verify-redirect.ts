@@ -26,6 +26,87 @@ export interface ResolvedRedirectTarget {
 }
 
 /**
+ * Validates a return URL for redirect safety (#978).
+ * Enforces allowed schemes (https only for external, same-origin relative paths),
+ * prevents protocol-relative bypasses, userinfo authority tricks, and dangerous schemes.
+ */
+export function validateReturnUrl(
+  rawUrl: string,
+  currentOrigin: string,
+): { ok: boolean; error?: string; url?: URL } {
+  if (typeof rawUrl !== "string" || rawUrl.trim() === "") {
+    return { ok: false, error: "Return URL must be a non-empty string." };
+  }
+
+  const trimmed = rawUrl.trim();
+
+  // Reject protocol-relative URLs (//attacker.com) and backslash bypasses
+  if (trimmed.startsWith("//") || trimmed.startsWith("/\\") || trimmed.startsWith("\\\\")) {
+    return {
+      ok: false,
+      error: "Invalid return URL: Protocol-relative URLs are not permitted.",
+    };
+  }
+
+  // Reject dangerous schemes
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("javascript:") ||
+    lower.startsWith("data:") ||
+    lower.startsWith("vbscript:") ||
+    lower.startsWith("file:") ||
+    lower.startsWith("blob:")
+  ) {
+    return { ok: false, error: "Invalid return URL: Unsafe scheme." };
+  }
+
+  let dest: URL;
+  try {
+    if (trimmed.startsWith("/")) {
+      dest = new URL(trimmed, currentOrigin);
+      if (dest.origin !== new URL(currentOrigin).origin) {
+        return {
+          ok: false,
+          error: "Invalid return URL: Open redirect detected.",
+        };
+      }
+    } else {
+      dest = new URL(trimmed);
+    }
+  } catch {
+    return {
+      ok: false,
+      error: "Invalid return URL: Must be a well-formed URL.",
+    };
+  }
+
+  let originObj: URL;
+  try {
+    originObj = new URL(currentOrigin);
+  } catch {
+    originObj = new URL("http://localhost");
+  }
+
+  const isSameOrigin = dest.origin === originObj.origin;
+  if (!isSameOrigin && dest.protocol !== "https:") {
+    return {
+      ok: false,
+      error: "Invalid return URL: Must use HTTPS protocol.",
+    };
+  }
+
+  // Disallow userinfo (e.g. https://good.com@attacker.com)
+  if (dest.username || dest.password) {
+    return {
+      ok: false,
+      error: "Invalid return URL: Credentials in URL are forbidden.",
+    };
+  }
+
+  return { ok: true, url: dest };
+}
+
+/**
  * Pure calculation of the redirect destination URL and navigation type.
  * Ensures external URLs strictly require HTTPS and returns an error for invalid protocols or URLs.
  */
@@ -41,21 +122,12 @@ export function resolveVerifyRedirect(options: {
     return null;
   }
 
-  let dest: URL;
-  try {
-    if (returnUrl.startsWith("/")) {
-      dest = new URL(returnUrl, currentOrigin);
-    } else {
-      dest = new URL(returnUrl);
-    }
-  } catch {
-    return { error: "Invalid return URL: Must be a well-formed URL." };
+  const validation = validateReturnUrl(returnUrl, currentOrigin);
+  if (!validation.ok || !validation.url) {
+    return { error: validation.error ?? "Invalid return URL." };
   }
 
-  // Validate protocol for safety: external URLs MUST use https
-  if (dest.protocol !== "https:" && dest.origin !== currentOrigin) {
-    return { error: "Invalid return URL: Must use HTTPS protocol." };
-  }
+  const dest = validation.url;
 
   dest.searchParams.set("sc_verified", "true");
   dest.searchParams.set("sc_wallet", address);
@@ -63,7 +135,14 @@ export function resolveVerifyRedirect(options: {
     dest.searchParams.set("sc_claims", justIssuedClaims.join(","));
   }
 
-  if (dest.origin === currentOrigin) {
+  let originObj: URL;
+  try {
+    originObj = new URL(currentOrigin);
+  } catch {
+    originObj = new URL("http://localhost");
+  }
+
+  if (dest.origin === originObj.origin) {
     return {
       target: {
         kind: "internal",
@@ -122,7 +201,7 @@ export function performVerifyRedirect(options: VerifyRedirectOptions): void {
       if (resolved.target.kind === "internal") {
         router.push(resolved.target.url);
       } else {
-        // Never router.push an external URL — do a real browser navigation.
+        // Never router.push an external URL - do a real browser navigation.
         navigation.setHref(resolved.target.url);
       }
       return;

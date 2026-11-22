@@ -146,8 +146,8 @@ export interface Db {
    */
   issuerStats(issuer: string): IssuerStatsRow | Promise<IssuerStatsRow>;
 
-  /** Return all claims issued by a specific issuer. */
-  claimsByIssuer(issuer: string): ClaimRow[] | Promise<ClaimRow[]>;
+  /** Return claims issued by a specific issuer, newest first. Pass `limit` to cap the page size. */
+  claimsByIssuer(issuer: string, limit?: number): ClaimRow[] | Promise<ClaimRow[]>;
 
   /** Return lifecycle event history and verifications for a credential commitment. */
   credentialEvents(
@@ -377,4 +377,18 @@ export function toClaimRow(row: Record<string, unknown>): ClaimRow {
 /** Coerce a possibly-string aggregate (`COUNT(*)`, `MAX(...)`) to a number. */
 export function toCount(value: SqlParam | undefined): number {
   return value == null ? 0 : Number(value);
+}
+
+/** Metadata written by a future seeding PR (issue #907). */
+export interface IssuerMetadataInput {
+  address: string;
+  name: string | null;
+  url: string | null;
+  logo: string | null;
+  ledger_sequence: number;
+}
+
+/** An issuer_metadata row as read back from the database. */
+export interface IssuerMetadataRow extends IssuerMetadataInput {
+  updated_at: string;
 }

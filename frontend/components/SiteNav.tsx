@@ -3,18 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { IconBook2, IconCode, IconMenu2, IconX, IconHelp } from "@tabler/icons-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { resetOnboarding } from "@/lib/onboarding";
-
-const LINKS = [
-  { href: "/holder",  label: "Wallet",  id: "nav-holder" },
-  { href: "/verify",  label: "Verify",  id: "nav-verify" },
-  { href: "/issuer",  label: "Issuer" },
-  { href: "/apps",    label: "Apps",    id: "nav-apps" },
-  { href: "/login",   label: "Login",   id: "nav-login" },
-];
 
 function ShieldIcon() {
   return (
@@ -29,6 +22,16 @@ export function SiteNav() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
+  const t = useTranslations();
+
+  // Build LINKS inside the component so labels are reactive to locale changes
+  const LINKS = [
+    { href: "/holder",  label: t("nav.wallet"),  id: "nav-holder" },
+    { href: "/verify",  label: t("nav.verify"),  id: "nav-verify" },
+    { href: "/issuer",  label: t("nav.issuer") },
+    { href: "/apps",    label: t("nav.apps"),    id: "nav-apps" },
+    { href: "/login",   label: t("nav.login"),   id: "nav-login" },
+  ];
 
   useEffect(() => setMenuOpen(false), [pathname]);
 
@@ -59,13 +62,13 @@ export function SiteNav() {
           <span className="brand-icon">
             <ShieldIcon />
           </span>
-          StellarCred
+          {t("nav.brand")}
         </Link>
 
         <button
           type="button"
           className="nav-toggle"
-          aria-label="Toggle menu"
+          aria-label={t("nav.toggleMenu")}
           aria-expanded={menuOpen}
           aria-controls="mobile-nav-links mobile-nav-right"
           onClick={() => setMenuOpen((o) => !o)}
@@ -96,21 +99,21 @@ export function SiteNav() {
             title="Replay onboarding tour"
           >
             <IconHelp size={14} stroke={1.8} />
-            Tour
+            {t("nav.tour")}
           </button>
           <Link
             href="/docs"
             className={`seg-link${pathname.startsWith("/docs") ? " active" : ""}`}
           >
             <IconBook2 size={14} stroke={1.8} />
-            Docs
+            {t("nav.docs")}
           </Link>
           <Link
             href="/developers"
             className={`seg-link${pathname.startsWith("/developers") ? " active" : ""}`}
           >
             <IconCode size={14} stroke={1.8} />
-            Developers
+            {t("nav.developers")}
           </Link>
           <ThemeToggle />
           <LanguageSwitcher />

@@ -160,7 +160,7 @@ export class SentryClient {
     } catch (err) {
       logger.warn(
         stripSensitiveFields({ event: "sentry_delivery_failed" }),
-        `Failed to deliver error event to Sentry: ${(err as Error).message}`
+        `Failed to deliver error event to Sentry: ${(err as Error).message}`,
       );
       return false;
     }
@@ -277,7 +277,7 @@ export function getSentryClient(): SentryClient {
  */
 export async function captureServerException(
   error: unknown,
-  context?: SentryErrorContext
+  context?: SentryErrorContext,
 ): Promise<string> {
   return getSentryClient().captureException(error, context);
 }
@@ -288,7 +288,7 @@ export async function captureServerException(
  * forwards to Sentry, and returns a sanitized 500 error response.
  */
 export function withSentryRouteHandler(
-  handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>
+  handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>,
 ) {
   return async (req: NextRequest, ...args: any[]): Promise<NextResponse> => {
     try {
@@ -318,7 +318,7 @@ export function withSentryRouteHandler(
           path,
           sentryEventId: eventId,
         }),
-        `Unhandled API server exception on ${method} ${path}: ${(error as Error).message}`
+        `Unhandled API server exception on ${method} ${path}: ${(error as Error).message}`,
       );
 
       return Response.json(
@@ -327,7 +327,7 @@ export function withSentryRouteHandler(
           requestId,
           code: "INTERNAL_ERROR",
         },
-        { status: 500 }
+        { status: 500 },
       ) as unknown as NextResponse;
     }
   };

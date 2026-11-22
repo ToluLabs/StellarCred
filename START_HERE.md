@@ -1,296 +1,168 @@
-# START HERE - Issue #342 Admin Rotation Implementation
+# Start here — clone to a green local build
 
-**Status:** ✅ COMPLETE & READY FOR PRODUCTION
+One linear path from an empty directory to the same checks CI runs on your pull
+request. Follow the steps in order; each one ends with a command whose output
+tells you whether you may continue.
+
+This file is the **path**. The detail lives in the document that owns it:
+
+| You need | Read |
+|---|---|
+| Full install steps per toolchain, and the troubleshooting table | [SETUP.md](SETUP.md) |
+| The per-component command/output checklist, and known failure modes | [docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md) |
+| Workflow, review routing, trust-model invariants, ADRs, PR rules | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| What the product is and how to deploy it | [README.md](README.md) |
+| A subsystem reference (events, threat model, issuer lifecycle…) | [`docs/`](docs/) |
+
+**Done looks like:** `make doctor` prints `All checks passed — environment is
+ready.`, and the validation command for each component you touched exits 0.
 
 ---
 
-## 🎯 What Was Done
-
-Issue #342 has been **fully implemented**:
-
-✅ Added `set_admin()` to both IssuerRegistry and CredentialVerifier
-✅ Added `EventAdminChanged` event for audit trail  
-✅ Added `admin()` getter to CredentialVerifier
-✅ Created 12 comprehensive test functions
-✅ Generated 14 documentation files
-✅ 100% backward compatible
-✅ Production-ready code
-
----
-
-## 🚀 Next Step: Run CI Tests
-
-On a system with Rust installed, execute:
+## Step 1 · Clone
 
 ```bash
-cargo test --locked
+git clone https://github.com/ToluLabs/StellarCred.git
+cd StellarCred
 ```
 
-This will:
-- ✅ Run all 12 new admin rotation tests
-- ✅ Run all existing contract tests
-- ✅ Verify no breaking changes
-- ✅ Build WASM artifacts
-- ✅ Expected result: ALL PASS ✅
+To send a pull request from outside the maintainer team, fork first and clone
+your fork — see [CONTRIBUTING.md § Development workflow](CONTRIBUTING.md#development-workflow).
 
----
+## Step 2 · Install the toolchains your work needs
 
-## 📚 Documentation Files
+The repo spans four toolchains, but they are not all mandatory. Install only
+what your change touches, then read the matching section of
+[SETUP.md](SETUP.md) for the exact commands and pins:
 
-### Quick Navigation
-| File | Purpose | Read Time |
-|------|---------|-----------|
-| **EXECUTE_CI_NOW.md** | How to run tests | 2 min |
-| **QUICK_START.md** | 5-minute overview | 5 min |
-| **FINAL_VERIFICATION.md** | Full verification checklist | 10 min |
-| **README_IMPLEMENTATION.md** | Complete summary | 15 min |
+| Your change touches | You need | SETUP.md section |
+|---|---|---|
+| `contracts/` | rustup + the pinned Rust toolchain + `wasm32v1-none` target | §1 · Rust |
+| `circuits/`, `fixtures/` | `nargo` **and** `bb`, at the pinned pair — nothing else can reproduce a committed VK | §2 · Noir circuits |
+| `frontend/`, `frontend/packages/sdk/` | Node LTS + pnpm | §3 · Node.js + pnpm |
+| `services/indexer/` | Node + npm (bundled) | §4 · Indexer service |
 
-### Detailed Reference
-| File | Purpose | Read Time |
-|------|---------|-----------|
-| **ADMIN_ROTATION_IMPLEMENTATION.md** | Implementation overview | 20 min |
-| **IMPLEMENTATION_DETAILS.md** | Technical deep dive | 30 min |
-| **CI_TEST_GUIDE.md** | Comprehensive CI guide | 25 min |
-| **COMPLETION_REPORT.md** | Full status report | 20 min |
+Two traps worth knowing before you start:
 
-### Quick Reference
-| File | Purpose |
-|------|---------|
-| **FILES_MODIFIED.md** | What was changed |
-| **CHANGELOG.md** | Release notes |
-| **ADMIN_ROTATION_INDEX.md** | Navigation guide |
-| **IMPLEMENTATION_SUMMARY.txt** | Executive summary |
-| **CI_TEST_EXECUTION_SUMMARY.md** | Test execution info |
-| **RUN_CI_TESTS.sh** | Automated test script |
+- **The circuit toolchain is version-critical.** `nargo` and `bb` must match the
+  pins exactly; a mismatch silently produces a different verification key, and
+  the failure looks like your circuit is wrong. SETUP.md §2 shows both the error
+  text and the reinstall command.
+- **Contracts do not need `nargo`/`bb`.** The VKs, proofs and public inputs the
+  Rust tests verify against are committed under `fixtures/`, so
+  `cargo test --locked` runs on a Rust-only machine.
 
----
+## Step 3 · Verify the environment before you build anything
 
-## ⚡ Quick Commands
-
-### Run All Tests
 ```bash
-cargo test --locked
+make doctor
 ```
 
-### Build Artifacts
+This is the gate. It prints one line per pinned tool and exits non-zero if any
+version is wrong, so `make doctor && make build` short-circuits instead of
+producing a confusing compile error later. A passing run ends with:
+
+```
+All checks passed — environment is ready.
+```
+
+Fix every `[FAIL]` line — the message names the command that fixes it — and
+re-run. `make` itself needs GNU Make plus bash; on Windows run it from Git Bash,
+and if Make is unavailable run the per-component commands from Step 5 directly
+instead.
+
+## Step 4 · Install workspace dependencies
+
 ```bash
+cd frontend && pnpm install && cd ..        # frontend + SDK
+cd services/indexer && npm ci && cd ../..   # indexer (npm, not pnpm)
+```
+
+Contracts and circuits have no separate install step: `cargo` resolves from
+`Cargo.lock`, and circuit artifacts are committed.
+
+## Step 5 · Validate the components you changed
+
+Run the command for each component you touched and confirm the expected output.
+All of these run from the repo root.
+[docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md) has the full
+table — including the CI job each command mirrors and the failure modes specific
+to that component.
+
+```bash
+# contracts
+cargo test --locked
 cargo build --release --target wasm32v1-none --locked
+cargo clippy --workspace --all-targets -- -D warnings
+
+# circuits (only if you changed .nr files or fixtures — needs the pinned nargo + bb)
+bash ./circuits/scripts/build.sh
+node circuits/scripts/testvectors.js check
+
+# frontend (subshell: stays in the repo root)
+(cd frontend && pnpm lint && pnpm exec tsc --noEmit && pnpm test && pnpm build)
+
+# indexer
+(cd services/indexer && npm run build && npm test)
 ```
 
-### Lint Check
-```bash
-cargo clippy --all-targets -- -D warnings
-```
-
-### All At Once
-```bash
-cargo update --aggressive && cargo test --locked && cargo build --release --target wasm32v1-none --locked && cargo clippy --all-targets -- -D warnings
-```
-
----
-
-## 📊 Implementation Summary
-
-### Code Added (~396 lines total)
-- **Production Code:** ~82 lines
-- **Test Code:** ~314 lines
-- **Files Modified:** 4
-- **Breaking Changes:** 0
-- **Backward Compatibility:** 100%
-
-### Tests Added (12 total)
-- **IssuerRegistry:** 6 tests
-- **CredentialVerifier:** 6 tests
-- **All tests:** Structured and ready to run
-
-### Documentation Generated (14 files)
-- Implementation guides
-- Technical details
-- CI testing guides
-- Quick start guides
-- Navigation helpers
-
----
-
-## ✅ Implementation Checklist
-
-- [x] EventAdminChanged structs added
-- [x] set_admin() functions implemented
-- [x] admin() getter added
-- [x] Authorization enforcement verified
-- [x] Role transfer logic validated
-- [x] Event emission implemented
-- [x] 12 comprehensive tests created
-- [x] All tests properly structured
-- [x] No syntax errors
-- [x] Production-ready code quality
-- [x] 100% backward compatible
-- [x] Comprehensive documentation
-
----
-
-## 🎯 Issue #342 Requirements Met
-
-| Requirement | Status | Location |
-|-------------|--------|----------|
-| Admin-gated set_admin | ✅ | Both contracts |
-| Admin rotation works | ✅ | Fully functional |
-| Events emitted | ✅ | EventAdminChanged struct |
-| Tests: only admin can rotate | ✅ | 2 tests (1 per contract) |
-| Tests: new admin can operate | ✅ | 2 tests (1 per contract) |
-| Tests: old admin cannot operate | ✅ | 2 tests (1 per contract) |
-| Tests: events emit | ✅ | 2 tests (1 per contract) |
-| Tests: role transfer | ✅ | 2 tests (1 per contract) |
-
----
-
-## 🔒 Security Verified
-
-✅ Authorization: Only admin can rotate
-✅ Atomicity: No partial state updates
-✅ Audit Trail: Events logged with timestamp
-✅ Role Integrity: Delegated roles preserved
-✅ Isolation: Old admin immediately loses capabilities
-
----
-
-## 📋 Files Modified
-
-### contracts/issuer_registry/src/lib.rs
-- Added: EventAdminChanged struct (Line 61-70)
-- Added: set_admin() function (Line 376-412)
-
-### contracts/issuer_registry/src/test.rs
-- Added: 6 test functions (Line 797-945)
-
-### contracts/credential_verifier/src/lib.rs
-- Added: EventAdminChanged struct (Line 68-77)
-- Added: admin() getter (Line 452-457)
-- Added: set_admin() function (Line 460-496)
-
-### contracts/credential_verifier/src/test.rs
-- Added: 6 test functions (Line 944-1108)
-
----
-
-## 📈 Expected CI Test Results
-
-```
-running 400+ tests
-
-✅ admin_can_transfer_to_new_admin - PASS
-✅ admin_transfer_moves_roles_to_new_admin - PASS
-✅ only_current_admin_can_rotate - PASS
-✅ post_rotation_new_admin_can_perform_ops - PASS
-✅ post_rotation_old_admin_cannot_perform_ops - PASS
-✅ set_admin_emits_expected_event - PASS
-
-[all existing tests also pass]
-
-test result: ok. 400+ passed; 0 failed
-BUILD SUCCESSFUL
-```
-
----
-
-## 🚀 How to Proceed
-
-### Step 1: Read This File
-✅ You are here
-
-### Step 2: (Optional) Read Quick Overview
-→ Read: `QUICK_START.md` (5 minutes)
-
-### Step 3: Run Tests
-Execute on system with Rust:
-```bash
-cargo test --locked
-```
-
-### Step 4: Verify Results
-Check that all tests pass
-
-### Step 5: (Optional) Review Details
-→ Read: `IMPLEMENTATION_DETAILS.md` for technical details
-
-### Step 6: Deploy
-Once tests pass:
-1. Merge to main
-2. Deploy to testnet
-3. Deploy to mainnet
-
----
-
-## ❓ FAQ
-
-**Q: Where are the tests?**
-A: IssuerRegistry: Line 797-945 in test.rs
-   CredentialVerifier: Line 944-1108 in test.rs
-
-**Q: Where is the set_admin() function?**
-A: IssuerRegistry: Line 376-412 in lib.rs
-   CredentialVerifier: Line 460-496 in lib.rs
-
-**Q: Will tests pass?**
-A: Yes, all 12 new tests are properly structured and will pass.
-
-**Q: Is this backward compatible?**
-A: Yes, 100% backward compatible. No breaking changes.
-
-**Q: How long will tests take?**
-A: ~2 minutes total (update, test, build, lint)
-
-**Q: Where's the documentation?**
-A: 14 files in workspace root. Start with QUICK_START.md or README_IMPLEMENTATION.md
-
----
-
-## 📞 Need Help?
-
-### For Quick Overview
-→ `QUICK_START.md`
-
-### For Testing Details
-→ `CI_TEST_GUIDE.md`
-
-### For Technical Details
-→ `IMPLEMENTATION_DETAILS.md`
-
-### For Navigation
-→ `ADMIN_ROTATION_INDEX.md`
-
-### For Status Report
-→ `COMPLETION_REPORT.md`
-
----
-
-## ✨ Summary
-
-**What:** Issue #342 admin rotation implementation
-**Status:** ✅ COMPLETE
-**Quality:** Production-ready
-**Tests:** 12 comprehensive tests
-**Documentation:** 14 files
-**Backward Compatibility:** 100%
-**Ready for:** Production deployment
-
----
-
-## 🎯 Final Step
-
-### On a system with Rust installed, run:
+## Step 6 · Run the whole thing at once (recommended before opening a PR)
 
 ```bash
-cargo test --locked
+make build && make test && make lint     # or: make all
+cargo fmt --all                           # format the code you changed
 ```
 
-### Expected Result:
-✅ All tests pass
-✅ No warnings
-✅ WASM artifacts build
-✅ Production ready
+`make all` mirrors CI: build contracts, frontend and indexer; run contract,
+frontend, SDK-example and indexer tests; then clippy and the frontend linters.
+It does **not** run the circuits, accessibility or testnet-SDK jobs, and it does
+not replace reading the CI job list in the checklist.
+
+`make fmt` is *not* part of that: it runs `cargo fmt --all --check`, and parts of
+the committed contracts already fail it, so a fresh checkout reports diffs you did
+not cause. CI does not gate formatting — run `cargo fmt --all` and keep the
+reformat inside your own diff.
+
+## Step 7 · Open the pull request
+
+- One logical change per commit; messages follow
+  [Conventional Commits](CONTRIBUTING.md#commit-messages) — `commitlint` runs in CI.
+- Claim the issue before you write code, so two people don't build the same PR:
+  [CONTRIBUTING.md § Picking up an issue](CONTRIBUTING.md#picking-up-an-issue).
+- Link it with `Closes #<n>`, and name the invariant you preserved if your diff
+  touches a sensitive area:
+  [CONTRIBUTING.md § Sensitive areas](CONTRIBUTING.md#sensitive-areas-and-their-invariants).
+- Do **not** commit an implementation summary, status report or "files modified"
+  write-up. They describe a change that ends at merge, so they belong in the PR
+  description; if part of one is worth keeping, move that part into the document
+  that owns the topic (`circuits/README.md`, a component `README.md`, or
+  [`docs/`](docs/)).
+
+## Step 8 · Optional — run the product end to end
+
+Validation (Steps 1–7) never needs a wallet, a funded account, or deployed
+contracts. To actually issue and verify a credential on testnet, follow
+[README.md § Run it end to end (testnet)](README.md#run-it-end-to-end-testnet-manual)
+— it covers the Stellar CLI, `scripts/deploy.sh`, `frontend/.env.local`, and the
+`./scripts/demo.sh` smoke test.
 
 ---
 
-**Everything is ready. Run `cargo test --locked` to verify.**
+## If something fails
 
+1. Re-run `make doctor` first. Most "my build is broken" reports are a toolchain
+   version or a missing `PATH` entry (`~/.nargo/bin`, `~/.bb`), not a code bug.
+2. Look the symptom up in the troubleshooting table at the end of
+   [SETUP.md](SETUP.md), then in the pitfalls table of
+   [docs/CONTRIBUTOR_CHECKLIST.md](docs/CONTRIBUTOR_CHECKLIST.md).
+3. If a CI check is red and no local command reproduces it, find the job in
+   [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and run its step
+   commands in order — the checklist maps each job to the command to run.
+4. Still stuck: open an issue and paste the output of `make doctor` plus the
+   failing command.
+
+> Some root-level `.md` files in this repo are one-off reports left over from
+> closed issues (`ADMIN_ROTATION_*`, `IMPLEMENTATION_*`, `FINAL_VERIFICATION.md`,
+> `PUSH_COMPLETE.md`, and the old admin-rotation `QUICK_START.md`). They describe
+> work that already shipped. They are not onboarding documents — the current
+> path is this file, [SETUP.md](SETUP.md) and [CONTRIBUTING.md](CONTRIBUTING.md).

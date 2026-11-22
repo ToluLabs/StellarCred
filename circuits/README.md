@@ -232,3 +232,62 @@ jurisdictions were the intended ones. A verifier that means "not sanctioned" mus
 reject a proof presenting `mode = 1`, and one that means "region exclusive" must
 reject `mode = 0`; checking the mode alongside the list is the integrator's job.
 The witness API defaults to `mode = "0"` (`frontend/app/api/witness/route.ts`).
+
+### `composite_proof`
+
+A single-proof boolean policy over multiple committed attributes. The circuit evaluates a fixed-shape formula and reveals only the final `pass` bit — no attribute values, thresholds, or intermediate term results are leaked.
+
+Each attribute is independently committed and signed by an issuer, so the proof attests that every leaf is backed by a valid issuer signature over its commitment.
+
+#### Policy encoding
+
+The policy is a two-level boolean formula over a bounded number of terms:
+
+- **Max terms: 4 clauses** (`MAX_CLAUSES = 4`). Each clause is an AND of up to **2 comparisons** (`MAX_COMPS = 2`). The clauses are combined with OR. This yields a fixed circuit shape of at most 8 leaf comparisons and keeps the constraint count bounded for provability.
+
+```pass = (C0.c0 && C0.c1) || (C1.c0 && C1.c1) || (C2.c0 && C2.c1) || (C3.c0 && C3.c1)
+```
+
+Unused clauses and unused comparisons within a clause are disabled by setting their `op` to `0` (the clause is then forced true so it does not affect the final OR).
+
+Each comparison is encoded as a tuple of public parameters:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `op` | `u64` | `0` = comparison disabled (always true); `1` = enabled |
+| `attribute` | `u64` | Which committed attribute this comparison reads: `0` = accreditation, `1` = income, `2` = funds, `3` = jurisdiction, `4` = age (DOB days) |
+| `kind` | `u64` | Comparison kind: `0` = `>= threshold`, `1` = `<= threshold`, `2` = membership in `list` |
+| `threshold` | `u64` | RHS of the `>=`/`<=` comparison (ignored for membership) |
+| `list_idx` | `u64` | Index into the shared `list` for membership comparisons (ignored for thresholds) |
+
+The shared membership list is `[list; 8]` of ISO 3166-1 numeric codes, padded with `0`s. A membership comparison is true if the attribute value equals any non-zero entry in the list.
+
+Example policy — "(accredited OR income >= 200000) AND jurisdiction in {840, 826}":
+
+```toml
+clauses = [
+  [ { op = 1, attribute = 0, kind = 0, threshold = 1000000, list_idx = 0 },
+    { op = 1, attribute = 1, kind = 0, threshold = 200000, list_idx = 0 } ],
+  [ { op = 1, attribute = 3, kind = 2, threshold = 0, list_idx = 0 },
+    { op = 0, attribute = 0, kind = 0, threshold = 0, list_idx = 0 } ],
+  [ { op = 0, }, { op = 0, } ],
+  [ { op = 0, }, { op = 0, } ],
+]
+list = [840, 826, 0, 0, 0, 0, 0, 0]
+```
+
+The witness carries the four attribute values and salts (accreditation, income, funds, jurisdiction), each with its own issuer signature. The circuit recomputes each commitment, verifies each ECDSA signature, evaluates the policy, and asserts `pass == 1`.
+
+The public inputs for `composite_proof` are:
+
+| Index | Name | Type | Description |
+|-------|------|------|-------------|
+| 0 | `commitment_accreditation` | `Field` | `Poseidon2([net_worth, salt], 2)` |
+| 1 | `commitment_income` | `Field` | `Poseidon2([income, salt], 2)` |
+| 2 | `commitment_funds` | `Field` | `Poseidon2([balance, salt], 2)` |
+| 3 | `commitment_jurisdiction` | `Field` | `Poseidon2([country_code, salt], 2)` |
+| 4 | `issuer_x` | `[u8; 32]` | Issuer secp256k1 public key X coordinate (shared across all attributes) |
+| 5 | `issuer_y` | `[u8; 32]` | Issuer secp256k1 public key Y coordinate (shared across all attributes) |
+| 6 | `clauses` | `[[Comparison; 2]; 4]` | Four clauses, two comparisons each (the policy encoding above) |
+| 7 | `list` | `[u64; 8]` | Shared membership list (ISO 3166-1 numeric, padded with `0`s) |
+| 8 | `pass` | `bool` | The single revealed result of the policy evaluation |

@@ -3,11 +3,7 @@
 import type { Credential } from "./credential";
 import { loadCredentials, saveCredential } from "./credential";
 import { filterCredentialsForExport } from "./export-visibility";
-import {
-  currentDeploymentRef,
-  deploymentMismatchMessage,
-  type DeploymentRef,
-} from "./deployment";
+import { currentDeploymentRef, deploymentMismatchMessage, type DeploymentRef } from "./deployment";
 import {
   DecryptionError,
   openWithPassphrase,
@@ -16,6 +12,7 @@ import {
   type CredentialKdf,
   type SealedPassphraseEnvelope,
 } from "./credential-crypto";
+import { validateImportPayload, deduplicateCredentials } from "./credential-import-bounds";
 
 /**
  * Credential backup file. New exports are version 3 envelopes of the
@@ -40,9 +37,7 @@ type LegacyBackupEnvelope = CredentialEnvelope & {
 
 export type BackupEnvelope = EncryptedBackup | LegacyBackupEnvelope;
 
-export async function createEncryptedBackup(
-  passphrase: string
-): Promise<EncryptedBackup> {
+export async function createEncryptedBackup(passphrase: string): Promise<EncryptedBackup> {
   if (!passphrase) {
     throw new Error("Passphrase must not be empty");
   }
@@ -58,7 +53,7 @@ export async function createEncryptedBackup(
 
 export async function decryptBackup(
   backup: BackupEnvelope,
-  passphrase: string
+  passphrase: string,
 ): Promise<Credential[]> {
   if (backup.version !== 1 && backup.version !== 2 && backup.version !== 3) {
     throw new Error("Unsupported backup version");
@@ -83,7 +78,7 @@ export async function decryptBackup(
     throw err;
   }
 
-  const parsed = JSON.parse(plaintext);
+  const parsed = validateImportPayload(plaintext);
 
   if (!Array.isArray(parsed)) {
     throw new Error("Invalid backup contents");
@@ -94,41 +89,43 @@ export async function decryptBackup(
     if (
       !item ||
       typeof item !== "object" ||
-      !item.type ||
-      item.value === undefined ||
-      !item.commitment ||
-      !item.issuerId ||
-      !item.sig
+      !("type" in item) ||
+      !("value" in item) ||
+      (item as { value: unknown }).value === undefined ||
+      !("commitment" in item) ||
+      !("issuerId" in item) ||
+      !("sig" in item)
     ) {
       throw new Error("Invalid backup contents: malformed credential entry");
     }
     // Credentials restored via v1/legacy envelopes carry no envelope
     // deployment, so enforce the same-origin rule per credential too (#545).
-    const mismatch = deploymentMismatchMessage(item.deployment);
+    const mismatch = deploymentMismatchMessage((item as { deployment?: DeploymentRef }).deployment);
     if (mismatch) throw new Error(mismatch);
   }
 
-  return parsed as Credential[];
+  return deduplicateCredentials(parsed as Credential[]);
 }
 
 export async function mergeCredentials(imported: Credential[]): Promise<Credential[]> {
-  let current = await loadCredentials();
+  const deduplicated = deduplicateCredentials(imported);
 
-  for (const cred of imported) {
-    // Defense in depth: callers other than decryptBackup must not be able to
-    // merge a foreign-deployment credential past the import-time guard (#545).
+  // Pre-validate every credential before modifying storage to guarantee
+  // that a failed import leaves existing data completely unchanged (#977).
+  for (const cred of deduplicated) {
     const mismatch = deploymentMismatchMessage(cred.deployment);
     if (mismatch) throw new Error(mismatch);
+  }
+
+  let current = await loadCredentials();
+  for (const cred of deduplicated) {
     current = await saveCredential(cred);
   }
 
   return current;
 }
 
-export function downloadBackup(
-  backup: EncryptedBackup,
-  filename = "stellarcred-backup.json"
-) {
+export function downloadBackup(backup: EncryptedBackup, filename = "stellarcred-backup.json") {
   const blob = new Blob([JSON.stringify(backup, null, 2)], {
     type: "application/json",
   });
