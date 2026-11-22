@@ -92,6 +92,15 @@
 # applies, but it reads chain state and republishes it to consumers.
 /services/indexer/              @nonchalanttee22-lgtm @Psalmuel01
 
+# ── v1 public-surface freeze ────────────────────────────────────────────────
+# The canonical v1 compatibility page and the release-scope checklist define
+# the frozen public surface (contract ABI, events, errors, circuit layouts,
+# SDK signatures, and version promises). Changes to these files, or to any
+# frozen surface, require sign-off from the contract, circuits, and SDK
+# maintainers. Keep this block after the broad catch-alls so it takes effect.
+/VERSION_COMPATIBILITY.md       @nonchalanttee22-lgtm @Psalmuel01
+/docs/RELEASE_CHECKLIST.md      @nonchalanttee22-lgtm @Psalmuel01
+
 # ── CI/CD, release, and supply chain ────────────────────────────────────────
 # Workflows run with repository credentials and the release workflow
 # publishes to npm. Treat a workflow diff like a signing-path diff.
