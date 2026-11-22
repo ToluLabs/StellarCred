@@ -60,12 +60,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Poll the wallet's live network while connected, so a network switch made
-  // after connecting is caught without requiring a reconnect.
+  // after connecting is caught without requiring a reconnect. The synchronous
+  // reset for the disconnected case is derived during render instead of set
+  // inside the effect body.
   useEffect(() => {
-    if (!address) {
-      setNetworkMismatch(false);
-      return;
-    }
+    if (!address) return;
     let cancelled = false;
     const check = () => {
       getNetworkOk().then((ok) => {
@@ -86,7 +85,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const { address, walletId } = await kitConnect();
       setAddress(address);
-      localStorage.setItem(STORAGE_KEY, walletId);
+      try {
+        localStorage.setItem(STORAGE_KEY, walletId);
+      } catch {
+        // storage unavailable — connection still works for this session
+      }
     } catch (e) {
       const err = e instanceof WalletConnectError
         ? e
@@ -110,9 +113,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Mismatch is only meaningful while connected; report false otherwise.
+  const effectiveNetworkMismatch = address ? networkMismatch : false;
+
   return (
     <WalletContext.Provider
-      value={{ address, connecting, error, networkMismatch, connect, disconnect }}
+      value={{
+        address,
+        connecting,
+        error,
+        networkMismatch: effectiveNetworkMismatch,
+        connect,
+        disconnect,
+      }}
     >
       {children}
     </WalletContext.Provider>

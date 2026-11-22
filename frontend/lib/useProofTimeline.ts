@@ -49,7 +49,9 @@ export function useProofTimeline(cred: Credential | null) {
     }
   }, []);
 
-  // Sync and reconcile on mount or cred change
+  // Sync and reconcile on mount or cred change. The reconciled result is
+  // pushed into state via a subscription-style callback (external storage
+  // is the source of truth), not a direct setState in the effect body.
   useEffect(() => {
     if (!cred) return;
     const { commitment } = cred;
@@ -82,7 +84,8 @@ export function useProofTimeline(cred: Credential | null) {
     data.events.sort((a, b) => a.timestamp - b.timestamp);
 
     saveTimeline(commitment, data);
-    setEvents(data.events);
+    // Defer the state update so it is not a synchronous setState in the effect body.
+    queueMicrotask(() => setEvents(data.events));
   }, [cred, loadTimeline, saveTimeline]);
 
   // Cross-tab sync: listen for storage events from other tabs

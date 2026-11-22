@@ -801,7 +801,6 @@ jobs:
         env:
           PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
           RPC_URL: https://soroban-testnet.stellar.org
-      - name: Run tests with coverage
       # One jest run per job, with coverage. The Postgres leg shares a
       # single database across every test in the suite, and beforeEach only
       # clears claims/cursor — a second jest invocation in the same job would
