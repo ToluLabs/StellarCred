@@ -9,7 +9,8 @@ import { truncateAddress } from "@/lib/format";
 import CopyButton from "@/components/CopyButton";
 
 export function WalletButton() {
-  const { address, connecting, error, networkMismatch, connect, disconnect } = useWallet();
+  const { address, connecting, error, networkMismatch, ledgerDisconnected, connect, disconnect } =
+    useWallet();
   const t = useTranslations();
 
   return (
@@ -41,6 +42,35 @@ export function WalletButton() {
           <IconWallet size={14} aria-hidden="true" />
           {connecting ? t("wallet.connecting") : t("wallet.connect")}
         </button>
+      )}
+
+      {address && ledgerDisconnected && (
+        <div
+          role="alert"
+          style={{ display: "flex", alignItems: "flex-start", gap: "0.4rem", maxWidth: 320 }}
+        >
+          <IconAlertTriangle
+            size={13}
+            style={{ color: "var(--warn)", flexShrink: 0, marginTop: "0.15rem" }}
+            aria-hidden="true"
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            <span className="mono" style={{ color: "var(--warn)", fontSize: "0.7rem", textAlign: "right", lineHeight: 1.4 }}>
+              Ledger disconnected — reconnect it and open the Stellar app to keep signing. Nothing was
+              submitted.
+            </span>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={connect}
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem" }}
+              >
+                <IconRefresh size={12} aria-hidden="true" />
+                {t("wallet.retry")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {address && networkMismatch && (
