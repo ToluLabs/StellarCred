@@ -16,12 +16,11 @@ export const dynamic = "force-dynamic";
 
 const STATUSES: QueueStatusFilter[] = ["all", "pending", "failed", "resolved"];
 
-export default function AdminIssuancePage({
-  searchParams,
-}: {
-  searchParams: { status?: string; provider?: string; q?: string };
+export default async function AdminIssuancePage(props: {
+  searchParams: Promise<{ status?: string; provider?: string; q?: string }>;
 }) {
-  if (!isAdminPageAuthorized()) {
+  const searchParams = await props.searchParams;
+  if (!(await isAdminPageAuthorized())) {
     return (
       <section aria-labelledby="issuance-login">
         <h2 id="issuance-login">Admin sign-in required</h2>

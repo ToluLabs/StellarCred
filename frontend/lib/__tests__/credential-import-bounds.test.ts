@@ -128,7 +128,7 @@ describe("credential-import-bounds (#977)", () => {
       ...sampleCredential,
       commitment: "0xforeign",
       deployment: {
-        network: "public",
+        network: "mainnet",
         networkPassphrase: "Public Global Stellar Network ; September 2015",
         contracts: {
           credentialVerifier: "C1",
