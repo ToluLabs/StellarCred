@@ -244,6 +244,7 @@ describe("Ingester finality lag", () => {
       db,
     );
     expect(await ingester.tick()).toBe(1);
+    await ingester.flushWebhooks();
 
     expect(await db.claimByWalletAndType("GALICE", "kyc")).toMatchObject({
       revoked: 1,
@@ -300,6 +301,7 @@ describe("Ingester finality lag", () => {
       db,
     );
     expect(await ingester.tick()).toBe(1);
+    await ingester.flushWebhooks();
 
     expect(await db.claimByWalletAndType("GALICE", "kyc")).toMatchObject({
       revoked: 1,

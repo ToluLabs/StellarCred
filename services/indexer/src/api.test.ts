@@ -51,6 +51,7 @@ function makeIngester(overrides?: Partial<IngesterHealth>): Ingester {
     start: () => {},
     stop: () => {},
     shutdown: async () => {},
+    flushWebhooks: async () => {},
     getHealth: () => ({ ...health }),
     getMetrics: () => ({ ...metrics }),
   };
