@@ -354,6 +354,29 @@ describe("submitTransaction onRetry", () => {
       [2, 200],
     ]);
   });
+  it("still calls onRetry when the caller's retryOptions.onRetry throws", async () => {
+    const onRetry = vi.fn();
+    let calls = 0;
+    const result = await submitTransaction(
+      async () => {
+        calls++;
+        if (calls < 2) throw transient();
+        return "ok";
+      },
+      {
+        retryOptions: {
+          baseDelayMs: 0,
+          maxDelayMs: 0,
+          onRetry: () => {
+            throw new Error("caller hook broke");
+          },
+        },
+        onRetry,
+      },
+    );
+    expect(result).toBe("ok");
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("watchClaim polling", () => {

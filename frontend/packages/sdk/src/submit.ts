@@ -104,7 +104,11 @@ export async function submitTransaction<T>(
   const retryOptions: RetryOptions = {
     ...opts?.retryOptions,
     onRetry: (info) => {
-      opts?.retryOptions?.onRetry?.(info);
+      try {
+        opts?.retryOptions?.onRetry?.(info);
+      } catch {
+        // A failing caller hook must not suppress the onRetry callback below.
+      }
       if (opts?.onRetry && classifyTransientFailure(info.error)) {
         opts.onRetry(info.attempt, TransactionSubmissionError.fromRaw(info.error), info.delayMs);
       }
