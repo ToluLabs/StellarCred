@@ -12,7 +12,9 @@
     "dev": "npm run build && npm start",
     "build": "tsc",
     "test": "jest",
-    "test:coverage": "jest --coverage --coverageReporters=json-summary --coverageReporters=text"
+    "test:coverage": "jest --coverage --coverageReporters=json-summary --coverageReporters=text",
+    "bench:pgbench": "node scripts/pgbench-latency.mjs",
+    "bench:pgbench:self-test": "node scripts/pgbench-latency.mjs --self-test"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^12.3.0",

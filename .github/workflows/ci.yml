@@ -678,6 +678,77 @@ jobs:
           path: services/indexer/coverage
           retention-days: 7
 
+  # ── Indexer: PostgreSQL query-latency regression gate ──────────────────────
+  # Runs the indexer's real schema + hot statements through pgbench and fails
+  # when mean latency exceeds the committed baseline by more than the gate's
+  # tolerance. Guards the pool/index work of #1069: an index removed or a query
+  # made more expensive shows up here, not in production.
+  indexer-pgbench:
+    name: Indexer pgbench latency regression (Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/indexer
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: indexer
+          POSTGRES_PASSWORD: indexer
+          POSTGRES_DB: indexer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U indexer -d indexer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/indexer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # pgbench ships with the PostgreSQL contrib tools; the runner image may
+      # already have it, so only install when it is missing.
+      - name: Locate pgbench
+        run: |
+          set -euo pipefail
+          if command -v pgbench >/dev/null 2>&1; then
+            echo "PGBENCH_BIN=$(command -v pgbench)" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-contrib
+          PGBENCH=$(command -v pgbench || ls /usr/lib/postgresql/*/bin/pgbench | head -n 1)
+          echo "PGBENCH_BIN=$PGBENCH" >> "$GITHUB_ENV"
+
+      - name: Verify the latency gate logic
+        run: node scripts/pgbench-latency.mjs --self-test
+
+      - name: Run pgbench latency regression
+        run: node scripts/pgbench-latency.mjs --clients 8 --seconds 15
+        env:
+          DATABASE_URL: postgres://indexer:indexer@localhost:5432/indexer
+
+      - name: Upload pgbench report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: indexer-pgbench-${{ github.sha }}
+          path: services/indexer/perf/pgbench-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   # ── SDK integration tests ───────────────────────────────────────────────────
   sdk-integration:
     name: SDK integration tests (testnet)

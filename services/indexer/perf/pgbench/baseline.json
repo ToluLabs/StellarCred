@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "workload": "indexer mixed read/write (perf/pgbench/queries.sql), 8 clients, 15 s, 50k seeded claims",
+  "averageLatencyMs": 6,
+  "tps": 500
+}
