@@ -39,6 +39,8 @@ export interface SqlDialect {
   insert(sql: string, params?: SqlParam[]): Promise<number>;
   /** Close the underlying connection / pool. */
   close(): Promise<void>;
+  /** Connections currently in use; only pooled backends implement this. */
+  poolActiveConnections?(): number;
 
   /** Spelling of the nth (1-based) bind parameter. */
   placeholder(index: number): string;

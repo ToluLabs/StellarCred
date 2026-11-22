@@ -817,6 +817,23 @@ describe("on-chain data integrity (#612)", () => {
     expect(res.text).toMatch(/^indexer_state_checked 1$/m);
   });
 
+  it("exposes lag, ingestion rate, RPC latency and pool gauges (#1079)", async () => {
+    const ing = makeIngester({
+      lag: 7,
+      eventsProcessedTotal: 20,
+      uptimeSeconds: 10,
+      rpcLatencySeconds: 0.25,
+    } as Partial<IngesterHealth> & Partial<IngesterMetrics>);
+    const metricsApp = buildApp(db, ing, { rateLimitEnabled: false });
+    const res = await request(metricsApp).get("/metrics");
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("# TYPE ledger_processing_lag gauge");
+    expect(res.text).toMatch(/^ledger_processing_lag 7$/m);
+    expect(res.text).toMatch(/^event_ingestion_rate 2$/m);
+    expect(res.text).toMatch(/^rpc_latency_seconds 0\.25$/m);
+    expect(res.text).toMatch(/^db_pool_active_connections 0$/m);
+  });
+
   it("publishes every mismatch kind as a labelled series", async () => {
     // No indexed claims, so every per-kind counter is present and flat — the
     // series must exist from startup so an alert rule never goes missing.

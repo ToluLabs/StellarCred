@@ -26,6 +26,9 @@ export interface PostgresConnection {
     values?: SqlParam[],
   ): Promise<{ rows: unknown[] }>;
   end(): Promise<void>;
+  /** `pg` Pool counters; absent on a bare Client. */
+  totalCount?: number;
+  idleCount?: number;
 }
 
 export function createPostgresDialect(conn: PostgresConnection): SqlDialect {
@@ -67,6 +70,10 @@ export function createPostgresDialect(conn: PostgresConnection): SqlDialect {
 
     async close() {
       await conn.end();
+    },
+
+    poolActiveConnections() {
+      return Math.max(0, (conn.totalCount ?? 0) - (conn.idleCount ?? 0));
     },
 
     placeholder(index) {

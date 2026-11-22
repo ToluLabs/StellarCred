@@ -99,6 +99,8 @@ export interface IngesterMetrics {
   dbWriteLatencySeconds: number;
   /** Ledgers behind head (head - last processed). */
   lag: number;
+  /** Duration of the most recent Horizon (RPC) request in seconds. */
+  rpcLatencySeconds?: number;
 }
 
 function freshHealth(): IngesterHealth {
@@ -543,6 +545,7 @@ export function createIngester(config: Config, db: Db): Ingester {
   const startTime = Date.now();
   let eventsProcessedTotal = 0;
   let fetchErrorsTotal = 0;
+  let rpcLatencySeconds = 0;
 
   // ── Fetch current Horizon head ledger (cached per tick) ────────────────
   // We fetch this once at the start of each tick so lag is observable
@@ -591,7 +594,13 @@ export function createIngester(config: Config, db: Db): Ingester {
     url.searchParams.set("order", "desc");
     url.searchParams.set("limit", "1");
 
-    const res = await fetch(url.toString());
+    const rpcStart = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(url.toString());
+    } finally {
+      rpcLatencySeconds = (Date.now() - rpcStart) / 1000;
+    }
     if (!res.ok) {
       throw new Error(`Horizon /ledgers responded ${res.status}`);
     }
@@ -621,7 +630,13 @@ export function createIngester(config: Config, db: Db): Ingester {
       url.searchParams.set("cursor", cursor);
     }
 
-    const res = await fetch(url.toString());
+    const rpcStart = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(url.toString());
+    } finally {
+      rpcLatencySeconds = (Date.now() - rpcStart) / 1000;
+    }
     if (!res.ok) {
       if (res.status === 404) return [];
       throw new Error(`Horizon responded ${res.status}: ${await res.text()}`);
@@ -881,6 +896,7 @@ export function createIngester(config: Config, db: Db): Ingester {
         uptimeSeconds: uptimeSec,
         dbWriteLatencySeconds: lastTickDurationSec,
         lag,
+        rpcLatencySeconds,
       };
     },
   };

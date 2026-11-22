@@ -591,6 +591,10 @@ export function createSharedDb(dialect: SqlDialect): Db {
       return rows.map(toWebhookDelivery);
     },
 
+    poolActiveConnections() {
+      return dialect.poolActiveConnections?.() ?? 0;
+    },
+
     async close() {
       await dialect.close();
     },
