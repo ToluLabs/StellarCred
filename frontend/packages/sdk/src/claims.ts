@@ -20,8 +20,18 @@ import {
 // RpcError has been moved to ./errors.ts (issue #404)
 import { RpcError, ContractError, ContractErrorCode, parseContractError } from "./errors";
 import { ClaimCache, claimCacheKey, type ClaimCacheKey } from "./claim-cache";
+import {
+  abortReason,
+  computeBackoffDelay,
+  isJitterOption,
+  resolveJitter,
+  sleep,
+  type JitterOption,
+} from "./backoff";
 
 export { IndexerError };
+export { computeBackoffDelay } from "./backoff";
+export type { BackoffPolicy, JitterOption, JitterStrategy } from "./backoff";
 export type { IndexerClaimRow };
 
 // ---------------------------------------------------------------------------
@@ -177,11 +187,60 @@ function parseNetwork(raw: string | undefined): StellarNetwork {
 const _preset =
   NETWORK_PRESETS[parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))];
 
+/** Passed to the operation on every attempt made by {@link withRetry}. */
+export interface RetryContext {
+  /** Number of retries made so far: 0 on the first call, 1 on the first retry. */
+  attempt: number;
+  /** The caller's abort signal, if any. Forward it to `fetch` and friends. */
+  signal?: AbortSignal;
+}
+
+/** Details of a retry that {@link withRetry} is about to make. */
+export interface RetryAttemptInfo {
+  /** 1-based retry number (1 is the first retry). */
+  attempt: number;
+  /** Exact delay in milliseconds before this retry. */
+  delayMs: number;
+  /** The error that caused the retry. */
+  error: unknown;
+  /** Milliseconds spent since the first attempt started. */
+  elapsedMs: number;
+}
+
+/**
+ * Per-call retry settings. Omitted fields fall back to {@link configure}.
+ *
+ * Ceilings: `retries` caps the number of retries, `maxDelayMs` caps any single
+ * delay, and `maxElapsedMs` caps the total time spent retrying.
+ */
 export interface RetryOptions {
+  /** Maximum number of retries after the first attempt. Default 3. */
   retries?: number;
+  /** Smallest delay, and the starting point of the backoff curve. Default 500 ms. */
   baseDelayMs?: number;
+  /** Largest single delay between attempts. Default 5000 ms. */
   maxDelayMs?: number;
-  jitter?: boolean;
+  /**
+   * Total retry budget in milliseconds, measured from the first attempt. A
+   * retry whose delay would end past the budget is not made; the last error is
+   * thrown instead. Default: no budget.
+   */
+  maxElapsedMs?: number;
+  /**
+   * How delays are randomised. `true` (default) is `"full"`, `false` is
+   * `"none"`. See {@link JitterStrategy}.
+   */
+  jitter?: JitterOption;
+  /**
+   * Stops retrying when aborted: a pending delay is cancelled and the abort
+   * reason is thrown. Also passed to the operation through {@link RetryContext}.
+   */
+  signal?: AbortSignal;
+  /**
+   * Called before each retry with the exact delay. Exceptions thrown by this
+   * hook are ignored so a logging hook cannot break the retry loop.
+   */
+  onRetry?: (info: RetryAttemptInfo) => void;
 }
 
 /**
@@ -207,10 +266,16 @@ export interface SDKConfig {
   networkPassphrase?: string;
   baseUrl?: string;
   requestTimeoutMs?: number;
+  /** Default retry ceiling for every RPC and indexer call. See {@link RetryOptions.retries}. */
   retries?: number;
+  /** See {@link RetryOptions.baseDelayMs}. */
   baseDelayMs?: number;
+  /** See {@link RetryOptions.maxDelayMs}. */
   maxDelayMs?: number;
-  jitter?: boolean;
+  /** See {@link RetryOptions.maxElapsedMs}. Default `Infinity` (no budget). */
+  maxElapsedMs?: number;
+  /** See {@link RetryOptions.jitter}. Default `true` (full jitter). */
+  jitter?: JitterOption;
   /**
    * IssuerRegistry contract id. Only needed for the issuer reads in
    * `issuers.ts` (`listIssuers`, `getIssuer`, `isValidIssuer`); claim checks
@@ -275,6 +340,7 @@ const DEFAULT_CONFIG: Required<SDKConfig> = {
   baseDelayMs: 500,
   issuerRegistryId: env("STELLARCRED_ISSUER_REGISTRY_ID", "NEXT_PUBLIC_ISSUER_REGISTRY_ID"),
   maxDelayMs: 5000,
+  maxElapsedMs: Number.POSITIVE_INFINITY,
   jitter: true,
   indexerUrl: env("STELLARCRED_INDEXER_URL", "NEXT_PUBLIC_INDEXER_URL"),
   indexerApiKey: env("STELLARCRED_INDEXER_API_KEY"),
@@ -303,6 +369,36 @@ function assertValidClaimCacheConfig(opts: SDKConfig): void {
   }
 }
 
+/**
+ * Reject retry settings that would make `withRetry` spin or never return:
+ * negative or fractional retry counts, negative or non-finite delays, a
+ * non-positive budget, or an unknown jitter strategy.
+ */
+function assertValidRetryConfig(opts: Omit<RetryOptions, "signal" | "onRetry">): void {
+  if (opts.retries !== undefined && !(Number.isInteger(opts.retries) && opts.retries >= 0)) {
+    throw new ConfigError(`retries must be a non-negative integer, got ${opts.retries}`);
+  }
+  for (const key of ["baseDelayMs", "maxDelayMs"] as const) {
+    const value = opts[key];
+    if (value !== undefined && !(Number.isFinite(value) && value >= 0)) {
+      throw new ConfigError(`${key} must be a non-negative number of milliseconds, got ${value}`);
+    }
+  }
+  if (
+    opts.maxElapsedMs !== undefined &&
+    !(typeof opts.maxElapsedMs === "number" && opts.maxElapsedMs > 0)
+  ) {
+    throw new ConfigError(
+      `maxElapsedMs must be a positive number of milliseconds (or Infinity), got ${opts.maxElapsedMs}`,
+    );
+  }
+  if (opts.jitter !== undefined && !isJitterOption(opts.jitter)) {
+    throw new ConfigError(
+      `jitter must be true, false, "decorrelated", "full", "equal" or "none", got ${String(opts.jitter)}`,
+    );
+  }
+}
+
 let _config: Required<SDKConfig> = { ...DEFAULT_CONFIG };
 const _claimCache = new ClaimCache();
 
@@ -318,6 +414,7 @@ export function configure(opts: SDKConfig): void {
   });
   warnOnIndexerKeyInBrowser(opts.indexerApiKey);
   assertValidClaimCacheConfig(opts);
+  assertValidRetryConfig(opts);
   _config = { ..._config, ...opts };
   // Cached answers may have come from another registry, RPC or network.
   _claimCache.clear();
@@ -817,26 +914,60 @@ export function normalizeRpcError(raw: unknown, opts: NormalizedRpcErrorOptions)
   });
 }
 
-export async function withRetry<T>(operation: () => Promise<T>, opts?: RetryOptions): Promise<T> {
+/**
+ * Run `operation`, retrying transient failures (HTTP 429/5xx, timeouts,
+ * network errors) with jittered exponential backoff (#1056). Terminal errors
+ * such as invalid input, 4xx responses and contract panics are thrown at once.
+ *
+ * Retries stop at the first of: `retries` reached, a terminal error, the
+ * `maxElapsedMs` budget, or `signal` aborting. Delays default to full jitter
+ * over the exponential curve from `baseDelayMs` to `maxDelayMs`; see
+ * {@link RetryOptions}.
+ */
+export async function withRetry<T>(
+  operation: (context: RetryContext) => Promise<T>,
+  opts?: RetryOptions,
+): Promise<T> {
+  if (opts) assertValidRetryConfig(opts);
   const retries = opts?.retries ?? _config.retries;
   const baseDelayMs = opts?.baseDelayMs ?? _config.baseDelayMs;
   const maxDelayMs = opts?.maxDelayMs ?? _config.maxDelayMs;
-  const jitter = opts?.jitter ?? _config.jitter;
+  const maxElapsedMs = opts?.maxElapsedMs ?? _config.maxElapsedMs;
+  const jitter = resolveJitter(opts?.jitter ?? _config.jitter);
+  const signal = opts?.signal;
+  const startedAt = Date.now();
 
   let attempt = 0;
+  let previousDelayMs = 0;
   while (true) {
+    if (signal?.aborted) throw abortReason(signal);
     try {
-      return await operation();
-    } catch (error: any) {
+      return await operation({ attempt, signal });
+    } catch (error: unknown) {
+      // An abort is the caller's decision, not a transient failure: never retry it.
+      if (signal?.aborted) throw abortReason(signal);
       if (attempt >= retries || !isRetryable(error)) {
         throw error;
       }
-      attempt++;
-      let delay = Math.min(baseDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
-      if (jitter) {
-        delay = delay / 2 + Math.random() * (delay / 2);
+      const delayMs = computeBackoffDelay(attempt + 1, previousDelayMs, {
+        baseDelayMs,
+        maxDelayMs,
+        jitter,
+      });
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs + delayMs > maxElapsedMs) {
+        throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      attempt++;
+      previousDelayMs = delayMs;
+      if (opts?.onRetry) {
+        try {
+          opts.onRetry({ attempt, delayMs, error, elapsedMs });
+        } catch {
+          // A failing logging hook must not change retry behaviour.
+        }
+      }
+      await sleep(delayMs, signal);
     }
   }
 }
@@ -1835,6 +1966,12 @@ export interface WatchClaimOptions {
    * {@link TimeoutError} may reflect indexer lag rather than a missing claim.
    */
   source?: ClaimSource;
+  /**
+   * Retry settings for each poll's read. Stopping the watch (the returned
+   * function, a resolved claim, or the timeout) also cancels any retry still
+   * waiting, so a stopped watch sends no further RPC requests (#1056).
+   */
+  retryOptions?: Omit<RetryOptions, "signal">;
 }
 
 export interface WatchClaimCallbackOptions extends WatchClaimOptions {
@@ -1869,11 +2006,15 @@ export function watchClaim(
   let isStopped = false;
   let lastState = false;
   let isPolling = false;
+  // Aborted on stop so a poll that is waiting between retries gives up at once.
+  const lifecycle = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+  const retryOptions: RetryOptions = { ...opts?.retryOptions, signal: lifecycle?.signal };
 
   const stop = () => {
     isStopped = true;
     clearInterval(intervalId);
     clearTimeout(timeoutId);
+    lifecycle?.abort();
   };
 
   if (onChange) {
@@ -1884,6 +2025,7 @@ export function watchClaim(
         const verified = await hasClaim(wallet, claimType, {
           minThreshold,
           requestTimeoutMs: opts?.requestTimeoutMs,
+          retryOptions,
           source,
           // Watching is about noticing a change, so never answer from the
           // claim cache; the fresh result still refreshes it for other callers.
@@ -1912,6 +2054,7 @@ export function watchClaim(
           const verified = await hasClaim(wallet, claimType, {
             minThreshold,
             requestTimeoutMs: opts?.requestTimeoutMs,
+            retryOptions,
             source,
             fresh: true,
           });
