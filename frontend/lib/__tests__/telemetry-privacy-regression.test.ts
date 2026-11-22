@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { stripSensitiveFields, SAFE_FIELDS } from "../logger";
-import { summarizeProofs, type ProofRun } from "../telemetry-reporter";
+import { summarizeProofs } from "../telemetry-reporter";
+import type { ProofRun } from "../proof-perf";
 
 describe("telemetry-privacy-regression (#975)", () => {
   const sensitiveCredentialPayload = {
