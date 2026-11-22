@@ -32,6 +32,7 @@ export * from "./issuers"; // IssuerRegistry reads
 export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
+export * from "./offline"; // Air-gapped verification (#1059)
 export * from "./errors"; // Typed error taxonomy (#404)
 export * from "./validateCredential"; // Credential JSON validation (#27)
 export * from "./buildVerifyUrl";
