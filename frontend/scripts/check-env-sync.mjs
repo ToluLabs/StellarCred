@@ -13,15 +13,24 @@ const SCRIPT_NAME = basename(fileURLToPath(import.meta.url));
 
 const SYSTEM_ENV_VARS = new Set(["NODE_ENV", "NEXT_RUNTIME", "DEBUG", "INIT_CWD"]);
 
-const EXCLUDE_DIRS = new Set(["node_modules", ".next", "dist", "build", "coverage", ".git", "public/bb"]);
+const EXCLUDE_DIRS = new Set([
+  "node_modules",
+  ".next",
+  "dist",
+  "build",
+  "coverage",
+  ".git",
+  "public/bb",
+]);
 const EXCLUDE_FILE_PATTERNS = [
   /\.test\.(ts|tsx|js|mjs|jsx)$/,
   /\.spec\.(ts|tsx|js|mjs|jsx)$/,
   /validate-deploy-env\.mjs$/,
+  /assert-no-issuer-secrets-in-bundle\.mjs$/,
 ];
 
 function stripComments(line) {
-  return line.replace(/\r?$/, "").replace(/(^|[^:])\/\/.*$/g, '$1');
+  return line.replace(/\r?$/, "").replace(/(^|[^:])\/\/.*$/g, "$1");
 }
 
 function collectFiles(dir, extensions = new Set([".ts", ".tsx", ".js", ".mjs", ".jsx"])) {
@@ -32,12 +41,14 @@ function collectFiles(dir, extensions = new Set([".ts", ".tsx", ".js", ".mjs", "
       const fullPath = join(currentDir, entry.name);
       const relPath = relative(ROOT_DIR, fullPath).replace(/\\/g, "/");
       if (entry.isDirectory()) {
-        const shouldSkip = [...EXCLUDE_DIRS].some(e => relPath === e || relPath.startsWith(e + "/"));
+        const shouldSkip = [...EXCLUDE_DIRS].some(
+          (e) => relPath === e || relPath.startsWith(e + "/"),
+        );
         if (!shouldSkip) walk(fullPath);
         continue;
       }
       if (basename(fullPath) === SCRIPT_NAME) continue;
-      if (EXCLUDE_FILE_PATTERNS.some(p => p.test(relPath))) continue;
+      if (EXCLUDE_FILE_PATTERNS.some((p) => p.test(relPath))) continue;
       if (extensions.has(entry.name.slice(entry.name.lastIndexOf(".")))) files.push(fullPath);
     }
   }

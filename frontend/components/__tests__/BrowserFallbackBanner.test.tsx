@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { BrowserFallbackBanner } from "../BrowserFallbackBanner";
+import { BrowserFallbackBannerContent as BrowserFallbackBanner } from "../BrowserFallbackBannerContent";
 import * as hookModule from "@/lib/hooks/useBrowserCompatibility";
 import type { CapabilityIssue } from "@/lib/browser-compatibility";
 
