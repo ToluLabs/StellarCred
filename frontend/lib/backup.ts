@@ -112,17 +112,23 @@ export async function decryptBackup(
 }
 
 export async function mergeCredentials(imported: Credential[]): Promise<Credential[]> {
-  let current = await loadCredentials();
+  const current = await loadCredentials();
 
+  // Validate the whole batch before persisting anything so a rejected import
+  // cannot leave a partially merged credential store behind (#977).
   for (const cred of imported) {
     // Defense in depth: callers other than decryptBackup must not be able to
     // merge a foreign-deployment credential past the import-time guard (#545).
     const mismatch = deploymentMismatchMessage(cred.deployment);
     if (mismatch) throw new Error(mismatch);
-    current = await saveCredential(cred);
   }
 
-  return current;
+  let merged = current;
+  for (const cred of imported) {
+    merged = await saveCredential(cred);
+  }
+
+  return merged;
 }
 
 export function downloadBackup(
