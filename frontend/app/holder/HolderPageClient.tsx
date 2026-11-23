@@ -180,16 +180,12 @@ function HolderInner() {
       </div>
 
       <OnboardingNudge />
-
       <ConfigBanner />
-
       <WalletOnboarding />
-
       {/* Hardware-wallet credential management guide (#1040). */}
       {walletId === "ledger" && <LedgerGuide address={address} />}
 
       <SponsorBanner />
-
       {isPreview && (
         <div
           style={{
