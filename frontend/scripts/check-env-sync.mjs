@@ -18,6 +18,7 @@ const EXCLUDE_FILE_PATTERNS = [
   /\.test\.(ts|tsx|js|mjs|jsx)$/,
   /\.spec\.(ts|tsx|js|mjs|jsx)$/,
   /validate-deploy-env\.mjs$/,
+  /assert-no-issuer-secrets-in-bundle\.mjs$/,
 ];
 
 function stripComments(line) {
