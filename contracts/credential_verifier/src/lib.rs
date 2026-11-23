@@ -407,11 +407,26 @@ impl CredentialVerifier {
             panic_with_error!(&env, Error::VersionDeprecated);
         }
 
+        let vk_key = DataKey::Vk(credential_type.clone(), version);
         let vk: Bytes = env
             .storage()
             .persistent()
-            .get(&DataKey::Vk(credential_type, version))
+            .get(&vk_key)
             .unwrap_or_else(|| panic_with_error!(&env, Error::VkNotSet));
+
+        // Automatic rent management: every verification of an active schema
+        // extends the VK blob and the latest-version pointer, so actively
+        // used credential types never expire. extend_ttl is a no-op until
+        // the TTL falls below VK_BUMP_THRESHOLD.
+        env.storage()
+            .persistent()
+            .extend_ttl(&vk_key, VK_BUMP_THRESHOLD, VK_TTL);
+        let latest_key = DataKey::LatestVersion(credential_type);
+        if env.storage().persistent().has(&latest_key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(&latest_key, VK_BUMP_THRESHOLD, VK_TTL);
+        }
 
         match UltraHonkVerifier::new(&env, &vk) {
             Ok(verifier) => verifier.verify(&env, &proof, &public_inputs).is_ok(),

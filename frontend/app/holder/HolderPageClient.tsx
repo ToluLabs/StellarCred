@@ -97,9 +97,7 @@ function HolderInner() {
   const expiringSoon = displayCreds
     .filter((c) => proofStatus(c) === "proved" && isExpiringSoon(c, 7))
     .sort((a, b) => daysRemaining(a) - daysRemaining(b));
-  const activeProved = displayCreds.filter(
-    (c) => proofStatus(c) === "proved" && !isExpiringSoon(c, 7),
-  );
+  const activeProved = displayCreds.filter((c) => proofStatus(c) === "proved" && !isExpiringSoon(c, 7));
   const expired = displayCreds.filter((c) => proofStatus(c) === "expired");
 
   // Warm the UltraHonk backend for whatever credential types the user still
@@ -159,10 +157,7 @@ function HolderInner() {
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
         <div className="row" style={{ gap: "0.75rem" }}>
-          {/* Selective disclosure presets (#386): a named, shareable bundle
-              of several claim types — defined and shared from its own page
-              rather than crowding this one, but linked from here since the
-              issue asks for the entry point to live on the holder page. */}
+          {/* Selective disclosure presets (#386): defined on their own page, linked from here. */}
           <a href="/presets" className="btn btn-secondary">
             Presets
           </a>
@@ -180,9 +175,7 @@ function HolderInner() {
       </div>
 
       <OnboardingNudge />
-
       <ConfigBanner />
-
       <WalletOnboarding />
 
       {/* Hardware-wallet credential management guide (#1040). */}
