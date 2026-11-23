@@ -117,6 +117,33 @@ Emitted when a trusted issuer explicitly revokes a holder's cached proof for a c
 - **When it fires:**
   - `revoke(issuer, holder, credential_type)`: Emitted when the registered issuer marks the proof record as revoked.
 
+#### `proof_reg.rev_page` — Paginated Revocation Query
+
+Emitted when a client queries a paginated slice of the on-chain revocation registry.
+
+- **Topics:** `("proof_reg", "rev_page")`
+  - `topics[0]`: `symbol_short!("proof_reg")` (`Symbol("proof_reg")`)
+  - `topics[1]`: `symbol_short!("rev_page")` (`Symbol("rev_page")`)
+- **Payload (`EventRevocationPageQueried`):**
+  ```rust
+  pub struct EventRevocationPageQueried {
+      pub start: u32,
+      pub limit: u32,
+      pub count: u32,
+      pub total: u32,
+      pub next_cursor: Option<u32>,
+  }
+  ```
+  | Field | Type | Description |
+  |---|---|---|
+  | `start` | `u32` | Zero-based start cursor requested. |
+  | `limit` | `u32` | Effective page size limit applied. |
+  | `count` | `u32` | Number of revocation entries returned in the page. |
+  | `total` | `u32` | Total number of revoked credentials in the registry. |
+  | `next_cursor` | `Option<u32>` | Next cursor to query, or `None` if no more pages exist. |
+- **When it fires:**
+  - `get_revocations_page(start, limit)`: Emitted on every paginated query to provide verifiable metadata for pagination progress.
+
 #### `proof_reg.self_rev` — Holder Self-Revocation
 
 Emitted when a holder removes one or all of their cached proofs.
