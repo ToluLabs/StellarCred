@@ -129,6 +129,61 @@ StellarCred.invalidate(wallet, "kyc"); // or invalidate(wallet) for every type
 - The cache lives in the current process (or browser tab). It is per-instance,
   not shared between servers.
 
+## Telemetry (opt-in, zero-PII)
+
+Diagnostic telemetry is **off until you explicitly turn it on**. Nothing is
+recorded, buffered, or sent before the first
+`configureTelemetry({ enabled: true, … })` call.
+
+```ts
+import { configureTelemetry, flushTelemetry, trackEvent, withTelemetry } from "@stellarcred/sdk";
+
+configureTelemetry({
+  enabled: true, // required: explicit opt-in
+  endpoint: "https://telemetry.example.com/v1/events", // or supply a `sink`
+  appId: "my-app", // optional, non-identifying
+});
+
+// Record a sanitized event
+trackEvent("claim.check", { source: "chain", outcome: "success" });
+
+// Or time an operation — only name, duration and outcome are reported
+await withTelemetry("claim.read", () => StellarCred.hasClaim(wallet, "kyc"));
+
+await flushTelemetry(); // optional: called on batch size and on an interval
+```
+
+Every event is sanitized before it can leave the process:
+
+- **Secrets are scrubbed.** Stellar `G…`/`C…`/`S…` keys, 64- and 128-character
+  hex keys (including `0x…`), JWTs, e-mail addresses, `Bearer` tokens and
+  provider API keys are replaced with `[redacted]`.
+- **Sensitive attributes are dropped.** Keys describing private keys, seeds,
+  mnemonics, passwords, API keys, tokens, signatures, credentials, claims,
+  proofs, witnesses, nullifiers, wallets, addresses, accounts, holders and
+  identity fields are removed entirely, at any nesting depth.
+- **Names are normalised** to `[a-z0-9_.-]`, so an address pasted into an
+  event name cannot survive.
+- **Transport is tightened.** Endpoints must be `https://` (loopback `http://`
+  only with `allowInsecureLocalhost: true`), and URLs with credentials, query
+  strings or fragments are rejected. Requests are sent with
+  `credentials: "omit"`, `referrerPolicy: "no-referrer"` and `cache: "no-store"`.
+- **Failures never break the host.** Sink and network errors are swallowed;
+  only invalid explicit configuration throws `TelemetryConfigError`.
+
+Provide your own pipeline with `sink` instead of an endpoint:
+
+```ts
+configureTelemetry({ enabled: true, sink: (events) => myCollector.send(events) });
+
+disableTelemetry(); // stop and discard buffered events at any time
+resetTelemetry(); // restore the initial disabled state
+```
+
+The full options interface is `TelemetryOptions`; the sanitizers
+(`sanitizeTelemetryAttributes`, `sanitizeTelemetryValue`, `isSensitiveTelemetryKey`)
+are exported so integrators can apply the same filter to their own diagnostics.
+
 ## Bootstrapping from a deployment (capability descriptor)
 
 Instead of supplying contract IDs one by one, the SDK can configure itself
