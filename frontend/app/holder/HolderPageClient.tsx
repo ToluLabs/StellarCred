@@ -80,10 +80,8 @@ function HolderInner() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
-  // A transfer QR opened directly (native camera app -> /holder?import=...)
-  // lands here with the payload already in the URL — prompt for the
-  // passphrase immediately, and strip it from the URL so a refresh or the
-  // back button doesn't re-trigger the prompt or leave ciphertext in history.
+  // Open transfer QR payloads immediately, then strip the ciphertext from the
+  // URL so refresh/back cannot retrigger the passphrase prompt.
   useEffect(() => {
     const payload = searchParams.get(IMPORT_PARAM);
     if (!payload) return;
@@ -102,11 +100,8 @@ function HolderInner() {
   );
   const expired = displayCreds.filter((c) => proofStatus(c) === "expired");
 
-  // Warm the UltraHonk backend for whatever credential types the user still
-  // needs to prove, in the background, once the wallet is actually connected
-  // (never in preview mode — there's nothing real to prove yet). Only the
-  // types actually present in `unproved` are warmed, not all seven circuits,
-  // to avoid paying wasm-init cost for types the user has no credential for.
+  // Warm only unproved credential types after wallet connection; skip preview
+  // mode to avoid unnecessary WASM initialization.
   const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
   useWarmProver(unprovedTypes, Boolean(address));
 
