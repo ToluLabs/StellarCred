@@ -15,6 +15,7 @@ import {
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
+import { LedgerGuide } from "@/components/LedgerGuide";
 import { OnboardingNudge } from "@/components/OnboardingNudge";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings";
@@ -59,7 +60,7 @@ type BulkAction = {
 };
 
 function HolderInner() {
-  const { address, connect } = useWallet();
+  const { address, walletId, connect } = useWallet();
   const isPreview = usePreviewMode();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -180,6 +181,9 @@ function HolderInner() {
       <ConfigBanner />
 
       <WalletOnboarding />
+
+      {/* Hardware-wallet credential management guide (#1040). */}
+      {walletId === "ledger" && <LedgerGuide address={address} />}
 
       <SponsorBanner />
 
