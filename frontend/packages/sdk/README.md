@@ -1024,6 +1024,32 @@ createSession(req, result.wallet);
 
 ---
 
+## Batch signature verification (worker threads)
+
+Verifying thousands of wallet-signed presentations one at a time blocks the Node.js
+event loop. `BatchVerifierPool` runs the Ed25519 checks on `worker_threads` instead and
+returns one result per input, in input order. It is **Node.js only** and exported from
+`@stellarcred/sdk/server` (not the browser entry point).
+
+```ts
+import { BatchVerifierPool, verifyWalletSignaturesBatch } from "@stellarcred/sdk/server";
+
+// One-shot: starts a temporary pool and tears it down afterwards.
+const results = await verifyWalletSignaturesBatch(presentations, { concurrency: 4 });
+
+// Long-lived: reuse workers across batches, then close.
+const pool = new BatchVerifierPool({ chunkSize: 128, chunkTimeoutMs: 10_000 });
+const more = await pool.verify(presentations); // [{ index, wallet, valid, reason? }]
+await pool.close();
+```
+
+Each `presentation` is `{ wallet, message, signature }` (signature as hex, base64, or bytes).
+The result for an item matches `verifyWalletSignature(wallet, message, signature)`; a failed
+item carries a `reason`: `invalid_wallet`, `invalid_signature`, `worker_error`, `timeout`, or
+`pool_closed`. Bad items never reject the batch. Options: `concurrency` (default: CPU cores - 1),
+`chunkSize` (default 64), `chunkTimeoutMs` (default 30 000; a stuck worker is replaced).
+This checks signatures only — it does not read on-chain claims; use `hasClaim` for that.
+
 ## Release Process
 
 The SDK follows [Semantic Versioning](https://semver.org/). Releases are fully automated through `.github/workflows/release.yml`.
@@ -1146,20 +1172,3 @@ switch (status) {
 - **Dynamic On-Demand Module Loading**:
   - Heavy RPC modules and Soroban contract bindings (`@stellar/stellar-sdk` and `proof-registry`) are loaded on-demand via dynamic `import()` only when on-chain contract queries (`hasClaim`, `getClaim`) are executed.
   - Offline helpers like `buildVerifyUrl()`, `buildBadgeUrl()`, `buildBadgeEmbedCode()`, `CLAIM_TYPES`, `TimeoutError`, and `createClaimGate()` execute with zero network overhead and without loading heavy Soroban dependencies.
-
-### Real-time events (EventStream)
-
-```ts
-import { EventStream } from "@stellarcred/sdk";
-
-const stream = new EventStream({
-  url: "wss://indexer.example/events",
-  transport: "websocket", // or "sse" with an https:// URL
-  onError: console.error,
-});
-
-stream.on("proof.submitted", (e) => console.log(e.holder, e.claim, e.expiry));
-stream.on("proof.revoked", (e) => console.log("revoked", e.claim));
-stream.connect();
-// later: stream.disconnect();
-```
