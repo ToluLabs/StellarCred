@@ -1,0 +1,487 @@
+[
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Error",
+      "cases": [
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "VkNotSet",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "VkInvalid",
+          "value": 3
+        },
+        {
+          "doc": "The requested VK version has been deprecated by the admin; new\\nsubmissions against it are rejected.",
+          "name": "VersionDeprecated",
+          "value": 4
+        },
+        {
+          "doc": "A VK is already registered at the requested (credential_type,\\nversion); VKs are immutable once set \\xe2\\x80\\x94 register a new version instead.",
+          "name": "VkAlreadySet",
+          "value": 5
+        },
+        {
+          "doc": "The version may still be referenced by a valid cached proof.",
+          "name": "VkStillReferenceable",
+          "value": 6
+        },
+        {
+          "doc": "The caller is not the holder of the role required by this function.",
+          "name": "RoleNotHeld",
+          "value": 7
+        },
+        {
+          "doc": "`revoke_role` named an address that is not the current holder of the role.",
+          "name": "RoleHolderMismatch",
+          "value": 8
+        },
+        {
+          "doc": "`accept_admin` was called with no pending proposal (#342).",
+          "name": "NoPendingAdmin",
+          "value": 9
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Admin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Pending root-admin candidate set by `propose_admin` and consumed by\\n`accept_admin` (#342).",
+            "name": "PendingAdmin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "RBAC: role name (Symbol) \\xe2\\x86\\x92 current holder (Address).",
+            "name": "Roles"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Verification key bytes, keyed by (credential-type symbol, version).",
+            "name": "Vk",
+            "type_": [
+              "symbol",
+              "u32"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Tracks the latest VK version registered for a credential type.",
+            "name": "LatestVersion",
+            "type_": [
+              "symbol"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Marks a specific (credential_type, version) as deprecated \\xe2\\x80\\x94 no longer\\naccepted for new submissions. Old proofs using this version remain\\nreadable (the VK is not deleted).",
+            "name": "DeprecatedVersion",
+            "type_": [
+              "symbol",
+              "u32"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Contract-controlled timestamp at which a version was deprecated.",
+            "name": "DeprecatedAt",
+            "type_": [
+              "symbol",
+              "u32"
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Timestamp of the last upgrade (for audit trail).",
+            "name": "LastUpgradeTimestamp"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when a verification key is registered or replaced.\\nTopics: (\"cred_ver\", \"vk_set\", credential_type)",
+      "lib": "",
+      "name": "EventVkSet",
+      "fields": [
+        {
+          "doc": "The admin address that performed the update.",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "Contract version at time of VK registration (for audit trail).",
+          "name": "contract_version",
+          "type_": "u32"
+        },
+        {
+          "doc": "The VK version being registered.",
+          "name": "version",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when an obsolete verification key is removed.\\nTopics: (\"cred_ver\", \"vk_pruned\", credential_type)",
+      "lib": "",
+      "name": "EventVkPruned",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "Contract version at time of VK pruning (for audit trail).",
+          "name": "contract_version",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "version",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the root admin address.",
+      "name": "admin",
+      "inputs": [],
+      "outputs": [
+        "address"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register the verification key for a credential circuit. Admin-role only.\\nA version's VK is immutable once set \\xe2\\x80\\x94 re-registering an existing\\n(credential_type, version) panics with `VkAlreadySet`; register a new\\n(higher) version to upgrade. The VK is validated by parsing it before\\nstorage, rejecting malformed keys at set time.",
+      "name": "set_vk",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "version",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "vk",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Admin-only: upgrade contract to new WASM, emitting an upgrade event.",
+      "name": "upgrade",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "new_wasm_hash",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the contract version as an encoded u32.\\nEncoding: (major * 1000000) + (minor * 1000) + patch\\nExample: 1.2.3 -> 1002003",
+      "name": "version",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "True iff `address` currently holds `role`.",
+      "name": "has_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when the contract is upgraded (new WASM deployed).\\nTopics: (\"cred_ver\", \"upgraded\")",
+      "lib": "",
+      "name": "EventContractUpgraded",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "upgraded_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Assign `address` as the holder of `role`, replacing any previous holder.\\nRoot-admin only. Use this to delegate or rotate a role's key \\xe2\\x80\\x94 e.g. hand\\nthe `admin` role to an operations key, or prepare an `upgrader` /\\n`pauser` key before such functionality is enabled.",
+      "name": "grant_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Remove `address` as the holder of `role`. Root-admin only.\\n\\nThe named address must be the current holder (revoking a different\\naddress is a no-op risk, so it is rejected with `RoleHolderMismatch`\\ninstead). A role with no holder is simply unassigned \\xe2\\x80\\x94 no one can act\\nunder it until it is granted again.",
+      "name": "revoke_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Accept the pending root-admin role. Callable only by the address named\\nin the most recent `propose_admin`. On success the accepted address\\nbecomes the new `DataKey::Admin` AND inherits every role the outgoing\\nadmin held \\xe2\\x80\\x94 a wholesale governance transfer, so the outgoing root\\nloses all privileged access exactly as it did before roles existed.\\nFine-grained delegation afterwards uses `grant_role` / `revoke_role`.\\nEmits `(\"cred_ver\", \"adm_acc\")` with the new admin as the payload (#342).",
+      "name": "accept_admin",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Verify an UltraHonk proof for any registered credential type. Looks up\\nthe VK by `(credential_type, vk_version)`. Pass `vk_version = None` to\\nuse the latest registered version automatically.\\n\\nReturns `true` iff the proof is valid. Returns `false` for malformed\\ninputs or invalid proofs; panics with `VkNotSet` if no VK has been\\nregistered for this type/version, or with `VersionDeprecated` if the\\nrequested version has been deprecated.",
+      "name": "verify_proof",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "proof",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "public_inputs",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "vk_version",
+          "type_": {
+            "option": {
+              "value_type": "u32"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "__constructor",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Read the current pending admin proposal, if any (#342).",
+      "name": "pending_admin",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Propose a new root admin. Root-admin only. Overwrites any existing\\npending proposal. Emits `(\"cred_ver\", \"adm_prop\")` with the proposed\\naddress as the payload (#342).",
+      "name": "propose_admin",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "new_admin",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Admin-only. Permanently removes the VK bytes for a deprecated version.\\nThe safety delay starts when deprecation occurred, not when pruning is\\nrequested. The deprecation marker is retained, preventing reuse.\\n\\nThe minimum delay before pruning is `MAX_PROOF_VALIDITY_SECONDS`\\n(currently 90 days), which is the on-chain enforcement of the VK\\nsupport window defined in SUPPORT_POLICY.md. `prune_version` will\\nrevert with `VkStillReferenceable` until that delay has elapsed.",
+      "name": "prune_version",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "version",
+          "type_": "u32"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Admin-role only. Marks a specific `(credential_type, version)` VK as\\ndeprecated. New submissions against a deprecated version are rejected\\nby `verify_proof` (panics with `VersionDeprecated`), but the VK is not\\ndeleted, so existing cached proofs that were verified against that\\nversion remain readable in ProofRegistry.",
+      "name": "deprecate_version",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "version",
+          "type_": "u32"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the highest VK version registered for `credential_type`, or\\npanics with `VkNotSet` if no VK has been registered for the type yet.",
+      "name": "get_latest_version",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cancel a pending admin proposal. Root-admin only. Emits\\n`(\"cred_ver\", \"adm_canc\")` with an empty payload (#342).",
+      "name": "cancel_admin_proposal",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the timestamp of the last upgrade, or 0 if none has occurred.",
+      "name": "last_upgrade_timestamp",
+      "inputs": [],
+      "outputs": [
+        "u64"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Admin-role only. Refreshes the TTL of the `LatestVersion` pointer AND the VK\\nblob it resolves to, so that `verify_proof(..., None)` \\xe2\\x80\\x94 the default\\nsubmission path \\xe2\\x80\\x94 keeps working in long-lived deployments that register\\nno new circuit versions. Panics with `VkNotSet` if no VK has been\\nregistered for the credential type yet.\\n\\nThe pointer alone is not enough: if the VK blob at\\n`Vk(credential_type, version)` expires, `verify_proof` panics with\\n`VkNotSet` at the blob lookup even though the pointer is still alive.\\nAnd because `set_vk` rejects re-registration of an existing version\\n(`VkAlreadySet`), this refresh is the only way to extend VK blob TTLs\\nafter deployment.",
+      "name": "refresh_latest_version_ttl",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": []
+    }
+  }
+]

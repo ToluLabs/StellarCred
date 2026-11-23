@@ -1,0 +1,1411 @@
+[
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Error",
+      "cases": [
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "VerificationFailed",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "NotAuthorized",
+          "value": 3
+        },
+        {
+          "doc": "",
+          "name": "IssuerNotTrusted",
+          "value": 4
+        },
+        {
+          "doc": "",
+          "name": "IssuerKeyMismatch",
+          "value": 5
+        },
+        {
+          "doc": "",
+          "name": "ProofNotFound",
+          "value": 6
+        },
+        {
+          "doc": "",
+          "name": "BatchTooLarge",
+          "value": 7
+        },
+        {
+          "doc": "",
+          "name": "BatchEmpty",
+          "value": 8
+        },
+        {
+          "doc": "",
+          "name": "DuplicateCredentialType",
+          "value": 9
+        },
+        {
+          "doc": "",
+          "name": "AggregateLayoutInvalid",
+          "value": 10
+        },
+        {
+          "doc": "",
+          "name": "SubmissionsPaused",
+          "value": 11
+        },
+        {
+          "doc": "`expiry` is not in the future, or is too far in the future.",
+          "name": "InvalidExpiry",
+          "value": 12
+        },
+        {
+          "doc": "The caller is not the holder of the role required by this function.",
+          "name": "RoleNotHeld",
+          "value": 13
+        },
+        {
+          "doc": "`revoke_role` named an address that is not the current holder of the role.",
+          "name": "RoleHolderMismatch",
+          "value": 14
+        },
+        {
+          "doc": "`accept_admin` was called with no pending proposal (#343).",
+          "name": "NoPendingAdmin",
+          "value": 15
+        },
+        {
+          "doc": "The nullifier has already been consumed in this application context (#395).",
+          "name": "NullifierAlreadyUsed",
+          "value": 16
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Admin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Pending root-admin candidate set by `propose_admin` and consumed by\\n`accept_admin` (#343).",
+            "name": "PendingAdmin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "RBAC: role name (Symbol) \\xe2\\x86\\x92 current holder (Address).",
+            "name": "Roles"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Verifier"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "IssuerRegistry"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Paused"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Proof",
+            "type_": [
+              "address",
+              "symbol"
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Tracks the schema version of stored ProofRecords.\\nUsed for forward-compatible migrations when ProofRecord shape changes.",
+            "name": "ProofRecordSchemaVersion"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Timestamp of the last data migration (for audit trail).",
+            "name": "LastMigrationTimestamp"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "(holder, verifier, credential_type) -> expiry (unix seconds). A\\nscoped, time-boxed grant letting `verifier` read `holder`'s\\n`credential_type` result via `check_delegated_verification` (#396).",
+            "name": "Delegation",
+            "type_": [
+              "address",
+              "address",
+              "symbol"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "(app_context, nullifier) -> bool. Stores whether a nullifier has been\\nconsumed within an application context to enforce Sybil resistance (#395).",
+            "name": "Nullifier",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              },
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when submissions are paused.\\nTopics: (\"proof_reg\", \"paused\")\\n\\nThe `admin` field carries the address that performed the pause \\xe2\\x80\\x94 under RBAC\\nthis is the holder of the `pauser` role, which may differ from the root\\nadmin. The field name is kept as `admin` to preserve the event ABI that\\nexisting indexers parse.",
+      "lib": "",
+      "name": "EventPaused",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "paused_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "ProofRecord",
+      "fields": [
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "issuer",
+          "type_": {
+            "option": {
+              "value_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "reason",
+          "type_": {
+            "udt": {
+              "name": "RevocationReason"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "revoked",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "threshold",
+          "type_": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "verified_at",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "vk_version",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "admin",
+      "inputs": [],
+      "outputs": [
+        "address"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Pause new submissions. Pauser-role only \\xe2\\x80\\x94 the `pauser` role may be held\\nby a different key than the root admin, so emergency pause power can be\\ndelegated (e.g. to an operations or security key) without handing over\\nfull administration.",
+      "name": "pause",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Revoke an existing proof before expiry. The caller must be both a\\ncurrently trusted issuer and the issuer stored on that proof record.\\n`reason` is an optional revocation reason code (#393); defaults to\\n`RevocationReason::Other` when not provided.",
+      "name": "revoke",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "reason",
+          "type_": {
+            "option": {
+              "value_type": {
+                "udt": {
+                  "name": "RevocationReason"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when submissions are unpaused.\\nTopics: (\"proof_reg\", \"unpaused\")\\n\\nThe `admin` field carries the address that performed the unpause \\xe2\\x80\\x94 under\\nRBAC this is the holder of the `pauser` role (see [`EventPaused`]).",
+      "lib": "",
+      "name": "EventUnpaused",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "unpaused_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "unpause",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Replace the contract wasm. Upgrader-role only \\xe2\\x80\\x94 the holder of the\\n`upgrader` role may be a different key than the root admin, so upgrade\\npower can be delegated or rotated independently of other governance.",
+      "name": "upgrade",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "new_wasm_hash",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the contract version as an encoded u32.\\nEncoding: (major * 1000000) + (minor * 1000) + patch\\nExample: 1.2.3 -> 1002003",
+      "name": "version",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "True iff `address` currently holds `role`.",
+      "name": "has_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "ProofSubmission",
+      "fields": [
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "proof",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "public_inputs",
+          "type_": {
+            "vec": {
+              "element_type": "u32"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "vk_version",
+          "type_": {
+            "option": {
+              "value_type": "u32"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_enum_v0": {
+      "doc": "Reason codes for issuer-initiated proof revocations (#393).",
+      "lib": "",
+      "name": "RevocationReason",
+      "cases": [
+        {
+          "doc": "",
+          "name": "Expired",
+          "value": 0
+        },
+        {
+          "doc": "",
+          "name": "Superseded",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "Fraud",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "UserRequest",
+          "value": 3
+        },
+        {
+          "doc": "",
+          "name": "Other",
+          "value": 4
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "bump_claim",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "get_record",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": [
+        {
+          "option": {
+            "value_type": {
+              "udt": {
+                "name": "ProofRecord"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Assign `address` as the holder of `role`, replacing any previous holder.\\nRoot-admin only. Use this to delegate or rotate a role's key \\xe2\\x80\\x94 e.g. hand\\nthe `upgrader` role to a release engineer, or the `pauser` role to an\\noperations key \\xe2\\x80\\x94 so each privileged capability is scoped and rotatable\\nindependently.",
+      "name": "grant_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "revoke_all",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when an issuer revokes a holder's proof.",
+      "lib": "",
+      "name": "EventProofRevoked",
+      "fields": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "issuer",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "reason",
+          "type_": {
+            "udt": {
+              "name": "RevocationReason"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "revoked_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "LegacyProofRecord",
+      "fields": [
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "revoked",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "threshold",
+          "type_": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "verified_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "check_claim",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "min_threshold",
+          "type_": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "trusted_issuers",
+          "type_": {
+            "option": {
+              "value_type": {
+                "vec": {
+                  "element_type": "address"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Read-only verification check for `holder`'s cached `credential_type` claim.\\n\\nReturns `(valid, verified_at, expiry)`:\\n- `valid` is `true` only if the record exists, is not revoked, has not\\npassed `expiry`, and (if `trusted_issuers` is provided) was issued by\\none of the addresses in that list.\\n- `verified_at` / `expiry` are returned even when `valid` is `false`\\n(e.g. an expired or untrusted-issuer record still reports its stored\\ntimestamps), so callers can distinguish \"never submitted\" (both `0`)\\nfrom \"submitted but no longer valid\".\\n\\n`trusted_issuers`:\\n- `None` accepts a claim from any issuer registered at submission time.\\n- `Some(list)` restricts acceptance to issuers in `list`; a record with\\nno stored issuer (e.g. an un-migrated legacy record) is rejected.",
+      "name": "is_verified",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "trusted_issuers",
+          "type_": {
+            "option": {
+              "value_type": {
+                "vec": {
+                  "element_type": "address"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "tuple": {
+            "value_types": [
+              "bool",
+              "u64",
+              "u64"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Remove `address` as the holder of `role`. Root-admin only.\\n\\nThe named address must be the current holder (revoking a different\\naddress is a no-op risk, so it is rejected with `RoleHolderMismatch`\\ninstead). A role with no holder is simply unassigned \\xe2\\x80\\x94 no one can act\\nunder it until it is granted again.",
+      "name": "revoke_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when a holder revokes their own cached proof.",
+      "lib": "",
+      "name": "EventHolderRevoked",
+      "fields": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "reason",
+          "type_": {
+            "udt": {
+              "name": "RevocationReason"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "revoked_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when a nullifier is seen and recorded for an application context (#395).\\nTopics: (\"proof_reg\", \"nullifier\")",
+      "lib": "",
+      "name": "EventNullifierUsed",
+      "fields": [
+        {
+          "doc": "",
+          "name": "app_context",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "nullifier",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "recorded_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Accept the pending root-admin role. Callable only by the address named\\nin the most recent `propose_admin`. On success the accepted address\\nbecomes the new `DataKey::Admin` AND inherits every role the outgoing\\nadmin held \\xe2\\x80\\x94 matching the wholesale governance transfer the old\\nsingle-step `set_admin` performed. Emits `(\"proof_reg\", \"adm_acc\")`\\nwith the new admin as the payload (#343).",
+      "name": "accept_admin",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "claim_expiry",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": [
+        "u64"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Admin-only: triggers a data migration (for future schema changes).\\nThis is a placeholder that can be extended when ProofRecord structure changes.\\nCurrently, this function:\\n1. Records the current schema version\\n2. Emits an event for audit trail purposes\\n3. Can be extended to transform existing ProofRecords if needed",
+      "name": "migrate_data",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Revoke a cached proof. The holder authorizes their own revocation.",
+      "name": "revoke_proof",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Verify a proof and, if valid, cache it for `holder` until `expiry`.",
+      "name": "submit_proof",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "proof",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "public_inputs",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "vk_version",
+          "type_": {
+            "option": {
+              "value_type": "u32"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when a proof is successfully verified and stored.",
+      "lib": "",
+      "name": "EventProofSubmitted",
+      "fields": [
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "issuer",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "verified_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "__constructor",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "verifier",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "issuer_registry",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Read the current pending admin proposal, if any (#343).",
+      "name": "pending_admin",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Propose a new root admin. Root-admin only. Overwrites any existing\\npending proposal. Emits `(\"proof_reg\", \"adm_prop\")` with the proposed\\naddress as the payload (#343).",
+      "name": "propose_admin",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "new_admin",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Batch submission - one event per credential.",
+      "name": "submit_proofs",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "submissions",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "udt": {
+                  "name": "ProofSubmission"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "vec": {
+            "element_type": "bool"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Admin-role only. Migration from the legacy 4-field `ProofRecord` layout (no\\n`issuer`, no `vk_version`) to the current 6-field layout. Reads the\\nstored map as a generic `Map<Symbol, Val>` to determine the field count\\nwithout triggering the struct-deserialisation panic that would occur on\\na shape mismatch.\\n\\n- Idempotent: records already in the current 6-field shape are a no-op.\\n- Migrated records are written with `issuer: None` so they fail closed\\nunder an active `trusted_issuers` filter (there is no issuer to check\\nagainst) and `vk_version: 0` (the \"latest at submission time\"\\nsentinel, which is what legacy records were verified against).\\n- Only the holder of the `admin` role may call this function.",
+      "name": "migrate_record",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when the contract is upgraded (new WASM deployed).\\nTopics: (\"proof_reg\", \"upgraded\")",
+      "lib": "",
+      "name": "EventContractUpgraded",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "Previous contract version (encoded as major * 1000000 + minor * 1000 + patch)",
+          "name": "from_version",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "new_wasm_hash",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "New contract version (encoded as major * 1000000 + minor * 1000 + patch)",
+          "name": "to_version",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "upgraded_at",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Records a nullifier for a specific application context to enforce one-per-person / Sybil resistance.\\nRejects a second submission/recording with the same nullifier for that context (#395).",
+      "name": "record_nullifier",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "app_context",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "nullifier",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "verifier_address",
+      "inputs": [],
+      "outputs": [
+        "address"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Checks if a nullifier has already been recorded for a specific application context (#395).",
+      "name": "is_nullifier_used",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "app_context",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "nullifier",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when a holder grants a verifier delegated read access\\n(#396). `credential_type` is already in the event topic tuple, matching\\n`EventProofSubmitted`'s convention, so it isn't repeated here.",
+      "lib": "",
+      "name": "EventVerificationGranted",
+      "fields": [
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "verifier",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when a holder revokes a previously-granted delegation.",
+      "lib": "",
+      "name": "EventVerificationRevoked",
+      "fields": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "verifier",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Grant `verifier` a scoped, time-boxed right to read `holder`'s\\n`credential_type` result via `check_delegated_verification`, until\\n`expiry` (#396). Purely additive: `is_verified` remains a public read\\nexactly as before for every caller \\xe2\\x80\\x94 this is a discoverable,\\non-chain consent record apps can condition *their own* gated\\nexperiences on, not a change to the underlying read's semantics\\n(Soroban storage has no confidentiality to gate in the first place).\\nGranting the same (holder, verifier, credential_type) again simply\\noverwrites the previous expiry.",
+      "name": "grant_verification",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "verifier",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Revoke a previously-granted delegation. The holder authorizes their\\nown revocation, same as `revoke_proof`. A no-op (not an error) if no\\nsuch delegation exists.",
+      "name": "revoke_verification",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "verifier",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cancel a pending admin proposal. Root-admin only. Emits\\n`(\"proof_reg\", \"adm_canc\")` with an empty payload (#343).",
+      "name": "cancel_admin_proposal",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Aggregate proof submission with per-credential expiries.",
+      "name": "submit_aggregate_proof",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "issuer_ids",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "credential_types",
+          "type_": {
+            "vec": {
+              "element_type": "symbol"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "proof",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "public_inputs",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "expiries",
+          "type_": {
+            "vec": {
+              "element_type": "u64"
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "issuer_registry_address",
+      "inputs": [],
+      "outputs": [
+        "address"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the timestamp of the last data migration, or 0 if none has occurred.\\nUseful for audit trails and monitoring schema evolution.",
+      "name": "last_migration_timestamp",
+      "inputs": [],
+      "outputs": [
+        "u64"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the current ProofRecord schema version.\\nUsed to detect when data migrations are needed.",
+      "name": "proof_record_schema_version",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Submits a proof and atomically binds and records a per-app nullifier (#395).\\nRejects on-chain if the nullifier has already been used in this app_context.",
+      "name": "submit_proof_with_nullifier",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "proof",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "public_inputs",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "vk_version",
+          "type_": {
+            "option": {
+              "value_type": "u32"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "app_context",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "nullifier",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "`verifier`'s delegated view of `holder`'s `credential_type` result\\n(#396): returns `is_verified`'s own `(valid, verified_at, expiry)` \\xe2\\x80\\x94\\nbut only if `verifier` currently holds a non-expired\\n`grant_verification` delegation from `holder` for that credential\\ntype; otherwise `(false, 0, 0)`, mirroring `is_verified`'s own\\n\"never submitted\" shape so callers can't distinguish \"no delegation\"\\nfrom \"no claim\" by shape alone (deliberately \\xe2\\x80\\x94 see the module-level\\nnote on this not being a confidentiality boundary).",
+      "name": "check_delegated_verification",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "verifier",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": [
+        {
+          "tuple": {
+            "value_types": [
+              "bool",
+              "u64",
+              "u64"
+            ]
+          }
+        }
+      ]
+    }
+  }
+]
