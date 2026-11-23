@@ -102,11 +102,7 @@ function HolderInner() {
   );
   const expired = displayCreds.filter((c) => proofStatus(c) === "expired");
 
-  // Warm the UltraHonk backend for whatever credential types the user still
-  // needs to prove, in the background, once the wallet is actually connected
-  // (never in preview mode — there's nothing real to prove yet). Only the
-  // types actually present in `unproved` are warmed, not all seven circuits,
-  // to avoid paying wasm-init cost for types the user has no credential for.
+  // Warm the prover in the background, only for unproved credential types, once connected.
   const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
   useWarmProver(unprovedTypes, Boolean(address));
 
