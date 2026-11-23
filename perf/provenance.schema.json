@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BenchmarkProvenance",
+  "description": "Schema for a single StellarCred benchmark run provenance record stored in benchmark_provenance.jsonl",
+  "type": "object",
+  "required": ["timestamp", "git", "toolchain", "environment", "status"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp when the run started"
+    },
+    "git": {
+      "type": "object",
+      "required": ["commit"],
+      "properties": {
+        "commit":  { "type": "string", "description": "Full SHA-1 commit hash" },
+        "branch":  { "type": "string", "description": "Branch name at run time" },
+        "tags":    { "type": "string", "description": "Comma-separated tags pointing at HEAD" },
+        "dirty":   { "type": "boolean", "description": "True if the working tree had uncommitted changes" }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "properties": {
+        "rustc":        { "type": "string" },
+        "cargo":        { "type": "string" },
+        "rust_channel": { "type": "string", "description": "Channel from rust-toolchain.toml" },
+        "stellar_cli":  { "type": "string" },
+        "nargo":        { "type": "string" },
+        "barretenberg": { "type": "string" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "network":          { "type": "string", "enum": ["testnet", "mainnet"] },
+        "rpc_url":          { "type": "string", "format": "uri" },
+        "ledger_sequence":  { "type": ["string","integer"], "description": "Ledger sequence at run start" },
+        "protocol_version": { "type": ["string","integer"] }
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Command-line arguments forwarded to benchmark.sh"
+    },
+    "results_file": {
+      "type": "string",
+      "description": "Path to the benchmark_results.txt file this run appended to"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["started", "completed", "failed"],
+      "description": "Run lifecycle state"
+    },
+    "git_commit": {
+      "type": "string",
+      "description": "Shorthand commit hash used in completion records"
+    },
+    "exit_code": {
+      "type": "integer",
+      "description": "Exit code from benchmark.sh (completion records only)"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp when the run finished (completion records only)"
+    }
+  }
+}
