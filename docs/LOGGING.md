@@ -16,6 +16,10 @@ Every API request (`/api/*`) produces one structured log line with the following
 | `status` | number | HTTP status code |
 | `durationMs` | number | Request duration in milliseconds |
 | `requestId` | string | Correlation ID for tracing |
+| `traceId` | string | OpenTelemetry trace id (W3C `traceparent`, 32 hex chars) |
+| `spanId` | string | Span id for this hop (16 hex chars) |
+| `traceFlags` | number | W3C trace flags (`1` = sampled) |
+| `traceparent` | string | Full W3C header echoed on the response |
 | `demoIssuer` | boolean? | Present when using demo issuer key (no ISSUER_PRIVATE_KEY set) |
 | `plaidMock` | boolean? | Present when Plaid is in mock mode (no PLAID_ACCESS_TOKEN set) |
 | `personaDemo` | boolean? | Present when Persona is in demo mode (no PERSONA_API_KEY set) |
@@ -169,8 +173,76 @@ ERROR_REPORTING_WEBHOOK=https://your-sentry-or-webhook.example.com/api/errors
 
 ---
 
+## Distributed tracing
+
+The API middleware continues an inbound W3C `traceparent` (or starts a new
+trace), logs its `traceId` / `spanId` on the `api_request` line, and returns
+the context on the response's `traceparent` header. An OpenTelemetry-instrumented
+caller therefore sees the same `trace_id` in both services, and Jaeger/Datadog
+can join API logs to the caller's spans.
+
+```bash
+curl -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+  -D - https://api.example.com/api/health
+# traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-<new-span-id>-01
+```
+
+Invalid headers are ignored (never trusted as correlation ids), and the
+request id is still generated/echoed as before. The trace helpers live in
+`frontend/lib/trace-context.ts`; `traceId`, `spanId`, `traceFlags` and
+`traceparent` are on the logger's safe-field allowlist.
+
+---
+
+## Indexer JSON logs and trace context
+
+`services/indexer` writes one JSON object per line to stdout. Every line has
+`timestamp`, `level`, `message`, `service`, and - when written inside a request
+or a span - `trace_id`, `span_id`, `trace_flags`, `parent_span_id` and
+`request_id`. This is the format an observability platform indexes directly;
+no plain-text `console.log` remains in the service.
+
+```json
+{"timestamp":"2026-01-01T00:00:00.000Z","level":"info","message":"http_request","service":"stellarcred-indexer","event":"http_request","method":"GET","path":"/health","status":200,"duration_ms":1.2,"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","trace_flags":1,"request_id":"abc123"}
+```
+
+### Trace propagation
+
+- **HTTP API**: `trace-middleware.ts` continues an inbound `traceparent`, emits
+  one `http_request` line per call, and returns `traceparent` plus
+  `x-request-id` on the response.
+- **Ingestion and integrity**: each tick runs inside an `indexer.tick` span and
+  each verification pass inside an `indexer.integrity_check` span, so the
+  request id and trace id on their log lines identify the same unit of work.
+- **Outbound calls**: Horizon and other HTTP requests get the active
+  `traceparent` header (`injectTraceHeaders`), so a call can be followed from
+  the indexer into the provider's logs.
+- **Spans**: `withSpan()` records `span_name`, `duration_ms`, `status` and
+  attributes in a `span.end` line at debug level; set `LOG_LEVEL=debug` to emit
+  them.
+
+### Configuration
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn` or `error`. |
+| `OTEL_SERVICE_NAME` | No | `stellarcred-indexer` | `service` field on every indexer line. |
+
+### Redaction
+
+Values are redacted at the logging boundary. Keys containing `password`,
+`passphrase`, `secret`, `private_key`, `api_key`, `authorization`, `cookie`,
+`token`, `salt`, `witness`, `mnemonic` or `seed` become `[REDACTED]` at any
+depth, exceptions are reduced to `{ name, message, stack }`, and long strings
+are truncated. Request bodies and headers are never logged.
+
+---
+
 ## Implementation Details
 
+- **Indexer logger/spans**: `services/indexer/src/logging.ts`
+- **Indexer request tracing**: `services/indexer/src/trace-middleware.ts`
+- **API trace context**: `frontend/lib/trace-context.ts`
 - **Middleware**: `frontend/middleware.ts` - Logs all API requests and triggers error reporting
 - **Outbound Sink**: `frontend/lib/outbound-sink.ts` - Redaction, queueing, delivery, and drop metrics
 - **Logger**: `frontend/lib/logger.ts` - Structured logging with sensitive field filtering

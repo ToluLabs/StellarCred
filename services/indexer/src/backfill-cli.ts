@@ -13,6 +13,7 @@ import "dotenv/config";
 import { loadConfig } from "./config";
 import { createDb } from "./db";
 import { parseBackfillArgs, runBackfill } from "./backfill";
+import { logger } from "./logging";
 
 const main = async (): Promise<void> => {
   const opts = parseBackfillArgs(process.argv.slice(2));
@@ -24,7 +25,9 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", () => {
     if (interrupted) process.exit(130);
     interrupted = true;
-    console.log("[backfill] Interrupt received; progress is checkpointed. Re-run with --resume to continue.");
+    logger.info("backfill_interrupted", {
+      detail: "progress is checkpointed; re-run with --resume to continue",
+    });
     process.exit(130);
   });
 
@@ -36,7 +39,9 @@ const main = async (): Promise<void> => {
 };
 
 main().catch((err) => {
-  console.error("[backfill] Failed:", (err as Error).message);
-  console.error("[backfill] Completed batches are checkpointed; re-run with --resume to continue.");
+  logger.error("backfill_failed", { error: err });
+  logger.info("backfill_resume_hint", {
+    detail: "completed batches are checkpointed; re-run with --resume to continue",
+  });
   process.exit(1);
 });
