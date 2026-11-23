@@ -16,8 +16,9 @@ let mockOnboardingState = {
 };
 vi.mock("@/lib/onboarding", async (orig) => ({
   ...(await orig()),
+  // ONBOARDING_STEPS comes from the real module via the spread above;
+  // naming the hoisted import here would read it before it is initialised.
   useOnboarding: () => mockOnboardingState,
-  ONBOARDING_STEPS,
 }));
 
 let mockWallet = { address: "GTEST" as string | null };

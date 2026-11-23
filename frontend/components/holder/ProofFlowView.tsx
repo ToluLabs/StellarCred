@@ -240,7 +240,7 @@ export function ProofFlowView({
                 style={{ marginTop: networkMismatch ? 0 : "1.5rem", width: "100%", opacity: 0.7, cursor: "progress" }}
                 disabled
               >
-                <IconLoader2 size={15} className="spin" /> Running preflight simulation…
+                <IconLoader2 size={15} className="spin" aria-hidden="true" /> Running preflight simulation…
               </button>
             ) : stage === "readyToSign" ? (
               <button

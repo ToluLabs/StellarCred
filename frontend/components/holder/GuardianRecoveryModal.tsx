@@ -12,6 +12,7 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 import { QrCodeModal } from "../QrCodeModal";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 import CopyButton from "../CopyButton";
 import { Badge } from "../Badge";
 import type { Credential } from "@/lib/credential";
@@ -75,6 +76,10 @@ export function GuardianRecoveryModal({
 
   const backupFileInputRef = useRef<HTMLInputElement>(null);
   const shareFileInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // The QR sub-view renders its own <Modal> (with its own trap) in place of
+  // this dialog, so pause this trap while it is up.
+  useFocusTrap(dialogRef, { onEscape: onClose, active: activeQrShare === null });
 
   // Update guardian labels array length when totalShares changes
   const handleTotalSharesChange = (n: number) => {
@@ -236,13 +241,17 @@ export function GuardianRecoveryModal({
           background: "rgba(0,0,0,0.65)",
           backdropFilter: "blur(6px)",
         }}
+        aria-hidden="true"
         onClick={onClose}
       />
 
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Guardian Secret Sharing Recovery"
+        aria-labelledby="guardian-recovery-title"
+        aria-describedby="guardian-recovery-desc"
+        tabIndex={-1}
         className="card"
         style={{
           position: "relative",
@@ -270,14 +279,21 @@ export function GuardianRecoveryModal({
               <IconShieldLock size={18} />
             </div>
             <div>
-              <h2 style={{ fontSize: "1.15rem", fontWeight: 600 }}>Guardian Secret Sharing</h2>
-              <p className="faint" style={{ fontSize: "0.75rem" }}>
+              <h2 id="guardian-recovery-title" style={{ fontSize: "1.15rem", fontWeight: 600 }}>
+                Guardian Secret Sharing
+              </h2>
+              <p id="guardian-recovery-desc" className="faint" style={{ fontSize: "0.75rem" }}>
                 Client-side threshold key recovery
               </p>
             </div>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ padding: "0.3rem" }}>
-            ✕
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={onClose}
+            aria-label="Close guardian recovery dialog"
+            style={{ padding: "0.3rem" }}
+          >
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 

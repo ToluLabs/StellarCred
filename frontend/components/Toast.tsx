@@ -159,7 +159,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastEntry; onDismiss: () => v
     ) : toast.variant === "error" ? (
       <IconAlertTriangle size={13} stroke={2} />
     ) : (
-      <IconLoader2 size={13} stroke={2} className="spin" />
+      <IconLoader2 size={13} stroke={2} className="spin" aria-hidden="true" />
     );
 
   return (

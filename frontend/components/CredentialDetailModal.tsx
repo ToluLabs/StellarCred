@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { IconX, IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { formatDate, formatDateTime, getLocaleString } from "@/lib/i18n";
 import { type Locale } from "@/i18n.config";
 import CopyButton from "./CopyButton";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
 function parseTtlSecs(expiry: string): number {
   const match = expiry.match(/(\d+)/);
@@ -36,49 +37,10 @@ interface CredentialDetailModalProps {
 export default function CredentialDetailModal({ credential: c, onClose, onTransfer }: CredentialDetailModalProps) {
   const [showRaw, setShowRaw] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-  const prevFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
   const locale = useLocale() as Locale;
   const t = useTranslations();
-  
-  onCloseRef.current = onClose;
 
-  useEffect(() => {
-    prevFocusRef.current = document.activeElement as HTMLElement;
-    const modal = modalRef.current;
-    if (!modal) return;
-    const focusable = modal.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    if (focusable.length > 0) focusable[0].focus();
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onCloseRef.current();
-        return;
-      }
-      if (e.key === "Tab") {
-        const current = modal!.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
-        const first = current[0];
-        const last = current[current.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      prevFocusRef.current?.focus();
-    };
-  }, []);
+  useFocusTrap(modalRef, { onEscape: onClose });
 
   const ttlSecs = parseTtlSecs(c.expiry);
   const expiryDate = c.issuedAt + ttlSecs;
@@ -134,6 +96,7 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
           background: "rgba(0,0,0,0.6)",
           backdropFilter: "blur(6px)",
         }}
+        aria-hidden="true"
         onClick={onClose}
       />
 
@@ -141,7 +104,8 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t("credential.details")}
+        aria-labelledby="credential-detail-title"
+        tabIndex={-1}
         className="card"
         style={{
           position: "relative",
@@ -155,19 +119,26 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
         onClick={(e) => e.stopPropagation()}
       >
         <div className="between" style={{ marginBottom: "1.25rem" }}>
-          <span className="eyebrow">{t("credential.details")}</span>
+          <h2
+            id="credential-detail-title"
+            className="eyebrow"
+            style={{ margin: 0, fontSize: "inherit", fontWeight: "inherit" }}
+          >
+            {t("credential.details")}
+          </h2>
           <button
             className="btn btn-ghost btn-sm"
             onClick={onClose}
             aria-label={t("common.close")}
             style={{ padding: "0.3rem 0.4rem", color: "var(--faint)" }}
           >
-            <IconX size={16} />
+            <IconX size={16} aria-hidden="true" />
           </button>
         </div>
 
-        <div
+        <dl
           style={{
+            margin: 0,
             background: "rgba(255,255,255,0.025)",
             border: "1px solid var(--border)",
             borderRadius: "var(--radius)",
@@ -186,10 +157,11 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
                 gap: "1rem",
               }}
             >
-              <span style={{ fontSize: "0.8rem", color: "var(--muted)", flexShrink: 0 }}>{f.label}</span>
-              <span
+              <dt style={{ fontSize: "0.8rem", color: "var(--muted)", flexShrink: 0 }}>{f.label}</dt>
+              <dd
                 className="mono"
                 style={{
+                  margin: 0,
                   fontSize: "0.8rem",
                   color: "var(--text)",
                   textAlign: "right",
@@ -198,10 +170,10 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
                 }}
               >
                 {f.value}
-              </span>
+              </dd>
             </div>
           ))}
-        </div>
+        </dl>
 
         <div style={{ marginTop: "1.25rem" }}>
           {onTransfer && (
@@ -227,7 +199,7 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
               gap: "0.3rem",
             }}
           >
-            {showRaw ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+            {showRaw ? <IconChevronDown size={12} aria-hidden="true" /> : <IconChevronRight size={12} aria-hidden="true" />}
             {showRaw ? t("common.hide") : t("common.show")} {t("credential.rawJson")}
           </button>
           {showRaw && (

@@ -262,7 +262,7 @@ function VerifyInner() {
                 >
                   {busy ? (
                     <>
-                      <IconLoader2 size={15} className="spin" />
+                      <IconLoader2 size={15} className="spin" aria-hidden="true" />
                       {selected === "kyc"
                         ? "Redirecting to verification…"
                         : "Creating credential…"}

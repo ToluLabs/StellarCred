@@ -45,9 +45,9 @@ export function ProofStep({
           }}
         >
           {state === "done" ? (
-            <IconCheck size={13} stroke={3} />
+            <IconCheck size={13} stroke={3} aria-hidden="true" />
           ) : state === "active" ? (
-            <IconLoader2 size={13} className="spin" />
+            <IconLoader2 size={13} className="spin" aria-hidden="true" />
           ) : (
             icon
           )}

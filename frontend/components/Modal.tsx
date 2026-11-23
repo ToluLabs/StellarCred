@@ -10,9 +10,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
-const FOCUSABLE_SELECTOR =
-  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export interface ModalProps {
   /** Optional HTML id prefix for ARIA attributes */
@@ -43,56 +42,12 @@ export function Modal({
   useEffect(() => setMounted(true), []);
 
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
-
   const titleId = id ? `${id}-title` : `modal-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
-  // Keep the latest onClose in a ref so the keydown listener below can stay
-  // registered once instead of tearing down/re-adding on every render (most
-  // callers pass a fresh inline arrow function each time).
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
-
-  // Move focus into the dialog on open, trap Tab within it while open, and
-  // restore focus to whatever had it beforehand on close — aria-modal alone
-  // doesn't get any of this for free.
-  useEffect(() => {
-    if (!mounted) return;
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    dialogRef.current?.focus();
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onCloseRef.current();
-        return;
-      }
-      if (e.key !== "Tab" || !dialogRef.current) return;
-      // Disabled elements match the selector but are skipped by real Tab
-      // navigation — excluding them keeps first/last aligned with where the
-      // browser will actually land (e.g. a submit button disabled until a
-      // form field is filled shouldn't be treated as the last stop).
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-      ).filter((el) => !el.hasAttribute("disabled"));
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      previouslyFocused.current?.focus?.();
-    };
-  }, [mounted]);
+  // Move focus into the dialog on open, trap Tab within it while open, close
+  // on Escape, and restore focus to whatever had it beforehand on close —
+  // aria-modal alone doesn't get any of this for free.
+  useFocusTrap(dialogRef, { onEscape: onClose, initialFocusRef: dialogRef, active: mounted });
 
   if (!mounted) return null;
 
@@ -129,7 +84,7 @@ export function Modal({
             onClick={onClose}
             aria-label="Close"
           >
-            <IconX size={15} />
+            <IconX size={15} aria-hidden="true" />
           </button>
         </div>
         {children}

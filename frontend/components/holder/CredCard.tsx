@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   IconExternalLink,
   IconTrash,
@@ -52,14 +52,19 @@ export function CredCard({
   const status = proofStatus(c);
   const { events } = useProofTimeline(c);
   const [showHistory, setShowHistory] = useState(false);
+  const uid = useId();
+  const titleId = `${uid}-title`;
+  const historyId = `${uid}-history`;
 
   return (
-    <div className="card cred-card">
+    <article className="card cred-card" aria-labelledby={titleId}>
       <div className="cred-card__top">
         {/* left: credential info */}
         <div className="cred-card__info">
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-            <span className="cred-card__title">{c.title}</span>
+            <h3 id={titleId} className="cred-card__title">
+              {c.title}
+            </h3>
             <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
           </div>
           <div className="cred-card__meta">
@@ -79,8 +84,9 @@ export function CredCard({
                         target="_blank"
                         rel="noreferrer"
                         className="cred-card__tx-link"
+                        aria-label={`View proof transaction ${c.provedTxHash.slice(0, 6)} on Stellar Expert (opens in a new tab)`}
                       >
-                        {c.provedTxHash.slice(0, 6)}&hellip;<IconExternalLink size={10} />
+                        {c.provedTxHash.slice(0, 6)}&hellip;<IconExternalLink size={10} aria-hidden="true" />
                       </a>
                     </>
                   )}
@@ -128,14 +134,17 @@ export function CredCard({
           )}
           {onInspect && (
             <button
+              type="button"
               className="btn btn-ghost btn-sm"
               title="View details"
+              aria-label={`View details for ${c.title}`}
               onClick={onInspect}
             >
-              <IconInfoCircle size={13} />
+              <IconInfoCircle size={13} aria-hidden="true" />
             </button>
           )}
           <button
+            type="button"
             className={`btn btn-sm ${status === "proved" ? "btn-secondary" : "btn-primary"}`}
             disabled={!address || credIsExpired(c) || !proofSubmissionConfigured()}
             title={
@@ -154,25 +163,31 @@ export function CredCard({
                                     "Generate proof"}
           </button>
           <button
+            type="button"
             className="btn btn-ghost btn-sm"
             title="History"
+            aria-label={`${showHistory ? "Hide" : "Show"} proof history for ${c.title}`}
+            aria-expanded={showHistory}
+            aria-controls={historyId}
             onClick={() => setShowHistory(!showHistory)}
           >
-            <IconHistory size={13} />
+            <IconHistory size={13} aria-hidden="true" />
           </button>
           <button
+            type="button"
             className="btn btn-ghost btn-sm"
             title="Remove"
+            aria-label={`Remove ${c.title}`}
             onClick={onRemove}
           >
-            <IconTrash size={13} />
+            <IconTrash size={13} aria-hidden="true" />
           </button>
         </div>
       </div>
 
-      {showHistory && (
-        <Timeline events={events} />
-      )}
-    </div>
+      <div id={historyId} hidden={!showHistory}>
+        {showHistory && <Timeline events={events} />}
+      </div>
+    </article>
   );
 }
