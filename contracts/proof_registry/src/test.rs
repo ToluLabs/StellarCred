@@ -2912,3 +2912,273 @@ fn test_submit_proof_with_nullifier_rejects_sybil_reuse() {
     );
     assert!(second_attempt.is_err(), "Second submission with same nullifier in same context must revert");
 }
+
+#[contract]
+struct MockDepthVerifier;
+
+#[contractimpl]
+impl MockDepthVerifier {
+    pub fn verify_proof(
+        _env: Env,
+        _credential_type: Symbol,
+        _proof: Bytes,
+        _public_inputs: Bytes,
+        _vk_version: Option<u32>,
+    ) -> bool {
+        true
+    }
+}
+
+#[test]
+fn estimate_returns_nonzero_cpu_for_minimal_proof() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let h = deploy_aggregate(&env);
+    let holder = Address::generate(&env);
+
+    let estimate = h.c.registry.estimate_proof_resources(
+        &holder,
+        &vec![&env, h.issuer.clone(), h.issuer.clone()],
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        &AGGREGATE.proof_bytes(&env),
+        &AGGREGATE.public_inputs_bytes(&env),
+        &vec![&env, 90_000u64, 5_000u64],
+    );
+
+    assert!(estimate.cpu_instructions > 0);
+}
+
+#[test]
+fn estimate_returns_nonzero_memory_for_minimal_proof() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let h = deploy_aggregate(&env);
+    let holder = Address::generate(&env);
+
+    let estimate = h.c.registry.estimate_proof_resources(
+        &holder,
+        &vec![&env, h.issuer.clone(), h.issuer.clone()],
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        &AGGREGATE.proof_bytes(&env),
+        &AGGREGATE.public_inputs_bytes(&env),
+        &vec![&env, 90_000u64, 5_000u64],
+    );
+
+    assert!(estimate.memory_bytes > 0);
+}
+
+#[test]
+fn estimate_scales_with_proof_depth() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let c = Contracts::deploy(&env);
+    let issuer = c.register_issuer_for(&env, &KYC, &["kyc", "age"]);
+
+    let admin = Address::generate(&env);
+    let v_id = env.register(MockDepthVerifier, ());
+    let pr_id = env.register(ProofRegistry, (admin, v_id, c.issuer_registry_id.clone()));
+    let registry = ProofRegistryClient::new(&env, &pr_id);
+
+    let holder = Address::generate(&env);
+
+    // Shallow proof: 2 credentials (KYC + Age)
+    let shallow_estimate = registry.estimate_proof_resources(
+        &holder,
+        &vec![&env, issuer.clone(), issuer.clone()],
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        &AGGREGATE.proof_bytes(&env),
+        &AGGREGATE.public_inputs_bytes(&env),
+        &vec![&env, 90_000u64, 5_000u64],
+    );
+
+    // Deep proof: 4 credentials (KYC + Age + KYC + Age)
+    // Construct 4-credential public inputs with num=4 at field 132 and valid issuer pubkeys
+    let mut deep_pi_vec = AGGREGATE.public_inputs[0..132 * 32].to_vec();
+    // Field 132: value 4 (serves as both num=4 and KYC 2's commitment)
+    let mut f132 = [0u8; 32];
+    f132[31] = 4;
+    deep_pi_vec.extend_from_slice(&f132);
+
+    // KYC 2 pubkey: fields 133..196 (64 fields, copied from KYC 1 pubkey at fields 1..65)
+    deep_pi_vec.extend_from_slice(&AGGREGATE.public_inputs[32..65 * 32]);
+
+    // Age 2 commitment: field 197
+    deep_pi_vec.extend_from_slice(&[0u8; 32]);
+    // Age 2 pubkey: fields 198..261 (64 fields, copied from Age 1 pubkey at fields 66..130)
+    deep_pi_vec.extend_from_slice(&AGGREGATE.public_inputs[66 * 32..130 * 32]);
+    // Age 2 date and threshold: fields 262..263
+    deep_pi_vec.extend_from_slice(&[0u8; 64]);
+
+    let deep_pi = Bytes::from_slice(&env, &deep_pi_vec);
+
+    let deep_estimate = registry.estimate_proof_resources(
+        &holder,
+        &vec![
+            &env,
+            issuer.clone(),
+            issuer.clone(),
+            issuer.clone(),
+            issuer.clone(),
+        ],
+        &vec![
+            &env,
+            symbol_short!("kyc"),
+            symbol_short!("age"),
+            symbol_short!("kyc"),
+            symbol_short!("age"),
+        ],
+        &AGGREGATE.proof_bytes(&env),
+        &deep_pi,
+        &vec![&env, 90_000u64, 5_000u64, 90_000u64, 5_000u64],
+    );
+
+    assert!(
+        deep_estimate.cpu_instructions > shallow_estimate.cpu_instructions,
+        "Deep proof instructions ({}) must exceed shallow ({})",
+        deep_estimate.cpu_instructions,
+        shallow_estimate.cpu_instructions
+    );
+}
+
+#[test]
+fn estimate_does_not_mutate_contract_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let h = deploy_aggregate(&env);
+    let holder = Address::generate(&env);
+
+    assert!(h
+        .c
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .is_none());
+    assert!(h
+        .c
+        .registry
+        .get_record(&holder, &symbol_short!("age"))
+        .is_none());
+
+    let _estimate = h.c.registry.estimate_proof_resources(
+        &holder,
+        &vec![&env, h.issuer.clone(), h.issuer.clone()],
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        &AGGREGATE.proof_bytes(&env),
+        &AGGREGATE.public_inputs_bytes(&env),
+        &vec![&env, 90_000u64, 5_000u64],
+    );
+
+    assert!(h
+        .c
+        .registry
+        .get_record(&holder, &symbol_short!("kyc"))
+        .is_none());
+    assert!(h
+        .c
+        .registry
+        .get_record(&holder, &symbol_short!("age"))
+        .is_none());
+    let (is_verified, _, _) =
+        h.c.registry
+            .is_verified(&holder, &symbol_short!("kyc"), &None);
+    assert!(!is_verified);
+}
+
+#[test]
+fn estimate_matches_actual_execution_budget() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let h = deploy_aggregate(&env);
+    let holder = Address::generate(&env);
+
+    let estimate = h.c.registry.estimate_proof_resources(
+        &holder,
+        &vec![&env, h.issuer.clone(), h.issuer.clone()],
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        &AGGREGATE.proof_bytes(&env),
+        &AGGREGATE.public_inputs_bytes(&env),
+        &vec![&env, 90_000u64, 5_000u64],
+    );
+
+    env.cost_estimate().budget().reset_unlimited();
+    h.c.registry.submit_aggregate_proof(
+        &holder,
+        &vec![&env, h.issuer.clone(), h.issuer.clone()],
+        &vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        &AGGREGATE.proof_bytes(&env),
+        &AGGREGATE.public_inputs_bytes(&env),
+        &vec![&env, 90_000u64, 5_000u64],
+    );
+    let actual_cpu = env.cost_estimate().budget().cpu_instruction_cost();
+
+    let diff = (actual_cpu as i128 - estimate.cpu_instructions as i128).abs();
+    let relative_diff = (diff as f64) / (actual_cpu as f64);
+    assert!(
+        relative_diff < 0.05,
+        "Actual ({}) vs Estimate ({}) diff {} is {:.2}% (> 5%)",
+        actual_cpu,
+        estimate.cpu_instructions,
+        diff,
+        relative_diff * 100.0
+    );
+}
+
+#[test]
+fn simulate_proof_cost_returns_estimate() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let h = deploy_aggregate(&env);
+    let holder = Address::generate(&env);
+
+    let payload = crate::sim::AggregateProofPayload {
+        holder,
+        issuer_ids: vec![&env, h.issuer.clone(), h.issuer.clone()],
+        credential_types: vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        proof: AGGREGATE.proof_bytes(&env),
+        public_inputs: AGGREGATE.public_inputs_bytes(&env),
+        expiries: vec![&env, 90_000u64, 5_000u64],
+    };
+
+    let estimate = crate::sim::simulate_proof_cost(&env, &h.c.registry_id, &payload)
+        .expect("simulation should succeed");
+
+    assert!(estimate.cpu_instructions > 0);
+    assert!(estimate.memory_bytes > 0);
+    assert!(estimate.read_bytes > 0);
+}
+
+#[test]
+fn simulate_proof_cost_propagates_error_on_invalid_payload() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.cost_estimate().budget().reset_unlimited();
+
+    let h = deploy_aggregate(&env);
+    let holder = Address::generate(&env);
+
+    let payload = crate::sim::AggregateProofPayload {
+        holder,
+        issuer_ids: vec![&env, h.issuer.clone(), h.issuer.clone()],
+        credential_types: vec![&env, symbol_short!("kyc"), symbol_short!("age")],
+        proof: AGGREGATE.tampered_proof(&env),
+        public_inputs: AGGREGATE.public_inputs_bytes(&env),
+        expiries: vec![&env, 90_000u64, 5_000u64],
+    };
+
+    let result = crate::sim::simulate_proof_cost(&env, &h.c.registry_id, &payload);
+    assert!(
+        result.is_err(),
+        "expected error on malformed/tampered proof"
+    );
+}

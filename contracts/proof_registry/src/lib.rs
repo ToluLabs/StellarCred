@@ -269,6 +269,15 @@ pub struct ProofSubmission {
     pub vk_version: Option<u32>,
 }
 
+/// Resource consumption bounds estimated for recursive / aggregate proof verification.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProofResourceEstimate {
+    pub cpu_instructions: u64,
+    pub memory_bytes: u64,
+    pub read_bytes: u64,
+}
+
 #[contracttype]
 pub enum DataKey {
     Admin,
@@ -757,6 +766,59 @@ impl ProofRegistry {
         results
     }
 
+    fn verify_aggregate_proof_internal(
+        env: &Env,
+        issuer_ids: &Vec<Address>,
+        credential_types: &Vec<Symbol>,
+        proof: &Bytes,
+        public_inputs: &Bytes,
+        expiries: &Vec<u64>,
+    ) {
+        Self::ensure_not_paused(env);
+
+        let verifier = VerifierClient::new(env, &Self::verifier(env));
+        if !verifier.verify_proof(&symbol_short!("aggregate"), proof, public_inputs, &None) {
+            panic_with_error!(env, Error::VerificationFailed);
+        }
+
+        let num = Self::read_u64_field(public_inputs, AGG_FIELD_NUM_CREDENTIALS);
+        if num != credential_types.len() as u64
+            || num < 2
+            || num > MAX_BATCH_SIZE as u64
+            || issuer_ids.len() != credential_types.len()
+            || expiries.len() != credential_types.len()
+        {
+            panic_with_error!(env, Error::AggregateLayoutInvalid);
+        }
+
+        for expiry in expiries.iter() {
+            Self::validate_expiry(env, expiry);
+        }
+
+        let registry = IssuerClient::new(env, &Self::issuer_registry(env));
+
+        let mut field_offset: u32 = 0;
+        for i in 0..credential_types.len() {
+            let ct = credential_types.get(i).unwrap();
+            let issuer = issuer_ids.get(i).unwrap();
+
+            if !registry.is_valid_issuer(&issuer, &ct) {
+                panic_with_error!(env, Error::IssuerNotTrusted);
+            }
+
+            let presented = Self::pubkey_from_public_inputs(
+                env,
+                public_inputs,
+                field_offset + PUBKEY_START_FIELD,
+            );
+            if !registry.is_valid_issuer_key(&issuer, &presented) {
+                panic_with_error!(env, Error::IssuerKeyMismatch);
+            }
+
+            field_offset += Self::aggregate_field_count(&ct);
+        }
+    }
+
     /// Aggregate proof submission with per-credential expiries.
     #[allow(deprecated)]
     pub fn submit_aggregate_proof(
@@ -769,28 +831,15 @@ impl ProofRegistry {
         expiries: Vec<u64>,
     ) {
         holder.require_auth();
-        Self::ensure_not_paused(&env);
+        Self::verify_aggregate_proof_internal(
+            &env,
+            &issuer_ids,
+            &credential_types,
+            &proof,
+            &public_inputs,
+            &expiries,
+        );
 
-        let verifier = VerifierClient::new(&env, &Self::verifier(&env));
-        if !verifier.verify_proof(&symbol_short!("aggregate"), &proof, &public_inputs, &None) {
-            panic_with_error!(&env, Error::VerificationFailed);
-        }
-
-        let num = Self::read_u64_field(&public_inputs, AGG_FIELD_NUM_CREDENTIALS);
-        if num != credential_types.len() as u64
-            || num < 2
-            || num > MAX_BATCH_SIZE as u64
-            || issuer_ids.len() != credential_types.len()
-            || expiries.len() != credential_types.len()
-        {
-            panic_with_error!(&env, Error::AggregateLayoutInvalid);
-        }
-
-        for expiry in expiries.iter() {
-            Self::validate_expiry(&env, expiry);
-        }
-
-        let registry = IssuerClient::new(&env, &Self::issuer_registry(&env));
         let now = env.ledger().timestamp();
 
         let mut field_offset: u32 = 0;
@@ -798,22 +847,17 @@ impl ProofRegistry {
             let ct = credential_types.get(i).unwrap();
             let issuer = issuer_ids.get(i).unwrap();
 
-            if !registry.is_valid_issuer(&issuer, &ct) {
-                panic_with_error!(&env, Error::IssuerNotTrusted);
-            }
-
-            let presented = Self::pubkey_from_public_inputs(
-                &env,
-                &public_inputs,
-                field_offset + PUBKEY_START_FIELD,
-            );
-            if !registry.is_valid_issuer_key(&issuer, &presented) {
-                panic_with_error!(&env, Error::IssuerKeyMismatch);
-            }
-
             let threshold =
                 Self::extract_threshold_from_aggregate(&ct, &public_inputs, field_offset);
-            Self::store_claim(&env, &holder, &ct, now, expiries.get(i).unwrap(), threshold, issuer.clone());
+            Self::store_claim(
+                &env,
+                &holder,
+                &ct,
+                now,
+                expiries.get(i).unwrap(),
+                threshold,
+                issuer.clone(),
+            );
 
             env.events().publish(
                 (
@@ -830,6 +874,68 @@ impl ProofRegistry {
             );
 
             field_offset += Self::aggregate_field_count(&ct);
+        }
+    }
+
+    // view-only: no state writes permitted
+    /// Dry-run simulation entry point for estimating resource consumption of recursive/aggregate proof verification.
+    ///
+    /// Runs the complete read and verification path — validating credential layout, verifying
+    /// the cryptographic UltraHonk proof against the registered verification key, and checking
+    /// issuer trust and public keys — without performing any state writes or emitting events.
+    ///
+    /// In on-chain WASM execution, contracts cannot query host resource meters from within the guest runtime;
+    /// this function intentionally returns a zeroed `ProofResourceEstimate` as the on-chain return value.
+    /// The actual resource consumption (CPU instructions, memory bytes, read bytes) is measured externally
+    /// by the Soroban host and returned in the RPC `simulateTransaction` response envelope.
+    ///
+    /// In the native test environment (`#[cfg(any(test, feature = "testutils"))]`), the struct is
+    /// populated using `env.cost_estimate()` so unit and integration tests can inspect simulated bounds directly.
+    pub fn estimate_proof_resources(
+        env: Env,
+        holder: Address,
+        issuer_ids: Vec<Address>,
+        credential_types: Vec<Symbol>,
+        proof: Bytes,
+        public_inputs: Bytes,
+        expiries: Vec<u64>,
+    ) -> ProofResourceEstimate {
+        let _ = holder;
+        Self::verify_aggregate_proof_internal(
+            &env,
+            &issuer_ids,
+            &credential_types,
+            &proof,
+            &public_inputs,
+            &expiries,
+        );
+
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let budget = env.cost_estimate().budget();
+            let cpu_instructions = budget.cpu_instruction_cost();
+            let memory_bytes = budget.memory_bytes_cost();
+            let read_bytes = match env.host().get_last_invocation_resources() {
+                Some(res) if res.disk_read_bytes > 0 => res.disk_read_bytes as u64,
+                _ => {
+                    let input_bytes =
+                        (proof.len() as u64).saturating_add(public_inputs.len() as u64);
+                    input_bytes.saturating_add(256)
+                }
+            };
+            ProofResourceEstimate {
+                cpu_instructions,
+                memory_bytes,
+                read_bytes,
+            }
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            ProofResourceEstimate {
+                cpu_instructions: 0,
+                memory_bytes: 0,
+                read_bytes: 0,
+            }
         }
     }
 
@@ -1403,6 +1509,9 @@ impl ProofRegistry {
         admin.require_auth();
     }
 }
+
+#[cfg(not(target_family = "wasm"))]
+pub mod sim;
 
 #[cfg(test)]
 mod test;
