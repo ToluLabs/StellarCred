@@ -1,0 +1,831 @@
+[
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Error",
+      "cases": [
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "IssuerNotFound",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "MetadataTooLong",
+          "value": 3
+        },
+        {
+          "doc": "The caller is not the holder of the role required by this function.",
+          "name": "RoleNotHeld",
+          "value": 4
+        },
+        {
+          "doc": "`revoke_role` named an address that is not the current holder of the role.",
+          "name": "RoleHolderMismatch",
+          "value": 5
+        },
+        {
+          "doc": "The key is not part of this issuer's live key set: it was never\\nregistered, or its validity window has already closed.",
+          "name": "KeyNotFound",
+          "value": 6
+        },
+        {
+          "doc": "The key was already emergency-revoked, so revoking it again is a no-op.",
+          "name": "KeyAlreadyRevoked",
+          "value": 7
+        },
+        {
+          "doc": "`rotate_issuer_key` was asked to install a key that is still in the\\nissuer's key set. Re-using a retired key would revive the credentials\\nsigned with it.",
+          "name": "KeyAlreadyRetired",
+          "value": 8
+        },
+        {
+          "doc": "The issuer already retains `MAX_RETIRED_KEYS` keys that are still inside\\ntheir validity windows; wait for one to expire before rotating again.",
+          "name": "KeyHistoryFull",
+          "value": 9
+        },
+        {
+          "doc": "The requested validity window is empty (already closed) or longer than\\n`MAX_KEY_RETENTION_SECS`.",
+          "name": "InvalidKeyWindow",
+          "value": 10
+        },
+        {
+          "doc": "`rotate_issuer_key` was asked to install the key that is already current.",
+          "name": "KeyAlreadyCurrent",
+          "value": 11
+        },
+        {
+          "doc": "`register_issuer` tried to change the pubkey of an existing issuer.\\nUse `rotate_issuer_key` so outstanding credentials keep verifying.",
+          "name": "KeyChangeRequiresRotation",
+          "value": 12
+        },
+        {
+          "doc": "`accept_admin` was called with no pending proposal (#342).",
+          "name": "NoPendingAdmin",
+          "value": 13
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Issuer",
+      "fields": [
+        {
+          "doc": "Credential types this issuer is trusted to attest.",
+          "name": "credential_types",
+          "type_": {
+            "vec": {
+              "element_type": "symbol"
+            }
+          }
+        },
+        {
+          "doc": "secp256k1 public key (x || y, 32 bytes each) the issuer signs credentials\\nwith. A proof carries this key as a public input; ProofRegistry checks it\\nmatches this registered value, so a proof can only pass if a registered\\nissuer actually signed the credential commitment.",
+          "name": "pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "revoked",
+          "type_": "bool"
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Admin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Pending root-admin candidate set by `propose_admin` and consumed by\\n`accept_admin` (#342).",
+            "name": "PendingAdmin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "RBAC: role name (Symbol) \\xe2\\x86\\x92 current holder (Address).",
+            "name": "Roles"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Issuer",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Retired signing keys of an issuer, oldest first. Each entry carries its\\nown validity window, so a rotation does not invalidate credentials that\\nwere signed before it. Bounded by `MAX_RETIRED_KEYS`.",
+            "name": "RetiredKeys",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Whether the issuer's current signing key was emergency-revoked. Stored\\nseparately from `Issuer` so the `Issuer` ABI stays stable; while set, the\\nissuer cannot issue (`is_valid_issuer` is false) and must be rotated.",
+            "name": "CurrentKeyRevoked",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Append-only list of registered issuer addresses for enumeration.\\nStored in persistent storage to avoid hitting the instance-storage\\nsize cap as the issuer set grows.",
+            "name": "IssuerList"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "IssuerMetadata",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Total number of registered issuers; kept in sync with IssuerList so\\ncallers can size pagination requests without loading the whole list.",
+            "name": "IssuerCount"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "One entry of an issuer's key set.\\n\\nThe current signing key is reported by [`IssuerRegistry::get_issuer_keys`]\\nas the first entry with `retired_at == 0` and `valid_until == 0`; retired\\nkeys follow, oldest first. Retired entries are pruned once their validity\\nwindow closes, so a long-lived issuer's history stays bounded.",
+      "lib": "",
+      "name": "IssuerKey",
+      "fields": [
+        {
+          "doc": "secp256k1 public key (x || y, 32 bytes each).",
+          "name": "pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "Ledger timestamp at which the key stopped being the issuer's current\\nsigning key. 0 while the key is still current.",
+          "name": "retired_at",
+          "type_": "u64"
+        },
+        {
+          "doc": "Set by `revoke_issuer_key`. A revoked key never validates again,\\nregardless of `valid_until` \\xe2\\x80\\x94 that is the difference between rotation\\n(windowed) and revocation (immediate).",
+          "name": "revoked",
+          "type_": "bool"
+        },
+        {
+          "doc": "Ledger timestamp from which the key stops validating submissions. 0\\nwhile the key is current (the current key has no scheduled expiry).",
+          "name": "valid_until",
+          "type_": "u64"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "admin",
+      "inputs": [],
+      "outputs": [
+        "address"
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "IssuerMetadata",
+      "fields": [
+        {
+          "doc": "",
+          "name": "logo",
+          "type_": {
+            "option": {
+              "value_type": "string"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": {
+            "option": {
+              "value_type": "string"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "url",
+          "type_": {
+            "option": {
+              "value_type": "string"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the contract version as an encoded u32.\\nEncoding: (major * 1000000) + (minor * 1000) + patch\\nExample: 1.2.3 -> 1002003",
+      "name": "version",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "True iff `address` currently holds `role`.",
+      "name": "has_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Full on-chain record for a registered issuer.",
+      "name": "get_issuer",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "udt": {
+            "name": "Issuer"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Assign `address` as the holder of `role`, replacing any previous holder.\\nRoot-admin only. Use this to delegate or rotate a role's key \\xe2\\x80\\x94 e.g. hand\\nthe `admin` role to an operations key, or prepare an `issuer-manager`\\nrole for finer-grained issuer governance.",
+      "name": "grant_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when an issuer is revoked.\\nTopics: (\"iss_reg\", \"revoked\")",
+      "lib": "",
+      "name": "EventIssuerRevoked",
+      "fields": [
+        {
+          "doc": "The address of the revoked issuer.",
+          "name": "issuer",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "All registered issuer addresses (including revoked).\\n\\n# Warning\\nThis returns the full list in a single Vec. For production deployments\\nwith a large number of issuers, prefer [`get_issuers_page`] to bound\\nthe per-call read footprint and avoid hitting Soroban resource limits.",
+      "name": "get_issuers",
+      "inputs": [],
+      "outputs": [
+        {
+          "vec": {
+            "element_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Remove `address` as the holder of `role`. Root-admin only.\\n\\nThe named address must be the current holder (revoking a different\\naddress is a no-op risk, so it is rejected with `RoleHolderMismatch`\\ninstead). A role with no holder is simply unassigned \\xe2\\x80\\x94 no one can act\\nunder it until it is granted again.",
+      "name": "revoke_role",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "role",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "address",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Accept the pending root-admin role. Callable only by the address named\\nin the most recent `propose_admin`. On success the accepted address\\nbecomes the new `DataKey::Admin` AND inherits every role the outgoing\\nadmin held \\xe2\\x80\\x94 a wholesale governance transfer, so the outgoing root\\nloses all privileged access exactly as it did before roles existed.\\nFine-grained delegation afterwards uses `grant_role` / `revoke_role`.\\nEmits `(\"iss_reg\", \"adm_acc\")` with the new admin as the payload (#342).",
+      "name": "accept_admin",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Total number of registered issuers (including revoked).\\nUse this together with [`get_issuers_page`] to iterate the full set\\nwithout loading it all at once.",
+      "name": "issuer_count",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Set the protocol admin once, at deploy time.",
+      "name": "__constructor",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Read the current pending admin proposal, if any (#342).",
+      "name": "pending_admin",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Propose a new root admin. Root-admin only. Overwrites any existing\\npending proposal. Emits `(\"iss_reg\", \"adm_prop\")` with the proposed\\naddress as the payload (#342).",
+      "name": "propose_admin",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "new_admin",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Mark an issuer as revoked. Admin-role only. Existing proofs are not affected\\nhere \\xe2\\x80\\x94 revocation propagates through `is_valid_issuer` checks.",
+      "name": "revoke_issuer",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when an issuer's signing key is emergency-revoked.\\nTopics: (\"iss_reg\", \"key_revk\")",
+      "lib": "",
+      "name": "EventIssuerKeyRevoked",
+      "fields": [
+        {
+          "doc": "The issuer whose key set changed.",
+          "name": "issuer",
+          "type_": "address"
+        },
+        {
+          "doc": "The key that was killed.",
+          "name": "pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "Ledger timestamp at which the revocation took effect.",
+          "name": "revoked_at",
+          "type_": "u64"
+        },
+        {
+          "doc": "True when the revoked key was the issuer's current signing key (no new\\ncredentials can be issued until the admin rotates to a new one); false\\nwhen it was a retired key still inside its validity window.",
+          "name": "was_current",
+          "type_": "bool"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when an issuer's signing key is rotated.\\nTopics: (\"iss_reg\", \"key_rot\")",
+      "lib": "",
+      "name": "EventIssuerKeyRotated",
+      "fields": [
+        {
+          "doc": "The issuer whose key set changed.",
+          "name": "issuer",
+          "type_": "address"
+        },
+        {
+          "doc": "The key that is current from now on.",
+          "name": "new_pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "Ledger timestamp after which `old_pubkey` stops validating submissions\\n(inclusive: the key is still valid at exactly this timestamp).\\nAlready-revoked keys are recorded as history only, so this field is the\\nrequested window even when the old key is dead regardless.",
+          "name": "old_key_valid_until",
+          "type_": "u64"
+        },
+        {
+          "doc": "The key that stopped being the current signing key.",
+          "name": "old_pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Payload emitted when an issuer is registered or updated.\\nTopics: (\"iss_reg\", \"register\")",
+      "lib": "",
+      "name": "EventIssuerRegistered",
+      "fields": [
+        {
+          "doc": "The address of the newly registered issuer.",
+          "name": "issuer",
+          "type_": "address"
+        },
+        {
+          "doc": "The issuer's secp256k1 public key (x || y, 32 bytes each).",
+          "name": "pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "The issuer's full key set: the current signing key first, then retired\\nkeys oldest-first. Empty vector for an unknown issuer.\\n\\nThe current key is reported with `retired_at == 0`, `valid_until == 0`\\n(it has no scheduled expiry) and `revoked` set when the current key was\\nemergency-revoked. Retired keys past their window are pruned by the next\\nrotation, so the list is live keys plus recent history.",
+      "name": "get_issuer_keys",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "vec": {
+            "element_type": {
+              "udt": {
+                "name": "IssuerKey"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "True iff `issuer_id` is registered, not revoked, and trusted for\\n`credential_type`.\\n\\nA false result also covers an issuer whose current signing key was\\nemergency-revoked: it cannot issue anything until an admin rotates it to\\na new key. Use [`is_valid_issuer_key`] to check a specific proof's key.",
+      "name": "is_valid_issuer",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "credential_type",
+          "type_": "symbol"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register (or overwrite) a trusted issuer. Admin-only.\\nRegister (or overwrite) a trusted issuer. Admin-role only.",
+      "name": "register_issuer",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "credential_types",
+          "type_": {
+            "vec": {
+              "element_type": "symbol"
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Paginated read of registered issuer addresses (including revoked).\\n\\nReturns up to `limit` addresses starting at zero-based index `start`.\\n`limit` is capped at 20 to bound the per-call read footprint; passing a\\nlarger value silently uses 20 instead.\\n\\nUse [`issuer_count`] to determine how many pages are needed:\\n```text\\npages = ceil(issuer_count() / limit)\\n```",
+      "name": "get_issuers_page",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "start",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "limit",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "vec": {
+            "element_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Look up an issuer's credential-signing public key (secp256k1 x || y).\\n\\nThis is the *current* signing key only. To check the key carried by a\\nproof \\xe2\\x80\\x94 which may have been signed by a retired key that is still inside\\nits validity window \\xe2\\x80\\x94 use [`is_valid_issuer_key`].",
+      "name": "get_issuer_pubkey",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "bytes_n": {
+            "n": 64
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Emergency-revoke one of an issuer's signing keys. Admin-role only.\\n\\nUnlike rotation, revocation is immediate and ignores the key's validity\\nwindow: proofs signed by the key stop verifying on the next ledger, and\\nif the current key is revoked the issuer cannot issue at all\\n(`is_valid_issuer` returns false) until an admin rotates it to a new key.\\nRetiring a key normally and then discovering it was compromised is the\\nexact case this exists for.",
+      "name": "revoke_issuer_key",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Rotate an issuer's signing key. Admin-role only.\\n\\nThe current key is retired with a validity window that stays open\\nthrough `old_key_valid_until` (inclusive), and `new_pubkey` becomes the\\nkey used for new issuance. Credentials signed by the old key therefore\\nkeep verifying until they reach their natural expiry \\xe2\\x80\\x94 rotation alone\\nnever invalidates outstanding credentials.\\n\\n`old_key_valid_until` must lie in `(now, now + MAX_KEY_RETENTION_SECS]`;\\nset it to the latest expiry among the issuer's outstanding credentials.\\nRetired keys are pruned once their window closes, so an issuer can rotate\\nrepeatedly over its lifetime.\\n\\nIf the old key was emergency-revoked, rotating installs the replacement\\nand the revoked key stays dead in the history. To kill a key\\nimmediately instead, use [`revoke_issuer_key`].",
+      "name": "rotate_issuer_key",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "new_pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "old_key_valid_until",
+          "type_": "u64"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Read the optional on-chain metadata for an issuer.\\nReturns `None` if no metadata has been set.",
+      "name": "get_issuer_metadata",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "option": {
+            "value_type": {
+              "udt": {
+                "name": "IssuerMetadata"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "True iff `pubkey` may sign submissions for `issuer_id` right now.\\n\\nTrue for the issuer's current key and for any retired key whose validity\\nwindow has not closed and that has not been emergency-revoked. This is\\nthe check ProofRegistry runs against a proof's public inputs, so a\\ncredential issued before a rotation keeps verifying.",
+      "name": "is_valid_issuer_key",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pubkey",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Admin-role only. Pass `None` for fields you don't want to set.",
+      "name": "set_issuer_metadata",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": {
+            "option": {
+              "value_type": "string"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "url",
+          "type_": {
+            "option": {
+              "value_type": "string"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "logo",
+          "type_": {
+            "option": {
+              "value_type": "string"
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cancel a pending admin proposal. Root-admin only. Emits\\n`(\"iss_reg\", \"adm_canc\")` with an empty payload (#342).",
+      "name": "cancel_admin_proposal",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Extend the persistent-entry lifetime of an issuer's record and key\\nhistory. Admin-role only. Emits no event.\\n\\nPersistent entries expire after `ENTRY_TTL`, and expiry is what makes an\\nentry unreadable \\xe2\\x80\\x94 a retired key whose entry has lapsed stops verifying\\neven though its validity window is still open. Call this periodically\\n(a keeper job is the usual answer) for issuers with long validity\\nwindows, ideally before `BUMP_THRESHOLD` ledgers have elapsed.",
+      "name": "refresh_issuer_keys_ttl",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "issuer_id",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  }
+]

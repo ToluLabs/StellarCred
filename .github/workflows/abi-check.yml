@@ -1,0 +1,95 @@
+name: Contract ABI Baseline Check
+
+# ── Soroban Contract ABI Baseline Gate (Issue #965) ──────────────────────────
+# Compares the public specification and ABI of all release-bound Soroban contracts
+# against their checked-in baselines (contracts/<name>/abi.json).
+#
+# Any public function signature change, parameter alteration, struct modification,
+# or unexpected removal will fail this check so breaking changes are caught before
+# deployment. If the change is intentional, follow docs/abi-baseline-update.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: abi-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  abi-check:
+    name: Contract ABI baseline check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          targets: wasm32v1-none
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: Cache cargo registry & build products
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-abi-check-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-abi-check-
+
+      - name: Cache Stellar CLI
+        uses: actions/cache@v4
+        id: cache-stellar-cli
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-${{ runner.os }}-27.0.0
+
+      - name: Install Stellar CLI
+        if: steps.cache-stellar-cli.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.cargo/bin"
+          # Install official pre-built binary; fallback to cargo install with C dependencies if needed
+          if curl -fsSL "https://github.com/stellar/stellar-cli/releases/download/v27.0.0/stellar-cli-27.0.0-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/stellar.tar.gz; then
+            tar -xzf /tmp/stellar.tar.gz -C "$HOME/.cargo/bin"
+            chmod +x "$HOME/.cargo/bin/stellar"
+          else
+            sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev
+            cargo install stellar-cli --locked --version 27.0.0
+          fi
+
+      - name: Verify Stellar CLI version
+        shell: bash
+        run: |
+          stellar --version
+
+      - name: Run contract ABI check
+        id: run-check
+        shell: bash
+        run: |
+          bash scripts/check-contract-abi.sh
+
+      - name: Baseline update guidance
+        if: failure() && steps.run-check.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::error::Contract ABI baseline check failed! See docs/abi-baseline-update.md for instructions on reviewing and updating baselines."
