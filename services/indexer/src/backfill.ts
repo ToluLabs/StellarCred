@@ -33,6 +33,7 @@ import {
   type HorizonContractEvent,
   type HorizonEventsPage,
 } from "./ingester";
+import { injectTraceHeaders, logger } from "./logging";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -176,7 +177,9 @@ export const runBackfill = async (
   deps: BackfillDeps = {}
 ): Promise<BackfillResult> => {
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const log = deps.log ?? ((m: string) => console.log(m));
+  const log =
+    deps.log ??
+    ((m: string) => logger.info("backfill_progress", { detail: m }));
   const sleep = deps.sleep ?? defaultSleep;
 
   const getJson = async (url: URL): Promise<unknown> => {
@@ -184,7 +187,9 @@ export const runBackfill = async (
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let res: Response;
       try {
-        res = await fetchImpl(url.toString());
+        res = await fetchImpl(url.toString(), {
+          headers: injectTraceHeaders(),
+        });
       } catch (err) {
         // Network-level failure: retryable.
         lastErr = err;
