@@ -24,6 +24,9 @@ beforeEach(() => {
   ls = mockStorage();
   vi.stubGlobal("localStorage", ls);
   vi.stubGlobal("window", {
+    // isStorageAvailable() probes window.localStorage, so the stubbed window
+    // must expose the same mock or the hook falls back to in-memory defaults.
+    localStorage: ls,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
@@ -121,9 +124,14 @@ describe("useOnboarding — core navigation", () => {
     ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 4, dismissed: false, completed: false }));
     const { result } = renderHook(() => useOnboarding());
 
+    // Step 4 -> 5 lands on the last step ("unlock") without completing.
     act(() => result.current.nextStep());
-
     expect(result.current.state.step).toBe(5);
+    expect(result.current.state.completed).toBe(false);
+
+    // Advancing past the last step completes the flow and stays on it.
+    act(() => result.current.nextStep());
+    expect(result.current.state.step).toBe(ONBOARDING_STEPS.length - 1);
     expect(result.current.state.completed).toBe(true);
   });
 

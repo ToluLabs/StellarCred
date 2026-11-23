@@ -43,33 +43,11 @@ export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
 
 import {
-  configure,
-  healthCheck,
-  isConfigured,
-  hasClaim,
-  getClaim,
-  getClaimRecord,
-  checkClaimStatus,
-  hasClaims,
-  getClaims,
-  verifyPreset,
-  buildVerifyUrl,
-  buildBadgeUrl,
-  buildBadgeEmbedCode,
-  parseReturnParams,
-  watchClaim,
-  withRetry,
-  normalizeRpcError,
-  classifyTransientFailure,
-  CLAIM_TYPES,
-  deriveNullifier,
-  isNullifierUsed,
-  verifyUniquePersonhood,
-  invalidateClaimCache,
-  clearClaimCache,
-  TimeoutError,
-  ConfigError,
-  InvalidAddressError,
+  configure, healthCheck, isConfigured, hasClaim, getClaim, getClaimRecord, checkClaimStatus,
+  hasClaims, getClaims, verifyPreset, buildVerifyUrl, buildBadgeUrl, buildBadgeEmbedCode,
+  parseReturnParams, watchClaim, withRetry, normalizeRpcError, classifyTransientFailure,
+  CLAIM_TYPES, deriveNullifier, isNullifierUsed, verifyUniquePersonhood, invalidateClaimCache,
+  clearClaimCache, TimeoutError, ConfigError, InvalidAddressError,
 } from "./claims";
 import {
   RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
@@ -83,18 +61,12 @@ import { subscribeClaims } from "./subscriptions";
 export * from "./version";
 
 import {
-  getCredentialCircuitVersion,
-  isCompatibleCredential,
-  getCredentialVersionStatus,
-  getDeploymentCircuitVersion,
-  KNOWN_CIRCUIT_VERSIONS,
+  getCredentialCircuitVersion, isCompatibleCredential, getCredentialVersionStatus,
+  getDeploymentCircuitVersion, KNOWN_CIRCUIT_VERSIONS,
 } from "./version";
 
 import {
-  validateCredential,
-  parseCredentialJson,
-  assertValidCredential,
-  CredentialValidationError,
+  validateCredential, parseCredentialJson, assertValidCredential, CredentialValidationError,
 } from "./validateCredential";
 import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
 
