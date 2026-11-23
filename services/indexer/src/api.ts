@@ -114,6 +114,8 @@ import { StrKey } from "@stellar/stellar-sdk";
 import { MAX_WEBHOOK_DELIVERY_ATTEMPTS } from "./webhooks";
 import { createGraphQLHandler } from "./graphql";
 import { buildHealthResponse } from "./health";
+import { logger } from "./logging";
+import { createTraceMiddleware } from "./trace-middleware";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -237,6 +239,10 @@ export function buildApp(
   integrity?: IntegrityChecker
 ): express.Application {
   const app = express();
+
+  // Trace context and one JSON request line per call, mounted before every
+  // route so all downstream logging is correlated with the request's span.
+  app.use(createTraceMiddleware(logger));
 
   // Trust reverse proxies (e.g. AWS ALB, Cloudflare, Nginx) so client IP extraction is accurate.
   app.set("trust proxy", true);
@@ -951,7 +957,12 @@ export function buildApp(
 
   // â”€â”€ Error handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error("[indexer/api] unhandled error:", err);
+    logger.error("http_unhandled_error", {
+      event: "http_unhandled_error",
+      method: _req.method,
+      path: _req.path,
+      error: err,
+    });
     res.status(500).json({ error: "internal server error" });
   });
 

@@ -35,14 +35,14 @@ export default async function AdminIssuancePage({
     );
   }
 
-  const sp = await searchParams;
-  const status = STATUSES.includes(sp.status as QueueStatusFilter)
-    ? (sp.status as QueueStatusFilter)
+  const params = await searchParams;
+  const status = STATUSES.includes(params.status as QueueStatusFilter)
+    ? (params.status as QueueStatusFilter)
     : "all";
   const records = listIssuanceQueue({
     status,
-    provider: sp.provider || undefined,
-    search: sp.q || undefined,
+    provider: params.provider || undefined,
+    search: params.q || undefined,
   });
 
   return (
@@ -58,8 +58,8 @@ export default async function AdminIssuancePage({
             </option>
           ))}
         </select>
-        <input name="provider" placeholder="Provider" defaultValue={sp.provider ?? ""} />
-        <input name="q" placeholder="Event ID / type" defaultValue={sp.q ?? ""} />
+        <input name="provider" placeholder="Provider" defaultValue={params.provider ?? ""} />
+        <input name="q" placeholder="Event ID / type" defaultValue={params.q ?? ""} />
         <button type="submit">Filter</button>
       </form>
       <QueueTable initialRecords={records} />

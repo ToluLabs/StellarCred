@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { getCorsHeaders, getPublicCorsHeaders, isOriginAllowed, isPublicCorsPath } from "@/lib/cors";
+import {
+  getCorsHeaders,
+  getPublicCorsHeaders,
+  isOriginAllowed,
+  isPublicCorsPath,
+} from "@/lib/cors";
 import { logger, stripSensitiveFields } from "@/lib/logger";
+import { createTraceContext, formatTraceparent } from "@/lib/trace-context";
 import { plaidAccessTokens } from "@/lib/plaid";
 import { reportError } from "@/lib/error-reporting";
 import { captureServerException } from "@/lib/monitoring/sentry";
@@ -25,8 +31,6 @@ function resolveRequestId(inbound: string | null | undefined): string {
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
-
-
 
 export function middleware(request: NextRequest) {
   // Handle i18n routing first
@@ -91,15 +95,13 @@ export function middleware(request: NextRequest) {
     }
 
     response.headers.set(cspHeaderName, policy);
-    response.headers.set(
-      "Reporting-Endpoints",
-      `${CSP_REPORT_GROUP}="${CSP_REPORT_PATH}"`,
-    );
+    response.headers.set("Reporting-Endpoints", `${CSP_REPORT_GROUP}="${CSP_REPORT_PATH}"`);
     response.cookies.set("NEXT_LOCALE", locale, { path: "/", maxAge: 31536000, sameSite: "lax" });
     return response;
   }
 
   const requestId = resolveRequestId(request.headers.get("x-request-id"));
+  const trace = createTraceContext(request.headers.get("traceparent"));
   const startTime = Date.now();
 
   // Detect demo/mock mode signals
@@ -114,18 +116,36 @@ export function middleware(request: NextRequest) {
         status: 204,
         headers: getPublicCorsHeaders(),
       });
-      logRequest(request, 204, startTime, requestId, isDemoIssuer, isPlaidMock, isPersonaDemo);
+      logRequest(
+        request,
+        204,
+        startTime,
+        requestId,
+        isDemoIssuer,
+        isPlaidMock,
+        isPersonaDemo,
+        trace,
+      );
       return response;
     }
     if (!isOriginAllowed(origin)) {
-      logRequest(request, 204, startTime, requestId, isDemoIssuer, isPlaidMock, isPersonaDemo);
+      logRequest(
+        request,
+        204,
+        startTime,
+        requestId,
+        isDemoIssuer,
+        isPlaidMock,
+        isPersonaDemo,
+        trace,
+      );
       return new NextResponse(null, { status: 204 });
     }
     const response = new NextResponse(null, {
       status: 204,
       headers: getCorsHeaders(),
     });
-    logRequest(request, 204, startTime, requestId, isDemoIssuer, isPlaidMock, isPersonaDemo);
+    logRequest(request, 204, startTime, requestId, isDemoIssuer, isPlaidMock, isPersonaDemo, trace);
     return response;
   }
 
@@ -144,16 +164,29 @@ export function middleware(request: NextRequest) {
 
   // Log the request after response is generated
   response.headers.set("x-request-id", requestId);
-  logRequest(request, response.status, startTime, requestId, isDemoIssuer, isPlaidMock, isPersonaDemo);
+  response.headers.set("traceparent", formatTraceparent(trace));
+  logRequest(
+    request,
+    response.status,
+    startTime,
+    requestId,
+    isDemoIssuer,
+    isPlaidMock,
+    isPersonaDemo,
+    trace,
+  );
 
   // Report unexpected 500 errors to error sink and Sentry if configured
   if (response.status === 500) {
-    captureServerException(new Error(`Server error 500 on ${request.method} ${request.nextUrl.pathname}`), {
-      requestId,
-      method: request.method,
-      path: request.nextUrl.pathname,
-      status: response.status,
-    }).catch(() => {});
+    captureServerException(
+      new Error(`Server error 500 on ${request.method} ${request.nextUrl.pathname}`),
+      {
+        requestId,
+        method: request.method,
+        path: request.nextUrl.pathname,
+        status: response.status,
+      },
+    ).catch(() => {});
 
     reportError({
       method: request.method,
@@ -165,6 +198,8 @@ export function middleware(request: NextRequest) {
         stripSensitiveFields({
           event: "error_reporting_failed",
           requestId,
+          traceId: trace.traceId,
+          spanId: trace.spanId,
           error: (err as Error).message,
         }),
       );
@@ -182,6 +217,7 @@ function logRequest(
   isDemoIssuer: boolean,
   isPlaidMock: boolean,
   isPersonaDemo: boolean,
+  trace: { traceId: string; spanId: string; traceFlags: number },
 ) {
   const durationMs = Date.now() - startTime;
   logger.info(
@@ -192,6 +228,10 @@ function logRequest(
       status,
       durationMs,
       requestId,
+      traceId: trace.traceId,
+      spanId: trace.spanId,
+      traceFlags: trace.traceFlags,
+      traceparent: formatTraceparent(trace),
       demoIssuer: isDemoIssuer || undefined,
       plaidMock: isPlaidMock || undefined,
       personaDemo: isPersonaDemo || undefined,
