@@ -1233,7 +1233,17 @@ fn propose_admin_emits_expected_event() {
             (
                 c.address.clone(),
                 (symbol_short!("cred_ver"), symbol_short!("adm_prop")).into_val(&env),
-                new_admin.into_val(&env),
+                new_admin.clone().into_val(&env),
+            ),
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("rot_prop"), 1u64).into_val(&env),
+                EventVerifierRotationProposed {
+                    proposer: admin,
+                    proposed_admin: new_admin,
+                    proposed_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
             ),
         ],
     );
@@ -1262,7 +1272,75 @@ fn accept_admin_emits_expected_event() {
             (
                 c.address.clone(),
                 (symbol_short!("cred_ver"), symbol_short!("adm_acc")).into_val(&env),
-                new_admin.into_val(&env),
+                new_admin.clone().into_val(&env),
+            ),
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("rot_appr"), 1u64).into_val(&env),
+                EventVerifierRotationApproved {
+                    approver: new_admin.clone(),
+                    approved_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
+            ),
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("rot_enac"), 1u64).into_val(&env),
+                EventVerifierRotationEnacted {
+                    previous_admin: admin,
+                    new_admin,
+                    enacted_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
+            ),
+        ],
+    );
+}
+
+#[test]
+fn rotation_ids_increment_across_proposals() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let first = Address::generate(&env);
+    let second = Address::generate(&env);
+
+    c.propose_admin(&first);
+    let _ = env.events().all();
+    // Overwriting the proposal starts a new rotation with a new id.
+    c.propose_admin(&second);
+    let _ = env.events().all();
+    c.accept_admin();
+
+    assert_eq!(
+        env.events().all().filter_by_contract(&c.address),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("adm_acc")).into_val(&env),
+                second.clone().into_val(&env),
+            ),
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("rot_appr"), 2u64).into_val(&env),
+                EventVerifierRotationApproved {
+                    approver: second.clone(),
+                    approved_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
+            ),
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("rot_enac"), 2u64).into_val(&env),
+                EventVerifierRotationEnacted {
+                    previous_admin: admin,
+                    new_admin: second,
+                    enacted_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
             ),
         ],
     );
