@@ -70,7 +70,16 @@ export interface Db {
    */
   getMaxClaimLedger(): number | Promise<number>;
 
-  /** Upsert a verified claim event (the `id` cursor is assigned by the db). */
+  /**
+   * Upsert a verified claim event (the `id` cursor is assigned by the db).
+   *
+   * Idempotency policy (#1004): the natural key of a claim is
+   * (wallet, credential_type). An incoming event only replaces the stored row
+   * when its ledger_sequence is STRICTLY greater than the stored one. So:
+   *   - a duplicate delivery (same ledger) is a no-op and cannot clear a
+   *     revocation that was applied in between;
+   *   - an out-of-order older event never overwrites newer state.
+   */
   upsertClaim(row: ClaimInput): void | Promise<void>;
 
   /** Mark a claim as revoked. */
@@ -325,7 +334,8 @@ export function createSqliteDb(config: Config): Db {
              expiry          = excluded.expiry,
              ledger_sequence = excluded.ledger_sequence,
              threshold       = excluded.threshold,
-             revoked         = 0`
+             revoked         = 0
+           WHERE excluded.ledger_sequence > claims.ledger_sequence`
         )
         .run(
           row.wallet,
@@ -599,7 +609,8 @@ export function createPostgresDb(config: Config): Db {
            expiry          = EXCLUDED.expiry,
            ledger_sequence = EXCLUDED.ledger_sequence,
            threshold       = EXCLUDED.threshold,
-           revoked         = 0`,
+           revoked         = 0
+         WHERE EXCLUDED.ledger_sequence > claims.ledger_sequence`,
         [
           row.wallet,
           row.credential_type,
