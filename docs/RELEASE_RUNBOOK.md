@@ -51,7 +51,10 @@ contract versions it supports.
 ## 2. Roles and responsibilities
 
 Roles are assigned per release and named in the release issue. The maintainers
-listed in [`.github/CODEOWNERS`](../.github/CODEOWNERS) fill them.
+listed in [`.github/CODEOWNERS`](../.github/CODEOWNERS) fill them. Per-component
+scope, owners and change-review paths are in
+[`COMPONENT_OWNERSHIP.md`](COMPONENT_OWNERSHIP.md); the **Component Owner** role
+below uses that split.
 
 | Role                     | Owns                                                                                                                                | Final say                                      |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
