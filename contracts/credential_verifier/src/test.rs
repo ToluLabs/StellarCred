@@ -545,6 +545,45 @@ fn refresh_latest_version_ttl_restores_pointer_ttl() {
     );
 }
 
+/// `verify_proof` automatically extends the TTL of the VK blob and the
+/// latest-version pointer once they decay inside the bump threshold.
+#[test]
+fn verify_proof_auto_extends_schema_ttl() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, c) = deploy_credential_verifier(&env);
+    let latest_key = DataKey::LatestVersion(symbol_short!("kyc"));
+    let vk_key = DataKey::Vk(symbol_short!("kyc"), 1u32);
+    c.set_vk(&symbol_short!("kyc"), &1u32, &KYC.vk_bytes(&env));
+
+    env.ledger()
+        .with_mut(|li| li.sequence_number += VK_TTL - 1000);
+    assert_eq!(
+        env.as_contract(&c.address, || env.storage().persistent().get_ttl(&vk_key)),
+        1000,
+    );
+
+    // The proof is garbage, so verification returns false, but the access
+    // still bumps the schema entries.
+    let proof = Bytes::from_slice(&env, &[0u8; PROOF_BYTES]);
+    let inputs = Bytes::new(&env);
+    let _ = c.verify_proof(&symbol_short!("kyc"), &proof, &inputs, &None);
+
+    assert_eq!(
+        env.as_contract(&c.address, || env.storage().persistent().get_ttl(&vk_key)),
+        VK_TTL,
+        "verification extends the VK blob TTL",
+    );
+    assert_eq!(
+        env.as_contract(&c.address, || env
+            .storage()
+            .persistent()
+            .get_ttl(&latest_key)),
+        VK_TTL,
+        "verification extends the latest pointer TTL",
+    );
+}
+
 /// `refresh_latest_version_ttl` panics if no VK has been registered for the
 /// credential type yet.
 #[test]
