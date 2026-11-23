@@ -187,6 +187,10 @@ const MAX_CREDENTIAL_TTL_SECS: u64 = 365 * 86_400; // 1 year, in seconds
 
 /// Maximum number of submissions accepted by `submit_proofs_batch`.
 const MAX_BATCH_SIZE: u32 = 5;
+/// Fixed storage reads per submission: lock, paused, verifier, issuer registry.
+const BASE_STORAGE_READS: u32 = 4;
+/// Audited upper bound on storage reads per credential during verification.
+const MAX_READS_PER_CREDENTIAL: u32 = 2;
 
 // ── Aggregate proof public-input layout (N=2: KYC + age) ────────────────────
 // The aggregate_proof circuit packs N credential public inputs sequentially,
@@ -293,6 +297,8 @@ pub enum DataKey {
     /// (app_context, nullifier) -> bool. Stores whether a nullifier has been
     /// consumed within an application context to enforce Sybil resistance (#395).
     Nullifier(BytesN<32>, BytesN<32>),
+    /// Temporary-storage re-entrancy lock for proof verification endpoints.
+    VerifyLock,
 }
 
 #[contracterror]
@@ -320,6 +326,8 @@ pub enum Error {
     NoPendingAdmin = 15,
     /// The nullifier has already been consumed in this application context (#395).
     NullifierAlreadyUsed = 16,
+    /// A proof-verification endpoint was re-entered while another was in flight.
+    ReentrantCall = 17,
 }
 
 #[contract]
@@ -556,6 +564,7 @@ impl ProofRegistry {
         holder.require_auth();
         Self::ensure_not_paused(&env);
         Self::validate_expiry(&env, expiry);
+        Self::acquire_verify_lock(&env);
 
         let registry = IssuerClient::new(&env, &Self::issuer_registry(&env));
         if !registry.is_valid_issuer(&issuer_id, &credential_type) {
@@ -584,6 +593,7 @@ impl ProofRegistry {
         };
         env.storage().persistent().set(&key, &record);
         Self::bump_ttl(&env, &key, expiry);
+        Self::release_verify_lock(&env);
 
         env.events().publish(
             (
@@ -687,6 +697,7 @@ impl ProofRegistry {
             }
         }
 
+        Self::acquire_verify_lock(&env);
         let issuer_registry_addr = Self::issuer_registry(&env);
         let verifier_addr = Self::verifier(&env);
         let registry = IssuerClient::new(&env, &issuer_registry_addr);
@@ -750,6 +761,7 @@ impl ProofRegistry {
             );
         }
 
+        Self::release_verify_lock(&env);
         let mut results = Vec::new(&env);
         for _ in 0..len {
             results.push_back(true);
@@ -770,6 +782,7 @@ impl ProofRegistry {
     ) {
         holder.require_auth();
         Self::ensure_not_paused(&env);
+        Self::acquire_verify_lock(&env);
 
         let verifier = VerifierClient::new(&env, &Self::verifier(&env));
         if !verifier.verify_proof(&symbol_short!("aggregate"), &proof, &public_inputs, &None) {
@@ -831,6 +844,37 @@ impl ProofRegistry {
 
             field_offset += Self::aggregate_field_count(&ct);
         }
+        Self::release_verify_lock(&env);
+    }
+
+    /// Acquire the semantic re-entrancy lock guarding every proof-verification
+    /// endpoint. The lock lives in temporary storage so it can never outlive
+    /// the invocation; a failed call reverts it with the rest of its state.
+    fn acquire_verify_lock(env: &Env) {
+        let key = DataKey::VerifyLock;
+        if env.storage().temporary().has(&key) {
+            panic_with_error!(env, Error::ReentrantCall);
+        }
+        env.storage().temporary().set(&key, &true);
+    }
+
+    fn release_verify_lock(env: &Env) {
+        env.storage().temporary().remove(&DataKey::VerifyLock);
+    }
+
+    /// Whether the verification lock is currently held (audit helper).
+    pub fn is_verify_locked(env: Env) -> bool {
+        env.storage().temporary().has(&DataKey::VerifyLock)
+    }
+
+    /// Static upper bound on storage reads performed by one submission of
+    /// `n` credentials: paused flag, verifier, issuer registry (3 instance
+    /// reads) plus `MAX_READS_PER_CREDENTIAL` per credential.
+    pub fn max_storage_reads(n: u32) -> u32 {
+        if n > MAX_BATCH_SIZE {
+            return MAX_BATCH_SIZE * MAX_READS_PER_CREDENTIAL + BASE_STORAGE_READS;
+        }
+        n * MAX_READS_PER_CREDENTIAL + BASE_STORAGE_READS
     }
 
     /// Read-only verification check for `holder`'s cached `credential_type` claim.

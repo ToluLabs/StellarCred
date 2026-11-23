@@ -289,6 +289,50 @@ fn rejects_untrusted_issuer() {
 }
 
 #[test]
+fn verify_lock_released_after_success_and_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+    assert!(!h.registry.is_verify_locked());
+
+    let mut bad = KYC.proof.to_vec();
+    bad[5000] ^= 0xff;
+    let res = h.registry.try_submit_proof(
+        &holder,
+        &h.issuer,
+        &symbol_short!("kyc"),
+        &Bytes::from_slice(&env, &bad),
+        &KYC.public_inputs_bytes(&env),
+        &None,
+        &9999,
+    );
+    assert!(res.is_err());
+    assert!(!h.registry.is_verify_locked());
+
+    h.registry.submit_proof(
+        &holder,
+        &h.issuer,
+        &symbol_short!("kyc"),
+        &KYC.proof_bytes(&env),
+        &KYC.public_inputs_bytes(&env),
+        &None,
+        &9999,
+    );
+    assert!(!h.registry.is_verify_locked());
+}
+
+#[test]
+fn storage_read_bound_is_static_and_capped() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    assert_eq!(h.registry.max_storage_reads(&1), 6);
+    assert_eq!(h.registry.max_storage_reads(&5), 14);
+    assert_eq!(h.registry.max_storage_reads(&100), 14);
+}
+
+#[test]
 fn rejects_invalid_proof() {
     let env = Env::default();
     env.mock_all_auths();
