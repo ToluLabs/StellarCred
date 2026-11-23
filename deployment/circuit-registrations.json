@@ -1,0 +1,55 @@
+{
+  "manifestVersion": "1.0.0",
+  "release": "v1.0.0",
+  "description": "Expected CredentialVerifier VK registrations for the v1.0.0 release. vkHash is the SHA-256 of fixtures/<credentialType>/vk registered with set_vk.",
+  "circuits": {
+    "kyc": {
+      "circuit": "kyc_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "26ce557090824d4df738e6da312ca27cf550be0ea61d34351349b43b45e511ec"
+    },
+    "age": {
+      "circuit": "age_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "59c05b19612ba45c6d22e3156241a061f70d2b8b71f18bdb225eb3ba9e7a5642"
+    },
+    "income": {
+      "circuit": "income_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "54af1face92713de1c90cff727179324d3286a37bf07d399095162dd68338031"
+    },
+    "jurisdiction": {
+      "circuit": "jurisdiction_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "f145ecc6fd0fee3fdb964aa1d29f53cce5c453672b2416383943c300b6d5c822"
+    },
+    "funds": {
+      "circuit": "funds_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "54af1face92713de1c90cff727179324d3286a37bf07d399095162dd68338031"
+    },
+    "accreditation": {
+      "circuit": "accreditation_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "23938667956450a9d040a6c44d3e576e3d3ba5e3dbe13d9749a2625ce1536ca7"
+    },
+    "employment": {
+      "circuit": "employment_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "0cd319427722b2d3f15ff0d04a020687a97e069163541f16290759ca890d526d"
+    },
+    "aggregate": {
+      "circuit": "aggregate_proof",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "vkHash": "3d85a97e599b5cd383103694f3d6c153768dc99046cf17814effc07952c202bc"
+    }
+  }
+}

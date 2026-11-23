@@ -20,6 +20,9 @@ coverage
 deployment-manifests/
 *.wasm.hash
 
+# Generated circuit release gate report
+circuits/release-consistency-report.json
+
 # Benchmark output (local results; see BENCHMARKS.md for documented figures)
 benchmark_results.txt
 

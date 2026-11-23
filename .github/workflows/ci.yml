@@ -344,6 +344,17 @@ jobs:
         # would be checked against a version nobody declared (#633).
         run: node scripts/stamp-circuit-version.js check-all ../frontend/public/circuits
 
+      - name: Check circuit release consistency
+        run: node ../scripts/check-circuit-release-consistency.mjs
+
+      - name: Upload circuit release consistency report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: circuit-release-report-${{ github.sha }}
+          path: circuits/release-consistency-report.json
+          if-no-files-found: ignore
+
       - name: Check verify-wasm.sh syntax
         run: bash -n ../scripts/verify-wasm.sh
 
