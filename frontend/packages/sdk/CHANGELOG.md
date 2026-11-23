@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
+- `BatchVerifierPool` and `verifyWalletSignaturesBatch` (#1063): verify batches of wallet-signed presentations in parallel on `worker_threads` without blocking the event loop. Node-only, exported from `@stellarcred/sdk/server`.
 - Configurable backoff for every RPC, indexer and polling call (#1056):
   `jitter` now accepts a strategy (`"full"`, `"decorrelated"`, `"equal"` or
   `"none"`) as well as `true` / `false`; `maxElapsedMs` sets a total retry

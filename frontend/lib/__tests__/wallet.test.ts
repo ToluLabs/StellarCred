@@ -248,6 +248,21 @@ describe("lib/wallet.ts getWalletErrorInfo() per-kind error mapping", () => {
     expect(info.message.toLowerCase()).toMatch(/try again/i);
   });
 
+  it("maps device-disconnected to a reconnect-and-retry note (not benign)", () => {
+    const info = getWalletErrorInfo(
+      new WalletConnectError(
+        "device-disconnected",
+        "Your Ledger was disconnected. Reconnect it and try again.",
+        { walletName: "Ledger" },
+      ),
+    );
+    expect(info.benign).toBe(false);
+    expect(info.action).toBe("retry");
+    expect(info.title).toMatch(/hardware wallet disconnected/i);
+    expect(info.message).toMatch(/reconnect/i);
+    expect(info.message).toMatch(/nothing was signed/i);
+  });
+
   it("maps unknown to a generic message plus a way to report", () => {
     const info = getWalletErrorInfo(new WalletConnectError("unknown", "Something went wrong"));
     expect(info.benign).toBe(false);
