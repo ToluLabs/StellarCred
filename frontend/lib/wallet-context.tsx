@@ -14,6 +14,7 @@ import {
 import {
   connect as kitConnect,
   restore as kitRestore,
+  getLedger,
   getNetworkOk,
   WalletConnectError,
 } from "./wallet";
@@ -25,9 +26,17 @@ interface WalletState {
   address: string;
   /** True while a previously saved connection is being restored on mount. */
   restoring: boolean;
+  /** Kit id of the connected wallet ("ledger" for a hardware wallet). */
+  walletId: string;
   connecting: boolean;
   error: WalletConnectError | null;
   networkMismatch: boolean;
+  /**
+   * True when a Ledger's USB session dropped after connecting (cable pulled,
+   * device re-locked). The device has to be reconnected and reopened on the
+   * Stellar app; nothing was signed in the meantime (issue #1040).
+   */
+  ledgerDisconnected: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
 }
@@ -37,9 +46,11 @@ const WalletContext = createContext<WalletState | null>(null);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState("");
   const [restoring, setRestoring] = useState(true);
+  const [walletId, setWalletId] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<WalletConnectError | null>(null);
   const [networkMismatch, setNetworkMismatch] = useState(false);
+  const [ledgerDisconnected, setLedgerDisconnected] = useState(false);
 
   // Restore a prior connection on mount (full reload).
   useEffect(() => {
@@ -59,6 +70,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     kitRestore(saved)
       .then((restored) => {
         if (!cancelled) setAddress(restored);
+      .then((restoredAddress) => {
+        setAddress(restoredAddress);
+        setWalletId(saved);
       })
       .catch(() => {
         try {
@@ -74,6 +88,29 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  // A Ledger can vanish mid-session (cable, hub, device sleep). The transport
+  // reports it so the UI can say what happened instead of failing silently on
+  // the next signature; retrying reopens the USB session.
+  useEffect(() => {
+    if (walletId !== "ledger" || !address) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    getLedger()
+      .then((ledger) => {
+        if (cancelled) return;
+        unsubscribe = ledger.onDisconnect(() => {
+          if (!cancelled) setLedgerDisconnected(true);
+        });
+      })
+      .catch(() => {
+        // the module failed to load; connection errors surface on next use
+      });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [walletId, address]);
 
   // Poll the wallet's live network while connected, so a network switch made
   // after connecting is caught without requiring a reconnect.
@@ -102,6 +139,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const { address, walletId } = await kitConnect();
       setAddress(address);
+      setWalletId(walletId);
+      setLedgerDisconnected(false);
       localStorage.setItem(STORAGE_KEY, walletId);
     } catch (e) {
       const err = e instanceof WalletConnectError
@@ -118,7 +157,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(() => {
     setAddress("");
+    setWalletId("");
     setError(null);
+    setLedgerDisconnected(false);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -129,6 +170,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   return (
     <WalletContext.Provider
       value={{ address, restoring, connecting, error, networkMismatch, connect, disconnect }}
+      value={{
+        address,
+        walletId,
+        connecting,
+        error,
+        networkMismatch,
+        ledgerDisconnected,
+        connect,
+        disconnect,
+      }}
     >
       {children}
     </WalletContext.Provider>

@@ -15,6 +15,7 @@ import {
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
+import { LedgerGuide } from "@/components/LedgerGuide";
 import { OnboardingNudge } from "@/components/OnboardingNudge";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings";
@@ -32,6 +33,7 @@ import { useImportExport } from "@/lib/hooks/useImportExport";
 // ── Components ────────────────────────────────────────────────────────────────
 import { CredCard } from "@/components/holder/CredCard";
 import { CredListSkeleton } from "@/components/holder/CredListSkeleton";
+import { useProofApproval } from "@/lib/hooks/useProofApproval";
 
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
 import { SectionLabel } from "@/components/holder/SectionLabel";
@@ -50,6 +52,7 @@ import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel
 const TransferExportModal = dynamic(() => import("@/components/TransferExportModal").then((m) => m.TransferExportModal), { ssr: false });
 const TransferImportModal = dynamic(() => import("@/components/TransferImportModal").then((m) => m.TransferImportModal), { ssr: false });
 const ExportDataModal = dynamic(() => import("@/components/ExportDataModal").then((m) => m.ExportDataModal), { ssr: false });
+const DisclosurePreviewModal = dynamic(() => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal), { ssr: false });
 
 type PageView =
   | { kind: "list" }
@@ -67,6 +70,8 @@ function HolderInner() {
   // as preview mode flashes demo credentials and banners before swapping in the
   // real list, so hold loading UI until the restore settles.
   const isPreview = usePreviewMode() && !restoring;
+  const { address, walletId, connect } = useWallet();
+  const isPreview = usePreviewMode();
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
@@ -83,6 +88,7 @@ function HolderInner() {
   const { downloadBackup } = useImportExport();
 
   const [view, setView] = useState<PageView>({ kind: "list" });
+  const proofApproval = useProofApproval(setView);
   const [importing, setImporting] = useState(false);
   const [detailCred, setDetailCred] = useState<Credential | null>(null);
   const [transferCred, setTransferCred] = useState<Credential | null>(null);
@@ -152,7 +158,7 @@ function HolderInner() {
         key={c.commitment}
         c={c}
         address={address}
-        onProve={() => setView({ kind: "single", cred: c })}
+        onProve={() => proofApproval.request({ kind: "single", cred: c })}
         onRemove={() => remove(c.commitment)}
         onInspect={() => setDetailCred(c)}
         isPreview={isPreview}
@@ -194,6 +200,9 @@ function HolderInner() {
       <ConfigBanner />
 
       <WalletOnboarding />
+
+      {/* Hardware-wallet credential management guide (#1040). */}
+      {walletId === "ledger" && <LedgerGuide address={address} />}
 
       <SponsorBanner />
 
@@ -522,7 +531,7 @@ function HolderInner() {
                   selectedCount={selectedCreds.length}
                   atBatchLimit={atBatchLimit}
                   canSubmitBatch={canSubmitBatch}
-                  onProveBatch={() => setView({ kind: "batch", creds: selectedCreds })}
+                  onProveBatch={() => proofApproval.request({ kind: "batch", creds: selectedCreds })}
                   onClear={clearSelection}
                   onSelectEligible={selectEligible}
                   onRemoveSelected={() =>
@@ -639,6 +648,10 @@ function HolderInner() {
         userAddress={address || undefined}
         isAdmin={false}
       />
+
+      {proofApproval.creds && (
+        <DisclosurePreviewModal creds={proofApproval.creds} holder={address} onApprove={proofApproval.approve} onCancel={proofApproval.cancel} />
+      )}
 
       {confirmBulkAction && (
         <ConfirmRemoveModal
