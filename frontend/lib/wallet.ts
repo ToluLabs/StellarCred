@@ -113,6 +113,8 @@ export type WalletErrorKind =
   | "dismissed"
   | "rejected"
   | "timeout"
+  /** A hardware wallet's USB session dropped and has to be reopened. */
+  | "device-disconnected"
   | "unknown";
 
 export class WalletConnectError extends Error {
@@ -191,6 +193,14 @@ export function getWalletErrorInfo(err: WalletConnectError): WalletErrorInfo {
         action: "retry",
         benign: false,
       };
+    case "device-disconnected":
+      return {
+        title: "Hardware wallet disconnected",
+        message:
+          "Your Ledger's USB session dropped. Reconnect it, unlock it, open the Stellar app, and retry — nothing was signed.",
+        action: "retry",
+        benign: false,
+      };
     case "unknown":
     default:
       return {
@@ -264,6 +274,15 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
       return new WalletConnectError(
         "rejected",
         "Open the Stellar app on your Ledger device.",
+        { walletName: "Ledger" }
+      );
+    }
+    // Checked before the generic denied/rejected bucket: a dead transport is
+    // recoverable (reconnect + retry), not a user decision.
+    if (/disconnect|unplug|device.*(?:removed|not found|not open)|reconnect/i.test(message)) {
+      return new WalletConnectError(
+        "device-disconnected",
+        "Your Ledger was disconnected. Reconnect it, unlock it, open the Stellar app, and try again.",
         { walletName: "Ledger" }
       );
     }
