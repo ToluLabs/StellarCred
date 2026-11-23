@@ -1,9 +1,10 @@
 /**
- * backfill-cli.ts — Operator entrypoint for `npm run backfill` (#611).
+ * backfill-cli.ts — Operator entrypoint for `npm run backfill` (#611, #1000).
  *
  *   npm run backfill -- --from 1000000 --to 1200000
  *   npm run backfill -- --from genesis            # START_LEDGER (or earliest) to head
  *   npm run backfill -- --resume                  # continue an interrupted run
+ *   npm run backfill -- --from 1000000 --force    # replace or rewind an existing projection
  *
  * Runs independently of the live service: it does not start the poll loop or
  * the HTTP API, and it does not move the live cursor.
