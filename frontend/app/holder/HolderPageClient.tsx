@@ -4,14 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import {
-  IconArrowRight,
-  IconAlertTriangle,
-  IconCertificate,
-  IconDownload,
-  IconFileExport,
-  IconPlus,
-} from "@tabler/icons-react";
+import { IconArrowRight, IconAlertTriangle, IconCertificate, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
