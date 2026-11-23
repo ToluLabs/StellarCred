@@ -64,6 +64,9 @@
     "vitest": "^3.1.1"
   },
   "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "@scure/bip39": "^1.6.0",
     "issuer-registry": "link:../issuer-registry",
     "proof-registry": "link:../proof-registry"
   }

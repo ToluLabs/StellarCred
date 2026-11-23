@@ -35,6 +35,9 @@ importers:
       '@noir-lang/noir_js':
         specifier: 1.0.0-beta.9
         version: 1.0.0-beta.9
+      '@scure/bip39':
+        specifier: ^1.6.0
+        version: 1.6.0
       '@stellar/stellar-sdk':
         specifier: ^13.1.0
         version: 13.3.0
