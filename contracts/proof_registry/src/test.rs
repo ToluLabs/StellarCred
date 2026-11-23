@@ -325,6 +325,7 @@ fn verify_lock_released_after_success_and_failure() {
 #[test]
 fn storage_read_bound_is_static_and_capped() {
     let env = Env::default();
+    env.mock_all_auths();
     let h = deploy(&env);
     assert_eq!(h.registry.max_storage_reads(&1), 6);
     assert_eq!(h.registry.max_storage_reads(&5), 14);
