@@ -35,6 +35,15 @@
 // refresh the snapshot on their own schedule and should treat a stale snapshot
 // as a hard failure (see `maxSnapshotAgeSeconds`). The default is 24 hours.
 //
+// ## Public inputs
+//
+// `public_inputs` is the proof's flat list of 32-byte big-endian field elements,
+// concatenated. Noir flattens its ABI into that list: a `Field` or integer is
+// one field, while a `[u8; N]` (the issuer key, for example) becomes N
+// single-byte fields. The verifier accepts either encoding when it binds a
+// cached 64-byte issuer key, so callers pass the prover's output through
+// untouched.
+//
 // ## Snapshot format
 //
 // The snapshot deliberately reuses the indexer's wire shape for claim rows
@@ -141,18 +150,15 @@ export interface CachedVerifierKey {
   vk_version: number;
   /** Serialized UltraHonk verification-key blob (hex). */
   vk: OfflineBytes;
-  /** Optional circuit identifier for diagnostics, e.g. `"age_proof"`. */
-  circuit?: string;
   /**
    * Optional Noir circuit artifact `bytecode` (the base64 string inside
    * `circuits/<type>.json`). Required only by the built-in bb.js proof
-   * verifier; ignored when a custom `proofVerifier` is supplied.
+   * verifier, which derives the VK from the artifact; ignored when a custom
+   * `proofVerifier` is supplied.
    */
   circuit_bytecode?: string;
   /** True once the key has been deprecated on-chain. */
   deprecated?: boolean;
-  /** Ledger at which the key was registered, when the cache knows it. */
-  registered_at_ledger?: number;
 }
 
 /**
@@ -246,8 +252,6 @@ export interface OfflinePresentation {
   nullifier?: OfflineBytes;
   /** Threshold the verifier requires (e.g. age 18, income 50 000). */
   min_threshold?: number;
-  /** Optional nonce for log correlation; never trusted for security. */
-  request_id?: string;
 }
 
 /** Inputs handed to a local proof-checking backend. */
@@ -803,7 +807,6 @@ interface NormalizedKey {
   credentialType: string;
   vkVersion: number;
   vk: Uint8Array;
-  circuit?: string;
   circuitBytecode?: string;
   deprecated: boolean;
 }
@@ -850,17 +853,6 @@ function normalizeVerifierKeys(keys: readonly CachedVerifierKey[]): Map<string, 
       );
     }
 
-    let circuit: string | undefined;
-    if (key.circuit !== undefined && key.circuit !== null) {
-      if (typeof key.circuit !== "string" || key.circuit.trim() === "") {
-        throw new OfflineVerificationError(
-          "invalid_verifier_key",
-          `verifierKeys[${index}].circuit must be a non-empty string`,
-        );
-      }
-      circuit = key.circuit;
-    }
-
     let circuitBytecode: string | undefined;
     if (key.circuit_bytecode !== undefined && key.circuit_bytecode !== null) {
       if (typeof key.circuit_bytecode !== "string" || key.circuit_bytecode.trim() === "") {
@@ -892,7 +884,6 @@ function normalizeVerifierKeys(keys: readonly CachedVerifierKey[]): Map<string, 
       credentialType,
       vkVersion,
       vk,
-      circuit,
       circuitBytecode,
       deprecated: key.deprecated === true,
     });
@@ -928,22 +919,43 @@ function containsField(fields: readonly Uint8Array[], target: Uint8Array): boole
   return fields.some((field) => bytesEqual(field, target));
 }
 
-function containsConsecutive(
-  fields: readonly Uint8Array[],
-  partA: Uint8Array,
-  partB: Uint8Array,
-): boolean {
-  for (let i = 0; i < fields.length - 1; i++) {
-    if (bytesEqual(fields[i], partA) && bytesEqual(fields[i + 1], partB)) return true;
+/**
+ * True when `target` appears in the proof's public inputs, in either encoding
+ * Noir uses: packed as consecutive 32-byte fields (`Field`, `u64`, or a byte
+ * array a prover chose to pack), or expanded into one single-byte field per
+ * element — which is what bb.js emits for `[u8; N]` public inputs such as the
+ * issuer key.
+ */
+function containsBytes(fields: readonly Uint8Array[], target: Uint8Array): boolean {
+  const packedLength = target.length / OFFLINE_FIELD_BYTES;
+  if (Number.isInteger(packedLength) && packedLength > 0) {
+    for (let start = 0; start + packedLength <= fields.length; start++) {
+      let matched = true;
+      for (let i = 0; i < packedLength; i++) {
+        if (
+          !bytesEqual(
+            fields[start + i],
+            target.subarray(i * OFFLINE_FIELD_BYTES, (i + 1) * OFFLINE_FIELD_BYTES),
+          )
+        ) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) return true;
+    }
+  }
+
+  for (let start = 0; start + target.length <= fields.length; start++) {
+    let matched = true;
+    for (let i = 0; i < target.length && matched; i++) {
+      const field = fields[start + i];
+      if (field[field.length - 1] !== target[i]) matched = false;
+      else if (field.subarray(0, field.length - 1).some((byte) => byte !== 0)) matched = false;
+    }
+    if (matched) return true;
   }
   return false;
-}
-
-function splitKey(pubKey: Uint8Array): { x: Uint8Array; y: Uint8Array } {
-  return {
-    x: pubKey.subarray(0, OFFLINE_FIELD_BYTES),
-    y: pubKey.subarray(OFFLINE_FIELD_BYTES),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -974,12 +986,16 @@ async function loadBbJs(): Promise<BbJsModuleLike> {
 }
 
 /**
- * Build an offline proof verifier backed by bb.js. The verifier key must carry
- * `circuit_bytecode` because bb.js derives the verification key from the
- * circuit artifact it was constructed with.
+ * Build an offline proof verifier backed by bb.js' `UltraHonkBackend`. bb.js
+ * derives the verification key from the circuit artifact it is constructed
+ * with, so the selected cache entry must carry `circuit_bytecode` (the base64
+ * `bytecode` string inside `circuits/<type>.json`). A native verifier consumes
+ * `vk` instead; that field is not used here.
  *
- * `loadBb` is injectable so a terminal can load a vendored bb.js build from
- * local disk, and so tests never need the WASM package.
+ * Verification runs single-threaded, so a terminal needs neither
+ * SharedArrayBuffer nor cross-origin isolation. `loadBb` is injectable so a
+ * terminal can load a vendored bb.js build from local disk, and so unit tests
+ * never need the WASM package.
  */
 export function createBbJsProofVerifier(
   loadBb: () => Promise<BbJsModuleLike> = loadBbJs,
@@ -1003,7 +1019,7 @@ export function createBbJsProofVerifier(
       );
     }
 
-    const backend = new module.UltraHonkBackend(input.circuitBytecode);
+    const backend = new module.UltraHonkBackend(input.circuitBytecode, { threads: 1 });
     try {
       const publicInputs = splitFields(input.publicInputs).map((field) => `0x${toHex(field)}`);
       return await backend.verifyProof({ proof: input.proof, publicInputs }, verifyOptions);
@@ -1395,8 +1411,7 @@ async function runVerification(
   if (boundIssuerKey) {
     const keyBytes = toBytes(boundIssuerKey, "issuer_pub_key", "invalid_state_snapshot");
     if (keyBytes) {
-      const { x, y } = splitKey(keyBytes);
-      if (!containsConsecutive(splitFields(publicInputs), x, y)) {
+      if (!containsBytes(splitFields(publicInputs), keyBytes)) {
         return reject(
           "public_inputs_mismatch",
           "issuer public key is not among the proof's public inputs",

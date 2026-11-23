@@ -97,7 +97,6 @@ function keys(overrides: Partial<CachedVerifierKey> = {}): CachedVerifierKey[] {
       credential_type: "age",
       vk_version: 1,
       vk: `0x${VK}`,
-      circuit: "age_proof",
       ...overrides,
     },
   ];
@@ -553,6 +552,29 @@ describe("offline verification — issuer binding", () => {
       valid: true,
       issuerId: ISSUER,
     });
+  });
+
+  it("binds an issuer key in the byte-expanded layout bb.js emits", async () => {
+    // @aztec/bb.js flattens a Noir `[u8; 32]` public input into 32 single-byte
+    // fields, so issuer_x and issuer_y never appear as two packed 32-byte
+    // fields in a real proof. Regression guard for the offline verifier
+    // rejecting every genuinely valid presentation.
+    const expanded = (hex: string) =>
+      (hex.match(/.{2}/g) ?? []).map((byte) => byte.padStart(64, "0"));
+    const { instance } = verifier({ issuerKeys: { [ISSUER]: [ISSUER_PUB] } });
+
+    const result = await instance.verify(
+      presentation({
+        public_inputs: `0x${[
+          COMMITMENT,
+          ...expanded(ISSUER_X),
+          ...expanded(ISSUER_Y),
+          (19).toString(16).padStart(64, "0"),
+        ].join("")}`,
+      }),
+    );
+
+    expect(result).toMatchObject({ valid: true, issuerId: ISSUER });
   });
 
   it("requires a bound issuer key when trustedIssuers is configured without a snapshot key set", async () => {

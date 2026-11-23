@@ -589,8 +589,10 @@ carry `commitment`, `issuer_pub_key` and `vk_version` when the exporter has them
 
 **Proof backend.** The built-in backend loads the optional `@aztec/bb.js`
 package from the device and verifies against the circuit bytecode cached on the
-erifier key (`circuit_bytecode`). A device that vendors bb.js elsewhere, or uses
-a native verifier, can pass its own `proofVerifier` function instead:
+verifier key (`circuit_bytecode`), since bb.js derives the verification key from
+the circuit artifact. It verifies single-threaded, so the device needs no
+`SharedArrayBuffer` or cross-origin isolation. A device that vendors bb.js
+elsewhere, or uses a native verifier, can pass its own `proofVerifier` instead:
 
 ```ts
 const verifier = createOfflineVerifier({
@@ -600,6 +602,11 @@ const verifier = createOfflineVerifier({
     nativeUltraHonkVerify(verifierKey, proof, publicInputs),
 });
 ```
+
+`public_inputs` is the prover's field list exactly as bb.js emits it: Noir
+flattens a `[u8; N]` public input into N single-byte fields, so pass the output
+through unchanged. The verifier binds a 64-byte issuer key in either the packed
+or the byte-expanded encoding.
 
 When the backend is unavailable the result is `proof_backend_missing` — never a
 silent `valid: true`. A stale snapshot is likewise a hard failure rather than a
