@@ -35,13 +35,19 @@ const APP_NETWORK = (
 ) as WalletNetwork;
 
 const CONNECT_TIMEOUT_MS = 60_000;
-const APP_BASE_URL =
-  process.env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? "https://stellarcred.xyz";
+const SESSION_CHECK_TIMEOUT_MS = 3_000;
+const PASSIVE_SESSION_WALLET_IDS = new Set([
+  "freighter",
+  "wallet_connect",
+  "lobstr",
+  "hana",
+  "klever",
+]);
+const APP_BASE_URL = process.env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? "https://stellarcred.xyz";
 // Get a free project ID at https://cloud.reown.com — WalletConnect is omitted
 // from the wallet-picker modal entirely when unset (see loadKit() below), it
 // isn't a hard error.
-const WALLETCONNECT_PROJECT_ID =
-  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 
 let kitPromise: Promise<StellarWalletsKit> | null = null;
 let ledgerModule: LedgerModule | null = null;
@@ -49,19 +55,15 @@ let ledgerModule: LedgerModule | null = null;
 async function loadKit(): Promise<StellarWalletsKit> {
   if (!kitPromise) {
     kitPromise = (async () => {
-      const [kitModule, walletConnectModuleModule, ledgerModuleModule] =
-        await Promise.all([
-          import("@creit.tech/stellar-wallets-kit"),
-          import(
-            "@creit.tech/stellar-wallets-kit/modules/walletconnect.module"
-          ),
-          import("./ledger-module"),
-        ]);
+      const [kitModule, walletConnectModuleModule, ledgerModuleModule] = await Promise.all([
+        import("@creit.tech/stellar-wallets-kit"),
+        import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module"),
+        import("./ledger-module"),
+      ]);
 
       const { StellarWalletsKit, allowAllModules, FREIGHTER_ID } = kitModule;
 
-      const { WalletConnectModule, WalletConnectAllowedMethods } =
-        walletConnectModuleModule;
+      const { WalletConnectModule, WalletConnectAllowedMethods } = walletConnectModuleModule;
 
       const { getLedgerModule } = ledgerModuleModule;
 
@@ -123,7 +125,11 @@ export class WalletConnectError extends Error {
   walletName?: string;
   /** Where to send the user to install/get the wallet, if known. */
   installUrl?: string;
-  constructor(kind: WalletErrorKind, message: string, opts?: { walletName?: string; installUrl?: string }) {
+  constructor(
+    kind: WalletErrorKind,
+    message: string,
+    opts?: { walletName?: string; installUrl?: string },
+  ) {
     super(message);
     this.name = "WalletConnectError";
     this.kind = kind;
@@ -175,7 +181,8 @@ export function getWalletErrorInfo(err: WalletConnectError): WalletErrorInfo {
     case "dismissed":
       return {
         title: "Connection cancelled",
-        message: "You closed the wallet window, so nothing was connected. Just try again when you're ready.",
+        message:
+          "You closed the wallet window, so nothing was connected. Just try again when you're ready.",
         action: "retry",
         benign: true,
       };
@@ -189,7 +196,8 @@ export function getWalletErrorInfo(err: WalletConnectError): WalletErrorInfo {
     case "timeout":
       return {
         title: "Wallet didn't respond",
-        message: "The wallet didn't respond in time. Check that its popup or extension is open, then try again.",
+        message:
+          "The wallet didn't respond in time. Check that its popup or extension is open, then try again.",
         action: "retry",
         benign: false,
       };
@@ -205,7 +213,8 @@ export function getWalletErrorInfo(err: WalletConnectError): WalletErrorInfo {
     default:
       return {
         title: "Something went wrong",
-        message: "We couldn't connect to your wallet. Please try again — and report it if it keeps happening.",
+        message:
+          "We couldn't connect to your wallet. Please try again — and report it if it keeps happening.",
         action: "retry-report",
         benign: false,
       };
@@ -237,7 +246,10 @@ export function getWalletReportUrl(): string {
 // connected (from the kit's own ISupportedWallet), so the resulting error —
 // and the UI showing it — refers to the wallet the user actually picked
 // instead of assuming Freighter.
-function toWalletError(e: unknown, wallet?: { id: string; name: string; url: string }): WalletConnectError {
+function toWalletError(
+  e: unknown,
+  wallet?: { id: string; name: string; url: string },
+): WalletConnectError {
   if (e instanceof WalletConnectError) return e;
   const message =
     e instanceof Error
@@ -252,7 +264,11 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
   // IDs are inline literals ("wallet_connect" from the kit's
   // walletconnect.module, "ledger" from our LedgerModule) so this pure
   // error-mapping helper never needs a runtime kit/ledger import.
-  if (wallet?.id !== "wallet_connect" && wallet?.id !== "ledger" && /not connected|not available/i.test(message)) {
+  if (
+    wallet?.id !== "wallet_connect" &&
+    wallet?.id !== "ledger" &&
+    /not connected|not available/i.test(message)
+  ) {
     return new WalletConnectError(
       "not-installed",
       wallet
@@ -264,18 +280,14 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
   // Ledger-specific errors: connection issues, device locked, app not open
   if (wallet?.id === "ledger") {
     if (/locked|pin/i.test(message)) {
-      return new WalletConnectError(
-        "rejected",
-        "Ledger is locked. Enter your PIN to continue.",
-        { walletName: "Ledger" }
-      );
+      return new WalletConnectError("rejected", "Ledger is locked. Enter your PIN to continue.", {
+        walletName: "Ledger",
+      });
     }
     if (/app.*not.*open|stellar.*app/i.test(message)) {
-      return new WalletConnectError(
-        "rejected",
-        "Open the Stellar app on your Ledger device.",
-        { walletName: "Ledger" }
-      );
+      return new WalletConnectError("rejected", "Open the Stellar app on your Ledger device.", {
+        walletName: "Ledger",
+      });
     }
     // Checked before the generic denied/rejected bucket: a dead transport is
     // recoverable (reconnect + retry), not a user decision.
@@ -283,15 +295,13 @@ function toWalletError(e: unknown, wallet?: { id: string; name: string; url: str
       return new WalletConnectError(
         "device-disconnected",
         "Your Ledger was disconnected. Reconnect it, unlock it, open the Stellar app, and try again.",
-        { walletName: "Ledger" }
+        { walletName: "Ledger" },
       );
     }
     if (/denied|rejected/i.test(message)) {
-      return new WalletConnectError(
-        "rejected",
-        "Transaction was rejected on the Ledger device.",
-        { walletName: "Ledger" }
-      );
+      return new WalletConnectError("rejected", "Transaction was rejected on the Ledger device.", {
+        walletName: "Ledger",
+      });
     }
   }
   // Classify timeout errors from wallet extension / kit / network
@@ -312,16 +322,17 @@ function withTimeout<T>(
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(
-        new WalletConnectError(
-          "timeout",
-          message,
-        ),
-      );
+      reject(new WalletConnectError("timeout", message));
     }, ms);
     promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
     );
   });
 }
@@ -378,6 +389,40 @@ export async function restore(walletId: string): Promise<string> {
   k.setWallet(walletId);
   const { address } = await k.getAddress();
   return address;
+}
+
+/**
+ * Actively checks whether the selected wallet still exposes the connected
+ * account without opening a modal or requesting a signature. Some adapters
+ * (Albedo, xBull, and Rabet) implement getAddress() as an interactive connect
+ * request, so they are intentionally not polled. Ledger has its own passive
+ * transport status and disconnect event.
+ */
+export async function hasLiveWalletSession(
+  expectedAddress: string,
+  walletId: string,
+): Promise<boolean> {
+  if (!expectedAddress) return false;
+  if (walletId === "ledger") {
+    try {
+      return (await getLedger()).isConnected();
+    } catch {
+      return false;
+    }
+  }
+  if (!PASSIVE_SESSION_WALLET_IDS.has(walletId)) return true;
+
+  try {
+    const kit = await getKit();
+    const { address } = await withTimeout(
+      kit.getAddress(walletId === "freighter" ? { skipRequestAccess: true } : undefined),
+      SESSION_CHECK_TIMEOUT_MS,
+      "Wallet session heartbeat timed out",
+    );
+    return address === expectedAddress;
+  } catch {
+    return false;
+  }
 }
 
 /** Sign a transaction XDR with the connected wallet; returns the signed XDR. */
@@ -474,7 +519,9 @@ export async function walletNetworkName(): Promise<string | null> {
     if (!networkPassphrase) return null;
     for (const [name, preset] of Object.entries(NETWORK_PRESETS)) {
       if (preset.networkPassphrase === networkPassphrase) {
-        return name === "mainnet" ? "Mainnet (Public)" : name.charAt(0).toUpperCase() + name.slice(1);
+        return name === "mainnet"
+          ? "Mainnet (Public)"
+          : name.charAt(0).toUpperCase() + name.slice(1);
       }
     }
     return "Unknown network";
