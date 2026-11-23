@@ -22,6 +22,8 @@ The indexer continuously polls Soroban contract events emitted by `ProofRegistry
 
 For the authoritative specification of all contract events, topic tuples, payload structures, and drift-prevention guarantees across all StellarCred contracts, see [docs/EVENTS.md](../../docs/EVENTS.md).
 
+For the ordering keys, inclusive/exclusive boundaries, duplicate handling, and stale/invalid cursor behavior of `/recent`, GraphQL paging, and ingestion replay, see [docs/INDEXER_CURSOR_CONTRACT.md](../../docs/INDEXER_CURSOR_CONTRACT.md).
+
 ---
 
 ## Security & Architecture
