@@ -69,6 +69,41 @@ pub struct EventContractUpgraded {
     pub upgraded_at: u64,
 }
 
+// Verifier (root-admin) rotation phase events. Topics carry the rotation id so
+// indexers can correlate the phases of a single rotation:
+// ("cred_ver", phase, rotation_id). Emitted in addition to the legacy
+// `adm_prop` / `adm_acc` events.
+
+/// Phase 1: rotation proposed. Topics: ("cred_ver", "rot_prop", rotation_id)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVerifierRotationProposed {
+    /// Current admin that authorized the proposal.
+    pub proposer: Address,
+    /// Candidate that would become admin.
+    pub proposed_admin: Address,
+    pub proposed_at: u64,
+}
+
+/// Phase 2: rotation approved by the incoming admin.
+/// Topics: ("cred_ver", "rot_appr", rotation_id)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVerifierRotationApproved {
+    /// The incoming admin that signed the acceptance.
+    pub approver: Address,
+    pub approved_at: u64,
+}
+
+/// Phase 3: rotation enacted. Topics: ("cred_ver", "rot_enac", rotation_id)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVerifierRotationEnacted {
+    pub previous_admin: Address,
+    pub new_admin: Address,
+    pub enacted_at: u64,
+}
+
 // ── Contract versioning ──────────────────────────────────────────────────────
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
@@ -94,6 +129,11 @@ pub enum DataKey {
     /// Pending root-admin candidate set by `propose_admin` and consumed by
     /// `accept_admin` (#342).
     PendingAdmin,
+    /// Monotonic counter of rotation proposals; the latest value is the id of
+    /// the most recent proposal.
+    RotationCounter,
+    /// Id of the currently pending rotation, if any.
+    PendingRotationId,
     /// RBAC: role name (Symbol) → current holder (Address).
     Roles,
     /// Verification key bytes, keyed by (credential-type symbol, version).
@@ -475,14 +515,39 @@ impl CredentialVerifier {
     /// address as the payload (#342).
     #[allow(deprecated)]
     pub fn propose_admin(env: Env, new_admin: Address) {
-        Self::require_admin(&env);
+        let proposer = Self::require_admin(&env);
         env.storage()
             .instance()
             .set(&DataKey::PendingAdmin, &new_admin);
 
+        let rotation_id: u64 = env
+            .storage()
+            .instance()
+            .get::<_, u64>(&DataKey::RotationCounter)
+            .unwrap_or(0)
+            + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::RotationCounter, &rotation_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingRotationId, &rotation_id);
+
         env.events().publish(
             (symbol_short!("cred_ver"), symbol_short!("adm_prop")),
-            new_admin,
+            new_admin.clone(),
+        );
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("rot_prop"),
+                rotation_id,
+            ),
+            EventVerifierRotationProposed {
+                proposer,
+                proposed_admin: new_admin,
+                proposed_at: env.ledger().timestamp(),
+            },
         );
     }
 
@@ -520,9 +585,40 @@ impl CredentialVerifier {
         env.storage().instance().set(&DataKey::Admin, &pending);
         env.storage().instance().remove(&DataKey::PendingAdmin);
 
+        let rotation_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingRotationId)
+            .unwrap_or(0);
+        env.storage().instance().remove(&DataKey::PendingRotationId);
+        let now = env.ledger().timestamp();
+
         env.events().publish(
             (symbol_short!("cred_ver"), symbol_short!("adm_acc")),
-            pending,
+            pending.clone(),
+        );
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("rot_appr"),
+                rotation_id,
+            ),
+            EventVerifierRotationApproved {
+                approver: pending.clone(),
+                approved_at: now,
+            },
+        );
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("rot_enac"),
+                rotation_id,
+            ),
+            EventVerifierRotationEnacted {
+                previous_admin: old_admin,
+                new_admin: pending,
+                enacted_at: now,
+            },
         );
     }
 
@@ -532,6 +628,7 @@ impl CredentialVerifier {
     pub fn cancel_admin_proposal(env: Env) {
         Self::require_admin(&env);
         env.storage().instance().remove(&DataKey::PendingAdmin);
+        env.storage().instance().remove(&DataKey::PendingRotationId);
 
         env.events()
             .publish((symbol_short!("cred_ver"), symbol_short!("adm_canc")), ());
