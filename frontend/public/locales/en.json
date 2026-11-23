@@ -137,5 +137,115 @@
       "medium": "MMM d, yyyy h:mm a",
       "long": "EEEE, MMMM d, yyyy"
     }
+  },
+  "onboarding": {
+    "steps": {
+      "welcome": {
+        "title": "Welcome to StellarCred",
+        "summary": "Prove facts about yourself without revealing personal data. This walkthrough takes you through the full loop once: a wallet, a credential, and a proof anyone can verify.",
+        "tip": "Your credentials live in this browser only — never on a server. You can replay this tour anytime with the “Tour” button in the header.",
+        "railLabel": "Welcome"
+      },
+      "connect-wallet": {
+        "title": "Set up your wallet",
+        "summary": "Connect a Stellar wallet on testnet. Your wallet address is the identity your credentials are bound to — proofs are always submitted by its key.",
+        "tip": "Credentials are sealed to the address that received them, so use the same wallet every time. Nothing is sent to us when you connect; the wallet only shares its public address.",
+        "railLabel": "Wallet"
+      },
+      "get-credential": {
+        "title": "Create your credential",
+        "summary": "Request a demo age credential from the StellarCred Authority. It attests “age ≥ 18” without carrying your date of birth — only a cryptographic commitment is stored.",
+        "tip": "The credential is encrypted at rest in your browser with a key derived from your unlock passphrase. Back it up from the dashboard before clearing site data.",
+        "railLabel": "Credential"
+      },
+      "verify-trust": {
+        "title": "Verify issuer trust",
+        "summary": "Protocols only accept proofs from issuers registered on-chain. This check reads the issuer of your new credential from the IssuerRegistry contract and confirms its signing key is still trusted.",
+        "tip": "A trusted issuer is what makes a proof meaningful: anyone verifying on-chain re-runs this same check, so seeing “Trusted” here means your future proofs will be accepted.",
+        "railLabel": "Trust"
+      },
+      "generate-proof": {
+        "title": "Generate a proof",
+        "summary": "Generate a zero-knowledge proof locally. Only the claim (“age ≥ 18”) and the proof leave your device — the data behind it never does.",
+        "tip": "Proving runs entirely in your browser, so the first proof takes a few seconds to load the circuit. Onboarding stays available until you finish.",
+        "railLabel": "Proof"
+      },
+      "unlock": {
+        "title": "You're ready",
+        "summary": "Wallet, credential, trust — the core loop is done. Any Stellar protocol can now verify your proofs in a single contract call.",
+        "tip": "Explore apps that accept StellarCred proofs, or open your dashboard to generate a real proof on-chain.",
+        "railLabel": "Finish"
+      }
+    },
+    "trust": {
+      "active": {
+        "label": "Trusted",
+        "message": "The issuer is registered on-chain and its signing key is accepted. Proofs from this credential will pass the protocol's trusted-issuer gate."
+      },
+      "key_retired": {
+        "label": "Trusted (key retiring)",
+        "message": "The issuer rotated to a new signing key, but this credential's key is still inside its validity window. Proofs work now; the issuer's newer credentials use the new key."
+      },
+      "key_revoked": {
+        "label": "Key revoked",
+        "message": "This issuer's signing key was emergency-revoked, so proofs from this credential may be rejected. Wait for the issuer to install a replacement key, or get a fresh credential."
+      },
+      "issuer_revoked": {
+        "label": "Issuer revoked",
+        "message": "This issuer was permanently removed from the registry, so protocols will reject its credentials. Get a new credential from a trusted issuer to continue."
+      },
+      "unknown": {
+        "label": "Couldn't check",
+        "message": "The registry couldn't be reached right now. This does not block onboarding — the same check runs automatically whenever you prove, and you can retry here."
+      },
+      "checkError": {
+        "label": "Check failed",
+        "message": "The trust check hit an error. Try again — if the network is unreachable it will keep working once connectivity returns."
+      }
+    },
+    "buttons": {
+      "next": "Next",
+      "back": "Back",
+      "skipTour": "Skip tour",
+      "getStarted": "Get started",
+      "openProofDashboard": "Open Proof Dashboard",
+      "skipForNow": "Skip for now",
+      "getNewCredential": "Get new credential",
+      "connectWallet": "Connect wallet",
+      "connecting": "Connecting…",
+      "getAgeCredential": "Get age credential",
+      "creating": "Creating…",
+      "runTrustCheck": "Run trust check",
+      "runAgain": "Run the check again",
+      "checking": "Checking…",
+      "tryAgain": "Try again"
+    },
+    "nav": {
+      "stepOf": "Step {current} of {total}",
+      "stepAriaLabel": "Step {num}: {label}",
+      "stepDone": "(done)",
+      "backToStep": "Back to: {title}"
+    },
+    "wizard": {
+      "title": "Setup guide",
+      "skipAriaLabel": "Skip onboarding",
+      "helpLink": "Learn more in the docs",
+      "stepCounter": "Step {current} of {total}"
+    },
+    "proofGuide": {
+      "step1": "Select a credential on the dashboard",
+      "step2": "Choose the verifier app you want to use",
+      "step3": "Click Generate proof — the circuit runs locally",
+      "step4": "Submit the proof on-chain"
+    },
+    "revokedGuidance": {
+      "title": "Credential from a revoked key",
+      "message": "Your credential was issued by a revoked key. To continue using StellarCred, get a new credential from a trusted issuer."
+    },
+    "nudge": {
+      "message": "Complete your setup — generate your first proof to finish onboarding",
+      "continueSetup": "Continue setup",
+      "dismiss": "Dismiss nudge"
+    }
   }
 }

@@ -146,8 +146,8 @@ export interface Db {
    */
   issuerStats(issuer: string): IssuerStatsRow | Promise<IssuerStatsRow>;
 
-  /** Return all claims issued by a specific issuer. */
-  claimsByIssuer(issuer: string): ClaimRow[] | Promise<ClaimRow[]>;
+  /** Return claims issued by a specific issuer, newest first. Pass `limit` to cap the page size. */
+  claimsByIssuer(issuer: string, limit?: number): ClaimRow[] | Promise<ClaimRow[]>;
 
   /** Return lifecycle event history and verifications for a credential commitment. */
   credentialEvents(

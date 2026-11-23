@@ -12,6 +12,7 @@
     "dev": "npm run build && npm start",
     "build": "tsc",
     "test": "jest",
+    "backfill": "tsc && node dist/backfill-cli.js",
     "test:coverage": "jest --coverage --coverageReporters=json-summary --coverageReporters=text"
   },
   "dependencies": {
