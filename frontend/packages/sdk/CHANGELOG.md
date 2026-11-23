@@ -25,7 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   context, since it is a secret with no `NEXT_PUBLIC_` alias.
 - `subscribeClaims()` real-time subscription helper (#392): push-style `gained`/`lost` claim change notifications for a set of wallets and claim types, backed by the indexer (`GET /recent` cursor feed + `GET /claims` snapshot reconciliation), delivered via callbacks or a registered webhook with retry.
 
+### Added
+- `createOfflineVerifier()` / `verifyOfflinePresentation()` for air-gapped
+  terminal verification (#1059). Verifies a zero-knowledge presentation against
+  a locally cached verifier key and state snapshot with no I/O, and fails closed
+  on stale snapshots, revoked/expired records, issuer or commitment mismatches,
+  replayed nullifiers, and missing proof backends. `createBbJsProofVerifier()`
+  wraps the optional local `@aztec/bb.js` package; a custom `proofVerifier` can
+  be supplied for native or vendored verifiers.
+
 ### Documentation
+- New "Offline / air-gapped verification" section covering the cache format,
+  check order, stable failure codes and local proof backends.
 - New "Indexer fast path (optional)" section covering the trust tradeoff, the
   three sources, contract-parity of the evaluation predicates, and the known
   divergences (wall clock vs. ledger timestamp, indexer lag, operator trust).
