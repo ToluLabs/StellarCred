@@ -1314,11 +1314,36 @@ fn rotation_ids_increment_across_proposals() {
     let _ = env.events().all();
     c.accept_admin();
 
-    let events = env.events().all().filter_by_contract(&c.address);
-    assert_eq!(events.len(), 3);
-    let expected: soroban_sdk::Vec<soroban_sdk::Val> =
-        (symbol_short!("cred_ver"), symbol_short!("rot_enac"), 2u64).into_val(&env);
-    assert_eq!(events.get(2).unwrap().1, expected);
+    assert_eq!(
+        env.events().all().filter_by_contract(&c.address),
+        vec![
+            &env,
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("adm_acc")).into_val(&env),
+                second.clone().into_val(&env),
+            ),
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("rot_appr"), 2u64).into_val(&env),
+                EventVerifierRotationApproved {
+                    approver: second.clone(),
+                    approved_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
+            ),
+            (
+                c.address.clone(),
+                (symbol_short!("cred_ver"), symbol_short!("rot_enac"), 2u64).into_val(&env),
+                EventVerifierRotationEnacted {
+                    previous_admin: admin,
+                    new_admin: second,
+                    enacted_at: env.ledger().timestamp(),
+                }
+                .into_val(&env),
+            ),
+        ],
+    );
 }
 
 #[test]
