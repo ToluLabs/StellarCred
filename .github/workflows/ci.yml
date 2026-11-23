@@ -432,6 +432,22 @@ jobs:
           export PATH="$HOME/.nargo/bin:$PATH"
           node circuits/scripts/fuzz_circuits.js --iterations 10
 
+      # Deterministic edge-case vectors (#1039): zero values, u64 / field maxima,
+      # off-by-one thresholds, inverted windows, last list slot, last Merkle leaf.
+      # `check` fails when circuits/testvectors/edge/*.json is stale relative to
+      # the generator; `execute` runs every vector through nargo and fails when
+      # a circuit accepts or rejects something other than what the vector records.
+      - name: Unit-test edge-case vector generator
+        run: node --test circuits/scripts/edge_vectors.test.js
+
+      - name: Check edge-case vectors are current
+        run: node circuits/scripts/edge_vectors.js check
+
+      - name: Execute edge-case vectors against the circuits
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          node circuits/scripts/edge_vectors.js execute
+
   # ── Frontend: typecheck, lint, test, build (once) ──────────────────────────
   # Runs in parallel with contracts, circuits, and indexer.
   # Builds the frontend once and uploads the .next output as an artifact so

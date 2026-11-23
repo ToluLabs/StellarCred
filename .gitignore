@@ -28,3 +28,6 @@ proptest-regressions/
 
 # macOS
 .DS_Store
+
+# Scratch witnesses written by circuits/scripts/edge_vectors.js execute
+circuits/*/edge_vector.toml
