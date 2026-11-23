@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `BatchVerifierPool` and `verifyWalletSignaturesBatch` (#1063): verify batches of wallet-signed presentations in parallel on `worker_threads` without blocking the event loop. Node-only, exported from `@stellarcred/sdk/server`.
 - Optional indexer-backed read path (#613). `hasClaim`, `getClaim`, `hasClaims`,
   `getClaims`, `verifyPreset`, and `watchClaim` accept a `source` option of
   `"chain"` (default, unchanged behaviour), `"indexer"`, or `"indexer-verified"`.
