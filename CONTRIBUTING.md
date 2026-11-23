@@ -735,6 +735,10 @@ Releases are tag-driven. The GitHub Actions release workflow fires on any tag ma
 3. Creates a GitHub Release with the changelog section for that version as the body.
 4. Builds and publishes `@stellarcred/sdk` to npm.
 
+For role ownership, the two-person approval gate, preflight evidence and failure
+recovery, see [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md). This section
+covers the tag mechanics only.
+
 ### Cutting a release
 
 ```bash
