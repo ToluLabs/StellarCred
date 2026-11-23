@@ -418,7 +418,7 @@ function HolderInner() {
               <p className="faint" style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
                 Credentials live only in this browser (localStorage) â€” export a backup
                 before clearing site data or switching devices, and restore it here with{" "}
-                "Import credential JSON".{" "}
+                &ldquo;Import credential JSON&rdquo;.{" "}
                 <Link
                   href="/docs#storage"
                   style={{ color: "var(--accent)", textDecoration: "underline" }}
