@@ -26,7 +26,7 @@
 # Pinned to a specific manifest digest so the base layer is immutable between
 # CI runs. To update: docker pull rust:1.93.1-slim-bookworm && \
 #   docker inspect --format='{{index .RepoDigests 0}}' rust:1.93.1-slim-bookworm
-FROM rust:1.93.1-slim-bookworm@sha256:81ca81aaf083572c3ddfb8d6f290d74ccbd4d0bda9e0f56ac4e48fd380359466 AS base
+FROM --platform=linux/amd64 rust:1.93.1-slim-bookworm@sha256:5b9332190bb3b9ece73b810cd1f1e9f06343b294ce184bcb067f0747d7d333ea AS base
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
