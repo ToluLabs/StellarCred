@@ -31,6 +31,7 @@ export * from "./claims";
 export * from "./issuers"; // IssuerRegistry reads
 export * from "./capabilities";
 export * from "./challenge";
+export * from "./presentation-token"; // Server-side presentation tokens (#1062)
 export * from "./subscriptions";
 export * from "./errors"; // Typed error taxonomy (#404)
 export * from "./validateCredential"; // Credential JSON validation (#27)
@@ -77,6 +78,7 @@ import {
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
+import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import { subscribeClaims } from "./subscriptions";
 
 // Version helpers — Issue #841
@@ -136,6 +138,8 @@ export const StellarCred = {
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,
+  createPresentationToken,
+  verifyPresentationToken,
   CLAIM_TYPES,
   deriveNullifier,
   isNullifierUsed,

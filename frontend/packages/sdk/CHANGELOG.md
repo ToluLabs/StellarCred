@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `createPresentationToken`, `verifyPresentationToken`, and
+  `presentationTokenSigningMessage` (#1062): wallet-signed, short-lived
+  presentation tokens that Next.js App Router Server Components can verify
+  directly. Verification reuses `verifyWalletSignature`, `hasClaim`, and
+  `checkClaimStatus`; it works in Node.js and Edge with no browser APIs. See the
+  README §Server-side presentation tokens.
 - `BatchVerifierPool` and `verifyWalletSignaturesBatch` (#1063): verify batches of wallet-signed presentations in parallel on `worker_threads` without blocking the event loop. Node-only, exported from `@stellarcred/sdk/server`.
 - Optional indexer-backed read path (#613). `hasClaim`, `getClaim`, `hasClaims`,
   `getClaims`, `verifyPreset`, and `watchClaim` accept a `source` option of

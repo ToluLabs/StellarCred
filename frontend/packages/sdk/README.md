@@ -691,6 +691,162 @@ This is a thin re-export of the same SDK — the API is identical. The separate
 path makes the intent explicit at the import site and suppresses the
 development-mode warning described below.
 
+### Server-side presentation tokens (#1062)
+
+Next.js App Router **Server Components cannot access browser wallet
+extensions**, so a page rendered on the server cannot sign a challenge or read a
+wallet itself. Presentation tokens solve that without a custom verification API
+route: the holder's browser packages the credentials it wants to present into a
+compact token signed by its Stellar wallet, and the Server Component verifies
+that token directly.
+
+#### Token format
+
+```text
+scpt1.<base64url(payload JSON)>.<base64url(Ed25519 signature)>
+```
+
+The signature is made by `payload.wallet` over the domain-separated message
+`stellarcred/presentation-token/v1` + `"\n"` + the encoded payload. Tokens are
+short-lived (five minutes by default), can bind an `audience`, and carry an
+optional `nonce` for callers that need single-use bookkeeping.
+
+#### Create a token (holder's browser)
+
+```ts
+import { createPresentationToken } from "@stellarcred/sdk";
+
+const token = await createPresentationToken({
+  wallet: publicKey,
+  claims: ["kyc", "age"],
+  audience: "app.example.com",
+  sign: async (message) => {
+    // Freighter and other Stellar wallets sign arbitrary UTF-8 messages.
+    const { signedMessage } = await freighter.signMessage(message);
+    return signedMessage; // hex, base64, or Uint8Array are all accepted
+  },
+});
+
+await fetch("/api/session", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ token }),
+});
+```
+
+#### Verify in a Server Component (Node.js or Edge runtime)
+
+```tsx
+// app/dashboard/page.tsx
+import { cookies } from "next/headers";
+import { verifyPresentationToken } from "@stellarcred/sdk/server";
+
+export default async function Dashboard() {
+  const token = (await cookies()).get("sc_presentation")?.value ?? "";
+
+  const result = await verifyPresentationToken(token, {
+    requiredClaims: ["kyc"],
+    audience: "app.example.com",
+  });
+
+  if (!result.ok) {
+    // result.failureReason is machine-readable, result.error is human-readable.
+    return <p>Access denied: {result.error}</p>;
+  }
+
+  return <p>Welcome, KYC-verified {result.wallet}</p>;
+}
+```
+
+#### Verify in an API route, middleware, or Server Action
+
+The same helper works anywhere server-side, with no browser globals:
+
+```ts
+// app/api/gate/route.ts
+import { verifyPresentationToken } from "@stellarcred/sdk/server";
+
+export async function POST(request: Request) {
+  const { token } = (await request.json()) as { token?: string };
+
+  const result = await verifyPresentationToken(token ?? "", {
+    requiredClaims: ["kyc"],
+    audience: new URL(request.url).host,
+    claimOptions: { trustedIssuers: [TRUSTED_PERSONA_ISSUER] },
+  });
+
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: 401 });
+  }
+
+  return Response.json({ wallet: result.wallet, claims: result.claims });
+}
+```
+
+#### What verification checks
+
+1. **Envelope and payload shape** — prefix, segments, version, wallet, claims,
+   timestamps, audience, and nonce types.
+2. **Signature** — Ed25519 over the signed payload, using the same
+   `verifyWalletSignature` implementation as the wallet-challenge flow.
+3. **Freshness** — `issuedAt` is not in the future and `expiresAt` has not
+   passed (60 seconds of clock skew by default; set `clockSkewSeconds`).
+4. **Expectations** — `requiredClaims`, `wallet`, and `audience` when supplied.
+5. **On-chain credentials** — every presented claim is re-checked with
+   `hasClaim`, and failures are enriched through `checkClaimStatus`. Set
+   `verifyClaims: false` only when a signature-only check is genuinely intended.
+
+`verifyPresentationToken` never throws for untrusted token content or remote
+verification failures. It returns a typed result:
+
+```ts
+type PresentationTokenVerificationResult = {
+  ok: boolean;
+  wallet: string;
+  claims: ClaimType[];
+  payload?: PresentationTokenPayload;
+  signatureValid: boolean;
+  claimsChecked: boolean;
+  claimsValid?: boolean;
+  claimStatuses?: Partial<Record<ClaimType, CredentialStatusResult>>;
+  failedClaim?: ClaimType;
+  failureReason?:
+    | "malformed_token"
+    | "unsupported_version"
+    | "invalid_payload"
+    | "invalid_wallet"
+    | "invalid_signature"
+    | "token_expired"
+    | "token_not_yet_valid"
+    | "expiry_required"
+    | "audience_mismatch"
+    | "wallet_mismatch"
+    | "claim_missing"
+    | "claim_not_verified"
+    | "credential_expired"
+    | "credential_revoked"
+    | "on_chain_error"
+    | "invalid_options";
+  error?: string;
+};
+```
+
+#### Security notes
+
+- Always pass `requiredClaims` and `audience` for access control. A valid
+  signature only proves who signed the token, not what the caller needs.
+- Keep tokens short-lived. `createPresentationToken` defaults `expiresAt` to
+  five minutes; verification requires it unless you opt out with
+  `requireExpiry: false`.
+- For strict single-use semantics, include a `nonce` in the token and record it
+  server-side before granting access. Verification does not consume it.
+- Claim checks use ProofRegistry reads by default. `claimOptions.source`
+  follows the normal trust rules in §Indexer fast path — never use an
+  indexer-only read as the sole basis for an access-control decision.
+- The helper is runtime-compatible with Node.js and Edge: it has no browser
+  dependencies and does not access `window`, `document`, storage, wallet
+  extensions, or Node-only built-ins.
+
 ### Development-mode boundary warning
 
 In development (`NODE_ENV !== "production"`), the SDK emits a **one-time
