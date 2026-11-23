@@ -34,7 +34,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Add the WASM target required for Soroban contracts.
-RUN rustup target add wasm32v1-none \
+# Retried to tolerate transient DNS/network failures on CI runners.
+RUN for i in 1 2 3 4 5; do \
+        rustup target add wasm32v1-none && break; \
+        echo "rustup target add failed (attempt $i), retrying..." >&2; \
+        sleep $((i * 5)); \
+        [ "$i" -lt 5 ] || exit 1; \
+    done \
     && rustc --version \
     && cargo --version
 
@@ -61,7 +67,12 @@ RUN for d in credential_verifier issuer_registry proof_registry gated_pool test_
 
 # Fetch all dependencies into the Cargo registry cache (network access here only).
 # Note: git dependencies require network access; --locked ensures reproducibility once cached
-RUN cargo fetch
+RUN for i in 1 2 3 4 5; do \
+        cargo fetch --locked && break; \
+        echo "cargo fetch failed (attempt $i), retrying..." >&2; \
+        sleep $((i * 5)); \
+        [ "$i" -lt 5 ] || exit 1; \
+    done
 
 # ---------------------------------------------------------------------------
 # Final image — adds the full contract source on top of the dep-fetch layer.
