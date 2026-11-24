@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- `@stellarcred/sdk/testing` entry point (#1065): `MockWalletProvider` (SEP-43 wallet backed by a real Ed25519 keypair), `CredentialFactory` (secp256k1-signed credential JSON that passes `validateCredential`), `MockProofRegistry` with `installMockRegistry` / `uninstallMockRegistry` (simulated proofs with the contract's expiry, revocation, trusted-issuer and threshold rules), and `verifyCredentialSignature`. Lets integrators unit-test without an RPC, a deployed registry or a Noir toolchain.
 - `BatchVerifierPool` and `verifyWalletSignaturesBatch` (#1063): verify batches of wallet-signed presentations in parallel on `worker_threads` without blocking the event loop. Node-only, exported from `@stellarcred/sdk/server`.
 - Optional indexer-backed read path (#613). `hasClaim`, `getClaim`, `hasClaims`,
   `getClaims`, `verifyPreset`, and `watchClaim` accept a `source` option of
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `subscribeClaims()` real-time subscription helper (#392): push-style `gained`/`lost` claim change notifications for a set of wallets and claim types, backed by the indexer (`GET /recent` cursor feed + `GET /claims` snapshot reconciliation), delivered via callbacks or a registered webhook with retry.
 
 ### Documentation
+
 - New "Indexer fast path (optional)" section covering the trust tradeoff, the
   three sources, contract-parity of the evaluation predicates, and the known
   divergences (wall clock vs. ledger timestamp, indexer lag, operator trust).
@@ -34,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2026-09-26
 
 ### Added
+
 - Complete typed error hierarchy (`StellarCredError`, `RpcError`, `ContractError`, `NetworkError`).
 - Bounded RPC call execution via `requestTimeoutMs` config option.
 - Stellar address formatting and validation prior to Soroban contract invocation.
@@ -42,12 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Claim gate helper functions and React integration utilities.
 
 ### Documentation
+
 - Added release lifecycle documentation covering git tag mapping, version bumps, and release verification.
 - Documented consumption guidance for both published npm package and local monorepo / git workspace development.
 
 ## [0.1.0] - 2026-08-15
 
 ### Added
+
 - Initial implementation of the `@stellarcred/sdk` client library.
 - Core functions: `hasClaim`, `getClaims`, and `buildVerifyUrl`.
 - Support for default testnet and mainnet presets.
