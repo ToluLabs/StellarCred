@@ -1,0 +1,64 @@
+{
+  "$comment": [
+    "Payload-size proving ceilings (GitHub #943). Paired with the client resource",
+    "guard in frontend/lib/proof-guard.ts: these are the expected cost limits for",
+    "the largest proof jobs the app lets a holder request.",
+    "",
+    "How to read this file:",
+    "- Each tier names a circuit the harness runs (scripts/perf/measure-payloads.mjs).",
+    "  Tiers are ordered small → large by the size of the proving job, not by the",
+    "  wall clock: kyc_proof is one credential, jurisdiction_proof adds an 8-entry",
+    "  allowlist, aggregate_proof packs two credentials into a single proof.",
+    "- maxWitnessMs / maxProveMs are CEILINGS, not regressions: exceeding one means",
+    "  an allowed payload now costs more than the guard's expected budget, and the",
+    "  PR fails. Regression-vs-baseline tracking lives in perf/proving-baselines.json",
+    "  (the existing #629 gate); this file answers \"is this payload size still",
+    "  affordable at all?\".",
+    "- Values are deliberately generous because runner CPU varies; they are sized",
+    "  from the provisional medians in perf/proving-baselines.json with headroom",
+    "  (single credential ≈ 3 s CPU prove, aggregate ≈ 2x that). Tighten them once",
+    "  several main runs have established the spread.",
+    "- maxProveRssMb is a warn-only memory indicator. Peak RSS comes from GNU time",
+    "  (/usr/bin/time) and is null on runners without it; it never fails a PR.",
+    "- scaling.largeToSmallProveRatio catches cost growing faster than payload: the",
+    "  aggregate proof is ~2x the work of one credential, so a ratio far above that",
+    "  means the circuit got structurally more expensive.",
+    "- To refresh: run the proving-perf workflow on main (workflow_dispatch),",
+    "  download proving-payloads-report, and update ceilings intentionally with a",
+    "  $history entry. Raising a ceiling that exists because of a client limit also",
+    "  requires updating that limit (and, where it comes from a circuit or the",
+    "  contract, those too) — see docs/PROOF_RESOURCE_LIMITS.md."
+  ],
+  "version": 1,
+  "runs": 3,
+  "tiers": {
+    "small": {
+      "circuit": "kyc_proof",
+      "maxWitnessMs": 15000,
+      "maxProveMs": 30000,
+      "maxProveRssMb": 1024
+    },
+    "medium": {
+      "circuit": "jurisdiction_proof",
+      "maxWitnessMs": 20000,
+      "maxProveMs": 45000,
+      "maxProveRssMb": 1024
+    },
+    "large": {
+      "circuit": "aggregate_proof",
+      "maxWitnessMs": 30000,
+      "maxProveMs": 90000,
+      "maxProveRssMb": 1536
+    }
+  },
+  "scaling": {
+    "largeToSmallProveRatio": 8,
+    "largeToSmallWitnessRatio": 8
+  },
+  "$history": [
+    {
+      "date": "2026-11-21",
+      "change": "Initial ceilings (issue #943). Provisional: sized from the existing #629 medians with headroom, to be tightened after the first measured runs on the fixed runner."
+    }
+  ]
+}
