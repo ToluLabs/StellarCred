@@ -26,11 +26,30 @@ const STORAGE_KEY = "stellarcred:credentials";
 
 export function useCredentialStore() {
   const [creds, setCreds] = useState<Credential[]>([]);
+  // `creds` starts empty, which is indistinguishable from "no credentials yet".
+  // Consumers use this flag to render skeletons instead of the empty state
+  // until the initial hydration settles.
+  const [loading, setLoading] = useState(true);
 
   // ── Initial load ──────────────────────────────────────────────────────────
   // The credential store is async, so hydrate on mount.
   useEffect(() => {
-    loadCredentials().then(setCreds);
+    let cancelled = false;
+    loadCredentials()
+      .then((loaded) => {
+        if (!cancelled) setCreds(loaded);
+      })
+      // A corrupt/undecryptable store should still end the loading state so the
+      // empty state renders instead of a skeleton that never resolves.
+      .catch(() => {
+        if (!cancelled) setCreds([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Cross-tab sync ────────────────────────────────────────────────────────
@@ -81,6 +100,7 @@ export function useCredentialStore() {
 
   return {
     creds,
+    loading,
     reload,
     save,
     remove,

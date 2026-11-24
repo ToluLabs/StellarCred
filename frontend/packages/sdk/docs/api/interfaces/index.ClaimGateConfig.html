@@ -13,7 +13,7 @@
 <h1>Interface ClaimGateConfig</h1></div>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">ClaimGateConfig</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#claims">claims</a><span class="tsd-signature-symbol">?:</span> (<br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><br/>    )<span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#minthresholds">minThresholds</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><br/>        <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><br/>            <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">,</span><br/>            <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trustedissuers">trustedIssuers</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#wallet">wallet</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">null</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/core.ts:18</li></ul></aside>
+<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/core.ts#L18">src/core.ts:18</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -35,28 +35,28 @@
 <div class="tsd-comment tsd-typography"><p>Which claim types to check. Defaults to all supported claim types.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/core.ts:23</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/core.ts#L23">src/core.ts:23</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="minthresholds"><code class="tsd-tag">Optional</code><span>min<wbr/>Thresholds</span><a href="#minthresholds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">minThresholds</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><br/>    <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p>Minimum thresholds for parameterised claims (age, income, funds).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/core.ts:26</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/core.ts#L26">src/core.ts:26</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="trustedissuers"><code class="tsd-tag">Optional</code><span>trusted<wbr/>Issuers</span><a href="#trustedissuers" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">trustedIssuers</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Restrict claims to proofs from specific trusted issuers.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/core.ts:31</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/core.ts#L31">src/core.ts:31</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="wallet"><span>wallet</span><a href="#wallet" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">wallet</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">null</span></div>
 <div class="tsd-comment tsd-typography"><p>Wallet address to check claims for. Null means no wallet connected.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/core.ts:20</li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/core.ts#L20">src/core.ts:20</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

@@ -93,6 +93,7 @@ async function flush(): Promise<void> {
 /** Advance `ms`, flushing timers and awaited microtasks at each step. */
 async function advance(ms: number): Promise<void> {
   await vi.advanceTimersByTimeAsync(ms);
+  await flush();
 }
 
 describe("subscribeClaims (#392)", () => {

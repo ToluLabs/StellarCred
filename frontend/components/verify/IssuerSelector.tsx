@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { IconShieldCheck } from "@tabler/icons-react";
 import { Badge } from "@/components/Badge";
+import { IssuerAvatar } from "@/components/IssuerAvatar";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
 import { isProtocolAccepted } from "@/lib/issuer-choice";
 import { truncateAddress } from "@/lib/format";
@@ -33,15 +34,10 @@ export function IssuerSelector({
       <label className="field-label" id="issuer-choice-label">
         Issuing authority
       </label>
-      <p
-        className="faint"
-        style={{ fontSize: "0.8125rem", margin: "0.35rem 0 0.6rem" }}
-      >
+      <p className="faint" style={{ fontSize: "0.8125rem", margin: "0.35rem 0 0.6rem" }}>
         {issuersForType.length}{" "}
-        {issuersForType.length === 1
-          ? "registered issuer can"
-          : "registered issuers can"}{" "}
-        attest this claim.
+        {issuersForType.length === 1 ? "registered issuer can" : "registered issuers can"} attest
+        this claim.
         {trustedIssuerGate
           ? " Only the ones marked accepted satisfy this protocol."
           : " Pick which one issues to you."}
@@ -60,10 +56,7 @@ export function IssuerSelector({
             .join(" · ");
 
           const focus = (index: number) => {
-            const next =
-              issuersForType[
-                (index + issuersForType.length) % issuersForType.length
-              ];
+            const next = issuersForType[(index + issuersForType.length) % issuersForType.length];
             setSelectedIssuerId(next.id);
             issuerRefs.current[next.id]?.focus();
           };
@@ -76,11 +69,7 @@ export function IssuerSelector({
               }}
               role="radio"
               aria-checked={on}
-              aria-label={
-                accepted
-                  ? issuer.name
-                  : `${issuer.name} (not accepted by this protocol)`
-              }
+              aria-label={accepted ? issuer.name : `${issuer.name} (not accepted by this protocol)`}
               tabIndex={on ? 0 : -1}
               onClick={() => setSelectedIssuerId(issuer.id)}
               onKeyDown={(e) => {
@@ -98,23 +87,14 @@ export function IssuerSelector({
               style={{
                 padding: "0.75rem 0.9rem",
                 borderRadius: "var(--radius)",
-                border: `1px solid ${
-                  on ? "rgba(62,207,142,0.4)" : "var(--border)"
-                }`,
+                border: `1px solid ${on ? "rgba(62,207,142,0.4)" : "var(--border)"}`,
                 background: on ? "rgba(62,207,142,0.05)" : "transparent",
                 cursor: "pointer",
-                transition:
-                  "border-color 0.2s var(--ease), background 0.2s var(--ease)",
+                transition: "border-color 0.2s var(--ease), background 0.2s var(--ease)",
               }}
             >
-              <div
-                className="between"
-                style={{ alignItems: "center", gap: "0.75rem" }}
-              >
-                <span
-                  className="row"
-                  style={{ gap: "0.6rem", minWidth: 0 }}
-                >
+              <div className="between" style={{ alignItems: "center", gap: "0.75rem" }}>
+                <span className="row" style={{ gap: "0.6rem", minWidth: 0 }}>
                   <span
                     style={{
                       width: 16,
@@ -122,9 +102,7 @@ export function IssuerSelector({
                       borderRadius: "50%",
                       display: "grid",
                       placeItems: "center",
-                      border: `2px solid ${
-                        on ? "var(--accent)" : "var(--border)"
-                      }`,
+                      border: `2px solid ${on ? "var(--accent)" : "var(--border)"}`,
                       flexShrink: 0,
                     }}
                   >
@@ -139,6 +117,12 @@ export function IssuerSelector({
                       />
                     )}
                   </span>
+                  <IssuerAvatar
+                    logoUrl={issuer.metadata?.logo}
+                    publicKey={issuer.pubkeyHex}
+                    name={issuer.name}
+                    size={36}
+                  />
                   <span style={{ minWidth: 0 }}>
                     <span
                       style={{
@@ -165,10 +149,7 @@ export function IssuerSelector({
                 {trustedIssuerGate &&
                   (accepted ? (
                     <Badge variant="verified" dot={false}>
-                      <span
-                        className="row"
-                        style={{ gap: "0.3rem" }}
-                      >
+                      <span className="row" style={{ gap: "0.3rem" }}>
                         <IconShieldCheck size={13} />
                         Accepted by protocol
                       </span>
@@ -193,8 +174,8 @@ export function IssuerSelector({
           }}
         >
           None of the issuers registered for this claim is accepted by{" "}
-          {requestingDomain || "this protocol"} — its gate will reject the proof
-          whichever issuer you pick.
+          {requestingDomain || "this protocol"} — its gate will reject the proof whichever issuer
+          you pick.
         </p>
       )}
     </div>

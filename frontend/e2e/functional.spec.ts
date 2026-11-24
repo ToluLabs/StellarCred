@@ -24,8 +24,7 @@ function createMockCredentials() {
       issuedAt: nowSec - 5 * daySec,
       expiry: "90 days",
       provedAt: nowSec - 5 * daySec,
-      provedTxHash:
-        "0xabcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+      provedTxHash: "0xabcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
     },
     {
       type: "funds",
@@ -43,8 +42,7 @@ function createMockCredentials() {
       issuedAt: nowSec - 85 * daySec,
       expiry: "90 days",
       provedAt: nowSec - 85 * daySec,
-      provedTxHash:
-        "0xbeef1234beef1234beef1234beef1234beef1234beef1234beef1234beef1234",
+      provedTxHash: "0xbeef1234beef1234beef1234beef1234beef1234beef1234beef1234beef1234",
     },
     {
       type: "income",
@@ -62,8 +60,7 @@ function createMockCredentials() {
       issuedAt: nowSec - 10 * daySec,
       expiry: "30 days",
       provedAt: nowSec - 35 * daySec,
-      provedTxHash:
-        "0xdead1234dead1234dead1234dead1234dead1234dead1234dead1234dead1234",
+      provedTxHash: "0xdead1234dead1234dead1234dead1234dead1234dead1234dead1234dead1234",
     },
   ];
 }
@@ -72,7 +69,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
       "stellarcred:onboarding",
-      JSON.stringify({ step: 4, dismissed: true, completed: true })
+      JSON.stringify({ step: 4, dismissed: true, completed: true }),
     );
     localStorage.setItem("stellarcred_onboarding_seen", "1");
   });
@@ -91,7 +88,7 @@ test.describe("Verify Flow", () => {
         };
         localStorage.setItem("stellarcred:wallet-id", "rabet");
       },
-      { walletAddress: TEST_WALLET }
+      { walletAddress: TEST_WALLET },
     );
 
     // Mock issuance endpoint
@@ -160,7 +157,7 @@ test.describe("Holder Page", () => {
         localStorage.setItem("stellarcred:wallet-id", "rabet");
         localStorage.setItem("stellarcred:credentials", JSON.stringify(credentials));
       },
-      { walletAddress: TEST_WALLET, credentials: createMockCredentials() }
+      { walletAddress: TEST_WALLET, credentials: createMockCredentials() },
     );
 
     await page.goto("/holder");
@@ -176,7 +173,7 @@ test.describe("Holder Page", () => {
     const statusBanner = page.locator('[role="status"]');
     await expect(statusBanner).toBeVisible();
     await expect(statusBanner).toContainText(
-      /expired and needs re-proving|expiring within 7 days/i
+      /expired and needs re-proving|expiring within 7 days/i,
     );
 
     // Section headers
@@ -193,6 +190,10 @@ test.describe("Holder Page", () => {
     const reproveButtons = page.getByRole("button", { name: "Re-prove" });
     await expect(reproveButtons.first()).toBeVisible();
     await reproveButtons.first().click();
+
+    // The disclosure preview (#1048) opens first; proving starts on approval.
+    await expect(page.getByRole("dialog", { name: "Review what you'll share" })).toBeVisible();
+    await page.getByRole("button", { name: "Approve & generate proof" }).click();
 
     // Verify it entered the proving flow view
     await expect(page.getByRole("button", { name: /All credentials/i })).toBeVisible();
@@ -231,15 +232,13 @@ test.describe("Apps Gating", () => {
     // Verification banner is visible
     await expect(page.getByText(/Verification complete/i)).toBeVisible();
     await expect(
-      page.getByText(/You were returned here from StellarCred automatically/i)
+      page.getByText(/You were returned here from StellarCred automatically/i),
     ).toBeVisible();
   });
 });
 
 test.describe("Badge and Verify-Preset Pages", () => {
-  test("badge renders correctly for valid and invalid parameters", async ({
-    page,
-  }) => {
+  test("badge renders correctly for valid and invalid parameters", async ({ page }) => {
     // Invalid params: missing wallet
     await page.goto("/badge");
     await expect(page.locator("a[href='https://stellarcred.xyz']")).toBeVisible();
@@ -256,27 +255,19 @@ test.describe("Badge and Verify-Preset Pages", () => {
     await expect(page.getByText("Income")).toBeVisible();
   });
 
-  test("verify-preset renders correctly for valid and invalid parameters", async ({
-    page,
-  }) => {
+  test("verify-preset renders correctly for valid and invalid parameters", async ({ page }) => {
     // Invalid params: no claim query or unrecognized claims
     await page.goto("/verify-preset");
-    await expect(
-      page.getByText(/This link doesn't name any recognised claims/i)
-    ).toBeVisible();
+    await expect(page.getByText(/This link doesn't name any recognised claims/i)).toBeVisible();
 
     await page.goto("/verify-preset?c=invalid_claim_type");
-    await expect(
-      page.getByText(/This link doesn't name any recognised claims/i)
-    ).toBeVisible();
+    await expect(page.getByText(/This link doesn't name any recognised claims/i)).toBeVisible();
 
     // Valid params: preset with name and valid encoded claims
     await page.goto("/verify-preset?name=Institutional+DeFi&c=kyc,age:21,income:200000");
+    await expect(page.getByRole("heading", { name: "Institutional DeFi" })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Institutional DeFi" })
-    ).toBeVisible();
-    await expect(
-      page.getByText(/Checks 3 claims against the on-chain ProofRegistry/i)
+      page.getByText(/Checks 3 claims against the on-chain ProofRegistry/i),
     ).toBeVisible();
     await expect(page.locator("#verify-wallet")).toBeVisible();
     await expect(page.getByRole("button", { name: "Verify" })).toBeVisible();

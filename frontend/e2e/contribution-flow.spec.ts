@@ -17,8 +17,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 const TEST_WALLET = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const TEST_ISSUER = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2";
-const FAKE_TX_HASH =
-  "0xabcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+const FAKE_TX_HASH = "0xabcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -153,9 +152,7 @@ async function installNetworkMocks(page: Page) {
   // Soroban RPC (JSON-RPC 2.0 over POST). Answer the methods the submit path
   // needs; everything else gets a benign empty result so the SDK does not hang.
   await page.route("**/soroban-testnet.stellar.org/**", async (route) => {
-    const body = route.request().postDataJSON() as
-      | { id?: unknown; method?: string }
-      | undefined;
+    const body = route.request().postDataJSON() as { id?: unknown; method?: string } | undefined;
     const method = body?.method ?? "";
     await route.fulfill({
       status: 200,
@@ -216,9 +213,7 @@ test.afterEach(async ({ page }) => {
 });
 
 test.describe("Contribution pipeline", () => {
-  test("creates account, submits contribution, and verifies the score update", async ({
-    page,
-  }) => {
+  test("creates account, submits contribution, and verifies the score update", async ({ page }) => {
     await seedCredential(page, unprovedCredential());
 
     // ── 1. Create account: wallet is restored and the holder lands on their list
@@ -230,6 +225,10 @@ test.describe("Contribution pipeline", () => {
     const generateBtn = page.getByRole("button", { name: "Generate proof" });
     await expect(generateBtn).toBeVisible();
     await generateBtn.first().click();
+
+    // The disclosure preview (#1048) opens first; proving starts on approval.
+    await expect(page.getByRole("dialog", { name: "Review what you'll share" })).toBeVisible();
+    await page.getByRole("button", { name: "Approve & generate proof" }).click();
 
     // Prover stub resolves instantly; the submit CTA unlocks.
     await expect(page.getByRole("button", { name: "Submit to Stellar" })).toBeVisible({
@@ -243,9 +242,7 @@ test.describe("Contribution pipeline", () => {
     });
 
     // Persistence check — provedAt / provedTxHash written to the credential store.
-    const stored = await page.evaluate(() =>
-      localStorage.getItem("stellarcred:credentials"),
-    );
+    const stored = await page.evaluate(() => localStorage.getItem("stellarcred:credentials"));
     expect(stored).toBeTruthy();
     const creds = JSON.parse(stored!) as Array<{
       commitment: string;

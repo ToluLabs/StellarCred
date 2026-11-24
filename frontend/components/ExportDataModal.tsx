@@ -354,8 +354,8 @@ export function ExportDataModal({
                         backgroundColor: isSelected
                           ? "rgba(62, 207, 142, 0.06)"
                           : isPermitted
-                          ? "var(--card-subtle, rgba(255,255,255,0.02))"
-                          : "rgba(0,0,0,0.2)",
+                            ? "var(--card-subtle, rgba(255,255,255,0.02))"
+                            : "rgba(0,0,0,0.2)",
                         opacity: isPermitted ? 1 : 0.5,
                         cursor: isPermitted ? "pointer" : "not-allowed",
                         transition: "border-color 0.15s, background-color 0.15s",
@@ -517,14 +517,22 @@ export function ExportDataModal({
             >
               <IconShield size={16} style={{ color: "var(--accent, #3ecf8e)", flexShrink: 0 }} />
               <span>
-                Download links are cryptographically signed and expire after 5 minutes.
-                Exports contain sensitive cryptographic commitments; store backups securely.
+                Download links are cryptographically signed and expire after 5 minutes. Exports
+                contain sensitive cryptographic commitments; store backups securely.
               </span>
             </div>
 
             {/* Submit Action */}
-            <div className="row" style={{ justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
-              <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
+            <div
+              className="row"
+              style={{ justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onClose}
+                disabled={submitting}
+              >
                 Cancel
               </button>
               <button
@@ -744,10 +752,27 @@ export function ExportDataModal({
                       </div>
 
                       {/* Job Metadata & Download Row */}
-                      <div className="between" style={{ alignItems: "center", fontSize: "0.75rem" }}>
+                      <div
+                        className="between"
+                        style={{ alignItems: "center", fontSize: "0.75rem" }}
+                      >
                         <span style={{ color: "var(--faint, #888)" }}>
                           Requested: {new Date(job.createdAt).toLocaleTimeString()} · Job ID:{" "}
                           <span className="mono">{job.id.slice(0, 10)}</span>
+                          {job.status === "ready" && job.checksum && (
+                            <div
+                              id={`export-checksum-${job.id}`}
+                              className="mono"
+                              style={{
+                                fontSize: "0.7rem",
+                                color: "var(--faint, #888)",
+                                wordBreak: "break-all",
+                              }}
+                            >
+                              SHA-256: {job.checksum} · Verify before import; mismatched hashes
+                              indicate tampering.
+                            </div>
+                          )}
                         </span>
 
                         {job.status === "ready" && !isExpired && job.downloadUrl && (

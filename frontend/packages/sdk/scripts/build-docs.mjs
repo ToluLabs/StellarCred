@@ -11,6 +11,7 @@ async function buildDocs() {
       `${packageRoot}/src/index.ts`,
       `${packageRoot}/src/server.ts`,
       `${packageRoot}/src/react.ts`,
+      `${packageRoot}/src/testing.ts`,
     ],
     tsconfig: `${packageRoot}/tsconfig.json`,
     out: `${packageRoot}/docs/api`,
