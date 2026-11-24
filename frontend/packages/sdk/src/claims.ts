@@ -553,7 +553,19 @@ export interface PresetVerificationResult {
 }
 
 export type CredentialFailureReason =
-  "not_verified" | "expired" | "revoked" | "wrong_issuer" | "unmet_threshold";
+  | "not_verified"
+  | "expired"
+  | "revoked"
+  | "wrong_issuer"
+  | "unmet_threshold"
+  | "unsupported"
+  | "unavailable";
+
+/**
+ * All typed outcomes for credential claim inspection (#1007).
+ */
+export type ClaimOutcomeState = "verified" | CredentialFailureReason;
+export type ClaimOutcomeStatus = ClaimOutcomeState;
 
 export interface ProofRecordDetails {
   verifiedAt: number;
@@ -567,10 +579,13 @@ export interface ProofRecordDetails {
 
 export interface CredentialStatusResult {
   valid: boolean;
-  status: "verified" | CredentialFailureReason;
+  status: ClaimOutcomeState;
   record?: ProofRecordDetails | null;
   error?: string;
+  cause?: unknown;
 }
+
+export type ClaimOutcomeResult = CredentialStatusResult;
 
 // ---------------------------------------------------------------------------
 // Low-level read: ProofRegistry.is_verified via simulation
@@ -1276,22 +1291,38 @@ async function readCheckClaimFromChain(
   }
 }
 
-async function readRecord(
+export interface RecordFetchOutcome {
+  record: ProofRecordDetails | null;
+  unavailable: boolean;
+  error?: unknown;
+}
+
+async function readRecordWithStatus(
   wallet: string,
   claimType: string,
   throwOnError = false,
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
-): Promise<ProofRecordDetails | null> {
-  const client = await getClient(throwOnError);
-  if (!client) return null;
+): Promise<RecordFetchOutcome> {
+  let client: ProofRegistryClient | null;
+  try {
+    client = await getClient(throwOnError);
+  } catch (err) {
+    if (throwOnError) throw err;
+    return { record: null, unavailable: true, error: err };
+  }
+  if (!client) {
+    const err = new ConfigError("StellarCred is not configured: missing registryId");
+    if (throwOnError) throw err;
+    return { record: null, unavailable: true, error: err };
+  }
 
   try {
     const { result } = await withRequestTimeout(
       () =>
         withRetry(
           () =>
-            client.get_record({
+            client!.get_record({
               holder: wallet,
               credential_type: claimType,
             }),
@@ -1299,7 +1330,7 @@ async function readRecord(
         ),
       requestTimeoutMs,
     );
-    if (!result) return null;
+    if (!result) return { record: null, unavailable: false };
     const reasonMap: Record<number, string> = {
       0: "expired",
       1: "superseded",
@@ -1308,16 +1339,19 @@ async function readRecord(
       4: "other",
     };
     return {
-      verifiedAt: Number(result.verified_at),
-      expiry: Number(result.expiry),
-      revoked: Boolean(result.revoked),
-      issuer: result.issuer ? String(result.issuer) : undefined,
-      threshold:
-        result.threshold !== undefined && result.threshold !== null
-          ? Number(result.threshold)
-          : undefined,
-      vkVersion: Number(result.vk_version),
-      reason: result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
+      record: {
+        verifiedAt: Number(result.verified_at),
+        expiry: Number(result.expiry),
+        revoked: Boolean(result.revoked),
+        issuer: result.issuer ? String(result.issuer) : undefined,
+        threshold:
+          result.threshold !== undefined && result.threshold !== null
+            ? Number(result.threshold)
+            : undefined,
+        vkVersion: Number(result.vk_version),
+        reason: result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
+      },
+      unavailable: false,
     };
   } catch (err) {
     if (throwOnError) {
@@ -1326,8 +1360,25 @@ async function readRecord(
         cause: err,
       });
     }
-    return null;
+    return { record: null, unavailable: true, error: err };
   }
+}
+
+async function readRecord(
+  wallet: string,
+  claimType: string,
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<ProofRecordDetails | null> {
+  const outcome = await readRecordWithStatus(
+    wallet,
+    claimType,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  return outcome.record;
 }
 
 // ---------------------------------------------------------------------------
@@ -1581,7 +1632,7 @@ export async function getClaimRecord(
 /**
  * Inspects a wallet's credential claim on-chain and returns a detailed status result,
  * evaluating failure states: "not_verified", "expired", "revoked", "wrong_issuer",
- * "unmet_threshold", or "verified".
+ * "unmet_threshold", "unsupported", "unavailable", or "verified".
  */
 export async function checkClaimStatus(
   wallet: string,
@@ -1615,17 +1666,45 @@ export async function checkClaimStatus(
     };
   }
 
+  if (!isValidClaimType(claimType)) {
+    if (throwOnError) {
+      throw new InvalidClaimTypeError(
+        `Invalid claim type: "${claimType}". Expected one of: ${CLAIM_TYPES.join(", ")}`,
+      );
+    }
+    return {
+      valid: false,
+      status: "unsupported",
+      record: null,
+      error: `Claim type "${claimType}" is unsupported. Supported types: ${CLAIM_TYPES.join(", ")}`,
+    };
+  }
+
   if (opts?.minThreshold !== undefined) {
     validateThreshold(opts.minThreshold);
   }
 
-  const record = await readRecord(
+  const { record, unavailable, error: readError } = await readRecordWithStatus(
     normalizedWallet,
     claimType,
     throwOnError,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
   );
+
+  if (unavailable) {
+    const errorMsg =
+      readError instanceof Error
+        ? readError.message
+        : `RPC or network unavailable while checking claim "${claimType}".`;
+    return {
+      valid: false,
+      status: "unavailable",
+      record: null,
+      error: errorMsg,
+      cause: readError,
+    };
+  }
 
   if (!record) {
     return {
@@ -1684,6 +1763,22 @@ export async function checkClaimStatus(
     record,
   };
 }
+
+/**
+ * Reads a wallet's credential claim and returns a granular, typed outcome
+ * ("verified", "not_verified", "expired", "unsupported", "unavailable",
+ * "revoked", "wrong_issuer", "unmet_threshold") without conflating
+ * transport/RPC failures with absent proofs (#1007).
+ */
+export async function getClaimOutcome(
+  wallet: string,
+  claimType: string,
+  opts?: ClaimOptions,
+): Promise<ClaimOutcomeResult> {
+  return checkClaimStatus(wallet, claimType, opts);
+}
+
+export const checkClaimOutcome = getClaimOutcome;
 
 /**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.

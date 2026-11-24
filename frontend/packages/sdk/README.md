@@ -284,23 +284,25 @@ if (record) {
 }
 ```
 
-### `checkClaimStatus(wallet, claimType, opts?)`
+### `checkClaimStatus(wallet, claimType, opts?)` / `getClaimOutcome(wallet, claimType, opts?)`
 
-Performs diagnostic analysis of a credential claim, returning the granular failure or success state. Useful for presenting actionable feedback to users.
+Performs diagnostic analysis of a credential claim, returning the granular failure or success state. Unlike boolean helpers (`hasClaim`), `checkClaimStatus` and `getClaimOutcome` cleanly distinguish between absent credentials (`not_verified`) and infrastructure failures (`unavailable`), preventing network/RPC errors from being conflated with rejection (#1007).
 
 Possible statuses:
 
-- `"valid"`: Active, unrevoked, unexpired credential satisfying threshold and issuer requirements
-- `"not_verified"`: No on-chain proof record found for this wallet and claim type
+- `"verified"`: Active, unrevoked, unexpired credential satisfying threshold and issuer requirements
+- `"not_verified"`: Checked on-chain / source successfully, but no proof record was found
 - `"expired"`: Record found, but its expiry timestamp is in the past
 - `"revoked"`: Record found, but the issuer or admin marked it revoked
 - `"unmet_threshold"`: Record found, but the proved threshold is below `minThreshold`
 - `"wrong_issuer"`: Record found, but issued by an entity outside `trustedIssuers`
+- `"unsupported"`: The requested claim type is not recognized by the protocol
+- `"unavailable"`: RPC node, contract, transport, or network failure prevented verification
 
 ```ts
 const result = await StellarCred.checkClaimStatus(wallet, "age", { minThreshold: 21 });
 switch (result.status) {
-  case "valid":
+  case "verified":
     console.log("Verified! Expires:", result.record?.expiry);
     break;
   case "expired":
@@ -317,6 +319,12 @@ switch (result.status) {
     break;
   case "not_verified":
     console.info("No record found. Please verify at StellarCred.");
+    break;
+  case "unsupported":
+    console.warn("Unsupported credential type requested.");
+    break;
+  case "unavailable":
+    console.error("RPC or network is currently unavailable:", result.error);
     break;
 }
 ```
