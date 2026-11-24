@@ -9,6 +9,7 @@
     "coverage": "nyc pnpm run test:unit",
     "coverage:report": "nyc report --reporter=text-summary --reporter=lcov",
     "check:page-client-size": "node .github/scripts/check-page-client-size.mjs",
+    "check:component-ownership": "node .github/scripts/check-component-ownership.mjs",
     "verify:client-freshness": "bash scripts/verify-client-freshness.sh",
     "ci": "pnpm run check:page-client-size && pnpm run test",
     "test:export": "vitest run src/tests/exportObservability.test.ts"
