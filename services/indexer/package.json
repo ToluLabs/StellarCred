@@ -15,6 +15,7 @@
     "test:coverage": "jest --coverage --coverageReporters=json-summary --coverageReporters=text",
     "bench:pgbench": "node scripts/pgbench-latency.mjs",
     "bench:pgbench:self-test": "node scripts/pgbench-latency.mjs --self-test"
+    "test:conformance": "jest src/db-conformance.test.ts",
     "backfill": "tsc && node dist/backfill-cli.js",
     "test:coverage": "jest --coverage --coverageReporters=json-summary --coverageReporters=text"
   },

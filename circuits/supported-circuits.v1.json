@@ -3,7 +3,12 @@
   "manifestVersion": "1.0.0",
   "release": "v1.0.0",
   "publishedAt": "2026-11-22T00:00:00Z",
-  "description": "Authoritative release manifest of supported and experimental zero-knowledge circuits for StellarCred v1.0.0 (#972).",
+  "description": "Authoritative release manifest of supported and experimental zero-knowledge circuits for StellarCred v1.0.0 (#972). Frozen v1 public surface: changes to any supported circuit's id, publicInputs, vkVersion, or compatibility require sign-off from contract, circuits, and SDK maintainers per the v1 public-surface freeze checklist.",
+  "freeze": {
+    "checklist": "docs/v1-public-surface-freeze.md",
+    "signOffRequired": ["contracts", "circuits", "sdk"],
+    "frozenFields": ["id", "credentialType", "status", "version", "vkVersion", "publicInputs", "compatibility"]
+  },
   "circuits": [
     {
       "id": "kyc_proof",

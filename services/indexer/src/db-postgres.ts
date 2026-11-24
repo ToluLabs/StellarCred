@@ -21,6 +21,7 @@ import { createHash } from "crypto";
 import type { Config, DbPoolConfig } from "./config";
 import { DEFAULT_DB_POOL } from "./config";
 import { bindSql, type PlaceholderStyle, type SqlDialect, type SqlParam } from "./db-dialect";
+import { createReadReplicaRouter } from "./db-router";
 import { createSharedDb } from "./db-shared";
 import type { Db } from "./db-types";
 
@@ -249,4 +250,27 @@ export function createPostgresDb(config: Config): Db {
       statementCache: createPgStatementCache(),
     }),
   );
+  const primaryPool = new Pool({ connectionString: config.databaseUrl });
+  const replicaUrls = (config.databaseReadReplicaUrls ?? []).filter(
+    (u) => u.trim().length > 0,
+  );
+
+  const connection: PostgresConnection =
+    replicaUrls.length > 0
+      ? createReadReplicaRouter(
+          primaryPool,
+          replicaUrls.map((url) => new Pool({ connectionString: url })),
+          {
+            fallbackToPrimary: config.databaseReplicaFallbackToPrimary ?? true,
+            onReplicaError: (replicaIndex, err) => {
+              console.warn(
+                `[indexer] Read replica #${replicaIndex} query failed, failing over:`,
+                err instanceof Error ? err.message : String(err),
+              );
+            },
+          },
+        )
+      : primaryPool;
+
+  return createSharedDb(createPostgresDialect(connection));
 }

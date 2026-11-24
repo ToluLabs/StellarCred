@@ -243,7 +243,9 @@ immediate and idempotency is explicit (a second attempt fails rather than
 silently succeeding).
 
 **Impact on outstanding credentials:** any credential signed by the revoked key
-stops verifying on the next ledger, regardless of its validity window.
+can no longer be submitted from the next ledger, regardless of its validity
+window. Proofs already submitted with it stay cached and keep verifying until
+they are revoked or expire (Step 3).
 **Holders must act** — holders of revoked-key credentials need a credential
 re-signed by a live key before they can prove anything again. Notify them
 promptly (§7) rather than letting submissions fail silently.
@@ -281,9 +283,12 @@ keys keep verifying until their own windows close.
 
 **Step 3 — investigate the blast radius**
 
-Credentials signed with the revoked key no longer verify anywhere in the
-protocol, including ones already submitted and cached: read them again with
-`is_verified` after revoking rather than trusting a pre-incident cache. Ask
+Revocation does not reach proofs that were already submitted. `is_verified` and
+`check_claim` read the cached `ProofRecord`, which stores no signing key, so a
+proof submitted with the revoked key keeps verifying until it expires or the
+issuer revokes it with `ProofRegistry.revoke`. Finding and revoking forged
+proofs, notifying protocols and re-issuing credentials is covered in
+[ISSUER_KEY_COMPROMISE_RUNBOOK.md](ISSUER_KEY_COMPROMISE_RUNBOOK.md). Ask
 holders to re-derive their proofs with a credential signed by a live key
 (§7 has the notice wording). Also disable the key material in the KMS/HSM so
 the off-chain environment matches the on-chain state.

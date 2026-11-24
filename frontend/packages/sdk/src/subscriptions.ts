@@ -193,17 +193,16 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
   let stopped = false;
   let running = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // Aborted on unsubscribe so webhook deliveries still waiting between
+  // retries stop instead of hitting the receiver after the caller left (#1056).
+  const lifecycle = typeof AbortController !== "undefined" ? new AbortController() : undefined;
 
-  const stateKey = (row: IndexerClaimRow): string =>
-    `${row.wallet}|${row.credential_type}`;
+  const stateKey = (row: IndexerClaimRow): string => `${row.wallet}|${row.credential_type}`;
 
   const isLiveRow = (row: IndexerClaimRow, now: number): boolean =>
     row.revoked === 0 && row.expiry > now;
 
-  const isNewer = (
-    row: IndexerClaimRow,
-    cursor: { ledger: number; id: number },
-  ): boolean =>
+  const isNewer = (row: IndexerClaimRow, cursor: { ledger: number; id: number }): boolean =>
     row.ledger_sequence > cursor.ledger ||
     (row.ledger_sequence === cursor.ledger && row.id > cursor.id);
 
@@ -242,16 +241,17 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
     if (webhook.secret) headers["X-StellarCred-Webhook-Secret"] = webhook.secret;
     try {
       await withRetry(
-        async () => {
-          const res = await fetch(webhook.url, { method: "POST", headers, body });
+        async ({ signal }) => {
+          const res = await fetch(webhook.url, { method: "POST", headers, body, signal });
           if (!res.ok) {
             throw new Error(`Webhook delivery failed: HTTP ${res.status} for ${webhook.url}`);
           }
         },
-        { retries: webhook.retries },
+        { retries: webhook.retries, signal: lifecycle?.signal },
       );
     } catch (err) {
-      onError(err);
+      // An unsubscribe cancels pending deliveries; that is not an error to report.
+      if (!lifecycle?.signal.aborted) onError(err);
     }
   }
 
@@ -461,6 +461,7 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
 
   return () => {
     stopped = true;
+    lifecycle?.abort();
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;

@@ -1,5 +1,5 @@
 {
-  "entryPoints": ["src/index.ts", "src/react.ts"],
+  "entryPoints": ["src/index.ts", "src/react.ts", "src/testing.ts"],
   "out": "docs/api",
   "tsconfig": "tsconfig.json",
   "excludePrivate": true,

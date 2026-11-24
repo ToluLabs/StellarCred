@@ -12,12 +12,28 @@
  * `schemaVersion` is only ever added to; an existing version is never
  * reinterpreted. Bump it and add a migration when the entry layout changes.
  *
+ * Integrity: every v1 artifact carries a SHA-256 checksum over a canonical
+ * serialization of `{ schemaVersion, generation, count, entries }`. Import
+ * recomputes the checksum and rejects mismatched or corrupt bundles before
+ * any data is applied. The checksum detects accidental corruption and naive
+ * tampering; it is not a signature and does not authenticate the producer.
+ *
  * This module is pure (no DOM/localStorage, no filesystem) so it can run in
  * the browser, under vitest, and inside the Node backfill CLI.
  */
 
 /** Current export artifact schema version. New writes always use this value. */
 export const EXPORT_SCHEMA_VERSION = 1;
+
+/** Algorithm used for the artifact integrity checksum. */
+export const EXPORT_INTEGRITY_ALGORITHM = "SHA-256";
+
+/** Integrity metadata embedded alongside the artifact payload. */
+export interface IntegrityMetadata {
+  algorithm: typeof EXPORT_INTEGRITY_ALGORITHM;
+  /** Lowercase hex digest of the canonical payload (see `canonicalPayload`). */
+  checksum: string;
+}
 
 /** Identifies the legacy file a backfilled artifact was read from. */
 export type SourceFormat = "legacy-json" | "legacy-csv";
@@ -57,6 +73,8 @@ export interface GenerationMetadata {
 export interface ExportArtifactV1 {
   schemaVersion: 1;
   generation: GenerationMetadata;
+  /** Optional for backward compatibility with pre-checksum artifacts. */
+  integrity?: IntegrityMetadata;
   /** Number of entries carried in `entries` after safety validation. */
   count: number;
   entries: ExportEntry[];
@@ -75,6 +93,172 @@ export interface BackfillReport {
 
 /** Raised for structurally unreadable input (not per-entry validation). */
 export class LegacyExportError extends Error {}
+
+/** Raised when an artifact fails integrity verification on import. */
+export class ArtifactIntegrityError extends Error {}
+
+// ── Integrity ───────────────────────────────────────────────────────────────
+
+/**
+ * Canonical serialization of the signed portion of an artifact. Keys are
+ * emitted in a fixed order so the same logical content always hashes the same
+ * regardless of object key insertion order.
+ */
+export function canonicalPayload(artifact: {
+  schemaVersion: number;
+  generation: GenerationMetadata;
+  count: number;
+  entries: ExportEntry[];
+}): string {
+  const gen = artifact.generation;
+  const generation: Record<string, unknown> = {
+    generatedAt: gen.generatedAt,
+    generator: gen.generator,
+  };
+  if (gen.sourceFormat !== undefined) generation.sourceFormat = gen.sourceFormat;
+  if (gen.sourceExportedAt !== undefined) {
+    generation.sourceExportedAt = gen.sourceExportedAt;
+  }
+  const entries = artifact.entries.map((e) => {
+    const out: Record<string, unknown> = {
+      claimType: e.claimType,
+      verifiedAt: e.verifiedAt,
+      expiry: e.expiry,
+      txHash: e.txHash,
+      issuer: e.issuer,
+    };
+    if (e.source !== undefined) out.source = e.source;
+    return out;
+  });
+  return JSON.stringify({
+    schemaVersion: artifact.schemaVersion,
+    generation,
+    count: artifact.count,
+    entries,
+  });
+}
+
+/** Lowercase hex SHA-256 of a UTF-8 string. Uses Web Crypto (browser + Node 19+). */
+export async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Compute the integrity metadata for an artifact's signed payload. */
+export async function computeIntegrity(artifact: {
+  schemaVersion: number;
+  generation: GenerationMetadata;
+  count: number;
+  entries: ExportEntry[];
+}): Promise<IntegrityMetadata> {
+  return {
+    algorithm: EXPORT_INTEGRITY_ALGORITHM,
+    checksum: await sha256Hex(canonicalPayload(artifact)),
+  };
+}
+
+/**
+ * Attach integrity metadata to a freshly built artifact. The returned artifact
+ * is the one that should be serialized and written to disk.
+ */
+export async function sealArtifact(artifact: ExportArtifactV1): Promise<ExportArtifactV1> {
+  const integrity = await computeIntegrity(artifact);
+  return { ...artifact, integrity };
+}
+
+/**
+ * Verify an artifact before import. Rejects (throws `ArtifactIntegrityError`)
+ * with an actionable message when:
+ *   - the schema version is unknown or unsupported,
+ *   - `count` does not match the number of entries (truncation/edit),
+ *   - the checksum algorithm is unsupported,
+ *   - the recomputed checksum does not match (corruption or tampering).
+ *
+ * Artifacts without `integrity` (pre-checksum) are accepted only when
+ * `allowUnsigned` is true; otherwise they are rejected so unverifiable data
+ * is never silently applied.
+ */
+export async function verifyArtifact(
+  raw: unknown,
+  options: { allowUnsigned?: boolean } = {}
+): Promise<ExportArtifactV1> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new ArtifactIntegrityError(
+      "The file is not a valid export bundle (expected a JSON object). Re-export and try again."
+    );
+  }
+  const obj = raw as Record<string, unknown>;
+
+  if (obj["schemaVersion"] !== EXPORT_SCHEMA_VERSION) {
+    throw new ArtifactIntegrityError(
+      `Unsupported export schema version ${String(obj["schemaVersion"])}. ` +
+        `This app reads version ${EXPORT_SCHEMA_VERSION}; upgrade the app or re-export from a matching version.`
+    );
+  }
+
+  const generation = obj["generation"];
+  if (typeof generation !== "object" || generation === null) {
+    throw new ArtifactIntegrityError(
+      "The export bundle is missing its generation metadata. The file may be damaged."
+    );
+  }
+  const gen = generation as Record<string, unknown>;
+  if (typeof gen["generatedAt"] !== "string" || typeof gen["generator"] !== "string") {
+    throw new ArtifactIntegrityError(
+      "The export bundle's generation metadata is malformed. The file may be damaged."
+    );
+  }
+
+  const entries = obj["entries"];
+  if (!Array.isArray(entries)) {
+    throw new ArtifactIntegrityError(
+      "The export bundle has no entries list. The file may be truncated."
+    );
+  }
+  if (obj["count"] !== entries.length) {
+    throw new ArtifactIntegrityError(
+      `The export bundle claims ${String(obj["count"])} entries but contains ${entries.length}. ` +
+        "The file was likely truncated or edited after export."
+    );
+  }
+
+  const integrity = obj["integrity"];
+  if (integrity === undefined) {
+    if (options.allowUnsigned) {
+      return raw as ExportArtifactV1;
+    }
+    throw new ArtifactIntegrityError(
+      "This export has no integrity checksum, so it cannot be verified. " +
+        "Re-export it with the current app, or import it explicitly as an unverified legacy file."
+    );
+  }
+  if (typeof integrity !== "object" || integrity === null) {
+    throw new ArtifactIntegrityError("The export's integrity metadata is malformed.");
+  }
+  const meta = integrity as Record<string, unknown>;
+  if (meta["algorithm"] !== EXPORT_INTEGRITY_ALGORITHM) {
+    throw new ArtifactIntegrityError(
+      `Unsupported integrity algorithm "${String(meta["algorithm"])}". Expected ${EXPORT_INTEGRITY_ALGORITHM}.`
+    );
+  }
+  if (typeof meta["checksum"] !== "string") {
+    throw new ArtifactIntegrityError("The export's integrity checksum is missing.");
+  }
+
+  const artifact = raw as ExportArtifactV1;
+  const actual = await computeIntegrity(artifact);
+  if (actual.checksum !== meta["checksum"]) {
+    throw new ArtifactIntegrityError(
+      "The export failed its integrity check: the contents do not match the recorded checksum. " +
+        "The file was corrupted or modified after export, so it has not been imported. " +
+        "Restore from an original, unmodified export."
+    );
+  }
+  return artifact;
+}
 
 // ── Legacy parsing ──────────────────────────────────────────────────────────
 
@@ -296,6 +480,9 @@ export interface BackfillOptions {
  * Convert legacy entries into a schema v1 artifact plus a run report. Entries
  * failing validation are skipped and recorded, not silently dropped or thrown
  * — this is the shared core of the real backfill and its dry-run.
+ *
+ * The returned artifact is unsealed; call `sealArtifact` before writing it so
+ * the bundle carries integrity metadata.
  */
 export function planBackfill(
   legacyEntries: ExportEntry[],
@@ -330,31 +517,12 @@ export function planBackfill(
     entries: kept,
   };
 
-  return {
-    artifact,
-    report: {
-      sourceFormat: options.sourceFormat,
-      inputCount: legacyEntries.length,
-      outputCount: kept.length,
-      skipped,
-    },
+  const report: BackfillReport = {
+    sourceFormat: options.sourceFormat,
+    inputCount: legacyEntries.length,
+    outputCount: kept.length,
+    skipped,
   };
-}
 
-/** Serialize an artifact deterministically (stable key order, 2-space JSON). */
-export function serializeArtifact(artifact: ExportArtifactV1): string {
-  return JSON.stringify(artifact, null, 2) + "\n";
-}
-
-/** True when `value` is a well-formed schema v1 artifact. */
-export function isExportArtifact(value: unknown): value is ExportArtifactV1 {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    v["schemaVersion"] === EXPORT_SCHEMA_VERSION &&
-    typeof v["generation"] === "object" &&
-    v["generation"] !== null &&
-    Array.isArray(v["entries"]) &&
-    v["count"] === (v["entries"] as unknown[]).length
-  );
+  return { artifact, report };
 }

@@ -7,7 +7,7 @@
  *
  *   token    extractBearerToken(), isTokenExpired()
  *   API key  extractApiKey(), verifyApiKey(), checkAdminAuth()
- *   session  authFailure() / AuthResult — the uniform outcome of resolving
+ *   session  authFailure() / AuthResult - the uniform outcome of resolving
  *            who the caller is
  *
  * Admin routes are protected by a shared secret delivered as
@@ -18,6 +18,7 @@
  * modules such as `lib/tenancy.ts` can use it without an import cycle.
  */
 
+import { createHmac, timingSafeEqual } from "crypto";
 import type { NextRequest } from "next/server";
 
 /** Standard 401 response body. */
@@ -107,4 +108,150 @@ export function verifyApiKey(
 export function checkAdminAuth(req: Pick<NextRequest, "headers">): boolean {
   const token = extractBearerToken(req.headers.get("authorization"));
   return verifyApiKey(token, process.env.ADMIN_API_KEY);
+}
+
+// ── Session token validation (#945) ──────────────────────────────────────────
+
+export interface SessionPayload {
+  sub: string;
+  exp: number;
+  iat: number;
+  iss?: string;
+  nonce?: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
+export interface SessionValidationOptions {
+  secret?: string;
+  now?: number;
+  maxSkewSeconds?: number;
+  allowedIssuers?: string[];
+  usedNonces?: Set<string>;
+}
+
+/**
+ * Creates a signed session token for testing and authentication.
+ */
+export function createSignedSessionToken(
+  payload: Omit<SessionPayload, "iat"> & { iat?: number },
+  secret: string,
+  now: number = Math.floor(Date.now() / 1000),
+): string {
+  const header = { alg: "HS256", typ: "JWT" };
+  const fullPayload: SessionPayload = {
+    ...payload,
+    iat: payload.iat ?? now,
+  };
+  const headerB64 = Buffer.from(JSON.stringify(header), "utf8").toString("base64url");
+  const payloadB64 = Buffer.from(JSON.stringify(fullPayload), "utf8").toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest("base64url");
+  return `${headerB64}.${payloadB64}.${signature}`;
+}
+
+/**
+ * Hardened validation for API sessions and authentication tokens.
+ * Rejects unsigned, expired, forged, or replayed tokens.
+ */
+export function validateSessionToken(
+  token: string | null | undefined,
+  options: SessionValidationOptions = {},
+): AuthResult<SessionPayload> {
+  if (!token || typeof token !== "string" || token.trim() === "") {
+    return authFailure(401, "missing session token");
+  }
+
+  const parts = token.trim().split(".");
+  if (parts.length !== 3) {
+    return authFailure(401, "malformed session token");
+  }
+
+  const [headerB64, payloadB64, signatureB64] = parts;
+  if (!headerB64 || !payloadB64 || !signatureB64) {
+    return authFailure(401, "incomplete session token");
+  }
+
+  // Parse and validate header
+  let header: { alg?: string; typ?: string };
+  try {
+    header = JSON.parse(Buffer.from(headerB64, "base64url").toString("utf8"));
+  } catch {
+    return authFailure(401, "invalid token header");
+  }
+
+  if (!header.alg || header.alg.toLowerCase() === "none" || header.alg !== "HS256") {
+    return authFailure(401, "unsupported or unsigned algorithm");
+  }
+
+  // Verify HMAC signature
+  const secret = options.secret ?? process.env.SESSION_SECRET;
+  if (!secret) {
+    return authFailure(500, "session secret unconfigured");
+  }
+
+  const expectedSignature = createHmac("sha256", secret)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest("base64url");
+
+  const sigBuf = Buffer.from(signatureB64);
+  const expectedBuf = Buffer.from(expectedSignature);
+  if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
+    return authFailure(401, "invalid signature");
+  }
+
+  // Parse and validate payload
+  let payload: SessionPayload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+  } catch {
+    return authFailure(401, "invalid token payload");
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return authFailure(401, "invalid token payload");
+  }
+
+  if (typeof payload.sub !== "string" || payload.sub.trim() === "") {
+    return authFailure(401, "missing subject in token");
+  }
+
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  const maxSkew = options.maxSkewSeconds ?? 60;
+
+  // Expiry check (exp is in epoch seconds)
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+    return authFailure(401, "missing or invalid expiration");
+  }
+  if (now > payload.exp) {
+    return authFailure(401, "session expired");
+  }
+
+  // Issued-at sanity check
+  if (typeof payload.iat !== "number" || !Number.isFinite(payload.iat)) {
+    return authFailure(401, "missing or invalid issued-at");
+  }
+  if (payload.iat > now + maxSkew) {
+    return authFailure(401, "token issued in future");
+  }
+
+  // Issuer verification
+  if (options.allowedIssuers && options.allowedIssuers.length > 0) {
+    if (!payload.iss || !options.allowedIssuers.includes(payload.iss)) {
+      return authFailure(403, "untrusted session issuer");
+    }
+  }
+
+  // Replay prevention via nonce
+  if (payload.nonce) {
+    if (options.usedNonces) {
+      if (options.usedNonces.has(payload.nonce)) {
+        return authFailure(401, "replayed session token");
+      }
+      options.usedNonces.add(payload.nonce);
+    }
+  }
+
+  return { ok: true, value: payload };
 }
