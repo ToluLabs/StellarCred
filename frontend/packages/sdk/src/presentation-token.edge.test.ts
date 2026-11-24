@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Buffer } from "buffer";
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Keypair } from "@stellar/stellar-sdk";
