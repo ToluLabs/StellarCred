@@ -56,3 +56,4 @@ Branch protection on `main` requires the following checks to pass before merging
    - `ci.yml / sdk-integration` (skipped on forks lacking `SC_TEST_WALLET` / `STELLARCRED_REGISTRY_ID`)
    - `ci.yml / a11y` (disabled with `if: false` pending pre-existing violation cleanup)
    - `e2e.yml`, `nightly.yml`, `release.yml`, `auto-label-deps.yml`, `auto-merge-deps.yml`, `stale.yml`
+

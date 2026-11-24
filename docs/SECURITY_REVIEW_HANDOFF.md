@@ -171,3 +171,4 @@ All audit findings must be logged below and tracked to final disposition before 
 | Finding ID | Severity | Component | Summary | Disposition | Owner | Remediation Commit / PR | Verification Status |
 |---|---|---|---|---|---|---|---|
 | `SC-001` | *TBD* | *e.g. `contracts/proof_registry`* | *Reviewer finding description* | `Open` | *Maintainer* | *TBD* | `Pending` |
+
