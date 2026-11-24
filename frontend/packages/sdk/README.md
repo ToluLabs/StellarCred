@@ -129,6 +129,61 @@ StellarCred.invalidate(wallet, "kyc"); // or invalidate(wallet) for every type
 - The cache lives in the current process (or browser tab). It is per-instance,
   not shared between servers.
 
+## Telemetry (opt-in, zero-PII)
+
+Diagnostic telemetry is **off until you explicitly turn it on**. Nothing is
+recorded, buffered, or sent before the first
+`configureTelemetry({ enabled: true, … })` call.
+
+```ts
+import { configureTelemetry, flushTelemetry, trackEvent, withTelemetry } from "@stellarcred/sdk";
+
+configureTelemetry({
+  enabled: true, // required: explicit opt-in
+  endpoint: "https://telemetry.example.com/v1/events", // or supply a `sink`
+  appId: "my-app", // optional, non-identifying
+});
+
+// Record a sanitized event
+trackEvent("claim.check", { source: "chain", outcome: "success" });
+
+// Or time an operation — only name, duration and outcome are reported
+await withTelemetry("claim.read", () => StellarCred.hasClaim(wallet, "kyc"));
+
+await flushTelemetry(); // optional: called on batch size and on an interval
+```
+
+Every event is sanitized before it can leave the process:
+
+- **Secrets are scrubbed.** Stellar `G…`/`C…`/`S…` keys, 64- and 128-character
+  hex keys (including `0x…`), JWTs, e-mail addresses, `Bearer` tokens and
+  provider API keys are replaced with `[redacted]`.
+- **Sensitive attributes are dropped.** Keys describing private keys, seeds,
+  mnemonics, passwords, API keys, tokens, signatures, credentials, claims,
+  proofs, witnesses, nullifiers, wallets, addresses, accounts, holders and
+  identity fields are removed entirely, at any nesting depth.
+- **Names are normalised** to `[a-z0-9_.-]`, so an address pasted into an
+  event name cannot survive.
+- **Transport is tightened.** Endpoints must be `https://` (loopback `http://`
+  only with `allowInsecureLocalhost: true`), and URLs with credentials, query
+  strings or fragments are rejected. Requests are sent with
+  `credentials: "omit"`, `referrerPolicy: "no-referrer"` and `cache: "no-store"`.
+- **Failures never break the host.** Sink and network errors are swallowed;
+  only invalid explicit configuration throws `TelemetryConfigError`.
+
+Provide your own pipeline with `sink` instead of an endpoint:
+
+```ts
+configureTelemetry({ enabled: true, sink: (events) => myCollector.send(events) });
+
+disableTelemetry(); // stop and discard buffered events at any time
+resetTelemetry(); // restore the initial disabled state
+```
+
+The full options interface is `TelemetryOptions`; the sanitizers
+(`sanitizeTelemetryAttributes`, `sanitizeTelemetryValue`, `isSensitiveTelemetryKey`)
+are exported so integrators can apply the same filter to their own diagnostics.
+
 ## Bootstrapping from a deployment (capability descriptor)
 
 Instead of supplying contract IDs one by one, the SDK can configure itself
@@ -1023,6 +1078,73 @@ createSession(req, result.wallet);
 - **TypeScript SDK Example**: A minimal, typed example demonstrating SDK initialization, credential verification, wallet challenge signing, and credential-gated Stellar transaction creation with `@stellar/stellar-sdk` is available at [`examples/typescript`](../../../examples/typescript).
 
 ---
+
+## Testing your integration (`@stellarcred/sdk/testing`)
+
+Unit-test a StellarCred integration in CI without a Soroban RPC, a deployed
+ProofRegistry, a Noir toolchain, or a browser wallet. Import the test doubles
+from `@stellarcred/sdk/testing` in test files only.
+
+```ts
+import { afterEach, expect, it } from "vitest";
+import { createWalletChallenge, hasClaim, verifyWalletClaim } from "@stellarcred/sdk";
+import {
+  CredentialFactory,
+  MockWalletProvider,
+  installMockRegistry,
+  uninstallMockRegistry,
+} from "@stellarcred/sdk/testing";
+
+afterEach(() => uninstallMockRegistry());
+
+it("lets a KYC'd wallet in", async () => {
+  const wallet = MockWalletProvider.random();
+  const registry = installMockRegistry(); // every SDK claim read now hits this
+  const credential = new CredentialFactory().create({ type: "kyc", holder: wallet.address });
+  registry.prove(credential); // simulated on-chain proof
+
+  expect(await hasClaim(wallet.address, "kyc")).toBe(true);
+
+  const challenge = createWalletChallenge({ domain: "app.test" });
+  const signature = await wallet.signChallenge(challenge);
+  const result = await verifyWalletClaim({
+    wallet: wallet.address,
+    challenge,
+    signature,
+    claim: "kyc",
+  });
+  expect(result.ok).toBe(true);
+});
+```
+
+- **`MockWalletProvider`**: a SEP-43 wallet (`getAddress`, `signMessage`,
+  `signTransaction`, plus `signChallenge`) backed by a real Ed25519 keypair, so
+  its signatures pass `verifyWalletSignature` / `verifyWalletClaim`. Pass
+  `{ secret }` for a fixed address, `{ reject: true }` (or call
+  `rejectRequests()`) to simulate a dismissed prompt (`MockWalletRejectedError`,
+  `code: -4`). `calls` records every request.
+- **`CredentialFactory`**: `create({ type, holder, claimParams, expiry, ... })`
+  returns credential JSON in the `/api/issue` shape that passes
+  `validateCredential`, signed with a real secp256k1 issuer key over the
+  commitment (low-s, no pre-hash, as `@stellarcred/issuer` signs). Pass
+  `issuerPrivateKey`, `issuerId` and `now` for deterministic output;
+  `createMany(types)` issues several for one holder;
+  `verifyCredentialSignature(credential)` checks a signature.
+- **`MockProofRegistry`**: an in-memory ProofRegistry with the contract's read
+  semantics. `prove(credential)` stores a proof (holder, type, issuer,
+  threshold and expiry taken from the credential); `addProof({ holder, type,
+issuer, threshold, expiresInSeconds })` stores one directly. Then
+  `revoke(holder, type, reason)`, `setLedgerTime(s)` / `advanceTime(s)` for
+  expiry, `useNullifier(context, nullifier)` for `verifyUniquePersonhood`,
+  `failNextReads(error, times)` for RPC failures, `reset()`, and `calls` for
+  assertions. `installMockRegistry(registry?)` routes `hasClaim`, `getClaim`,
+  `getClaims`, `hasClaims`, `checkClaimStatus`, `getClaimRecord`,
+  `verifyPreset`, `verifyWalletClaim` and `isNullifierUsed` to it without any
+  `registryId`; `uninstallMockRegistry()` restores the real client.
+
+Factory credentials are not provable: the commitment is a random field
+element rather than the Poseidon2 hash of `value` and `salt`, so a real prover
+or verifier rejects them. Never ship this entry point in production code.
 
 ## Batch signature verification (worker threads)
 

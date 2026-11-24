@@ -385,7 +385,7 @@ export function isConfigured(): boolean {
 
 let _warnedMissingRegistryId = false;
 function warnIfMissingRegistryIdOnce(): void {
-  if (_config.registryId) {
+  if (_config.registryId || registryOverride()) {
     _warnedMissingRegistryId = false;
     return;
   }
@@ -629,7 +629,88 @@ export function resetClientForTesting(): void {
   _sdk = null;
 }
 
+/**
+ * The ProofRegistry reads the SDK's claim checks make, as a structural type.
+ * The generated client satisfies it; so does the in-memory test double in
+ * `@stellarcred/sdk/testing`.
+ */
+export interface ProofRegistryReader {
+  is_verified(args: {
+    holder: string;
+    credential_type: string;
+    trusted_issuers?: string[] | null;
+  }): Promise<{ result: readonly [boolean, bigint | number, bigint | number] }>;
+  check_claim(args: {
+    holder: string;
+    credential_type: string;
+    min_threshold?: bigint | number | null;
+    trusted_issuers?: string[] | null;
+  }): Promise<{ result: boolean }>;
+  get_record(args: { holder: string; credential_type: string }): Promise<{
+    result:
+      | {
+          verified_at: bigint | number;
+          expiry: bigint | number;
+          revoked: boolean;
+          issuer?: string | null;
+          threshold?: bigint | number | null;
+          vk_version: number;
+          reason?: number;
+        }
+      | null
+      | undefined;
+  }>;
+}
+
+// Kept on globalThis under a registered symbol rather than in a module
+// variable: bundlers can give each entry point (`@stellarcred/sdk`,
+// `@stellarcred/sdk/testing`) its own copy of this module, notably in CJS
+// builds, and an override set through one copy must reach reads made
+// through the other.
+const REGISTRY_OVERRIDE = Symbol.for("@stellarcred/sdk:proof-registry-override");
+
+interface RegistryOverrideSlot {
+  client: ProofRegistryReader | null;
+  generation: number;
+}
+
+function registryOverrideSlot(): RegistryOverrideSlot {
+  const g = globalThis as unknown as Record<symbol, RegistryOverrideSlot | undefined>;
+  let slot = g[REGISTRY_OVERRIDE];
+  if (!slot) {
+    slot = { client: null, generation: 0 };
+    g[REGISTRY_OVERRIDE] = slot;
+  }
+  return slot;
+}
+
+let _seenOverrideGeneration = 0;
+
+/** The installed test double, if any. Drops cached claim reads when it changed. */
+function registryOverride(): ProofRegistryReader | null {
+  const slot = registryOverrideSlot();
+  if (slot.generation !== _seenOverrideGeneration) {
+    _seenOverrideGeneration = slot.generation;
+    _claimCache.clear();
+  }
+  return slot.client;
+}
+
+/**
+ * @internal Route every ProofRegistry read to `client` instead of a live RPC
+ * client built from `configure()`. Pass `null` to go back to the real client.
+ * Used by `@stellarcred/sdk/testing` (`installMockRegistry`); not part of the
+ * supported public API.
+ */
+export function __setProofRegistryClientForTesting(client: ProofRegistryReader | null): void {
+  const slot = registryOverrideSlot();
+  slot.client = client;
+  slot.generation += 1;
+}
+
 async function getClient(throwOnError = false): Promise<ProofRegistryClient | null> {
+  const override = registryOverride();
+  if (override) return override as unknown as ProofRegistryClient;
   const { registryId, rpcUrl, networkPassphrase } = _config;
   if (!registryId) {
     if (throwOnError) {
@@ -1272,6 +1353,8 @@ async function cachedRead<T extends IsVerifiedResult | boolean>(
 ): Promise<T | null> {
   const { claimCache, claimCacheTtlMs, claimCacheMaxEntries } = _config;
   if (!claimCache) return read();
+  // Installing or removing a test registry invalidates what was cached.
+  registryOverride();
 
   const k = claimCacheKey(key);
   if (!fresh) {
