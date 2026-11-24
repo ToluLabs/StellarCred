@@ -9,7 +9,9 @@ import { truncateAddress } from "@/lib/format";
 import CopyButton from "@/components/CopyButton";
 
 export function WalletButton() {
-  const { address, restoring, connecting, error, connect, disconnect } = useWallet();
+  const { address, restoring, connecting, error, networkMismatch, ledgerDisconnected, connect, disconnect } =
+    useWallet();
+  const t = useTranslations();
 
   // A saved connection is still being restored. Render a placeholder with the
   // same footprint as the button instead of "Connect wallet", which would
@@ -26,10 +28,6 @@ export function WalletButton() {
       </div>
     );
   }
-  const { address, connecting, error, networkMismatch, connect, disconnect } = useWallet();
-  const { address, connecting, error, networkMismatch, ledgerDisconnected, connect, disconnect } =
-    useWallet();
-  const t = useTranslations();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem" }}>

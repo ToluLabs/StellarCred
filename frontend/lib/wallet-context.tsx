@@ -69,11 +69,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     kitRestore(saved)
-      .then((restored) => {
-        if (!cancelled) setAddress(restored);
       .then((restoredAddress) => {
-        setAddress(restoredAddress);
-        setWalletId(saved);
+        if (!cancelled) {
+          setAddress(restoredAddress);
+          setWalletId(saved);
+        }
       })
       .catch(() => {
         try {
@@ -203,9 +203,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WalletContext.Provider
-      value={{ address, restoring, connecting, error, networkMismatch, connect, disconnect }}
       value={{
         address,
+        restoring,
         walletId,
         connecting,
         error,

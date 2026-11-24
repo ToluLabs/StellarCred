@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, expectTypeOf } from "vitest";
 
 import {
   createBbJsProofVerifier,
@@ -30,6 +30,24 @@ describe("offline verification exports", () => {
     expect(StellarCred.OfflineVerificationError).toBe(OfflineVerificationError);
     expect(StellarCred.ULTRAHONK_PROOF_BYTES).toBe(ULTRAHONK_PROOF_BYTES);
     expect(StellarCred.OFFLINE_SNAPSHOT_VERSION).toBe(OFFLINE_SNAPSHOT_VERSION);
+    expect(StellarCred.OFFLINE_FIELD_BYTES).toBe(OFFLINE_FIELD_BYTES);
+    expect(StellarCred.DEFAULT_MAX_SNAPSHOT_AGE_SECONDS).toBe(DEFAULT_MAX_SNAPSHOT_AGE_SECONDS);
+    expect(StellarCred.DEFAULT_MAX_CLOCK_SKEW_SECONDS).toBe(DEFAULT_MAX_CLOCK_SKEW_SECONDS);
+  });
+
+  it("type-narrows offline verification failure codes against the exported union", () => {
+    type OfflineVerificationCode = import("./offline").OfflineVerificationCode;
+    type OfflineVerificationFailure = import("./offline").OfflineVerificationFailure;
+
+    const failure: OfflineVerificationFailure = {
+      valid: false,
+      code: "proof_invalid",
+      message: "UltraHonk proof did not verify against the cached verifier key",
+      checks: [],
+    };
+
+    // Failure codes exclude "valid" — branch on code, not on the valid flag.
+    expectTypeOf(failure.code).toEqualTypeOf<Exclude<OfflineVerificationCode, "valid">>();
   });
 });
 
