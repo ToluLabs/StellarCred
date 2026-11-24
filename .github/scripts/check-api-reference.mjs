@@ -27,6 +27,7 @@ const rootDir = isInGithubScripts ? path.resolve(process.cwd(), '..', '..') : pr
 
 const LIB_PATH = path.join(rootDir, 'contracts', 'proof_registry', 'src', 'lib.rs');
 const DOC_PATH = path.join(rootDir, 'docs', 'PROOF_REGISTRY_API.md');
+const COMPAT_PATH = path.join(rootDir, 'docs', 'V1_PUBLIC_SURFACE.md');
 
 // Entry points implemented in the SDK/private module rather than the main
 // `#[contractimpl]` block (e.g. `#[contractclient]` traits) — not part of the
@@ -36,6 +37,14 @@ const DOC_SEE_ALSO = new Set();
 function fail(msg) {
   console.error(`::error::${msg}`);
   process.exitCode = 1;
+}
+
+// ── 0. The canonical v1 compatibility page must exist and link the reference ──
+
+if (!fs.existsSync(COMPAT_PATH)) {
+  fail(`Missing canonical v1 compatibility page at docs/V1_PUBLIC_SURFACE.md (see the public-surface freeze checklist).`);
+} else if (!fs.readFileSync(COMPAT_PATH, 'utf8').includes('PROOF_REGISTRY_API.md')) {
+  fail(`docs/V1_PUBLIC_SURFACE.md must link to docs/PROOF_REGISTRY_API.md as the source of truth for the ProofRegistry ABI.`);
 }
 
 // ── Parse the contract source ─────────────────────────────────────────────────

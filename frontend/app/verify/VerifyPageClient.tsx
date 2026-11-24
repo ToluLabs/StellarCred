@@ -23,7 +23,7 @@ import {
 
 function VerifyInner() {
   const router = useRouter();
-  const { address } = useWallet();
+  const { address, sessionLostAt } = useWallet();
   const toast = useToast();
 
   const {
@@ -103,19 +103,13 @@ function VerifyInner() {
           <div className="card">
             {!address ? (
               <div style={{ textAlign: "center", padding: "2rem 0" }}>
-                <p
-                  className="muted"
-                  style={{ marginBottom: "1.25rem", fontSize: "0.9rem" }}
-                >
+                <p className="muted" style={{ marginBottom: "1.25rem", fontSize: "0.9rem" }}>
                   Connect your wallet to request credentials for your address.
                 </p>
                 <WalletButton />
               </div>
             ) : done ? (
-              <VerifyDoneView
-                requestingDomain={requestingDomain}
-                urlError={urlError}
-              />
+              <VerifyDoneView requestingDomain={requestingDomain} urlError={urlError} />
             ) : (
               <>
                 {(urlError || paramErrors.length > 0) && (
@@ -153,9 +147,7 @@ function VerifyInner() {
                     }}
                   >
                     Requested by{" "}
-                    <strong style={{ color: "var(--accent)" }}>
-                      {requestingDomain}
-                    </strong>
+                    <strong style={{ color: "var(--accent)" }}>{requestingDomain}</strong>
                   </div>
                 )}
 
@@ -212,10 +204,7 @@ function VerifyInner() {
                   <span className="faint" style={{ fontSize: "0.8125rem" }}>
                     Issued to
                   </span>
-                  <span
-                    className="mono"
-                    style={{ fontSize: "0.8125rem", color: "var(--muted)" }}
-                  >
+                  <span className="mono" style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
                     {truncateMiddle(address, 6, 4)}
                   </span>
                 </div>
@@ -234,10 +223,9 @@ function VerifyInner() {
                     }}
                   >
                     <strong>{selectedIssuer.name}</strong> is not on{" "}
-                    {requestingDomain || "this protocol"}&apos;s trusted-issuer
-                    list. The credential will still be issued, but the protocol
-                    will reject a proof from it — pick an issuer marked
-                    &ldquo;Accepted by protocol&rdquo; to pass its gate.
+                    {requestingDomain || "this protocol"}&apos;s trusted-issuer list. The credential
+                    will still be issued, but the protocol will reject a proof from it — pick an
+                    issuer marked &ldquo;Accepted by protocol&rdquo; to pass its gate.
                   </div>
                 )}
 
@@ -246,6 +234,7 @@ function VerifyInner() {
                   style={{ width: "100%" }}
                   disabled={
                     busy ||
+                    sessionLostAt !== null ||
                     !selected ||
                     !!urlError ||
                     paramErrors.length > 0 ||
@@ -254,18 +243,18 @@ function VerifyInner() {
                     !issuanceConfigured()
                   }
                   title={
-                    issuanceConfigured()
-                      ? undefined
-                      : "App not configured — NEXT_PUBLIC_ISSUER_ADDRESS / IssuerRegistry missing"
+                    sessionLostAt !== null
+                      ? "Reconnect your wallet before requesting a credential."
+                      : issuanceConfigured()
+                        ? undefined
+                        : "App not configured — NEXT_PUBLIC_ISSUER_ADDRESS / IssuerRegistry missing"
                   }
                   onClick={onRequest}
                 >
                   {busy ? (
                     <>
                       <IconLoader2 size={15} className="spin" />
-                      {selected === "kyc"
-                        ? "Redirecting to verification…"
-                        : "Creating credential…"}
+                      {selected === "kyc" ? "Redirecting to verification…" : "Creating credential…"}
                     </>
                   ) : (
                     <>
@@ -295,8 +284,8 @@ function VerifyInner() {
                     lineHeight: 1.6,
                   }}
                 >
-                  Each claim is committed with Poseidon2 and stays private. You
-                  prove a statement about it — never the underlying value.
+                  Each claim is committed with Poseidon2 and stays private. You prove a statement
+                  about it — never the underlying value.
                 </p>
               </>
             )}
