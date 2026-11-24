@@ -131,7 +131,7 @@ Understanding the difference between an **Archived Entry** (storage TTL lapsed) 
 
 ---
 
-## 4. Lifecycle Comparison: Proof Expiry vs Storage TTL vs Indexer Retention (#980)
+## 4. Lifecycle Comparison: Proof Expiry vs Storage TTL vs Indexer Retention (#980, #1006)
 
 To eliminate ambiguity for integrators, the table below maps the exact behavior across the three distinct lifetimes:
 
@@ -141,4 +141,114 @@ To eliminate ambiguity for integrators, the table below maps the exact behavior 
 | **Claim Expired** | `now >= expiry` | `TTL > 0` | Retained as expired | `expired` (amber) | Rejected (`check_claim == false`) |
 | **Storage Archived** | `now` (any) | `TTL == 0` | Retained with archival flag | `unproved` (grey) | Rejected (record absent) |
 | **Audited History** | Expired / Archived | N/A | Preserved permanently | Reviewable | Auditable via Indexer API |
+
+---
+
+## 5. End-to-End Proof Lifecycle Across Timelines (#1006)
+
+A submitted proof moves through three separate lifetime domains that operate independently:
+
+```
+[Issuer Issue Credential]
+          │
+          ▼
+   1. SUBMISSION ────────────────────────────────────────────────────────┐
+      • Proof verified by UltraHonk verifier                             │
+      • Written to Persistent Storage: DataKey::Proof(holder, cred)     │
+      • Storage TTL set to max(PROOF_TTL, (expiry - now)/5)              │
+      • Event emitted; Ingested by Indexer                               │
+      • UI: "proved" (green); SDK: valid = true                          │
+          │                                                              │
+          ▼                                                              │
+   2. ACTIVE VALID WINDOW (now < expiry, TTL > 0)                        │
+      • Protocols call check_claim / is_verified -> valid                │
+      • Rent extended via bump_claim or claim_expiry                     │
+          │                                                              │
+          ├────────────────────────────────────┐                         │
+          │ (now >= expiry)                    │ (TTL reaches 0)         │
+          ▼                                    ▼                         │
+   3. ACTIVE EXPIRED (now >= expiry, TTL > 0)  4. STORAGE ARCHIVED       │
+      • Record exists in active storage        • Record evicted by       │
+      • is_verified -> (false, v_at, expiry)     Soroban runtime         │
+      • check_claim -> false                   • is_verified -> (false,0,0)
+      • bump_claim panics (ProofNotFound)      • check_claim -> false    │
+      • Indexer: state="expired"               • SDK: not_verified       │
+      • UI: "expired" (amber, "Re-prove")      • UI: "unproved" (grey)   │
+          │                                    │                         │
+          │                                    ▼                         │
+          │                             RESTORATION                      │
+          │                             • Soroban restore tx OR          │
+          │                             • Holder re-proves fresh proof   │
+          │                                                              │
+          ▼                                                              ▼
+   5. AUDIT TRAIL / INDEXER RETENTION ───────────────────────────────────┘
+      • Off-chain database preserves complete event-sourced audit log
+      • Historical verifications remain queryable via Indexer API
+      • Zero identity leakages; cryptographic proofs verified against chain
+```
+
+### Detailed Lifecycle Phases
+
+#### Phase 1: Proof Submission & Validation
+- **Action**: Holder submits ZK proof via `submit_proof` or `submit_proof_batch`.
+- **On-Chain State**:
+  - Verification succeeds via `CredentialVerifier`.
+  - `ProofRecord { verified_at, expiry, threshold, revoked: false, issuer, vk_version }` is written to persistent storage.
+  - Entry storage TTL is initialized to `max(PROOF_TTL, ceil((expiry - now) / 5))`.
+- **Indexer State**: Ingests event, creates/updates record with `revoked = 0, state = "active"`.
+- **SDK & UI**: `hasClaim` returns `true`; `checkClaimStatus` returns `valid: true, status: "verified"`; UI displays `proved` (green badge).
+
+#### Phase 2: Active Validity & Rent Maintenance
+- **Validity Check**: Protocols call `check_claim(holder, type, min_threshold, trusted_issuers)` or `is_verified(holder, type, trusted_issuers)`.
+  - The contract validates `env.ledger().timestamp() < expiry` and returns `true` or `(true, verified_at, expiry)`.
+- **Rent Extension**:
+  - Calling `claim_expiry` automatically extends persistent storage TTL if remaining TTL is below `PROOF_BUMP_THRESHOLD`.
+  - Any caller can invoke `bump_claim(holder, type)` to extend rent up to `PROOF_TTL` (90 days) without submitting a new proof.
+
+#### Phase 3: Application Expiry (`now >= expiry`, `TTL > 0`)
+- **Distinction**: Application expiry does **not** erase the entry from persistent storage.
+- **Contract Behavior**:
+  - `is_verified` returns `(false, verified_at, expiry)`. The non-zero `verified_at` and `expiry` provide cryptographic proof that a valid credential once existed.
+  - `check_claim` returns `false`.
+  - `claim_expiry` returns `expiry` (accessible for audit trail).
+  - `bump_claim` rejects the request (`Error::ProofNotFound`) to avoid spending ledger rent on an unusable credential.
+- **SDK & UI**:
+  - SDK `hasClaim` returns `false`.
+  - SDK `checkClaimStatus` returns `valid: false, status: "expired"` and provides the historical `record`.
+  - UI displays `expired` (amber badge) with a "Re-prove" call-to-action.
+  - Indexer returns `expired: true, state: "expired"`.
+
+#### Phase 4: Storage Archival (`TTL == 0`)
+- **Distinction**: Soroban evicts persistent entries whose TTL reaches 0 to archival storage.
+- **Contract Behavior**:
+  - Entry is absent from active state.
+  - `is_verified` returns `(false, 0, 0)`.
+  - `get_record` returns `None`.
+  - `check_claim` returns `false`.
+- **SDK & UI**:
+  - SDK `hasClaim` returns `false`.
+  - SDK `checkClaimStatus` returns `valid: false, status: "not_verified", record: null`.
+  - UI displays `unproved` (grey badge) with a "Prove" call-to-action.
+- **Restoration**:
+  - Integrators can restore the archived ledger entry using Soroban's state restoration footprint operation (`restore_footprint_op`).
+  - Alternatively, the holder can simply generate a fresh proof and invoke `submit_proof`.
+
+#### Phase 5: Off-Chain Indexer Retention
+- **Distinction**: The indexer retains all historic credential lifecycle events indefinitely.
+- Even if an on-chain entry expires or lapses into archival storage, the off-chain indexer retains the indexed record, issuer identity, timestamps, and revocation status for historical auditing and compliance reporting.
+- Downstream protocols that require authoritative, real-time access gating must always perform the live on-chain `check_claim` or `is_verified` read.
+
+---
+
+## 6. Cross-Layer Verification Parity Matrix
+
+The following matrix summarizes how every layer of StellarCred interprets the state of a proof across its lifetime:
+
+| Contract State | Contract `is_verified` | SDK `checkClaimStatus` | Indexer `GET /claims` | UI `CredCard` Badge | UI Action |
+|:---|:---|:---|:---|:---|:---|
+| **Active Valid** (`now < expiry`, `TTL > 0`) | `(true, v_at, expiry)` | `valid: true, status: "verified"` | `state: "active", expired: false` | `proved` (green) | View / Details |
+| **Active Expired** (`now >= expiry`, `TTL > 0`) | `(false, v_at, expiry)` | `valid: false, status: "expired"` | `state: "expired", expired: true` | `expired` (amber) | Re-prove |
+| **Archived Entry** (`TTL == 0`, lapsed) | `(false, 0, 0)` | `valid: false, status: "not_verified"` | Retained in DB (historical) | `unproved` (grey) | Prove |
+| **Revoked Claim** (`revoked == true`) | `(false, v_at, expiry)` | `valid: false, status: "revoked"` | `state: "revoked", revoked: 1` | `revoked` (red) | Contact Issuer |
+| **Unregistered / Never Proved** | `(false, 0, 0)` | `valid: false, status: "not_verified"` | Empty / 404 | `unproved` (grey) | Prove |
 
