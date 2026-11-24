@@ -451,6 +451,7 @@ npm start
 | Ingester (finality/reorg) | `src/ingester.test.ts` | Finality lag, reorg rollback, reconcile |
 | API endpoints | `src/api.test.ts` | HTTP contract for every endpoint |
 | Database adapter | `src/db.test.ts` | SQLite + Postgres schema and query correctness |
+| **Database conformance** | `src/db-conformance.test.ts` | Conformance suite for SQLite and PostgreSQL: schema creation, event ingestion, query paths, rollback behavior, and index/cursor checks (#1003) |
 | **Parsing & persistence** | `tests/indexer.test.ts` | Event XDR parsing, upsertClaim idempotency, revocation, cursor durability |
 
 The `tests/indexer.test.ts` suite (added for [#820](https://github.com/ToluLabs/StellarCred/issues/820))

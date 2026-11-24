@@ -8,8 +8,10 @@ import {
   IconInfoCircle,
 } from "@tabler/icons-react";
 import { Badge } from "@/components/Badge";
+import { IssuerAvatar } from "@/components/IssuerAvatar";
 import { Timeline } from "@/components/Timeline";
 import { truncateHash } from "@/lib/format";
+import { pubkeyHexFromParts } from "@/lib/issuer-avatar";
 import { EXPLORER_TX } from "@/lib/stellar";
 import { proofSubmissionConfigured } from "@/lib/config";
 import { useProofTimeline } from "@/lib/useProofTimeline";
@@ -23,6 +25,7 @@ import {
   formatExpiryDate,
 } from "@/lib/proof-helpers";
 import type { Credential } from "@/lib/credential";
+import { CredTimelineSkeleton } from "@/components/holder/CredListSkeleton";
 
 export interface BatchSelection {
   checked: boolean;
@@ -50,7 +53,7 @@ export function CredCard({
   selection?: BatchSelection;
 }) {
   const status = proofStatus(c);
-  const { events } = useProofTimeline(c);
+  const { events, loading: historyLoading } = useProofTimeline(c);
   const [showHistory, setShowHistory] = useState(false);
   const uid = useId();
   const titleId = `${uid}-title`;
@@ -69,7 +72,22 @@ export function CredCard({
           </div>
           <div className="cred-card__meta">
             <div>
-              {c.issuer} &middot; <span>{truncateHash(c.commitment)}</span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  verticalAlign: "middle",
+                }}
+              >
+                <IssuerAvatar
+                  publicKey={pubkeyHexFromParts(c.issuerPubX, c.issuerPubY)}
+                  name={c.issuer}
+                  size={22}
+                />
+                {c.issuer}
+              </span>{" "}
+              &middot; <span>{truncateHash(c.commitment)}</span>
               {status === "proved" && (
                 <>
                   {" "}
@@ -186,7 +204,8 @@ export function CredCard({
       </div>
 
       <div id={historyId} hidden={!showHistory}>
-        {showHistory && <Timeline events={events} />}
+        {showHistory &&
+          (historyLoading ? <CredTimelineSkeleton /> : <Timeline events={events} />)}
       </div>
     </article>
   );

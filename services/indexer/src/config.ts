@@ -29,6 +29,17 @@ export interface Config {
   dbDriver: DbDriver;
   sqlitePath: string;
   databaseUrl: string | undefined;
+  /**
+   * Optional comma-separated PostgreSQL read-replica connection URLs
+   * (DATABASE_READ_REPLICA_URLS). When set with DB_DRIVER=postgres, read-only
+   * queries are round-robin routed to replicas while writes stay on primary.
+   */
+  databaseReadReplicaUrls?: string[];
+  /**
+   * Fall back to primary if all read replicas fail a read query.
+   * Defaults to true (DATABASE_REPLICA_FALLBACK_TO_PRIMARY).
+   */
+  databaseReplicaFallbackToPrimary?: boolean;
   pollIntervalMs: number;
   startLedger: number;
   port: number;
@@ -83,6 +94,17 @@ function clampedInt(name: string, def: number, min: number, max: number): number
   const raw = Number(optional(name, String(def)));
   if (!Number.isFinite(raw)) return def;
   return Math.min(max, Math.max(min, Math.floor(raw)));
+}
+
+export function parseDatabaseReadReplicaUrls(raw?: string): string[] {
+  if (!raw || raw.trim() === "") {
+    return [];
+  }
+
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 export function parseCorsOrigins(raw?: string): string[] {
@@ -177,6 +199,11 @@ export function loadConfig(): Config {
     dbDriver: driver,
     sqlitePath: optional("SQLITE_PATH", "./data/indexer.db"),
     databaseUrl: process.env["DATABASE_URL"],
+    databaseReadReplicaUrls: parseDatabaseReadReplicaUrls(
+      process.env["DATABASE_READ_REPLICA_URLS"],
+    ),
+    databaseReplicaFallbackToPrimary:
+      optional("DATABASE_REPLICA_FALLBACK_TO_PRIMARY", "true").toLowerCase() !== "false",
     pollIntervalMs:
       Number(optional("POLL_INTERVAL_SECONDS", "6")) * 1000,
     startLedger: Number(optional("START_LEDGER", "0")),

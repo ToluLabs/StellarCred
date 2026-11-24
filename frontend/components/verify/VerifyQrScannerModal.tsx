@@ -6,12 +6,33 @@ import { IconQrcode } from "@tabler/icons-react";
 import dynamic from "next/dynamic";
 import { useToast } from "@/components/Toast";
 
+// Lazy-load QrScanner (and with it the jsqr library, ~40 kB gzipped) only
+// when the user actually clicks "Scan QR". Most /verify visits never open the
+// scanner, so this keeps jsqr out of the critical-path bundle entirely.
 // jsqr is a ~60 kB camera-decoding library — only needed when the user
 // actively opens the QR scanner. Load it lazily so it stays out of the
 // initial verify-page bundle.
 const QrScanner = dynamic(
   () => import("@/components/QrScanner").then((m) => m.QrScanner),
-  { ssr: false },
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        style={{
+          width: "100%",
+          aspectRatio: "1",
+          display: "grid",
+          placeItems: "center",
+          borderRadius: "var(--radius)",
+          background: "var(--surface)",
+          color: "var(--muted)",
+          fontSize: "0.875rem",
+        }}
+      >
+        Loading camera…
+      </div>
+    ),
+  },
 );
 
 export interface VerifyQrScannerModalProps {
