@@ -24,6 +24,7 @@
  */
 
 import type { HttpClientConfig } from "./config";
+import { injectTraceHeaders, withSpan } from "./logging";
 
 export interface RetryPolicy {
   /** Total attempts per call, including the first. 1 disables retrying. */
@@ -142,6 +143,19 @@ export interface HttpClient {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Flattens the several `HeadersInit` shapes into plain string fields. */
+function initHeaders(init: RequestInit): Record<string, string> {
+  const headers = init.headers;
+  if (!headers) return {};
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries());
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+  return { ...(headers as Record<string, string>) };
 }
 
 /** Translate the validated ./config limits into client options. */
@@ -267,16 +281,36 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
 
   return {
     async fetch(input: string, init?: RequestInit): Promise<Response> {
-      admit();
-      try {
-        const res = await callOnce(input, init);
-        recordSuccess();
-        return res;
-      } catch (err) {
-        if (err instanceof CircuitOpenError) throw err;
-        recordFailure();
-        throw err;
-      }
+      return withSpan(
+        "http.request",
+        async (span) => {
+          const method = init?.method ?? "GET";
+          span.setAttribute("http.method", method);
+          span.setAttribute("http.url", input);
+
+          // Continue the active trace across the service boundary so the
+          // provider (or a proxy in front of it) can correlate its logs.
+          const headers = injectTraceHeaders(
+            init ? initHeaders(init) : {}
+          );
+          const tracedInit =
+            Object.keys(headers).length > 0
+              ? { ...(init ?? {}), headers }
+              : init;
+
+          admit();
+          try {
+            const res = await callOnce(input, tracedInit);
+            span.setAttribute("http.status_code", res.status);
+            recordSuccess();
+            return res;
+          } catch (err) {
+            if (err instanceof CircuitOpenError) throw err;
+            recordFailure();
+            throw err;
+          }
+        }
+      );
     },
     breakerState: state,
     consecutiveFailures: () => failures,
