@@ -18,12 +18,12 @@ import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
 import { IMPORT_PARAM } from "@/lib/transfer";
 import { removeCredential, type Credential } from "@/lib/credential";
-import { proofStatus, isExpiringSoon, daysRemaining } from "@/lib/proof-helpers";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
+import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
 
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
 import { SectionLabel } from "@/components/holder/SectionLabel";
@@ -104,14 +104,7 @@ function HolderInner() {
   }, [searchParams]);
 
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  const unproved = displayCreds.filter((c) => proofStatus(c) === "unproved");
-  const expiringSoon = displayCreds
-    .filter((c) => proofStatus(c) === "proved" && isExpiringSoon(c, 7))
-    .sort((a, b) => daysRemaining(a) - daysRemaining(b));
-  const activeProved = displayCreds.filter(
-    (c) => proofStatus(c) === "proved" && !isExpiringSoon(c, 7),
-  );
-  const expired = displayCreds.filter((c) => proofStatus(c) === "expired");
+  const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
 
   // Warm the UltraHonk backend for whatever credential types the user still
   // needs to prove, in the background, once the wallet is actually connected
