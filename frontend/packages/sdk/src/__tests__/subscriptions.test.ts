@@ -15,8 +15,7 @@ vi.mock("@stellar/stellar-sdk", () => ({
   rpc: {},
   StrKey: {
     isValidEd25519PublicKey: vi.fn(
-      (address: string) =>
-        address === WALLET_A || address === WALLET_B,
+      (address: string) => address === WALLET_A || address === WALLET_B,
     ),
   },
 }));
@@ -61,7 +60,7 @@ interface MockIndexer {
 
 /** fetch mock routing /recent and /claims?wallet= from a small fixture. */
 function installIndexerMock(state: MockIndexer): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
     const url = String(input);
     if (url.includes("/recent")) {
       return jsonResponse({ claims: state.recent, nextCursor: null });
@@ -249,7 +248,7 @@ describe("subscribeClaims (#392)", () => {
     const fetchMock = installIndexerMock(state);
     const webhookUrl = "https://protocol.test/hooks/stellarcred";
     const postResponses: { ok: boolean; status: number }[] = [];
-    fetchMock.mockImplementation(async (input: unknown, init?: RequestInit) => {
+    fetchMock.mockImplementation(async (input: unknown, _init?: RequestInit) => {
       const url = String(input);
       if (url === webhookUrl) {
         postResponses.push({ ok: true, status: 200 });
@@ -403,9 +402,9 @@ describe("subscribeClaims (#392)", () => {
   it("validates options synchronously", () => {
     expect(() => subscribeClaims({ wallets: [] })).toThrow(ConfigError);
     expect(() => subscribeClaims({ wallets: ["  "] })).toThrow(ConfigError);
-    expect(() =>
-      subscribeClaims({ wallets: [WALLET_A], claims: ["bogus" as never] }),
-    ).toThrow(InvalidClaimTypeError);
+    expect(() => subscribeClaims({ wallets: [WALLET_A], claims: ["bogus" as never] })).toThrow(
+      InvalidClaimTypeError,
+    );
     expect(() =>
       subscribeClaims({
         wallets: [WALLET_A],
@@ -427,9 +426,9 @@ describe("subscribeClaims (#392)", () => {
     await flush();
     stop();
 
-    expect(
-      fetchMock.mock.calls.some((c) => String(c[0]).startsWith("http://from-opts.test")),
-    ).toBe(true);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith("http://from-opts.test"))).toBe(
+      true,
+    );
   });
 
   it("sends Authorization: Bearer to guarded indexer endpoints when apiKey is set", async () => {
@@ -440,9 +439,7 @@ describe("subscribeClaims (#392)", () => {
 
     for (const call of fetchMock.mock.calls) {
       const init = call[1] as RequestInit | undefined;
-      expect((init?.headers as Record<string, string>)["Authorization"]).toBe(
-        "Bearer key123",
-      );
+      expect((init?.headers as Record<string, string>)["Authorization"]).toBe("Bearer key123");
     }
   });
 });

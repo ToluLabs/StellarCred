@@ -1,5 +1,5 @@
 /**
- * _middleware.ts — Shared rate-limit middleware factory for API routes.
+ * _middleware.ts - Shared rate-limit middleware factory for API routes.
  *
  * This module provides a single `withRateLimit` wrapper that API route
  * handlers can call to apply Redis-backed (or in-process fallback) rate
@@ -50,7 +50,7 @@
  *
  * | Variable          | Default | Meaning                                      |
  * |-------------------|---------|----------------------------------------------|
- * | `REDIS_URL`       | —       | Redis URL; enables shared Redis store        |
+ * | `REDIS_URL`       | -       | Redis URL; enables shared Redis store        |
  * | `REDIS_KEY_PREFIX`| `sc:rl:`| Key namespace prefix in Redis                |
  * | `REDIS_TLS`       | auto    | Set `"1"` to force TLS                       |
  *
@@ -67,7 +67,16 @@ import {
   initSentry,
   getSentryClient,
 } from "@/lib/monitoring/sentry";
-import { authFailure, checkAdminAuth, UNAUTHORIZED, type AuthResult } from "@/lib/auth";
+import {
+  authFailure,
+  checkAdminAuth,
+  extractBearerToken,
+  UNAUTHORIZED,
+  type AuthResult,
+  validateSessionToken,
+  type SessionPayload,
+  type SessionValidationOptions,
+} from "@/lib/auth";
 import { resolveTenant, type Tenant } from "@/lib/tenancy";
 
 export interface RateLimitOptions {
@@ -88,7 +97,7 @@ export interface RateLimitOptions {
  * and returns the result of `handler`.
  *
  * Rate-limit state is stored in Redis when `REDIS_URL` is configured, and
- * falls back to the in-process store otherwise — callers are agnostic to
+ * falls back to the in-process store otherwise - callers are agnostic to
  * which backend is active.
  */
 export async function withRateLimit(
@@ -120,12 +129,20 @@ export async function withRateLimits(
     handler: RateLimitOptions["handler"];
   },
 ): Promise<NextResponse> {
-  const primary = await checkLimitRedis(opts.primary.key, opts.primary.limit, opts.primary.windowMs);
+  const primary = await checkLimitRedis(
+    opts.primary.key,
+    opts.primary.limit,
+    opts.primary.windowMs,
+  );
   if (primary.throttled) {
     return tooManyRequestsResponse(primary.retryAfterMs);
   }
 
-  const secondary = await checkLimitRedis(opts.secondary.key, opts.secondary.limit, opts.secondary.windowMs);
+  const secondary = await checkLimitRedis(
+    opts.secondary.key,
+    opts.secondary.limit,
+    opts.secondary.windowMs,
+  );
   if (secondary.throttled) {
     return tooManyRequestsResponse(secondary.retryAfterMs);
   }
@@ -187,6 +204,22 @@ export async function handleApiError(
 export function requireAdmin(req: NextRequest): NextResponse | null {
   if (checkAdminAuth(req)) return null;
   return NextResponse.json(UNAUTHORIZED, { status: 401 });
+}
+
+/** Require a valid, properly signed session token on protected routes (#945). */
+export function requireSession(
+  req: NextRequest,
+  options?: SessionValidationOptions,
+): { ok: true; session: SessionPayload } | NextResponse {
+  const token =
+    req.headers.get("x-session-token") ?? extractBearerToken(req.headers.get("authorization"));
+
+  const validated = validateSessionToken(token, options);
+  if (!validated.ok) {
+    const status = validated.status >= 500 ? 500 : 401;
+    return NextResponse.json(UNAUTHORIZED, { status });
+  }
+  return { ok: true, session: validated.value };
 }
 
 /**

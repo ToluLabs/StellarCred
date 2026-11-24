@@ -7,6 +7,12 @@
 #![allow(clippy::too_many_arguments)]
 //! ProofRegistry
 //!
+//! v1 public-surface freeze: the canonical compatibility page listing each frozen
+//! surface (contract ABI, events, errors, circuit layouts, version promises) and its
+//! source of truth lives at `docs/v1-public-surface.md`. Changes touching any frozen
+//! surface require sign-off from the contract, circuits, and SDK maintainers per the
+//! release-scope review checklist in that document.
+//!
 //! Caches successful verifications so protocols don't re-run the (expensive)
 //! UltraHonk verifier on every interaction. A holder proves once; the registry
 //! records "this address satisfies credential X until ledger time T". Any gated

@@ -13,7 +13,7 @@ import type { OnboardingStep } from "./onboarding";
 export interface StepGuidance {
   /** Short imperative headline, e.g. "Connect your wallet". */
   title: string;
-  /** What the step does and why it matters — shown under the headline. */
+  /** What the step does and why it matters - shown under the headline. */
   summary: string;
   /** Contextual guidance callout ("Good to know") for the step. */
   tip: string;
@@ -26,20 +26,20 @@ export const STEP_GUIDANCE: Record<OnboardingStep, StepGuidance> = {
     title: "Welcome to StellarCred",
     summary:
       "Prove facts about yourself without revealing personal data. This walkthrough takes you through the full loop once: a wallet, a credential, and a proof anyone can verify.",
-    tip: "Your credentials live in this browser only — never on a server. You can replay this tour anytime with the “Tour” button in the header.",
+    tip: "Your credentials live in this browser only - never on a server. You can replay this tour anytime with the “Tour” button in the header.",
     railLabel: "Welcome",
   },
   "connect-wallet": {
     title: "Set up your wallet",
     summary:
-      "Connect a Stellar wallet on testnet. Your wallet address is the identity your credentials are bound to — proofs are always submitted by its key.",
-    tip: "Credentials are sealed to the address that received them, so use the same wallet every time. Nothing is sent to us when you connect; the wallet only shares its public address.",
+      "Connect a Stellar wallet on testnet. Your wallet address is the identity your credentials are bound to - proofs are always submitted by its key.",
+    tip: "Credentials are sealed to the address that received them, so use the same wallet every time. Supported wallets include Freighter, xBull, Albedo, Lobstr, and Hana (see docs/wallet-network-compatibility.md).",
     railLabel: "Wallet",
   },
   "get-credential": {
     title: "Create your credential",
     summary:
-      "Request a demo age credential from the StellarCred Authority. It attests “age ≥ 18” without carrying your date of birth — only a cryptographic commitment is stored.",
+      "Request a demo age credential from the StellarCred Authority. It attests “age ≥ 18” without carrying your date of birth - only a cryptographic commitment is stored.",
     tip: "The credential is encrypted at rest in your browser with a key derived from your unlock passphrase. Back it up from the dashboard before clearing site data.",
     railLabel: "Credential",
   },
@@ -53,14 +53,14 @@ export const STEP_GUIDANCE: Record<OnboardingStep, StepGuidance> = {
   "generate-proof": {
     title: "Generate a proof",
     summary:
-      "Generate a zero-knowledge proof locally. Only the claim (“age ≥ 18”) and the proof leave your device — the data behind it never does.",
+      "Generate a zero-knowledge proof locally. Only the claim (“age ≥ 18”) and the proof leave your device - the data behind it never does.",
     tip: "Proving runs entirely in your browser, so the first proof takes a few seconds to load the circuit. Onboarding stays available until you finish.",
     railLabel: "Proof",
   },
   unlock: {
     title: "You're ready",
     summary:
-      "Wallet, credential, trust — the core loop is done. Any Stellar protocol can now verify your proofs in a single contract call.",
+      "Wallet, credential, trust - the core loop is done. Any Stellar protocol can now verify your proofs in a single contract call.",
     tip: "Explore apps that accept StellarCred proofs, or open your dashboard to generate a real proof on-chain.",
     railLabel: "Finish",
   },
@@ -104,7 +104,7 @@ export const TRUST_STATUS_GUIDANCE: Record<IssuerStatus, TrustStatusGuidance> = 
   unknown: {
     label: "Couldn't check",
     message:
-      "The registry couldn't be reached right now. This does not block onboarding — the same check runs automatically whenever you prove, and you can retry here.",
+      "The registry couldn't be reached right now. This does not block onboarding - the same check runs automatically whenever you prove, and you can retry here.",
     severity: "warning",
   },
 };
@@ -113,7 +113,7 @@ export const TRUST_STATUS_GUIDANCE: Record<IssuerStatus, TrustStatusGuidance> = 
 export const TRUST_CHECK_ERROR_GUIDANCE: TrustStatusGuidance = {
   label: "Check failed",
   message:
-    "The trust check hit an error. Try again — if the network is unreachable it will keep working once connectivity returns.",
+    "The trust check hit an error. Try again - if the network is unreachable it will keep working once connectivity returns.",
   severity: "danger",
 };
 
@@ -128,7 +128,7 @@ export interface OnboardingSignals {
 
 /**
  * Whether "Next" is enabled on `step`. The trust step unlocks once the check
- * has *run* — any outcome, including "unknown" or an error — so the user is
+ * has *run* - any outcome, including "unknown" or an error - so the user is
  * walked through the verification but never trapped by an unreachable
  * registry (#626 convention: a failing issuer check must not block proving).
  */
@@ -148,7 +148,7 @@ export function canProceed(step: OnboardingStep, s: OnboardingSignals): boolean 
 }
 
 /**
- * Why the step can't advance yet — rendered as tooltip/helper text beside the
+ * Why the step can't advance yet - rendered as tooltip/helper text beside the
  * disabled "Next" button. Returns undefined when the step is unblocked.
  */
 export function blockedReason(step: OnboardingStep, s: OnboardingSignals): string | undefined {
@@ -173,7 +173,7 @@ export interface TrustChecklistItem {
 
 /**
  * The three things a first-time holder should see confirmed on the trust step.
- * `ok` is null while the check is running or when the outcome was "unknown" —
+ * `ok` is null while the check is running or when the outcome was "unknown" -
  * an unreachable registry is "couldn't tell", not "failed".
  */
 export function trustChecklist(status: IssuerStatus | null): TrustChecklistItem[] {
