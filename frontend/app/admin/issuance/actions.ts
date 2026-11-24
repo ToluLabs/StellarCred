@@ -5,15 +5,10 @@ import { revalidatePath } from "next/cache";
 import { ADMIN_COOKIE, isAdminPageAuthorized } from "@/lib/admin-page-auth";
 import { verifyApiKey } from "@/lib/auth";
 import { auditLogAppend, auditLogBootstrap, auditLogPersist } from "@/lib/audit-log";
-import {
-  resolveIssuance,
-  retryIssuance,
-  type IssuanceQueueRecord,
-} from "@/lib/issuance-queue";
+import { resolveIssuance, retryIssuance, type IssuanceQueueRecord } from "@/lib/issuance-queue";
 
 export type IssuanceActionResult =
-  | { success: true; record: IssuanceQueueRecord }
-  | { success: false; error: string };
+  { success: true; record: IssuanceQueueRecord } | { success: false; error: string };
 
 export async function loginAction(formData: FormData): Promise<void> {
   const key = String(formData.get("key") ?? "");
