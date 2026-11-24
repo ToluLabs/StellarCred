@@ -36,9 +36,13 @@ vi.mock("@creit.tech/stellar-wallets-kit", () => {
       MockKit.lastInstance = this;
     }
   }
-  return { ModuleType: { HW_WALLET: "HW_WALLET" },
+  return {
+    ModuleType: { HW_WALLET: "HW_WALLET" },
     StellarWalletsKit: MockKit,
-    WalletNetwork: { PUBLIC: "Public Global Stellar Network ; September 2015", TESTNET: "Test SDF Network ; September 2015" },
+    WalletNetwork: {
+      PUBLIC: "Public Global Stellar Network ; September 2015",
+      TESTNET: "Test SDF Network ; September 2015",
+    },
     allowAllModules: () => [{ id: "freighter" }, { id: "albedo" }] as unknown as ModuleInterface[],
     FREIGHTER_ID: "freighter",
   };
@@ -53,7 +57,10 @@ vi.mock("@creit.tech/stellar-wallets-kit/modules/walletconnect.module", () => {
   }
   return {
     WalletConnectModule: MockWalletConnectModule,
-    WalletConnectAllowedMethods: { SIGN: "stellar_signXDR", SIGN_AND_SUBMIT: "stellar_signAndSubmitXDR" },
+    WalletConnectAllowedMethods: {
+      SIGN: "stellar_signXDR",
+      SIGN_AND_SUBMIT: "stellar_signAndSubmitXDR",
+    },
     WALLET_CONNECT_ID: "wallet_connect",
   };
 });
@@ -74,21 +81,51 @@ describe("lib/wallet.ts", () => {
   let restore: typeof import("../wallet").restore;
   let signTx: typeof import("../wallet").signTx;
   let getNetworkOk: typeof import("../wallet").getNetworkOk;
+  let hasLiveWalletSession: typeof import("../wallet").hasLiveWalletSession;
   let kit: MockKitInstance;
 
   beforeEach(async () => {
     vi.resetModules();
     const mod = await import("../wallet");
-    ({ getKit, connect, restore, signTx, getNetworkOk } = mod);
+    ({ getKit, connect, restore, signTx, getNetworkOk, hasLiveWalletSession } = mod);
     kit = (await getKit()) as unknown as MockKitInstance;
+  });
+
+  describe("hasLiveWalletSession", () => {
+    it("returns true when the selected wallet still exposes the connected account", async () => {
+      kit.getAddress.mockResolvedValue({ address: "GALBEDOADDRESS" });
+
+      await expect(hasLiveWalletSession("GALBEDOADDRESS", "freighter")).resolves.toBe(true);
+      expect(kit.getAddress).toHaveBeenCalledTimes(1);
+      expect(kit.getAddress).toHaveBeenCalledWith({ skipRequestAccess: true });
+    });
+
+    it("returns false when the account changed or the wallet is unavailable", async () => {
+      kit.getAddress.mockResolvedValueOnce({ address: "GOTHERACCOUNT" });
+      await expect(hasLiveWalletSession("GALBEDOADDRESS", "freighter")).resolves.toBe(false);
+
+      kit.getAddress.mockRejectedValueOnce(new Error("Wallet disconnected"));
+      await expect(hasLiveWalletSession("GALBEDOADDRESS", "freighter")).resolves.toBe(false);
+    });
+
+    it("does not poll wallets whose address getter opens an interactive connection request", async () => {
+      await expect(hasLiveWalletSession("GALBEDOADDRESS", "albedo")).resolves.toBe(true);
+      expect(kit.getAddress).not.toHaveBeenCalled();
+    });
   });
 
   describe("connect", () => {
     it("resolves the address and walletId of whichever wallet the user picked", async () => {
-      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
-        kit.getAddress.mockResolvedValue({ address: "GALBEDOADDRESS" });
-        await onWalletSelected(wallet("albedo", "Albedo", "https://albedo.link"));
-      });
+      kit.openModal.mockImplementation(
+        async ({
+          onWalletSelected,
+        }: {
+          onWalletSelected: (w: ISupportedWallet) => Promise<void>;
+        }) => {
+          kit.getAddress.mockResolvedValue({ address: "GALBEDOADDRESS" });
+          await onWalletSelected(wallet("albedo", "Albedo", "https://albedo.link"));
+        },
+      );
 
       await expect(connect()).resolves.toEqual({ address: "GALBEDOADDRESS", walletId: "albedo" });
       expect(kit.setWallet).toHaveBeenCalledWith("albedo");
@@ -103,10 +140,16 @@ describe("lib/wallet.ts", () => {
     });
 
     it("carries the selected wallet's own name/url on a not-installed failure — not a hardcoded wallet", async () => {
-      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
-        kit.getAddress.mockRejectedValue(new Error("Wallet is not available"));
-        await onWalletSelected(wallet("xbull", "xBull", "https://xbull.app"));
-      });
+      kit.openModal.mockImplementation(
+        async ({
+          onWalletSelected,
+        }: {
+          onWalletSelected: (w: ISupportedWallet) => Promise<void>;
+        }) => {
+          kit.getAddress.mockRejectedValue(new Error("Wallet is not available"));
+          await onWalletSelected(wallet("xbull", "xBull", "https://xbull.app"));
+        },
+      );
 
       await expect(connect()).rejects.toMatchObject({
         kind: "not-installed",
@@ -116,10 +159,16 @@ describe("lib/wallet.ts", () => {
     });
 
     it("maps a different wallet's not-installed failure to that wallet, not the previous one", async () => {
-      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
-        kit.getAddress.mockRejectedValue(new Error("not connected"));
-        await onWalletSelected(wallet("lobstr", "Lobstr", "https://lobstr.co"));
-      });
+      kit.openModal.mockImplementation(
+        async ({
+          onWalletSelected,
+        }: {
+          onWalletSelected: (w: ISupportedWallet) => Promise<void>;
+        }) => {
+          kit.getAddress.mockRejectedValue(new Error("not connected"));
+          await onWalletSelected(wallet("lobstr", "Lobstr", "https://lobstr.co"));
+        },
+      );
 
       await expect(connect()).rejects.toMatchObject({
         kind: "not-installed",
@@ -131,10 +180,18 @@ describe("lib/wallet.ts", () => {
     it("maps WalletConnect's own 'not connected' relay failures to rejected, not not-installed", async () => {
       // WalletConnect isn't a browser extension — "not connected" here means a
       // dropped relay socket or expired session, not something to "install".
-      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
-        kit.getAddress.mockRejectedValue(new Error("not connected"));
-        await onWalletSelected(wallet("wallet_connect", "WalletConnect", "https://walletconnect.com"));
-      });
+      kit.openModal.mockImplementation(
+        async ({
+          onWalletSelected,
+        }: {
+          onWalletSelected: (w: ISupportedWallet) => Promise<void>;
+        }) => {
+          kit.getAddress.mockRejectedValue(new Error("not connected"));
+          await onWalletSelected(
+            wallet("wallet_connect", "WalletConnect", "https://walletconnect.com"),
+          );
+        },
+      );
 
       const rejection = await connect().catch((e) => e);
       expect(rejection).toMatchObject({ kind: "rejected" });
@@ -142,19 +199,33 @@ describe("lib/wallet.ts", () => {
     });
 
     it("maps any other selection failure to rejected (treated as user cancellation)", async () => {
-      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
-        kit.getAddress.mockRejectedValue(new Error("User declined access"));
-        await onWalletSelected(wallet("freighter", "Freighter", "https://freighter.app"));
-      });
+      kit.openModal.mockImplementation(
+        async ({
+          onWalletSelected,
+        }: {
+          onWalletSelected: (w: ISupportedWallet) => Promise<void>;
+        }) => {
+          kit.getAddress.mockRejectedValue(new Error("User declined access"));
+          await onWalletSelected(wallet("freighter", "Freighter", "https://freighter.app"));
+        },
+      );
 
       await expect(connect()).rejects.toMatchObject({ kind: "rejected" });
     });
 
     it("maps timeout error during approval to timeout kind with descriptive message", async () => {
-      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
-        kit.getAddress.mockRejectedValue(new Error("Request timed out while waiting for wallet approval"));
-        await onWalletSelected(wallet("freighter", "Freighter", "https://freighter.app"));
-      });
+      kit.openModal.mockImplementation(
+        async ({
+          onWalletSelected,
+        }: {
+          onWalletSelected: (w: ISupportedWallet) => Promise<void>;
+        }) => {
+          kit.getAddress.mockRejectedValue(
+            new Error("Request timed out while waiting for wallet approval"),
+          );
+          await onWalletSelected(wallet("freighter", "Freighter", "https://freighter.app"));
+        },
+      );
 
       await expect(connect()).rejects.toMatchObject({
         kind: "timeout",
@@ -191,7 +262,9 @@ describe("lib/wallet.ts", () => {
     });
 
     it("returns false on a network mismatch", async () => {
-      kit.getNetwork.mockResolvedValue({ networkPassphrase: "Public Global Stellar Network ; September 2015" });
+      kit.getNetwork.mockResolvedValue({
+        networkPassphrase: "Public Global Stellar Network ; September 2015",
+      });
       await expect(getNetworkOk()).resolves.toBe(false);
     });
 
@@ -207,10 +280,14 @@ describe("lib/wallet.ts", () => {
 // hard error). This pins the copy the UI renders per kind.
 describe("lib/wallet.ts getWalletErrorInfo() per-kind error mapping", () => {
   it("maps not-installed to an install prompt with a pick-another-wallet nudge", () => {
-    const err = new WalletConnectError("not-installed", "xBull isn't available. Install it to continue.", {
-      walletName: "xBull",
-      installUrl: "https://xbull.app",
-    });
+    const err = new WalletConnectError(
+      "not-installed",
+      "xBull isn't available. Install it to continue.",
+      {
+        walletName: "xBull",
+        installUrl: "https://xbull.app",
+      },
+    );
     const info = getWalletErrorInfo(err);
     expect(info.benign).toBe(false);
     expect(info.action).toBe("install");
@@ -248,6 +325,21 @@ describe("lib/wallet.ts getWalletErrorInfo() per-kind error mapping", () => {
     expect(info.message.toLowerCase()).toMatch(/try again/i);
   });
 
+  it("maps device-disconnected to a reconnect-and-retry note (not benign)", () => {
+    const info = getWalletErrorInfo(
+      new WalletConnectError(
+        "device-disconnected",
+        "Your Ledger was disconnected. Reconnect it and try again.",
+        { walletName: "Ledger" },
+      ),
+    );
+    expect(info.benign).toBe(false);
+    expect(info.action).toBe("retry");
+    expect(info.title).toMatch(/hardware wallet disconnected/i);
+    expect(info.message).toMatch(/reconnect/i);
+    expect(info.message).toMatch(/nothing was signed/i);
+  });
+
   it("maps unknown to a generic message plus a way to report", () => {
     const info = getWalletErrorInfo(new WalletConnectError("unknown", "Something went wrong"));
     expect(info.benign).toBe(false);
@@ -279,7 +371,8 @@ describe("lib/wallet.ts getKit() WalletConnect module wiring", () => {
     vi.stubEnv("NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID", "");
     vi.resetModules();
     const { getKit } = await import("../wallet");
-    const { WalletConnectModule } = await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
+    const { WalletConnectModule } =
+      await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
 
     const modules = ((await getKit()) as unknown as MockKitInstance).modules;
     expect(modules.some((m) => m instanceof WalletConnectModule)).toBe(false);
@@ -289,10 +382,12 @@ describe("lib/wallet.ts getKit() WalletConnect module wiring", () => {
     vi.stubEnv("NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID", "test-project-id");
     vi.resetModules();
     const { getKit } = await import("../wallet");
-    const { WalletConnectModule } = await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
+    const { WalletConnectModule } =
+      await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
 
     const modules = ((await getKit()) as unknown as MockKitInstance).modules;
-    const wc = modules.find((m) => m instanceof WalletConnectModule) as unknown as { params: { projectId: string } } | undefined;
+    const wc = modules.find((m) => m instanceof WalletConnectModule) as unknown as
+      { params: { projectId: string } } | undefined;
     expect(wc).toBeDefined();
     expect(wc?.params.projectId).toBe("test-project-id");
   });

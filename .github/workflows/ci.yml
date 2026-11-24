@@ -135,6 +135,27 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
+  # ── Docs: component ownership matrix agrees with CODEOWNERS ───────────────
+  # The matrix in docs/COMPONENT_OWNERSHIP.md is only useful if its paths,
+  # CODEOWNERS rules and owner handles still match the repository. Fails fast —
+  # no toolchain or dependencies needed.
+  ownership-docs:
+    name: Component ownership check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check ownership matrix against CODEOWNERS
+        run: node .github/scripts/check-component-ownership.mjs
+
+      - name: Test the ownership checker
+        run: node --test test/component-ownership.test.js
+
   # ── Contracts: Rust / WASM / Clippy ────────────────────────────────────────
   # Runs in parallel with circuits, frontend, and indexer.
   contracts:
@@ -219,6 +240,19 @@ jobs:
         # linted too; a bare build skips it, since only the deployable contracts
         # are default workspace members.
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Verify generated contract client freshness
+        # Fails if committed bindings differ from freshly generated output (#999).
+        run: bash scripts/verify-client-freshness.sh
+
+      - name: Upload contract client diff
+        # Uploads concise diff artifact if client drift check fails (#999).
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-client-diff
+          path: client-freshness.diff
+          if-no-files-found: ignore
 
   # ── Circuits: Noir compile + VK freshness check ────────────────────────────
   # Runs in parallel with contracts, frontend, and indexer.
@@ -603,7 +637,7 @@ jobs:
 
       - name: Build SDK distribution
         working-directory: frontend/packages/sdk
-        run: npx --yes -p tsup -p typescript@5 tsup src/index.ts src/server.ts --format cjs,esm --dts --clean
+        run: npx --yes -p tsup -p typescript@5 tsup src/index.ts src/server.ts src/testing.ts --format cjs,esm --dts --clean
 
       # Issue #751: the TypeScript example is documentation, but it has to keep
       # compiling. A renamed export or changed type in the SDK breaks this step

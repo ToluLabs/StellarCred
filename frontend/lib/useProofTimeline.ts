@@ -26,6 +26,9 @@ const TIMELINE_PREFIX = "proofTimeline:";
 
 export function useProofTimeline(cred: Credential | null) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
+  // True until the first localStorage read reconciles. Lets the UI reserve
+  // space with a skeleton instead of collapsing and then expanding on open.
+  const [loading, setLoading] = useState(true);
 
   // Load from local storage
   const loadTimeline = useCallback((commitment: string) => {
@@ -83,6 +86,7 @@ export function useProofTimeline(cred: Credential | null) {
 
     saveTimeline(commitment, data);
     setEvents(data.events);
+    setLoading(false);
   }, [cred, loadTimeline, saveTimeline]);
 
   // Cross-tab sync: listen for storage events from other tabs
@@ -143,7 +147,7 @@ export function useProofTimeline(cred: Credential | null) {
     [cred, loadTimeline, saveTimeline]
   );
 
-  return { events, addEvent };
+  return { events, addEvent, loading };
 }
 
 // Helper to add events outside of React lifecycle (e.g. loops/batches)
