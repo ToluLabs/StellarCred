@@ -169,7 +169,7 @@ Use this when a check is red and you cannot reproduce it locally.
 | `indexer` | `npm run build && npm test` — CI additionally runs the Postgres leg |
 | `sdk-integration` | § 5 SDK commands; skipped on forks without the repo variables |
 | `dependency-check` | `cd frontend && pnpm install --frozen-lockfile && node ../.github/scripts/verify-npm-licenses.mjs`; from the repo root, `node .github/scripts/check-runtime-deps.mjs` — a newly added runtime dependency or a disallowed license is the usual cause |
-| `env-check` (`.github/workflows/env-check.yml`) | § 6 env commands |
+| `env-check` | § 6 env commands |
 | `commitlint` | § 6 commitlint command |
 | `api-reference` | `make check-api-reference` |
 | `a11y` | `make test-a11y` — currently disabled in CI (`if: false`) while pre-existing violations are fixed |
