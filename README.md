@@ -84,6 +84,7 @@ proof once and caches the result; every protocol afterwards reads
 ## Architecture & Overview
 
 For a detailed architectural description with diagrams, see the [Architecture Documentation](docs/ARCHITECTURE.md).
+For supported wallets, browsers, and network environments, see the [Wallet and Network Compatibility Matrix](docs/wallet-network-compatibility.md).
 For the authoritative specification of contract events, topic schemas, and indexer integration, see [docs/EVENTS.md](docs/EVENTS.md).
 
 ---

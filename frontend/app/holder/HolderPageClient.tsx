@@ -1,17 +1,27 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
+ feat/typed-claim-read-outcomes
+import { IconArrowRight, IconAlertTriangle, IconCertificate, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
+
+l test/indexer-db-conformance
+import { IconArrowRight, IconAlertTriangle, IconCertificate, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
+
+ feat/issue-1002-db-backup-migration-guidance
 import {
-  IconArrowRight,
-  IconAlertTriangle,
-  IconCertificate,
-  IconDownload,
-  IconFileExport,
-  IconPlus,
+  IconArrowRight, IconAlertTriangle, IconCertificate, IconDownload, IconFileExport, IconPlus,
 } from "@tabler/icons-react";
+ main
+
+ docs/proof-expiry-vs-storage-ttl
+import { IconArrowRight, IconAlertTriangle, IconCertificate, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
+
+import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
+ main
+ main
+ main
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
@@ -23,14 +33,20 @@ import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
-import { IMPORT_PARAM } from "@/lib/transfer";
 import { removeCredential, type Credential } from "@/lib/credential";
-import { proofStatus, isExpiringSoon, daysRemaining } from "@/lib/proof-helpers";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
+// ── Components ────────────────────────────────────────────────────────────────
+import { CredCard } from "@/components/holder/CredCard";
+import { CredListSkeleton } from "@/components/holder/CredListSkeleton";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
+ feat/sdk-event-stream
+import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
+
+import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
+ main
 
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
 import { SectionLabel } from "@/components/holder/SectionLabel";
@@ -42,33 +58,66 @@ import { GuardianRecoveryControl } from "@/components/holder/GuardianRecoveryCon
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
 import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
+ fix/issue-991-staged-deploy
+import type { PageView, BulkAction } from "./types";
+
+import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
+import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
+ main
 
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
-// rendering) and only needed when the user actually starts a transfer — load
+// rendering) and only needed when the user actually starts a transfer â€” load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
-const TransferExportModal = dynamic(() => import("@/components/TransferExportModal").then((m) => m.TransferExportModal), { ssr: false });
-const TransferImportModal = dynamic(() => import("@/components/TransferImportModal").then((m) => m.TransferImportModal), { ssr: false });
-const ExportDataModal = dynamic(() => import("@/components/ExportDataModal").then((m) => m.ExportDataModal), { ssr: false });
-const DisclosurePreviewModal = dynamic(() => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal), { ssr: false });
+const TransferExportModal = dynamic(
+  () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
+  { ssr: false },
+);
+const TransferImportModal = dynamic(
+  () => import("@/components/TransferImportModal").then((m) => m.TransferImportModal),
+  { ssr: false },
+);
+const ExportDataModal = dynamic(
+  () => import("@/components/ExportDataModal").then((m) => m.ExportDataModal),
+  { ssr: false },
+);
+const DisclosurePreviewModal = dynamic(
+  () => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal),
+  { ssr: false },
+);
 
+ fix/issue-991-staged-deploy
 type PageView =
-  | { kind: "list" }
-  | { kind: "single"; cred: Credential }
-  | { kind: "batch"; creds: Credential[] };
+  { kind: "list" } | { kind: "single"; cred: Credential } | { kind: "batch"; creds: Credential[] };
 
 type BulkAction = {
   type: "remove-selected" | "clear-expired";
   commitments: string[];
 };
-
+        main
 function HolderInner() {
+  const { address, connect, restoring } = useWallet();
+  // While a saved wallet is restoring, `address` is briefly empty. Treating that
+  // as preview mode flashes demo credentials and banners before swapping in the
+  // real list, so hold loading UI until the restore settles.
+  const isPreview = usePreviewMode() && !restoring;
   const { address, walletId, connect } = useWallet();
   const isPreview = usePreviewMode();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const toast = useToast();
 
+ main
+  // ── Credential store ───────────────────────────────────────────────────────
+  const { creds, loading, save, remove, markCredentialProved, markCredentialsProved } =
+    useCredentialStore();
+  // Show placeholders while credentials hydrate — never the "no credentials"
+  // empty state, which would then be replaced by a populated list.
+  const showSkeleton = loading && !isPreview;
+
+  // ── Import/export ──────────────────────────────────────────────────────────
   const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } = useCredentialStore();
+
+  const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } =
+    useCredentialStore();
+ main
   const { downloadBackup } = useImportExport();
 
   const [view, setView] = useState<PageView>({ kind: "list" });
@@ -80,8 +129,11 @@ function HolderInner() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
+ feat/sdk-event-stream
+  useTransferImportParam(setImportPayload);
+
   // A transfer QR opened directly (native camera app -> /holder?import=...)
-  // lands here with the payload already in the URL — prompt for the
+  // lands here with the payload already in the URL â€” prompt for the
   // passphrase immediately, and strip it from the URL so a refresh or the
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useEffect(() => {
@@ -91,27 +143,21 @@ function HolderInner() {
     router.replace("/holder");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+ main
 
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  const unproved = displayCreds.filter((c) => proofStatus(c) === "unproved");
-  const expiringSoon = displayCreds
-    .filter((c) => proofStatus(c) === "proved" && isExpiringSoon(c, 7))
-    .sort((a, b) => daysRemaining(a) - daysRemaining(b));
-  const activeProved = displayCreds.filter(
-    (c) => proofStatus(c) === "proved" && !isExpiringSoon(c, 7),
-  );
-  const expired = displayCreds.filter((c) => proofStatus(c) === "expired");
+  const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
 
   // Warm the UltraHonk backend for whatever credential types the user still
   // needs to prove, in the background, once the wallet is actually connected
-  // (never in preview mode — there's nothing real to prove yet). Only the
+  // (never in preview mode â€” there's nothing real to prove yet). Only the
   // types actually present in `unproved` are warmed, not all seven circuits,
   // to avoid paying wasm-init cost for types the user has no credential for.
   const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
   useWarmProver(unprovedTypes, Boolean(address));
 
   // Batch selection enforces both on-chain limits (size + one per type) before
-  // anything is proved — see useBatchSelection.
+  // anything is proved â€” see useBatchSelection.
   const {
     selectedCommitments,
     selectedCreds,
@@ -135,7 +181,7 @@ function HolderInner() {
     setConfirmBulkAction(null);
   }
 
-  /** One credential card — shared by every section below. */
+  /** One credential card â€” shared by every section below. */
   function renderCred(c: Credential, selection?: BatchSelection) {
     return (
       <CredCard
@@ -160,7 +206,7 @@ function HolderInner() {
         </div>
         <div className="row" style={{ gap: "0.75rem" }}>
           {/* Selective disclosure presets (#386): a named, shareable bundle
-              of several claim types — defined and shared from its own page
+              of several claim types â€” defined and shared from its own page
               rather than crowding this one, but linked from here since the
               issue asks for the entry point to live on the holder page. */}
           <a href="/presets" className="btn btn-secondary">
@@ -190,29 +236,77 @@ function HolderInner() {
 
       <SponsorBanner />
 
-      {isPreview && (
-        <div
-          style={{
-            padding: "0.85rem 1rem",
-            borderRadius: "var(--radius)",
-            background: "rgba(62,207,142,0.1)",
-            border: "1px solid rgba(62,207,142,0.3)",
-            color: "var(--text)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>
-            Connect wallet to use your real credentials
-          </span>
-          <button className="btn btn-primary btn-sm" onClick={connect}>
-            Connect Wallet
-          </button>
-        </div>
-      )}
+      {isPreview && <PreviewWalletBanner onConnect={connect} />}
 
+      <div className="stack reveal" style={{ gap: "1.5rem" }} aria-busy={showSkeleton}>
+        {showSkeleton ? (
+          <CredListSkeleton rows={3} />
+        ) : (
+          <>
+        {/* ── Expiry warning banner ── */}
+        {(expiringSoon.length > 0 || expired.length > 0) && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="card"
+            style={{
+              padding: "0.85rem 1.15rem",
+              backgroundColor:
+                expired.length > 0 ? "rgba(239,68,68,0.08)" : "rgba(234,179,8,0.08)",
+              borderColor:
+                expired.length > 0 ? "rgba(239,68,68,0.3)" : "rgba(234,179,8,0.3)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "1rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
+              <IconAlertTriangle
+                size={18}
+                style={{
+                  color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                {expired.length > 0
+                  ? `${expired.length} proof${expired.length > 1 ? "s have" : " has"} expired and ${expired.length > 1 ? "need" : "needs"} re-proving.`
+                  : `${expiringSoon.length} proof${expiringSoon.length > 1 ? "s are" : " is"} expiring within 7 days.`}
+              </span>
+            </div>
+            <span className="mono faint" style={{ fontSize: "0.75rem" }}>
+              One-click re-prove available below
+            </span>
+          </div>
+        )}
+
+        {/* ── Empty state ── */}
+        {creds.length === 0 && !importing && (
+          <div
+            className="card"
+            style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
+          >
+            <IconCertificate size={30} stroke={1.3} color="var(--faint)" />
+            <h3 style={{ margin: "1rem 0 0.4rem" }}>No credentials yet</h3>
+            <p
+              className="muted"
+              style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}
+            >
+              Get a credential from a trusted issuer, then generate a zero-knowledge
+              proof to verify it on-chain.
+            </p>
+            <a
+              href="/verify"
+              className="btn btn-primary btn-sm"
+              style={{ display: "inline-flex" }}
+            >
+              Get a credential
+              <IconArrowRight size={14} />
+            </a>
+            <p
+              className="faint"
       {view.kind === "single" ? (
         <ProofFlowView
           cred={view.cred}
@@ -229,7 +323,7 @@ function HolderInner() {
         />
       ) : (
         <div className="stack reveal" style={{ gap: "1.5rem" }}>
-          {/* ── Expiry warning banner ── */}
+          {/* -- Expiry warning banner -- */}
           {(expiringSoon.length > 0 || expired.length > 0) && (
             <div
               role="status"
@@ -237,8 +331,10 @@ function HolderInner() {
               className="card"
               style={{
                 padding: "0.85rem 1.15rem",
-                backgroundColor: expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
-                borderColor: expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
+                backgroundColor:
+                  expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
+                borderColor:
+                  expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -249,7 +345,10 @@ function HolderInner() {
               <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
                 <IconAlertTriangle
                   size={18}
-                  style={{ color: expired.length > 0 ? "var(--danger)" : "var(--warn)", flexShrink: 0 }}
+                  style={{
+                    color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
+                    flexShrink: 0,
+                  }}
                 />
                 <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
                   {expired.length > 0
@@ -263,7 +362,8 @@ function HolderInner() {
             </div>
           )}
 
-          {/* ── Empty state ── */}
+ fix/issue-991-staged-deploy
+          {/* -- Empty state -- */}
           {creds.length === 0 && !importing && (
             <div
               className="card"
@@ -283,7 +383,7 @@ function HolderInner() {
                 className="faint"
                 style={{ fontSize: "0.75rem", maxWidth: 380, margin: "1.25rem auto 0", lineHeight: 1.6 }}
               >
-                Credentials are stored only in this browser&apos;s local storage — clearing
+                Credentials are stored only in this browser&apos;s local storage â€” clearing
                 site data, switching browsers/devices, or private mode erases them.{" "}
                 <Link
                   href="/docs#storage"
@@ -295,18 +395,21 @@ function HolderInner() {
             </div>
           )}
 
-          {/* ── Expiring soon (action recommended) ── */}
+          {creds.length === 0 && !importing && <EmptyCredentialsState />}
+ main
+
+          {/* -- Expiring soon (action recommended) -- */}
           {expiringSoon.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>Expiring soon · Re-prove recommended</SectionLabel>
+              <SectionLabel>Expiring soon â€” Re-prove recommended</SectionLabel>
               {expiringSoon.map((c) => renderCred(c))}
             </div>
           )}
 
-          {/* ── Expired (action required) ── */}
+          {/* -- Expired (action required) -- */}
           {expired.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
+              <SectionLabel>Expired proofs â€” Re-prove required</SectionLabel>
               <div
                 className="between"
                 style={{
@@ -338,7 +441,7 @@ function HolderInner() {
             </div>
           )}
 
-          {/* ── Credentials to prove ── */}
+          {/* -- Credentials to prove -- */}
           {unproved.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
               <SectionLabel>Ready to prove</SectionLabel>
@@ -351,6 +454,90 @@ function HolderInner() {
                         blockedReason: blockedReason(c),
                         onToggle: () => toggleSelected(c),
                       }
+                    : undefined
+                }
+              />
+            ))}
+            {canBatch && (
+              <BatchBar
+                selectedCount={selectedCreds.length}
+                atBatchLimit={atBatchLimit}
+                canSubmitBatch={canSubmitBatch}
+                onProveBatch={() =>
+                  setView({ kind: "batch", creds: selectedCreds })
+                }
+                onClear={clearSelection}
+                onSelectEligible={selectEligible}
+                onRemoveSelected={
+                  selectedCreds.length > 0
+                    ? () =>
+                        setConfirmRemove({
+                          label: "Remove Selected Credentials?",
+                          commitments: selectedCommitments,
+                        })
+                    : undefined
+                }
+              />
+            )}
+          </div>
+        )}
+
+        {/* ── Active on-chain proofs ── */}
+        {activeProved.length > 0 && (
+          <div className="stack" style={{ gap: "0.6rem" }}>
+            <h3 style={{ margin: 0, fontSize: "0.9rem" }}>On-chain · active proofs</h3>
+            {activeProved.map((c) => (
+              <CredCard
+                key={c.commitment}
+                c={c}
+                address={address}
+                onProve={() => setView({ kind: "single", cred: c })}
+                onRemove={() => remove(c.commitment)}
+                onInspect={() => setDetailCred(c)}
+                isPreview={isPreview}
+              />
+            ))}
+          </div>
+        )}
+
+        {!address && creds.length > 0 && (
+          <p className="faint" style={{ fontSize: "0.8125rem" }}>
+            Connect a wallet to generate and submit proofs.
+          </p>
+        )}
+
+          </>
+        )}
+
+        {/* ── Import / export ── */}
+        {importing ? (
+          <ImportPanel
+            onImport={(c) => {
+              save(c);
+              setImporting(false);
+            }}
+            onCancel={() => setImporting(false)}
+          />
+        ) : (
+          <div className="stack" style={{ gap: "0.55rem" }}>
+            <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
+                <IconPlus size={14} />
+                Import credential JSON
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={downloadBackup}
+                disabled={creds.length === 0}
+                title={
+                  creds.length === 0
+                    ? "No credentials to back up yet"
+                    : "Download a JSON backup of all credentials"
+                }
+              >
+                <IconDownload size={14} />
+                Export backup
+              </button>
                     : undefined,
                 ),
               )}
@@ -362,7 +549,9 @@ function HolderInner() {
                   selectedCount={selectedCreds.length}
                   atBatchLimit={atBatchLimit}
                   canSubmitBatch={canSubmitBatch}
-                  onProveBatch={() => proofApproval.request({ kind: "batch", creds: selectedCreds })}
+                  onProveBatch={() =>
+                    proofApproval.request({ kind: "batch", creds: selectedCreds })
+                  }
                   onClear={clearSelection}
                   onSelectEligible={selectEligible}
                   onRemoveSelected={() =>
@@ -376,10 +565,10 @@ function HolderInner() {
             </div>
           )}
 
-          {/* ── Active proved ── */}
+          {/* -- Active proved -- */}
           {activeProved.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>On-chain · active proofs</SectionLabel>
+              <SectionLabel>On-chain â€” active proofs</SectionLabel>
               {activeProved.map((c) => renderCred(c))}
             </div>
           )}
@@ -409,7 +598,11 @@ function HolderInner() {
                   className="btn btn-ghost btn-sm"
                   onClick={downloadBackup}
                   disabled={creds.length === 0}
-                  title={creds.length === 0 ? "No credentials to back up yet" : "Download a JSON backup of all credentials"}
+                  title={
+                    creds.length === 0
+                      ? "No credentials to back up yet"
+                      : "Download a JSON backup of all credentials"
+                  }
                 >
                   <IconDownload size={14} />
                   Export backup
@@ -425,10 +618,20 @@ function HolderInner() {
                 </button>
                 <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
               </div>
+ fix/issue-991-staged-deploy
               <p className="faint" style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
-                Credentials live only in this browser (localStorage) — export a backup
+                Credentials live only in this browser (localStorage) â€” export a backup
                 before clearing site data or switching devices, and restore it here with{" "}
-                “Import credential JSON”.{" "}
+                &ldquo;Import credential JSON&rdquo;.{" "}
+
+              <p
+                className="faint"
+                style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}
+              >
+                Credentials live only in this browser (localStorage) — export a backup before
+                clearing site data or switching devices, and restore it here with “Import credential
+                JSON”.{" "}
+ main
                 <Link
                   href="/docs#storage"
                   style={{ color: "var(--accent)", textDecoration: "underline" }}
@@ -481,7 +684,12 @@ function HolderInner() {
       />
 
       {proofApproval.creds && (
-        <DisclosurePreviewModal creds={proofApproval.creds} holder={address} onApprove={proofApproval.approve} onCancel={proofApproval.cancel} />
+        <DisclosurePreviewModal
+          creds={proofApproval.creds}
+          holder={address}
+          onApprove={proofApproval.approve}
+          onCancel={proofApproval.cancel}
+        />
       )}
 
       {confirmBulkAction && (
