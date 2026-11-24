@@ -28,7 +28,6 @@ export * from "./validateCredential";
 export * from "./buildVerifyUrl";
 export * from "./offline"; // Air-gapped presentation verification (#1059)
 export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
-export { submitTransaction } from "./submit";
 export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
