@@ -13,6 +13,8 @@ import {
   getClaim,
   getClaimRecord,
   checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
   hasClaims,
   getClaims,
   verifyPreset,
@@ -46,6 +48,7 @@ import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
 import { subscribeClaims } from "./subscriptions";
+import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import {
   createOfflineVerifier,
   verifyOfflinePresentation,
@@ -71,6 +74,7 @@ import {
   CredentialValidationError,
 } from "./validateCredential";
 import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
+import { telemetry } from "./telemetry";
 
 export const StellarCred = {
   configure,
@@ -83,6 +87,8 @@ export const StellarCred = {
   getClaim,
   getClaimRecord,
   checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
   hasClaims,
   getClaims,
   verifyPreset,
@@ -119,6 +125,8 @@ export const StellarCred = {
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,
+  createPresentationToken,
+  verifyPresentationToken,
   CLAIM_TYPES,
   deriveNullifier,
   isNullifierUsed,
@@ -139,6 +147,7 @@ export const StellarCred = {
   TransactionSubmissionError,
   CredentialValidationError,
   parseContractError,
+  telemetry,
 };
 
 export default StellarCred;
