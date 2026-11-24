@@ -13,7 +13,8 @@ export type IssuanceActionResult =
 export async function loginAction(formData: FormData): Promise<void> {
   const key = String(formData.get("key") ?? "");
   if (!verifyApiKey(key, process.env.ADMIN_API_KEY)) return;
-  (await cookies()).set(ADMIN_COOKIE, key, {
+  const cookieStore = await cookies();
+  cookieStore.set(ADMIN_COOKIE, key, {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",

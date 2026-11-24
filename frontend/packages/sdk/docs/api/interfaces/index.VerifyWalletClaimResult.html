@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">VerifyWalletClaimResult</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#claimdetails">claimDetails</a><span class="tsd-signature-symbol">?:</span> <a href="index.Claim.html" class="tsd-signature-type tsd-kind-interface">Claim</a> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">null</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claimstatus">claimStatus</a><span class="tsd-signature-symbol">?:</span> <a href="index.CredentialStatusResult.html" class="tsd-signature-type tsd-kind-interface">CredentialStatusResult</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claimvalid">claimValid</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#error">error</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#failurereason">failureReason</a><span class="tsd-signature-symbol">?:</span> <a href="../types/index.WalletClaimFailureReason.html" class="tsd-signature-type tsd-kind-type-alias">WalletClaimFailureReason</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#ok">ok</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#signaturevalid">signatureValid</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#wallet">wallet</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L221">src/challenge.ts:221</a></li></ul></aside>
+<li>Defined in src/challenge.ts:221</li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -42,56 +42,56 @@
 <div class="tsd-comment tsd-typography"><p>The on-chain claim details if the claim was found on-chain.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L231">src/challenge.ts:231</a></li></ul></aside></section>
+<li>Defined in src/challenge.ts:231</li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claimstatus"><code class="tsd-tag">Optional</code><span>claim<wbr/>Status</span><a href="#claimstatus" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claimStatus</span><span class="tsd-signature-symbol">?:</span> <a href="index.CredentialStatusResult.html" class="tsd-signature-type tsd-kind-interface">CredentialStatusResult</a></div>
 <div class="tsd-comment tsd-typography"><p>Detailed on-chain credential status if evaluated.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L233">src/challenge.ts:233</a></li></ul></aside></section>
+<li>Defined in src/challenge.ts:233</li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claimvalid"><span>claim<wbr/>Valid</span><a href="#claimvalid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claimValid</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True if on-chain credential claim is valid, unrevoked, and meets threshold/trusted issuer constraints.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L229">src/challenge.ts:229</a></li></ul></aside></section>
+<li>Defined in src/challenge.ts:229</li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="error"><code class="tsd-tag">Optional</code><span>error</span><a href="#error" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">error</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Human-readable explanation if verification failed.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L237">src/challenge.ts:237</a></li></ul></aside></section>
+<li>Defined in src/challenge.ts:237</li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="failurereason"><code class="tsd-tag">Optional</code><span>failure<wbr/>Reason</span><a href="#failurereason" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">failureReason</span><span class="tsd-signature-symbol">?:</span> <a href="../types/index.WalletClaimFailureReason.html" class="tsd-signature-type tsd-kind-type-alias">WalletClaimFailureReason</a></div>
 <div class="tsd-comment tsd-typography"><p>Specific machine-readable failure reason if verification failed.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L235">src/challenge.ts:235</a></li></ul></aside></section>
+<li>Defined in src/challenge.ts:235</li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="ok"><span>ok</span><a href="#ok" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">ok</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True if and only if BOTH signature verification AND on-chain claim check succeeded.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L223">src/challenge.ts:223</a></li></ul></aside></section>
+<li>Defined in src/challenge.ts:223</li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="signaturevalid"><span>signature<wbr/>Valid</span><a href="#signaturevalid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">signatureValid</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True if wallet signature over challenge was valid and challenge was fresh (not replayed/expired).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L227">src/challenge.ts:227</a></li></ul></aside></section>
+<li>Defined in src/challenge.ts:227</li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="wallet"><span>wallet</span><a href="#wallet" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">wallet</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>The wallet address evaluated.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/praizeD10/StellarCred/blob/ae3358d1587e3abe15f8297b8d2bea0e62d2a64a/frontend/packages/sdk/src/challenge.ts#L225">src/challenge.ts:225</a></li></ul></aside></section></section></details></div>
+<li>Defined in src/challenge.ts:225</li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

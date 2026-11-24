@@ -25,6 +25,123 @@ interface ExportDataModalProps {
   isAdmin?: boolean;
 }
 
+/**
+ * Integrity metadata attached to every exported bundle.
+ * The checksum is a SHA-256 digest of the canonical JSON payload, so any
+ * tampering with the bundle contents is detectable on import.
+ */
+export interface BundleIntegrity {
+  algorithm: "SHA-256";
+  checksum: string;
+  createdAt: string;
+  scope: string;
+  format: string;
+  version: 1;
+}
+
+export interface ExportBundle {
+  integrity: BundleIntegrity;
+  payload: unknown;
+}
+
+export type BundleValidationResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "malformed" | "checksum_mismatch" | "unsupported_version" | "scope_mismatch";
+      message: string;
+    };
+
+/** Deterministic JSON serialization (sorted object keys) for stable hashing. */
+function canonicalize(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${canonicalize((value as Record<string, unknown>)[k])}`)
+    .join(",")}}`;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Build an integrity-wrapped bundle for export. */
+export async function createExportBundle(
+  payload: unknown,
+  scope: string,
+  format: string,
+): Promise<ExportBundle> {
+  const checksum = await sha256Hex(canonicalize(payload));
+  return {
+    integrity: {
+      algorithm: "SHA-256",
+      checksum,
+      createdAt: new Date().toISOString(),
+      scope,
+      format,
+      version: 1,
+    },
+    payload,
+  };
+}
+
+/**
+ * Validate a bundle before import. Rejects malformed, corrupt, or mismatched
+ * bundles with a user-friendly message. Optionally enforces an expected scope
+ * so a bundle exported for one scope cannot be applied under another.
+ */
+export async function validateImportBundle(
+  raw: unknown,
+  expectedScope?: string,
+): Promise<BundleValidationResult> {
+  if (!raw || typeof raw !== "object") {
+    return {
+      ok: false,
+      reason: "malformed",
+      message: "This file is not a valid export bundle. Choose a file exported from this app.",
+    };
+  }
+  const bundle = raw as Partial<ExportBundle>;
+  const integrity = bundle.integrity;
+  if (!integrity || !("payload" in bundle)) {
+    return {
+      ok: false,
+      reason: "malformed",
+      message: "The export file is missing its integrity information and cannot be imported.",
+    };
+  }
+  if (integrity.version !== 1 || integrity.algorithm !== "SHA-256") {
+    return {
+      ok: false,
+      reason: "unsupported_version",
+      message:
+        "This export was created by an unsupported version of the app. Re-export it from a current build.",
+    };
+  }
+  if (expectedScope && integrity.scope !== expectedScope) {
+    return {
+      ok: false,
+      reason: "scope_mismatch",
+      message: `This bundle is a "${integrity.scope}" export, but "${expectedScope}" was expected. Import was cancelled to avoid applying the wrong data.`,
+    };
+  }
+  const actual = await sha256Hex(canonicalize(bundle.payload));
+  if (actual !== integrity.checksum) {
+    return {
+      ok: false,
+      reason: "checksum_mismatch",
+      message:
+        "The export file appears to be corrupted or has been modified. Import was cancelled. Download a fresh export and try again.",
+    };
+  }
+  return { ok: true };
+}
+
 export function ExportDataModal({
   isOpen,
   onClose,

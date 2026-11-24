@@ -40,6 +40,7 @@ import {
   TimeoutError,
   StellarCred,
   withRetry,
+  resetConfig,
   __resetBoundaryWarningForTesting,
 } from "./index";
 import { hasClaim as sharedHasClaim } from "./claims";
@@ -216,6 +217,7 @@ describe("read request timeout", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    resetConfig();
     configure({ requestTimeoutMs: 10_000, retries: 0 });
   });
 

@@ -119,7 +119,6 @@ export interface SessionPayload {
   iss?: string;
   nonce?: string;
   role?: string;
-  [key: string]: unknown;
 }
 
 export interface SessionValidationOptions {
@@ -133,11 +132,16 @@ export interface SessionValidationOptions {
 /**
  * Creates a signed session token for testing and authentication.
  */
-export function createSignedSessionToken(
-  payload: Partial<SessionPayload>,
-  secret: string,
-  now: number = Math.floor(Date.now() / 1000),
-): string {
+export function createSignedSessionToken<
+  T extends {
+    sub?: string;
+    exp?: number;
+    iat?: number;
+    iss?: string;
+    nonce?: string;
+    role?: string;
+  },
+>(payload: T, secret: string, now: number = Math.floor(Date.now() / 1000)): string {
   const header = { alg: "HS256", typ: "JWT" };
   const fullPayload: SessionPayload = {
     sub: payload.sub ?? "anonymous",

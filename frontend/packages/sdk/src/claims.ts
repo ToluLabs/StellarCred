@@ -1944,6 +1944,7 @@ export interface ClaimReadResult {
 }
 
 /** Backwards-friendly aliases for the result type. */
+/** Backwards-friendly alias for the detailed read result type. */
 export type ClaimReadOutcomeResult = ClaimReadResult;
 
 async function _performClaimRead(
