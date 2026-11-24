@@ -21,6 +21,8 @@ export const WALLET_SESSION_GRACE_PERIOD_MS = 60_000;
 
 interface WalletState {
   address: string;
+  /** True while a previously saved connection is being restored on mount. */
+  restoring: boolean;
   /** Kit id of the connected wallet ("ledger" for a hardware wallet). */
   walletId: string;
   connecting: boolean;
@@ -42,6 +44,7 @@ const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState("");
+  const [restoring, setRestoring] = useState(true);
   const [walletId, setWalletId] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<WalletConnectError | null>(null);
@@ -52,15 +55,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   // Restore a prior connection on mount (full reload).
   useEffect(() => {
+    let cancelled = false;
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(STORAGE_KEY);
     } catch {
       // storage unavailable (private mode / blocked) — skip restore
+      setRestoring(false);
       return;
     }
-    if (!saved) return;
+    if (!saved) {
+      setRestoring(false);
+      return;
+    }
     kitRestore(saved)
+      .then((restored) => {
+        if (!cancelled) setAddress(restored);
       .then((restoredAddress) => {
         setAddress(restoredAddress);
         setWalletId(saved);
@@ -71,7 +81,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         } catch {
           // storage unavailable — nothing to remove
         }
+      })
+      .finally(() => {
+        if (!cancelled) setRestoring(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // A Ledger can vanish mid-session (cable, hub, device sleep). The transport
@@ -187,6 +203,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WalletContext.Provider
+      value={{ address, restoring, connecting, error, networkMismatch, connect, disconnect }}
       value={{
         address,
         walletId,

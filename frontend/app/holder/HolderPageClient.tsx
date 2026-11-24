@@ -38,6 +38,9 @@ import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
+// ── Components ────────────────────────────────────────────────────────────────
+import { CredCard } from "@/components/holder/CredCard";
+import { CredListSkeleton } from "@/components/holder/CredListSkeleton";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
  feat/sdk-event-stream
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
@@ -92,12 +95,29 @@ type BulkAction = {
 };
         main
 function HolderInner() {
+  const { address, connect, restoring } = useWallet();
+  // While a saved wallet is restoring, `address` is briefly empty. Treating that
+  // as preview mode flashes demo credentials and banners before swapping in the
+  // real list, so hold loading UI until the restore settles.
+  const isPreview = usePreviewMode() && !restoring;
   const { address, walletId, connect } = useWallet();
   const isPreview = usePreviewMode();
   const toast = useToast();
 
+ main
+  // ── Credential store ───────────────────────────────────────────────────────
+  const { creds, loading, save, remove, markCredentialProved, markCredentialsProved } =
+    useCredentialStore();
+  // Show placeholders while credentials hydrate — never the "no credentials"
+  // empty state, which would then be replaced by a populated list.
+  const showSkeleton = loading && !isPreview;
+
+  // ── Import/export ──────────────────────────────────────────────────────────
+  const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } = useCredentialStore();
+
   const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } =
     useCredentialStore();
+ main
   const { downloadBackup } = useImportExport();
 
   const [view, setView] = useState<PageView>({ kind: "list" });
@@ -218,6 +238,75 @@ function HolderInner() {
 
       {isPreview && <PreviewWalletBanner onConnect={connect} />}
 
+      <div className="stack reveal" style={{ gap: "1.5rem" }} aria-busy={showSkeleton}>
+        {showSkeleton ? (
+          <CredListSkeleton rows={3} />
+        ) : (
+          <>
+        {/* ── Expiry warning banner ── */}
+        {(expiringSoon.length > 0 || expired.length > 0) && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="card"
+            style={{
+              padding: "0.85rem 1.15rem",
+              backgroundColor:
+                expired.length > 0 ? "rgba(239,68,68,0.08)" : "rgba(234,179,8,0.08)",
+              borderColor:
+                expired.length > 0 ? "rgba(239,68,68,0.3)" : "rgba(234,179,8,0.3)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "1rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
+              <IconAlertTriangle
+                size={18}
+                style={{
+                  color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                {expired.length > 0
+                  ? `${expired.length} proof${expired.length > 1 ? "s have" : " has"} expired and ${expired.length > 1 ? "need" : "needs"} re-proving.`
+                  : `${expiringSoon.length} proof${expiringSoon.length > 1 ? "s are" : " is"} expiring within 7 days.`}
+              </span>
+            </div>
+            <span className="mono faint" style={{ fontSize: "0.75rem" }}>
+              One-click re-prove available below
+            </span>
+          </div>
+        )}
+
+        {/* ── Empty state ── */}
+        {creds.length === 0 && !importing && (
+          <div
+            className="card"
+            style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
+          >
+            <IconCertificate size={30} stroke={1.3} color="var(--faint)" />
+            <h3 style={{ margin: "1rem 0 0.4rem" }}>No credentials yet</h3>
+            <p
+              className="muted"
+              style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}
+            >
+              Get a credential from a trusted issuer, then generate a zero-knowledge
+              proof to verify it on-chain.
+            </p>
+            <a
+              href="/verify"
+              className="btn btn-primary btn-sm"
+              style={{ display: "inline-flex" }}
+            >
+              Get a credential
+              <IconArrowRight size={14} />
+            </a>
+            <p
+              className="faint"
       {view.kind === "single" ? (
         <ProofFlowView
           cred={view.cred}
@@ -365,6 +454,90 @@ function HolderInner() {
                         blockedReason: blockedReason(c),
                         onToggle: () => toggleSelected(c),
                       }
+                    : undefined
+                }
+              />
+            ))}
+            {canBatch && (
+              <BatchBar
+                selectedCount={selectedCreds.length}
+                atBatchLimit={atBatchLimit}
+                canSubmitBatch={canSubmitBatch}
+                onProveBatch={() =>
+                  setView({ kind: "batch", creds: selectedCreds })
+                }
+                onClear={clearSelection}
+                onSelectEligible={selectEligible}
+                onRemoveSelected={
+                  selectedCreds.length > 0
+                    ? () =>
+                        setConfirmRemove({
+                          label: "Remove Selected Credentials?",
+                          commitments: selectedCommitments,
+                        })
+                    : undefined
+                }
+              />
+            )}
+          </div>
+        )}
+
+        {/* ── Active on-chain proofs ── */}
+        {activeProved.length > 0 && (
+          <div className="stack" style={{ gap: "0.6rem" }}>
+            <h3 style={{ margin: 0, fontSize: "0.9rem" }}>On-chain · active proofs</h3>
+            {activeProved.map((c) => (
+              <CredCard
+                key={c.commitment}
+                c={c}
+                address={address}
+                onProve={() => setView({ kind: "single", cred: c })}
+                onRemove={() => remove(c.commitment)}
+                onInspect={() => setDetailCred(c)}
+                isPreview={isPreview}
+              />
+            ))}
+          </div>
+        )}
+
+        {!address && creds.length > 0 && (
+          <p className="faint" style={{ fontSize: "0.8125rem" }}>
+            Connect a wallet to generate and submit proofs.
+          </p>
+        )}
+
+          </>
+        )}
+
+        {/* ── Import / export ── */}
+        {importing ? (
+          <ImportPanel
+            onImport={(c) => {
+              save(c);
+              setImporting(false);
+            }}
+            onCancel={() => setImporting(false)}
+          />
+        ) : (
+          <div className="stack" style={{ gap: "0.55rem" }}>
+            <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
+                <IconPlus size={14} />
+                Import credential JSON
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={downloadBackup}
+                disabled={creds.length === 0}
+                title={
+                  creds.length === 0
+                    ? "No credentials to back up yet"
+                    : "Download a JSON backup of all credentials"
+                }
+              >
+                <IconDownload size={14} />
+                Export backup
+              </button>
                     : undefined,
                 ),
               )}
