@@ -7,6 +7,7 @@ export * from "./claims";
 export * from "./issuers";
 export * from "./capabilities";
 export * from "./challenge";
+export * from "./presentation-token"; // Server-side presentation tokens (#1062)
 export * from "./subscriptions";
 export * from "./errors";
 export * from "./telemetry";
@@ -62,6 +63,7 @@ import {
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
+import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import { subscribeClaims } from "./subscriptions";
 import {
   getCredentialCircuitVersion,
@@ -118,6 +120,8 @@ export const StellarCred = {
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,
+  createPresentationToken,
+  verifyPresentationToken,
   CLAIM_TYPES,
   deriveNullifier,
   isNullifierUsed,
