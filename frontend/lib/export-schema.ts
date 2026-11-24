@@ -169,6 +169,26 @@ export async function sealArtifact(artifact: ExportArtifactV1): Promise<ExportAr
   return { ...artifact, integrity };
 }
 
+/** Serialize a sealed or unsigned artifact as stable JSON text. */
+export function serializeArtifact(artifact: ExportArtifactV1): string {
+  return JSON.stringify(artifact);
+}
+
+/** Structural and schema guard for export artifact inputs. */
+export function isExportArtifact(raw: unknown): raw is ExportArtifactV1 {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const value = raw as Partial<ExportArtifactV1>;
+  return (
+    value.schemaVersion === EXPORT_SCHEMA_VERSION &&
+    typeof value.generation === "object" &&
+    value.generation !== null &&
+    typeof value.generation.generatedAt === "string" &&
+    typeof value.generation.generator === "string" &&
+    typeof value.count === "number" &&
+    Array.isArray(value.entries)
+  );
+}
+
 /**
  * Verify an artifact before import. Rejects (throws `ArtifactIntegrityError`)
  * with an actionable message when:
@@ -183,11 +203,11 @@ export async function sealArtifact(artifact: ExportArtifactV1): Promise<ExportAr
  */
 export async function verifyArtifact(
   raw: unknown,
-  options: { allowUnsigned?: boolean } = {}
+  options: { allowUnsigned?: boolean } = {},
 ): Promise<ExportArtifactV1> {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new ArtifactIntegrityError(
-      "The file is not a valid export bundle (expected a JSON object). Re-export and try again."
+      "The file is not a valid export bundle (expected a JSON object). Re-export and try again.",
     );
   }
   const obj = raw as Record<string, unknown>;
@@ -195,33 +215,33 @@ export async function verifyArtifact(
   if (obj["schemaVersion"] !== EXPORT_SCHEMA_VERSION) {
     throw new ArtifactIntegrityError(
       `Unsupported export schema version ${String(obj["schemaVersion"])}. ` +
-        `This app reads version ${EXPORT_SCHEMA_VERSION}; upgrade the app or re-export from a matching version.`
+        `This app reads version ${EXPORT_SCHEMA_VERSION}; upgrade the app or re-export from a matching version.`,
     );
   }
 
   const generation = obj["generation"];
   if (typeof generation !== "object" || generation === null) {
     throw new ArtifactIntegrityError(
-      "The export bundle is missing its generation metadata. The file may be damaged."
+      "The export bundle is missing its generation metadata. The file may be damaged.",
     );
   }
   const gen = generation as Record<string, unknown>;
   if (typeof gen["generatedAt"] !== "string" || typeof gen["generator"] !== "string") {
     throw new ArtifactIntegrityError(
-      "The export bundle's generation metadata is malformed. The file may be damaged."
+      "The export bundle's generation metadata is malformed. The file may be damaged.",
     );
   }
 
   const entries = obj["entries"];
   if (!Array.isArray(entries)) {
     throw new ArtifactIntegrityError(
-      "The export bundle has no entries list. The file may be truncated."
+      "The export bundle has no entries list. The file may be truncated.",
     );
   }
   if (obj["count"] !== entries.length) {
     throw new ArtifactIntegrityError(
       `The export bundle claims ${String(obj["count"])} entries but contains ${entries.length}. ` +
-        "The file was likely truncated or edited after export."
+        "The file was likely truncated or edited after export.",
     );
   }
 
@@ -232,7 +252,7 @@ export async function verifyArtifact(
     }
     throw new ArtifactIntegrityError(
       "This export has no integrity checksum, so it cannot be verified. " +
-        "Re-export it with the current app, or import it explicitly as an unverified legacy file."
+        "Re-export it with the current app, or import it explicitly as an unverified legacy file.",
     );
   }
   if (typeof integrity !== "object" || integrity === null) {
@@ -241,7 +261,7 @@ export async function verifyArtifact(
   const meta = integrity as Record<string, unknown>;
   if (meta["algorithm"] !== EXPORT_INTEGRITY_ALGORITHM) {
     throw new ArtifactIntegrityError(
-      `Unsupported integrity algorithm "${String(meta["algorithm"])}". Expected ${EXPORT_INTEGRITY_ALGORITHM}.`
+      `Unsupported integrity algorithm "${String(meta["algorithm"])}". Expected ${EXPORT_INTEGRITY_ALGORITHM}.`,
     );
   }
   if (typeof meta["checksum"] !== "string") {
@@ -254,7 +274,7 @@ export async function verifyArtifact(
     throw new ArtifactIntegrityError(
       "The export failed its integrity check: the contents do not match the recorded checksum. " +
         "The file was corrupted or modified after export, so it has not been imported. " +
-        "Restore from an original, unmodified export."
+        "Restore from an original, unmodified export.",
     );
   }
   return artifact;
@@ -291,15 +311,12 @@ export function parseLegacyJson(text: string): {
     throw new LegacyExportError('legacy export is missing an "entries" array');
   }
   const entries = obj["entries"].map((item, i) =>
-    legacyEntryFromObject(asRecord(item, `entries[${i}]`), i)
+    legacyEntryFromObject(asRecord(item, `entries[${i}]`), i),
   );
   return { exportedAt: obj["exportedAt"], entries };
 }
 
-function legacyEntryFromObject(
-  obj: Record<string, unknown>,
-  index: number
-): ExportEntry {
+function legacyEntryFromObject(obj: Record<string, unknown>, index: number): ExportEntry {
   return {
     claimType: typeof obj["claimType"] === "string" ? obj["claimType"] : "",
     verifiedAt: numberField(obj["verifiedAt"], `entries[${index}].verifiedAt`),
@@ -438,7 +455,7 @@ export function parseLegacyCsv(text: string): {
 /** Dispatch on file extension or content sniff to the right legacy parser. */
 export function parseLegacyExport(
   text: string,
-  hint: SourceFormat
+  hint: SourceFormat,
 ): { exportedAt: string | undefined; entries: ExportEntry[] } {
   return hint === "legacy-json" ? parseLegacyJson(text) : parseLegacyCsv(text);
 }
@@ -486,7 +503,7 @@ export interface BackfillOptions {
  */
 export function planBackfill(
   legacyEntries: ExportEntry[],
-  options: BackfillOptions
+  options: BackfillOptions,
 ): { artifact: ExportArtifactV1; report: BackfillReport } {
   const now = (options.now ? options.now() : new Date()).toISOString();
   const kept: ExportEntry[] = [];

@@ -31,6 +31,7 @@ export * from "./claims";
 export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
+export * from "./issuers";
 export * from "./errors"; // Typed error taxonomy (#404)
 export * from "./validateCredential"; // Credential JSON validation (#27)
 export * from "./buildVerifyUrl";
@@ -84,6 +85,7 @@ import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
 import { subscribeClaims } from "./subscriptions";
+import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
 
 // Version helpers — Issue #841
 export * from "./version";
@@ -134,6 +136,10 @@ export const StellarCred = {
   parseCredentialJson,
   assertValidCredential,
   subscribeClaims,
+  listIssuers,
+  listIssuerIds,
+  getIssuer,
+  isValidIssuer,
   createWalletChallenge,
   verifyWalletSignature,
   verifyWalletClaim,

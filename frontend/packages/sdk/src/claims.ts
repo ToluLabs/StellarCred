@@ -682,8 +682,6 @@ export interface CredentialStatusResult {
   cause?: unknown;
 }
 
-export type ClaimOutcomeResult = CredentialStatusResult;
-
 // ---------------------------------------------------------------------------
 // Low-level read: ProofRegistry.is_verified via simulation
 // ---------------------------------------------------------------------------
@@ -1480,7 +1478,8 @@ async function readRecordWithStatus(
             ? Number(result.threshold)
             : undefined,
         vkVersion: Number(result.vk_version),
-        reason: result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
+        reason:
+          result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
       },
       unavailable: false,
     };
@@ -1815,7 +1814,11 @@ export async function checkClaimStatus(
     validateThreshold(opts.minThreshold);
   }
 
-  const { record, unavailable, error: readError } = await readRecordWithStatus(
+  const {
+    record,
+    unavailable,
+    error: readError,
+  } = await readRecordWithStatus(
     normalizedWallet,
     claimType,
     throwOnError,
@@ -1918,11 +1921,7 @@ export async function checkClaimStatus(
  *                      claim could not be checked at all.
  */
 export type ClaimReadOutcome =
-  | "verified"
-  | "not_verified"
-  | "expired"
-  | "unsupported"
-  | "unavailable";
+  "verified" | "not_verified" | "expired" | "unsupported" | "unavailable";
 
 /** Backwards-friendly alias. */
 export type ClaimOutcome = ClaimReadOutcome;
@@ -2126,24 +2125,6 @@ async function performClaimRead(
   }
 }
 
-export async function getClaimOutcome(
-  wallet: string,
-  claimType: string,
-  opts?: ClaimOptions,
-): Promise<ClaimReadResult> {
-  return performClaimRead(wallet, claimType, opts);
-}
-
-// Aliases for the detailed read API (issue #979).
-export const readClaim = getClaimOutcome;
-export const readClaimOutcome = getClaimOutcome;
-export const getClaimReadOutcome = getClaimOutcome;
-export const checkClaimOutcome = getClaimOutcome;
-export const getClaimReadResult = getClaimOutcome;
-export const readClaimResult = getClaimOutcome;
-export const getClaimStatusOutcome = getClaimOutcome;
-export const readClaimStatus = getClaimOutcome;
-
 /**
  * Reads a wallet's credential claim and returns a granular, typed outcome
  * ("verified", "not_verified", "expired", "unsupported", "unavailable",
@@ -2154,11 +2135,18 @@ export async function getClaimOutcome(
   wallet: string,
   claimType: string,
   opts?: ClaimOptions,
-): Promise<ClaimOutcomeResult> {
+): Promise<CredentialStatusResult> {
   return checkClaimStatus(wallet, claimType, opts);
 }
 
+export const readClaim = getClaimOutcome;
+export const readClaimOutcome = getClaimOutcome;
+export const getClaimReadOutcome = getClaimOutcome;
 export const checkClaimOutcome = getClaimOutcome;
+export const getClaimReadResult = getClaimOutcome;
+export const readClaimResult = getClaimOutcome;
+export const getClaimStatusOutcome = getClaimOutcome;
+export const readClaimStatus = getClaimOutcome;
 
 /**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.

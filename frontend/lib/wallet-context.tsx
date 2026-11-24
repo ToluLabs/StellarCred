@@ -21,6 +21,7 @@ export const WALLET_SESSION_GRACE_PERIOD_MS = 60_000;
 
 interface WalletState {
   address: string;
+  restoring: boolean;
   /** Kit id of the connected wallet ("ledger" for a hardware wallet). */
   walletId: string;
   connecting: boolean;
@@ -42,6 +43,7 @@ const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState("");
+  const [restoring, setRestoring] = useState(true);
   const [walletId, setWalletId] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<WalletConnectError | null>(null);
@@ -57,9 +59,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       saved = localStorage.getItem(STORAGE_KEY);
     } catch {
       // storage unavailable (private mode / blocked) — skip restore
+      setRestoring(false);
       return;
     }
-    if (!saved) return;
+    if (!saved) {
+      setRestoring(false);
+      return;
+    }
     kitRestore(saved)
       .then((restoredAddress) => {
         setAddress(restoredAddress);
@@ -71,7 +77,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         } catch {
           // storage unavailable — nothing to remove
         }
-      });
+      })
+      .finally(() => setRestoring(false));
   }, []);
 
   // A Ledger can vanish mid-session (cable, hub, device sleep). The transport
@@ -190,6 +197,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       value={{
         address,
         walletId,
+        restoring,
         connecting,
         error,
         networkMismatch,
