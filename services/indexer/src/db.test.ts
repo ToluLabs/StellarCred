@@ -328,10 +328,93 @@ function registerSuite(
     it("sampleClaimsForVerification returns an empty slice on an empty table", async () => {
       expect(await db.sampleClaimsForVerification(5)).toEqual([]);
     });
+
+    it("reports schema version and passes compatibility check (#1002)", async () => {
+      const version = await db.getSchemaVersion();
+      expect(version).toBe(1);
+
+      const compat = await db.checkCompatibility();
+      expect(compat.compatible).toBe(true);
+      expect(compat.currentVersion).toBe(1);
+      expect(compat.expectedVersion).toBe(1);
+    });
+
+    it("idempotently handles repeated migrations without data loss (#1002)", async () => {
+      await db.upsertClaim(makeClaim({ wallet: "GMIGRATE", credential_type: "kyc" }));
+      await db.setLastLedger(500);
+
+      // Re-run migration
+      await db.migrate();
+
+      expect(await db.getLastLedger()).toBe(500);
+      const claim = await db.claimByWalletAndType("GMIGRATE", "kyc");
+      expect(claim?.wallet).toBe("GMIGRATE");
+    });
   });
 }
 
 registerSuite(describe, "sqlite", () => baseConfig({ dbDriver: "sqlite" }));
+
+describe("SQLite Backup and Restore (#1002)", () => {
+  let sourceConfig: Config;
+  let sourceDb: Db;
+  let backupPath: string;
+
+  beforeEach(async () => {
+    sourceConfig = baseConfig({ dbDriver: "sqlite" });
+    sourceDb = createDb(sourceConfig);
+    await sourceDb.migrate();
+    backupPath = path.join(os.tmpdir(), `backup-${Date.now()}-${Math.random().toString(16).slice(2)}.db`);
+  });
+
+  afterEach(async () => {
+    await sourceDb.close();
+    if (fs.existsSync(sourceConfig.sqlitePath)) fs.unlinkSync(sourceConfig.sqlitePath);
+    if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+  });
+
+  it("creates a consistent backup that can be restored into a new database instance", async () => {
+    await sourceDb.upsertClaim(makeClaim({ wallet: "GBACKUP", credential_type: "kyc" }));
+    await sourceDb.setLastLedger(1234);
+
+    expect(typeof sourceDb.backup).toBe("function");
+    await sourceDb.backup!(backupPath);
+    expect(fs.existsSync(backupPath)).toBe(true);
+
+    // Open restored database
+    const restoredDb = createDb(baseConfig({ dbDriver: "sqlite", sqlitePath: backupPath }));
+    await restoredDb.migrate();
+
+    expect(await restoredDb.getLastLedger()).toBe(1234);
+    const restoredClaim = await restoredDb.claimByWalletAndType("GBACKUP", "kyc");
+    expect(restoredClaim?.wallet).toBe("GBACKUP");
+    expect(await restoredDb.getSchemaVersion()).toBe(1);
+
+    await restoredDb.close();
+  });
+});
+
+describe("Schema compatibility checks (#1002)", () => {
+  it("rejects migration and startup when database has a newer schema version", async () => {
+    const cfg = baseConfig({ dbDriver: "sqlite" });
+    const db = createDb(cfg);
+    await db.migrate();
+
+    // Manually simulate a database migrated by a future indexer version (e.g. version 99)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const sqlite = require("better-sqlite3")(cfg.sqlitePath);
+    sqlite.prepare("UPDATE schema_version SET version = 99 WHERE id = 1").run();
+    sqlite.close();
+
+    const compat = await db.checkCompatibility();
+    expect(compat.compatible).toBe(false);
+    expect(compat.currentVersion).toBe(99);
+
+    await expect(db.migrate()).rejects.toThrow(/newer than supported indexer version/);
+    await db.close();
+    if (fs.existsSync(cfg.sqlitePath)) fs.unlinkSync(cfg.sqlitePath);
+  });
+});
 
 if (POSTGRES_URL) {
   registerSuite(describe, "postgres", () =>

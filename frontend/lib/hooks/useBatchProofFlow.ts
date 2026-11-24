@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 import { proofSubmissionConfigured } from "../config";
 import { proveOffMainThread } from "../proof-client";
+import { assertProofBatchWithinLimits, ProofResourceError } from "../proof-guard";
 import {
   submitProofs,
   preflightSubmitProofs,
@@ -87,6 +88,26 @@ export function useBatchProofFlow(
     // Read the batch from the ref so a parent re-render that rebuilds the
     // `creds` array cannot restart (and abort) a batch already in flight.
     const batch = credsRef.current;
+
+    // Resource guard (issue #943): the whole batch is known here, so an
+    // oversized batch — too many proofs, or too much private input across them —
+    // is refused before the first witness is requested. Without this a batch
+    // could spend N−1 proofs and then fail on the last one.
+    try {
+      assertProofBatchWithinLimits(
+        batch.map((cred) => ({
+          credentialType: cred.type,
+          credential: cred as unknown as Record<string, unknown>,
+        })),
+      );
+    } catch (e) {
+      if (!(e instanceof ProofResourceError)) throw e;
+      setBatchStage("error");
+      setBatchError({ code: null, friendly: e.friendly, raw: e.message });
+      toast.error(e.friendly);
+      return;
+    }
+
     toast.info(`Generating ${batch.length} proofs…`);
 
     (async () => {
@@ -136,13 +157,18 @@ export function useBatchProofFlow(
         } catch (e) {
           if (timer) clearInterval(timer);
           if (signal.aborted) return;
+          // A guard rejection names the real limit; show that, not the raw
+          // "Proof request refused: …" form (issue #943).
+          const guardRefusal = e instanceof ProofResourceError ? e : null;
           setCredStates((prev) => {
             const next = [...prev];
-            next[i] = { status: "error", message: (e as Error).message };
+            next[i] = { status: "error", message: guardRefusal?.friendly ?? (e as Error).message };
             return next;
           });
           setBatchStage("error");
-          const parsed = parseContractError((e as Error).message);
+          const parsed = guardRefusal
+            ? { code: null, friendly: guardRefusal.friendly, raw: guardRefusal.message }
+            : parseContractError((e as Error).message);
           setBatchError(parsed);
           toast.error(`Proof generation failed for ${cred.title}: ${parsed.friendly}`);
           return;

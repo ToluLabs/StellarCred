@@ -75,9 +75,25 @@ export interface WebhookDelivery extends ClaimLifecycleEvent {
 
 // ── Adapter interface ──────────────────────────────────────────────────────
 
+export interface SchemaCompatibility {
+  compatible: boolean;
+  currentVersion: number;
+  expectedVersion: number;
+  message?: string;
+}
+
 export interface Db {
   /** Run schema migrations (idempotent). */
   migrate(): void | Promise<void>;
+
+  /** Return the current schema version persisted in the database (#1002). */
+  getSchemaVersion(): Promise<number>;
+
+  /** Verifies that the database schema is compatible with this indexer version (#1002). */
+  checkCompatibility(): Promise<SchemaCompatibility>;
+
+  /** Create an online backup of the database (supported on SQLite, #1002). */
+  backup?(destinationPath: string): Promise<void>;
 
   /** Return the last fully ingested ledger sequence (0 if none). */
   getLastLedger(): number | Promise<number>;

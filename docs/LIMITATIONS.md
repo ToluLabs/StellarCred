@@ -17,6 +17,12 @@ None of these are flaws. They are consequences of publishing reusable proofs on 
 ledger, and stating them plainly is intentional (see
 [ADR-004: Public-by-default verification reads](adr/ADR-004-public-read-default.md)).
 
+Separately from what a proof hides, there are hard limits on what a *single proof job* can
+carry: aggregate proofs pack at most two credentials, a batch proves at most five, a
+credential may not embed a large document, and every proof runs under a deadline. Those
+limits, the errors they produce, and the guidance for large documents or claim sets are
+documented in [PROOF_RESOURCE_LIMITS.md](PROOF_RESOURCE_LIMITS.md).
+
 ## At a glance
 
 | Property | Guaranteed? | Notes |

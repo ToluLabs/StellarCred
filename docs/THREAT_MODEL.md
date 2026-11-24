@@ -101,8 +101,8 @@ Use this checklist during review to connect the PR template’s security items t
 
 | PR template item | Threat mitigated | What to verify |
 |---|---|---|
-| [No `NEXT_PUBLIC_` prefix on server-only env vars](../.github/pull_request_template.md#L19-L20) | Secret exposure, forged credentials | Confirm `ISSUER_PRIVATE_KEY` and similar server-only values never become client-side environment variables or browser-visible configuration. |
-| [No identity fields stored or logged after KYC provider call](../.github/pull_request_template.md#L19-L20) | Identity leakage, privacy breach | Confirm the API handles only the minimum identity fields required for issuance and does not persist or log them after the provider response is processed. |
+| [No `NEXT_PUBLIC_` prefix on server-only env vars](../.github/pull_request_template.md#L43-L44) | Secret exposure, forged credentials | Confirm `ISSUER_PRIVATE_KEY` and similar server-only values never become client-side environment variables or browser-visible configuration. |
+| [No identity fields stored or logged after KYC provider call](../.github/pull_request_template.md#L43-L44) | Identity leakage, privacy breach | Confirm the API handles only the minimum identity fields required for issuance and does not persist or log them after the provider response is processed. |
 
 ## Review Notes
 
