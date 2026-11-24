@@ -42,6 +42,13 @@ export type TelemetryPrimitive = string | number | boolean;
 /** Flat, non-identifying attributes attached to an event. */
 export type TelemetryAttributes = Record<string, TelemetryPrimitive>;
 
+/**
+ * Caller-supplied attribute values, before sanitization. Nested objects and
+ * arrays are accepted and dropped; this lets callers pass a whole context
+ * object without pre-filtering, while only primitives ever reach the wire.
+ */
+export type TelemetryAttributeInput = Record<string, unknown>;
+
 /** A single sanitized telemetry event. */
 export interface TelemetryEvent {
   /** Operation name, e.g. `"claim.check"`. Sanitized and normalised. */
@@ -468,7 +475,7 @@ export interface TelemetryEventMeta {
  */
 export function trackEvent(
   name: string,
-  attributes: TelemetryAttributes = {},
+  attributes: TelemetryAttributeInput = {},
   meta: TelemetryEventMeta = {},
 ): void {
   if (!_config.enabled) return;
@@ -502,7 +509,7 @@ export function trackEvent(
 export async function withTelemetry<T>(
   name: string,
   operation: () => Promise<T>,
-  attributes: TelemetryAttributes = {},
+  attributes: TelemetryAttributeInput = {},
 ): Promise<T> {
   const startedAt = Date.now();
   try {

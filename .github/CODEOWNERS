@@ -116,7 +116,7 @@
 # frozen surface, require sign-off from the contract, circuits, and SDK
 # maintainers. Keep this block after the broad catch-alls so it takes effect.
 /VERSION_COMPATIBILITY.md       @nonchalanttee22-lgtm @Psalmuel01
-/docs/RELEASE_CHECKLIST.md      @nonchalanttee22-lgtm @Psalmuel01
+/docs/V1_PUBLIC_SURFACE.md      @nonchalanttee22-lgtm @Psalmuel01
 
 # ── CI/CD, release, and supply chain ────────────────────────────────────────
 # Workflows run with repository credentials and the release workflow

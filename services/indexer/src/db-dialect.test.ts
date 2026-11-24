@@ -77,6 +77,7 @@ function fakeSqlite(respond?: (sql: string) => unknown) {
         },
       };
     },
+    async backup() {},
     transaction(fn) {
       return fn;
     },
@@ -531,8 +532,8 @@ describe("schema", () => {
 
     const p = fakePostgres();
     await createSharedDb(createPostgresDialect(p.conn)).migrate();
-    expect(p.calls[0].sql).toContain("INSERT INTO ledger_cursor");
-    expect(p.calls[0].sql).toContain("ON CONFLICT (id) DO NOTHING");
+    const seed = p.calls.find((call) => call.sql.includes("INSERT INTO ledger_cursor"));
+    expect(seed?.sql).toContain("ON CONFLICT (id) DO NOTHING");
   });
 });
 

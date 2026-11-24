@@ -57,6 +57,12 @@ jobs:
             exit 1
           fi
 
+      # A tag may not ship a runtime matrix that disagrees with package.json
+      # engines, the CI matrix, or the browser entry's Node-free boundary (#990).
+      - name: Verify SDK runtime support declaration
+        working-directory: .
+        run: node .github/scripts/check-sdk-runtime-support.mjs
+
       # Generate / update CHANGELOG.md at the repo root using conventional-changelog
       - name: Update CHANGELOG.md
         working-directory: .

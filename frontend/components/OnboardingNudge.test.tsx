@@ -4,7 +4,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { OnboardingNudge } from "./OnboardingNudge";
-import { ONBOARDING_STEPS } from "@/lib/onboarding";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -17,7 +16,6 @@ let mockOnboardingState = {
 vi.mock("@/lib/onboarding", async (orig) => ({
   ...(await orig()),
   useOnboarding: () => mockOnboardingState,
-  ONBOARDING_STEPS,
 }));
 
 let mockWallet = { address: "GTEST" as string | null };
@@ -42,9 +40,15 @@ beforeEach(() => {
   store = {};
   vi.stubGlobal("localStorage", {
     getItem: vi.fn((k: string) => store[k] ?? null),
-    setItem: vi.fn((k: string, v: string) => { store[k] = v; }),
-    removeItem: vi.fn((k: string) => { delete store[k]; }),
-    clear: vi.fn(() => { store = {}; }),
+    setItem: vi.fn((k: string, v: string) => {
+      store[k] = v;
+    }),
+    removeItem: vi.fn((k: string) => {
+      delete store[k];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
   });
 });
 

@@ -14,6 +14,12 @@ interface NetworkPreset {
   rpcUrl: string;
   networkPassphrase: string;
   explorerNetwork: string;
+  /** Still selectable, but planned for retirement; the selector shows a badge. */
+  deprecated?: boolean;
+  /** Listed for visibility but not usable for proofs right now. */
+  unavailable?: boolean;
+  /** Human-readable caveat shown in the selector and as a page-level alert. */
+  warningMessage?: string;
 }
 
 // Literal strings, NOT `Networks.TESTNET` from @stellar/stellar-sdk: importing
@@ -34,6 +40,9 @@ export const NETWORK_PRESETS: Record<StellarNetwork, NetworkPreset> = {
     rpcUrl: "https://soroban-futurenet.stellar.org",
     networkPassphrase: "Test SDF Future Network ; October 2022",
     explorerNetwork: "futurenet",
+    deprecated: true,
+    warningMessage:
+      "Futurenet is a preview network. Proofs and credentials created there do not carry over to testnet or mainnet.",
   },
 };
 
@@ -50,8 +59,7 @@ export const NETWORK: StellarNetwork = parseNetwork(rawNetwork) ?? "testnet";
 
 const preset = NETWORK_PRESETS[NETWORK];
 
-export const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL ?? preset.rpcUrl;
+export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? preset.rpcUrl;
 export const NETWORK_PASSPHRASE =
   process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE ?? preset.networkPassphrase;
 
@@ -83,8 +91,7 @@ export const EXPLORER_TX = (hash: string) =>
 // relay wraps the holder's signed transaction in a fee-bump paid by this
 // account. The holder still authorises the proof; the sponsor only covers
 // the network fee.
-export const SPONSOR_ACCOUNT_ID =
-  process.env.NEXT_PUBLIC_SPONSOR_ACCOUNT_ID ?? "";
+export const SPONSOR_ACCOUNT_ID = process.env.NEXT_PUBLIC_SPONSOR_ACCOUNT_ID ?? "";
 
 // Server-only: the sponsor's secret key.  Never prefixed NEXT_PUBLIC_.
 // Read at runtime by app/api/sponsor/route.ts.

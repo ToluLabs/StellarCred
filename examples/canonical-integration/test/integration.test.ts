@@ -16,10 +16,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { Keypair } from "@stellar/stellar-sdk";
+import { installMockRegistry, uninstallMockRegistry } from "@stellarcred/sdk/testing";
 
 import { createExampleServer, sessions } from "../src/server";
 
 test("Canonical Integration Example End-to-End Suite", async (t) => {
+  // Claim reads go through the SDK's in-memory registry: routing them to a
+  // live RPC made this suite fail with `unavailable` whenever testnet was
+  // unreachable, instead of exercising the example's own logic.
+  installMockRegistry();
   const server = createExampleServer();
 
   await new Promise<void>((resolve) => {
@@ -32,6 +37,7 @@ test("Canonical Integration Example End-to-End Suite", async (t) => {
   t.after(() => {
     server.close();
     sessions.clear();
+    uninstallMockRegistry();
   });
 
   // ── Step 1: Redirect to Verify (URL Generator) ───────────────────────────

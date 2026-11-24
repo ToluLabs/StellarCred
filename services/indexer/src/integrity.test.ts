@@ -114,7 +114,7 @@ function fakeReader(
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   tmpFile = path.join(
     os.tmpdir(),
     `integrity-test-${process.pid}-${Date.now()}-${Math.random()
@@ -122,7 +122,7 @@ beforeEach(() => {
       .slice(2)}.db`,
   );
   db = createSqliteDb(makeConfig());
-  db.migrate();
+  await db.migrate();
 });
 
 afterEach(async () => {

@@ -131,10 +131,25 @@ export interface SessionValidationOptions {
 }
 
 /**
+ * Claims accepted by `createSignedSessionToken`. Unlike `Omit<SessionPayload,
+ * "iat">`, this keeps `sub` and `exp` required while still allowing extra
+ * claims (the index signature on `SessionPayload` would otherwise erase them).
+ */
+export interface SessionTokenInput {
+  sub: string;
+  exp: number;
+  iat?: number;
+  iss?: string;
+  nonce?: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Creates a signed session token for testing and authentication.
  */
 export function createSignedSessionToken(
-  payload: Omit<SessionPayload, "iat"> & { iat?: number },
+  payload: SessionTokenInput,
   secret: string,
   now: number = Math.floor(Date.now() / 1000),
 ): string {

@@ -5,14 +5,13 @@ procedures, and migration paths for every versioned artifact in StellarCred.
 It binds operators, protocol integrators, and SDK consumers alike.
 
 Cross-references:
-Cross-references:
 
 - [VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md) — per-release
   compatibility matrix and upgrade checklists.
 - [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) — step-by-step procedures for
   contract upgrades and data migrations.
 
-- [V1_PUBLIC_SURFACE_FREEZE.md](V1_PUBLIC_SURFACE_FREEZE.md) — canonical v1
+- [docs/V1_PUBLIC_SURFACE.md](docs/V1_PUBLIC_SURFACE.md) — canonical v1
   compatibility page and release-scope review checklist for frozen surfaces.
 ---
 

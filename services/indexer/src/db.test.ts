@@ -146,7 +146,9 @@ function registerSuite(
       let rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBe(200_000);
 
-      await db.upsertClaim(makeClaim({ credential_type: "income", threshold: null }));
+      await db.upsertClaim(
+        makeClaim({ credential_type: "income", threshold: null, ledger_sequence: 101 }),
+      );
       rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBeNull();
     });
@@ -174,8 +176,10 @@ function registerSuite(
         }),
       ).toBe(id);
 
+      // The Postgres leg shares one database across suites, so scope the
+      // assertions to this run's event instead of the whole delivery queue.
       const event = {
-        event_id: "revoked:tx-1:GALICE:kyc",
+        event_id: `revoked:tx-1:${Date.now()}:${Math.random()}`,
         type: "revoked" as const,
         wallet: "GALICE",
         credential_type: "kyc",
@@ -187,9 +191,10 @@ function registerSuite(
       await db.enqueueWebhookEvent(event);
       await db.enqueueWebhookEvent(event);
 
-      const deliveries = await db.pendingWebhookDeliveries(1_724_000_000, 10, 8);
-      expect(deliveries).toHaveLength(1);
-      expect(deliveries[0]).toMatchObject({
+      const deliveries = await db.pendingWebhookDeliveries(1_724_000_000, 1000, 8);
+      const matching = deliveries.filter((d) => d.event_id === event.event_id);
+      expect(matching).toHaveLength(1);
+      expect(matching[0]).toMatchObject({
         subscription_id: id,
         event_id: event.event_id,
         type: "revoked",
