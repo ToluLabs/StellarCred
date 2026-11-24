@@ -45,7 +45,10 @@ import {
   getClaimRecord,
   checkClaimStatus,
   getClaimOutcome,
+ feat/979-typed-claim-read-outcomes
+
   checkClaimOutcome,
+ main
   hasClaims,
   getClaims,
   verifyPreset,
@@ -112,7 +115,10 @@ export const StellarCred = {
   getClaimRecord,
   checkClaimStatus,
   getClaimOutcome,
+ feat/979-typed-claim-read-outcomes
+
   checkClaimOutcome,
+ main
   hasClaims,
   getClaims,
   verifyPreset,
