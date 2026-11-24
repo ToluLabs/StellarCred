@@ -39,7 +39,7 @@ export function ProofFlowView({
   /** Override for sponsored/gasless submission. Uses normal path when omitted. */
   submitFn?: SubmitFn;
 }) {
-  const { networkMismatch } = useWallet();
+  const { networkMismatch, sessionLostAt } = useWallet();
   const toast = useToast();
   const [showRaw, setShowRaw] = useState(false);
   const submitButtonRef = useRef<HTMLButtonElement>(null);
@@ -89,16 +89,19 @@ export function ProofFlowView({
 
   const handleSubmit = async () => {
     // First click: run preflight simulation
+    if (sessionLostAt !== null) return;
     await onSubmit(holder, networkMismatch);
   };
 
   const handleSignAndSubmit = async () => {
     // Second click after preflight passed: sign and submit
+    if (sessionLostAt !== null) return;
     const hash = await doSignAndSubmit(holder, networkMismatch);
     if (hash) onProved(hash);
   };
 
   const handleRetrySubmit = async () => {
+    if (sessionLostAt !== null) return;
     const hash = await onRetrySubmit(holder, networkMismatch);
     if (hash) onProved(hash);
   };
@@ -106,7 +109,12 @@ export function ProofFlowView({
   const isGenerating = stage === "witness" || stage === "circuit" || stage === "proof";
   /** Degraded mode: the network is down, so proving has not been started. */
   const isBlocked = stage === "blocked";
-  const proofDone = stage === "generated" || stage === "preflight" || stage === "readyToSign" || stage === "submitting" || stage === "confirmed";
+  const proofDone =
+    stage === "generated" ||
+    stage === "preflight" ||
+    stage === "readyToSign" ||
+    stage === "submitting" ||
+    stage === "confirmed";
   const submitDone = stage === "confirmed";
 
   return (
@@ -123,7 +131,9 @@ export function ProofFlowView({
             Proving
           </span>
           <h2 style={{ marginBottom: "0.25rem" }}>{cred.title}</h2>
-          <span className="mono faint" style={{ fontSize: "0.8rem" }}>{cred.claim}</span>
+          <span className="mono faint" style={{ fontSize: "0.8rem" }}>
+            {cred.claim}
+          </span>
         </div>
 
         {/* step list */}
@@ -132,33 +142,53 @@ export function ProofFlowView({
             icon={<IconCpu size={14} stroke={1.8} />}
             title="Generate zero-knowledge proof"
             subtitle="Estimated time: ~10–20 seconds"
-            state={
-              checkingNetwork || isGenerating ? "active" :
-              proofDone ? "done" : "idle"
-            }
+            state={checkingNetwork || isGenerating ? "active" : proofDone ? "done" : "idle"}
             detail={
               checkingNetwork ? (
                 <div style={{ marginTop: "0.4rem" }}>
                   <AnimatedDots text="Checking the Stellar network before proving" />
-                  <span style={{ display: "block", marginTop: "0.4rem", fontSize: "0.72rem", color: "var(--faint)" }}>
-                    Proving takes ~15 s, so the app checks the RPC endpoint first —
-                    a proof generated during an outage can only fail at submission.
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: "0.4rem",
+                      fontSize: "0.72rem",
+                      color: "var(--faint)",
+                    }}
+                  >
+                    Proving takes ~15 s, so the app checks the RPC endpoint first — a proof
+                    generated during an outage can only fail at submission.
                   </span>
                 </div>
               ) : isBlocked ? (
-                <div style={{ marginTop: "0.4rem", fontSize: "0.8rem", color: "var(--muted)", lineHeight: 1.6 }}>
-                  <strong style={{ color: "var(--danger)" }}>Network unavailable — proving deferred.</strong>
+                <div
+                  style={{
+                    marginTop: "0.4rem",
+                    fontSize: "0.8rem",
+                    color: "var(--muted)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <strong style={{ color: "var(--danger)" }}>
+                    Network unavailable — proving deferred.
+                  </strong>
                   <div style={{ marginTop: "0.35rem" }}>
-                    {rpcIssue?.message ?? "The Stellar RPC endpoint is not responding."}{" "}
-                    Your credential is fine; the submission could not be made.
+                    {rpcIssue?.message ?? "The Stellar RPC endpoint is not responding."} Your
+                    credential is fine; the submission could not be made.
                   </div>
                 </div>
               ) : isGenerating ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.65rem" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.5rem",
+                    marginTop: "0.65rem",
+                  }}
+                >
                   <ProofStageList stage={stage} stageProgress={stageProgress} />
                   <span style={{ fontSize: "0.72rem", color: "var(--faint)" }}>
-                    First run loads the WASM prover (~5–15 s). Proving runs off
-                    the main thread, so this page stays responsive.
+                    First run loads the WASM prover (~5–15 s). Proving runs off the main thread, so
+                    this page stays responsive.
                   </span>
                   <div>
                     <button
@@ -175,7 +205,10 @@ export function ProofFlowView({
                   <span className="mono" style={{ fontSize: "0.75rem", color: "var(--accent)" }}>
                     π {truncateHash("0x" + toHex(proof.proof))}
                   </span>
-                  <span className="mono faint" style={{ fontSize: "0.72rem", marginLeft: "0.5rem" }}>
+                  <span
+                    className="mono faint"
+                    style={{ fontSize: "0.72rem", marginLeft: "0.5rem" }}
+                  >
                     {proof.proof.length.toLocaleString()} bytes
                   </span>
                 </div>
@@ -190,14 +223,27 @@ export function ProofFlowView({
             state={
               stage === "preflight" || stage === "readyToSign" || stage === "submitting"
                 ? "active"
-                : submitDone ? "done" : "idle"
+                : submitDone
+                  ? "done"
+                  : "idle"
             }
             last
             detail={
               stage === "preflight" ? (
-                <AnimatedDots text="Running preflight simulation" style={{ marginTop: "0.35rem" }} />
+                <AnimatedDots
+                  text="Running preflight simulation"
+                  style={{ marginTop: "0.35rem" }}
+                />
               ) : stage === "readyToSign" ? (
-                <div className="row" style={{ gap: "0.5rem", marginTop: "0.35rem", alignItems: "center", flexWrap: "wrap" }}>
+                <div
+                  className="row"
+                  style={{
+                    gap: "0.5rem",
+                    marginTop: "0.35rem",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <span style={{ fontSize: "0.75rem", color: "var(--accent)", fontWeight: 500 }}>
                     Estimated fee: {fee?.display ?? "—"}
                   </span>
@@ -208,7 +254,10 @@ export function ProofFlowView({
               ) : stage === "submitting" ? (
                 <AnimatedDots text="Writing to ProofRegistry" style={{ marginTop: "0.35rem" }} />
               ) : submitDone ? (
-                <div className="row" style={{ gap: "0.5rem", marginTop: "0.3rem", alignItems: "center" }}>
+                <div
+                  className="row"
+                  style={{ gap: "0.5rem", marginTop: "0.3rem", alignItems: "center" }}
+                >
                   <a
                     href={EXPLORER_TX(txHash)}
                     target="_blank"
@@ -237,7 +286,12 @@ export function ProofFlowView({
             {stage === "preflight" ? (
               <button
                 className="btn btn-primary"
-                style={{ marginTop: networkMismatch ? 0 : "1.5rem", width: "100%", opacity: 0.7, cursor: "progress" }}
+                style={{
+                  marginTop: networkMismatch ? 0 : "1.5rem",
+                  width: "100%",
+                  opacity: 0.7,
+                  cursor: "progress",
+                }}
                 disabled
               >
                 <IconLoader2 size={15} className="spin" /> Running preflight simulation…
@@ -249,17 +303,19 @@ export function ProofFlowView({
                 style={{
                   marginTop: networkMismatch ? 0 : "1.5rem",
                   width: "100%",
-                  opacity: networkMismatch ? 0.5 : 1,
-                  cursor: networkMismatch ? "not-allowed" : "pointer",
+                  opacity: networkMismatch || sessionLostAt !== null ? 0.5 : 1,
+                  cursor: networkMismatch || sessionLostAt !== null ? "not-allowed" : "pointer",
                 }}
                 onClick={handleSignAndSubmit}
-                disabled={networkMismatch || !proofSubmissionConfigured()}
+                disabled={networkMismatch || sessionLostAt !== null || !proofSubmissionConfigured()}
                 title={
-                  networkMismatch
-                    ? "Switch your wallet to the correct network to submit"
-                    : !proofSubmissionConfigured()
-                      ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
-                      : undefined
+                  sessionLostAt !== null
+                    ? "Reconnect your wallet before signing"
+                    : networkMismatch
+                      ? "Switch your wallet to the correct network to submit"
+                      : !proofSubmissionConfigured()
+                        ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
+                        : undefined
                 }
               >
                 Sign & submit{fee ? ` (${fee.display})` : ""}
@@ -272,17 +328,19 @@ export function ProofFlowView({
                 style={{
                   marginTop: networkMismatch ? 0 : "1.5rem",
                   width: "100%",
-                  opacity: networkMismatch ? 0.5 : 1,
-                  cursor: networkMismatch ? "not-allowed" : "pointer",
+                  opacity: networkMismatch || sessionLostAt !== null ? 0.5 : 1,
+                  cursor: networkMismatch || sessionLostAt !== null ? "not-allowed" : "pointer",
                 }}
                 onClick={handleSubmit}
-                disabled={networkMismatch || !proofSubmissionConfigured()}
+                disabled={networkMismatch || sessionLostAt !== null || !proofSubmissionConfigured()}
                 title={
-                  networkMismatch
-                    ? "Switch your wallet to the correct network to submit"
-                    : !proofSubmissionConfigured()
-                      ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
-                      : undefined
+                  sessionLostAt !== null
+                    ? "Reconnect your wallet before submitting"
+                    : networkMismatch
+                      ? "Switch your wallet to the correct network to submit"
+                      : !proofSubmissionConfigured()
+                        ? "App not configured — NEXT_PUBLIC_PROOF_REGISTRY_ID missing"
+                        : undefined
                 }
               >
                 Submit to Stellar
@@ -305,19 +363,29 @@ export function ProofFlowView({
               background: "rgba(240,96,77,0.06)",
             }}
           >
-            <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+            <div
+              className="row"
+              style={{
+                gap: "0.5rem",
+                color: "var(--danger)",
+                fontWeight: 600,
+                fontSize: "0.875rem",
+              }}
+            >
               <IconAlertTriangle size={15} />
               {errorPhase === "network"
                 ? "Network unavailable — proving deferred"
                 : errorPhase === "timeout"
-                ? "Proof timed out"
-                : errorPhase === "proving"
-                  ? "Proof generation failed"
-                  : errorPhase === "preflight"
-                    ? "Submission blocked before signing"
-                    : errorPhase === "submitting"
-                      ? "Submission failed — proof is ready to retry"
-                      : error.code !== null ? `Contract error #${error.code}` : "Could not complete"}
+                  ? "Proof timed out"
+                  : errorPhase === "proving"
+                    ? "Proof generation failed"
+                    : errorPhase === "preflight"
+                      ? "Submission blocked before signing"
+                      : errorPhase === "submitting"
+                        ? "Submission failed — proof is ready to retry"
+                        : error.code !== null
+                          ? `Contract error #${error.code}`
+                          : "Could not complete"}
             </div>
             {error.raw !== error.friendly && (
               <div style={{ marginTop: "0.6rem" }}>
@@ -353,7 +421,14 @@ export function ProofFlowView({
             {/* Network down — let the holder retry the check, or override it.
                 Never silently burn the proving step into a guaranteed failure. */}
             {errorPhase === "network" && (
-              <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <div
+                style={{
+                  marginTop: "1rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem",
+                }}
+              >
                 <button
                   className="btn btn-primary"
                   style={{ width: "100%" }}
@@ -361,16 +436,12 @@ export function ProofFlowView({
                 >
                   Check the network again
                 </button>
-                <button
-                  className="btn btn-ghost"
-                  style={{ width: "100%" }}
-                  onClick={proceedAnyway}
-                >
+                <button className="btn btn-ghost" style={{ width: "100%" }} onClick={proceedAnyway}>
                   Generate the proof anyway
                 </button>
                 <span className="faint" style={{ fontSize: "0.72rem", textAlign: "center" }}>
-                  Proving anyway costs you the ~15 s circuit run; the submission
-                  will most likely fail while the endpoint is unreachable.
+                  Proving anyway costs you the ~15 s circuit run; the submission will most likely
+                  fail while the endpoint is unreachable.
                 </span>
               </div>
             )}
@@ -380,6 +451,8 @@ export function ProofFlowView({
                 className="btn btn-ghost"
                 style={{ marginTop: "1rem", width: "100%" }}
                 onClick={handleSignAndSubmit}
+                disabled={sessionLostAt !== null}
+                title={sessionLostAt !== null ? "Reconnect your wallet before signing" : undefined}
               >
                 Sign & submit anyway
                 <IconArrowRight size={15} />
@@ -390,6 +463,8 @@ export function ProofFlowView({
                 className="btn btn-primary"
                 style={{ marginTop: "1rem", width: "100%" }}
                 onClick={handleRetrySubmit}
+                disabled={sessionLostAt !== null}
+                title={sessionLostAt !== null ? "Reconnect your wallet before retrying" : undefined}
               >
                 Retry submission
                 <IconArrowRight size={15} />
@@ -419,8 +494,12 @@ export function ProofFlowView({
             <Check size={44} run />
             <div>
               <div style={{ fontWeight: 600, fontSize: "0.9375rem" }}>Proof verified on-chain</div>
-              <div className="muted" style={{ fontSize: "0.8375rem", marginTop: "0.25rem", lineHeight: 1.5 }}>
-                Your claim is live on Stellar for {Math.round(credTtlSecs(cred) / 86_400)} days — without revealing the data behind it.
+              <div
+                className="muted"
+                style={{ fontSize: "0.8375rem", marginTop: "0.25rem", lineHeight: 1.5 }}
+              >
+                Your claim is live on Stellar for {Math.round(credTtlSecs(cred) / 86_400)} days —
+                without revealing the data behind it.
               </div>
             </div>
           </div>

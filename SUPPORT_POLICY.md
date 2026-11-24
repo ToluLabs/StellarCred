@@ -5,12 +5,15 @@ procedures, and migration paths for every versioned artifact in StellarCred.
 It binds operators, protocol integrators, and SDK consumers alike.
 
 Cross-references:
+Cross-references:
 
 - [VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md) — per-release
   compatibility matrix and upgrade checklists.
 - [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) — step-by-step procedures for
   contract upgrades and data migrations.
 
+- [V1_PUBLIC_SURFACE_FREEZE.md](V1_PUBLIC_SURFACE_FREEZE.md) — canonical v1
+  compatibility page and release-scope review checklist for frozen surfaces.
 ---
 
 ## Table of Contents
@@ -33,6 +36,7 @@ Cross-references:
 
 StellarCred contains several independently versioned components. This policy
 governs:
+
 
 | Artifact | Where | Current version |
 |---|---|---|
@@ -69,6 +73,23 @@ Support consequences follow the same rules as VK versions: bump the circuit
 MAJOR when existing credentials become unprovable, and those credentials must be
 re-issued. Bump MINOR or PATCH for changes that keep existing credentials
 valid. The bump procedure and its CI enforcement are documented in
+
+### v1 Public-Surface Freeze
+
+The v1 public surface (contract ABI, events, errors, circuit public-input
+layouts, and SDK exports) is frozen. Changes to any frozen surface require:
+
+1. A completed entry in the release-scope review checklist published in
+   [V1_PUBLIC_SURFACE_FREEZE.md](V1_PUBLIC_SURFACE_FREEZE.md).
+2. Sign-off from the contract, circuits, and SDK maintainers, each recorded on
+   the pull request that touches the frozen surface.
+3. Verification that the canonical source file listed for that surface in
+   [V1_PUBLIC_SURFACE_FREEZE.md](V1_PUBLIC_SURFACE_FREEZE.md) and its validation
+   check still agree.
+
+Pull requests that alter a frozen surface without all three maintainer
+sign-offs must not be merged.
+
 [circuits/README.md](circuits/README.md#circuit-versions); VK deprecation and
 pruning timelines are unchanged and still govern how long the *old* key stays
 available.

@@ -759,6 +759,86 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     expect(outcome2.status).toBe("verified");
   });
 });
+
+describe("proof expiry versus contract storage TTL agreement (#1006)", () => {
+  beforeEach(() => {
+    isVerified.mockReset();
+    checkClaim.mockReset();
+    getRecord.mockReset();
+    configure({ registryId: "C_TEST_REGISTRY" });
+  });
+
+  it("agrees with contract on active valid claim (now < expiry, TTL > 0)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    isVerified.mockResolvedValue({
+      result: [true, BigInt(now - 3600), BigInt(now + 86400)],
+    });
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: BigInt(now - 3600),
+        expiry: BigInt(now + 86400),
+        revoked: false,
+        issuer: "G_ISSUER_A",
+        threshold: null,
+        vk_version: 1,
+      },
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(true);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(true);
+    expect(status.status).toBe("verified");
+    expect(status.record?.verifiedAt).toBe(now - 3600);
+    expect(status.record?.expiry).toBe(now + 86400);
+  });
+
+  it("agrees with contract on active expired claim (now >= expiry, TTL > 0)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    isVerified.mockResolvedValue({
+      result: [false, BigInt(now - 86400 * 10), BigInt(now - 3600)],
+    });
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: BigInt(now - 86400 * 10),
+        expiry: BigInt(now - 3600),
+        revoked: false,
+        issuer: "G_ISSUER_A",
+        threshold: null,
+        vk_version: 1,
+      },
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(false);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(false);
+    expect(status.status).toBe("expired");
+    expect(status.record).not.toBeNull();
+    expect(status.record?.expiry).toBe(now - 3600);
+    expect(status.error).toContain("expired at");
+  });
+
+  it("agrees with contract on archived / lapsed storage entry (TTL == 0)", async () => {
+    isVerified.mockResolvedValue({
+      result: [false, 0n, 0n],
+    });
+    getRecord.mockResolvedValue({
+      result: null,
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(false);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(false);
+    expect(status.status).toBe("not_verified");
+    expect(status.record).toBeNull();
+    expect(status.error).toContain("no on-chain proof");
+  });
+});
 describe("buildVerifyUrl expiry + single-use", () => {
   const base = { returnUrl: "https://proto.example/cb", claim: "kyc" as const };
 
