@@ -28,7 +28,12 @@
     "COMPOSITE POLICY (issue #633): composite_eligibility_proof evaluates a",
     "bounded boolean policy over several committed attributes and outputs a",
     "single pass/fail. The policy encoding is documented in",
-    "circuits/composite_eligibility_proof/POLICY.MD."
+    "circuits/composite_eligibility_proof/POLICY.MD.",
+    "",
+    "V1 PUBLIC-SURFACE FREEZE (see docs/V1_COMPATIBILITY.md): the circuit",
+    "versions below are part of the frozen v1 surface. Any change to a circuit's",
+    "version or vkVersion requires sign-off from the circuits maintainers and",
+    "must be reflected in the v1 compatibility checklist before merge."
   ],
   "circuits": {
     "kyc_proof": { "version": "1.0.0", "vkVersion": 1 },
