@@ -1,0 +1,14 @@
+{
+  "paging_token": "50000000",
+  "contract_id": "CTEST000000000000000000000000000000000000000000000000000000000001",
+  "topic": [
+    "AAAADwAAAAVwcm9vZgAAAA==",
+    "AAAADwAAAAh2ZXJpZmllZA==",
+    "AAAADwAAAANreWMA"
+  ],
+  "value": "AAAABQAAAABrSdIA",
+  "ledger": 500,
+  "ledger_closed_at": "2026-11-24T12:39:11.639Z",
+  "transaction_hash": "tx_500",
+  "source_account": "GHOLDER000000000000000000000000000000000000000000000000000000001"
+}
