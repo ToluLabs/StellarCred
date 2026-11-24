@@ -36,6 +36,8 @@ function column(
   return parts.join(" ");
 }
 
+export const CURRENT_SCHEMA_VERSION = 1;
+
 export interface Schema {
   /**
    * The `claims` table on its own. Exposed separately because SQLite's legacy
@@ -136,12 +138,24 @@ export function buildSchema(dialect: SqlDialect): Schema {
   const seedDataIntegrityState = `INSERT ${dialect.insertIgnorePrefix}INTO data_integrity_state (id, last_claim_id)
   VALUES (1, 0)${dialect.conflictDoNothing}`;
 
+  // Singleton schema version tracker for startup compatibility checks (#1002).
+  const schemaVersion = `CREATE TABLE IF NOT EXISTS schema_version (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  ${column("version", int, { notNull: true, default: "1" })},
+  ${column("applied_at", dialect.createdAtType)}
+)`;
+
+  const seedSchemaVersion = `INSERT ${dialect.insertIgnorePrefix}INTO schema_version (id, version)
+  VALUES (1, ${CURRENT_SCHEMA_VERSION})${dialect.conflictDoNothing}`;
+
   const tables = [
     claims,
     ledgerCursor,
     seedCursor,
     dataIntegrityState,
     seedDataIntegrityState,
+    schemaVersion,
+    seedSchemaVersion,
     appSubmissions,
     webhookSubscriptions,
     webhookDeliveries,
