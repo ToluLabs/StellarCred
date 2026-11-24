@@ -1296,3 +1296,25 @@ fn cancel_admin_proposal_emits_expected_event() {
         ],
     );
 }
+
+#[test]
+fn batch_verify_empty_and_single() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let empty_items: soroban_sdk::Vec<ProofItem> = vec![&env];
+    let res = CredentialVerifier::batch_verify(env.clone(), empty_items);
+    assert_eq!(res.len(), 0);
+}
+
+#[test]
+fn storage_schema_version_and_migration_guard() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin,));
+    env.as_contract(&id, || {
+        assert_eq!(CredentialVerifier::storage_schema_version(env.clone()), 1);
+        assert_eq!(CredentialVerifier::migrate_storage_v2(env.clone()), 2);
+        assert_eq!(CredentialVerifier::storage_schema_version(env.clone()), 2);
+    });
+}

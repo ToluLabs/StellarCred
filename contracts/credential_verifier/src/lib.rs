@@ -69,6 +69,16 @@ pub struct EventContractUpgraded {
     pub upgraded_at: u64,
 }
 
+/// Individual proof representation for batch verification (#1015).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProofItem {
+    pub credential_type: Symbol,
+    pub proof: Bytes,
+    pub public_inputs: Bytes,
+    pub vk_version: Option<u32>,
+}
+
 // ── Contract versioning ──────────────────────────────────────────────────────
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
@@ -607,6 +617,44 @@ impl CredentialVerifier {
             .instance()
             .get(&DataKey::LastUpgradeTimestamp)
             .unwrap_or(0)
+    }
+
+    /// Batch-verify multiple credential proofs in a single atomic transaction (#1015).
+    /// Executes validation while isolating individual proof failure status.
+    pub fn batch_verify(env: Env, items: soroban_sdk::Vec<ProofItem>) -> soroban_sdk::Vec<bool> {
+        let mut results = soroban_sdk::Vec::new(&env);
+        for item in items.iter() {
+            let res = Self::verify_proof(
+                env.clone(),
+                item.credential_type,
+                item.proof,
+                item.public_inputs,
+                item.vk_version,
+            );
+            results.push_back(res);
+        }
+        results
+    }
+
+    /// Returns the active storage schema version (#1016).
+    pub fn storage_schema_version(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&symbol_short!("schema_v"))
+            .unwrap_or(1)
+    }
+
+    /// Migration guard for upgrading storage to state schema v2 (#1016).
+    pub fn migrate_storage_v2(env: Env) -> u32 {
+        Self::require_role(&env, &symbol_short!("admin"));
+        let current = Self::storage_schema_version(env.clone());
+        if current >= 2 {
+            return current;
+        }
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("schema_v"), &2u32);
+        2
     }
 }
 
