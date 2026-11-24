@@ -31,6 +31,7 @@ export interface SqliteDatabase {
     get(...params: SqlParam[]): unknown;
     all(...params: SqlParam[]): unknown[];
   };
+  backup(destinationFile: string): Promise<void>;
   transaction<T>(fn: () => T): () => T;
   close(): unknown;
 }
@@ -133,5 +134,13 @@ export function createSqliteDb(config: Config): Db {
   // Enable WAL for better concurrent read performance.
   raw.pragma("journal_mode = WAL");
 
-  return createSharedDb(createSqliteDialect(raw));
+  const sharedDb = createSharedDb(createSqliteDialect(raw));
+  return {
+    ...sharedDb,
+    async backup(destinationFile: string): Promise<void> {
+      const destDir = path.dirname(path.resolve(destinationFile));
+      fs.mkdirSync(destDir, { recursive: true });
+      await raw.backup(destinationFile);
+    },
+  };
 }
