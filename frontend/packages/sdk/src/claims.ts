@@ -1480,7 +1480,8 @@ async function readRecordWithStatus(
             ? Number(result.threshold)
             : undefined,
         vkVersion: Number(result.vk_version),
-        reason: result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
+        reason:
+          result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
       },
       unavailable: false,
     };
@@ -1815,7 +1816,11 @@ export async function checkClaimStatus(
     validateThreshold(opts.minThreshold);
   }
 
-  const { record, unavailable, error: readError } = await readRecordWithStatus(
+  const {
+    record,
+    unavailable,
+    error: readError,
+  } = await readRecordWithStatus(
     normalizedWallet,
     claimType,
     throwOnError,
@@ -1894,255 +1899,6 @@ export async function checkClaimStatus(
     record,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Typed claim-read outcomes (issue #979)
-//
-// Protocols need to distinguish a claim that is absent from a claim that
-// cannot be checked because the RPC, contract, or network is unavailable.
-// Mapping transport failures to `false` (the fail-soft default of `hasClaim`)
-// can incorrectly deny valid users, while treating them as `true` would violate
-// the security model. The functions below expose a detailed, typed result.
-// ---------------------------------------------------------------------------
-
-/**
- * Typed outcome of a single claim read.
- *
- * - `"verified"`     â€” the wallet holds a currently-valid, unexpired proof.
- * - `"not_verified"` â€” the wallet has no (or an invalid) proof; the check
- *                      completed successfully.
- * - `"expired"`      â€” a proof exists but has expired.
- * - `"unsupported"`  â€” the claim type is not recognised, or the read could
- *                      not be performed because of invalid input.
- * - `"unavailable"`  â€” the RPC, contract, or network is unavailable, so the
- *                      claim could not be checked at all.
- */
-export type ClaimReadOutcome =
-  | "verified"
-  | "not_verified"
-  | "expired"
-  | "unsupported"
-  | "unavailable";
-
-/** Backwards-friendly alias. */
-export type ClaimOutcome = ClaimReadOutcome;
-export type ClaimReadStatus = ClaimReadOutcome;
-export type ClaimStatus = ClaimReadOutcome;
-
-export interface ClaimReadResult {
-  /** Typed outcome of the read. */
-  outcome: ClaimReadOutcome;
-  /** Backwards-friendly alias for `outcome`. */
-  status: ClaimReadOutcome;
-  /** Whether the claim is currently valid. */
-  valid: boolean;
-  verifiedAt?: number;
-  expiry?: number;
-  record?: ProofRecordDetails | null;
-  error?: string;
-}
-
-/** Backwards-friendly aliases for the result type. */
-export type ClaimOutcomeResult = ClaimReadResult;
-export type ClaimReadOutcomeResult = ClaimReadResult;
-
-async function performClaimRead(
-  wallet: string,
-  claimType: string,
-  opts?: ClaimOptions,
-): Promise<ClaimReadResult> {
-  const throwOnError = opts?.throwOnError === true;
-
-  // Validate claim type first.
-  if (!isValidClaimType(claimType)) {
-    return {
-      outcome: "unsupported",
-      status: "unsupported",
-      valid: false,
-      error: `Unsupported claim type: "${claimType}".`,
-    };
-  }
-
-  let normalizedWallet: string;
-  try {
-    normalizedWallet = await normalizeAndValidateWallet(wallet);
-  } catch (err) {
-    if (err instanceof InvalidAddressError) {
-      if (throwOnError) throw err;
-      return {
-        outcome: "unsupported",
-        status: "unsupported",
-        valid: false,
-        error: "Invalid Stellar address",
-      };
-    }
-    if (throwOnError) {
-      throw new RpcError("Failed to validate Stellar address", { cause: err });
-    }
-    return {
-      outcome: "unavailable",
-      status: "unavailable",
-      valid: false,
-      error: "Failed to validate Stellar address",
-    };
-  }
-
-  const minThreshold = opts?.minThreshold;
-  if (minThreshold !== undefined) {
-    try {
-      validateThreshold(minThreshold);
-    } catch (err) {
-      if (throwOnError) throw err;
-      return {
-        outcome: "unsupported",
-        status: "unsupported",
-        valid: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
-
-  const source = opts?.source ?? "chain";
-
-  // Unconfigured registry (chain reads only).
-  if (source !== "indexer" && !_config.registryId) {
-    if (throwOnError) {
-      throw new ConfigError("StellarCred is not configured: missing registryId");
-    }
-    return {
-      outcome: "unavailable",
-      status: "unavailable",
-      valid: false,
-      error: "StellarCred is not configured: missing registryId",
-    };
-  }
-
-  // Indexer source without indexerUrl.
-  if ((source === "indexer" || source === "indexer-verified") && !_config.indexerUrl) {
-    if (throwOnError && source === "indexer") {
-      throw new ConfigError("StellarCred is not configured for indexer reads: missing indexerUrl");
-    }
-    if (source === "indexer") {
-      return {
-        outcome: "unavailable",
-        status: "unavailable",
-        valid: false,
-        error: "StellarCred is not configured for indexer reads: missing indexerUrl",
-      };
-    }
-  }
-
-  try {
-    let verifiedAt = 0;
-    let expiry = 0;
-    let valid = false;
-
-    if (minThreshold !== undefined) {
-      const r = await readCheckClaimCached(normalizedWallet, claimType, minThreshold, {
-        trustedIssuers: opts?.trustedIssuers,
-        throwOnError: true,
-        requestTimeoutMs: opts?.requestTimeoutMs,
-        retryOptions: opts?.retryOptions,
-        source,
-        fresh: opts?.fresh,
-      });
-      valid = !!r;
-    } else {
-      const r = await readIsVerifiedCached(normalizedWallet, claimType, {
-        trustedIssuers: opts?.trustedIssuers,
-        throwOnError: true,
-        requestTimeoutMs: opts?.requestTimeoutMs,
-        retryOptions: opts?.retryOptions,
-        source,
-        fresh: opts?.fresh,
-      });
-      if (r) {
-        valid = !!r.valid;
-        verifiedAt = r.verifiedAt;
-        expiry = r.expiry;
-      }
-    }
-
-    if (!valid) {
-      // Distinguish expired from not_verified when we have a record.
-      const record = await readRecord(
-        normalizedWallet,
-        claimType,
-        false,
-        opts?.requestTimeoutMs,
-        opts?.retryOptions,
-      ).catch(() => null);
-      if (record && record.expiry > 0 && record.expiry <= Math.floor(Date.now() / 1000)) {
-        return {
-          outcome: "expired",
-          status: "expired",
-          valid: false,
-          verifiedAt: record.verifiedAt,
-          expiry: record.expiry,
-          record,
-        };
-      }
-      return {
-        outcome: "not_verified",
-        status: "not_verified",
-        valid: false,
-        verifiedAt,
-        expiry,
-      };
-    }
-
-    // verified true but double-check expiry
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    if (expiry > 0 && expiry <= nowSeconds) {
-      return {
-        outcome: "expired",
-        status: "expired",
-        valid: false,
-        verifiedAt,
-        expiry,
-      };
-    }
-
-    return {
-      outcome: "verified",
-      status: "verified",
-      valid: true,
-      verifiedAt,
-      expiry,
-    };
-  } catch (err) {
-    if (throwOnError) {
-      if (err instanceof ConfigError) throw err;
-      if (err instanceof InvalidAddressError) throw err;
-      if (err instanceof InvalidClaimTypeError) throw err;
-      throw new RpcError(`Claim read failed for "${claimType}"`, { cause: err });
-    }
-    return {
-      outcome: "unavailable",
-      status: "unavailable",
-      valid: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
-export async function getClaimOutcome(
-  wallet: string,
-  claimType: string,
-  opts?: ClaimOptions,
-): Promise<ClaimReadResult> {
-  return performClaimRead(wallet, claimType, opts);
-}
-
-// Aliases for the detailed read API (issue #979).
-export const readClaim = getClaimOutcome;
-export const readClaimOutcome = getClaimOutcome;
-export const getClaimReadOutcome = getClaimOutcome;
-export const checkClaimOutcome = getClaimOutcome;
-export const getClaimReadResult = getClaimOutcome;
-export const readClaimResult = getClaimOutcome;
-export const getClaimStatusOutcome = getClaimOutcome;
-export const readClaimStatus = getClaimOutcome;
 
 /**
  * Reads a wallet's credential claim and returns a granular, typed outcome

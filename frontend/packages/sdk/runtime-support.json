@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "description": "Declared runtime support matrix for @stellarcred/sdk. docs/SDK_RUNTIME_SUPPORT.md is the human-readable form; .github/scripts/check-sdk-runtime-support.mjs keeps this file, package.json engines, the docs matrix and the CI job in agreement.",
+  "releaseLines": {
+    "0.1.x": {
+      "node": {
+        "minimum": "20.0.0",
+        "tested": ["20", "22", "24"]
+      },
+      "browsers": {
+        "chrome": "103",
+        "edge": "103",
+        "firefox": "100",
+        "safari": "16.0"
+      },
+      "runtimes": ["node", "browser", "edge"],
+      "nodeOnlyExport": "./server"
+    }
+  }
+}

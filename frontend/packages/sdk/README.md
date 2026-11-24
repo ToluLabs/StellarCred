@@ -24,6 +24,21 @@ npm install @stellarcred/sdk
 > pnpm link ./frontend/packages/sdk
 > ```
 
+## Runtime support
+
+| Runtime                       | Supported versions                                                                                    |
+| :---------------------------- | :---------------------------------------------------------------------------------------------------- |
+| **Node.js** (ESM + CJS)       | `20.0.0`+ — CI tests 20, 22 and 24                                                                    |
+| **Browsers**                  | Chrome/Edge `103`+, Firefox `100`+, Safari `16.0`+                                                    |
+| **Edge runtimes**             | Any runtime with `fetch`, `AbortSignal.timeout` and Web Crypto (e.g. Vercel Edge, Cloudflare Workers) |
+| **`@stellarcred/sdk/server`** | Node.js only (`worker_threads`)                                                                       |
+
+The full matrix, verification steps, deprecation timeline, and release-note
+requirements live in
+[`docs/SDK_RUNTIME_SUPPORT.md`](../../../docs/SDK_RUNTIME_SUPPORT.md). Node
+versions older than the declared minimum, Deno, Bun and React Native are not
+tested or supported.
+
 ## API Reference
 
 Generate the SDK API documentation locally:

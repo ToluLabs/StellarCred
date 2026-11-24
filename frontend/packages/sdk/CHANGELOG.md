@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime support contract (#990):** the package now declares its supported
+  runtimes per release line — Node.js `20.0.0`+ (CI runs 20, 22 and 24),
+  Chrome/Edge 103+, Firefox 100+, Safari 16+, and edge runtimes with Web APIs
+  only — in
+  [`docs/SDK_RUNTIME_SUPPORT.md`](../../../docs/SDK_RUNTIME_SUPPORT.md) and
+  [`runtime-support.json`](./runtime-support.json). A `sdk-runtime-matrix` CI
+  job runs typecheck, unit tests, the jsdom browser-entry smoke test and the
+  package build on every declared Node line, and
+  `check-sdk-runtime-support.mjs` fails the build if the declaration,
+  `engines`, the docs table or CI drift apart.
 - `@stellarcred/sdk/testing` entry point (#1065): `MockWalletProvider` (SEP-43 wallet backed by a real Ed25519 keypair), `CredentialFactory` (secp256k1-signed credential JSON that passes `validateCredential`), `MockProofRegistry` with `installMockRegistry` / `uninstallMockRegistry` (simulated proofs with the contract's expiry, revocation, trusted-issuer and threshold rules), and `verifyCredentialSignature`. Lets integrators unit-test without an RPC, a deployed registry or a Noir toolchain.
 - `BatchVerifierPool` and `verifyWalletSignaturesBatch` (#1063): verify batches of wallet-signed presentations in parallel on `worker_threads` without blocking the event loop. Node-only, exported from `@stellarcred/sdk/server`.
 - Configurable backoff for every RPC, indexer and polling call (#1056):
@@ -40,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `package.json` now declares `engines.node: ">=20.0.0"` (#990). Node 18 and
+  older were never exercised by CI and are explicitly unsupported; npm now
+  reports `EBADENGINE` for them. This is the first release line covered by the
+  new deprecation policy — removing Node 20 requires a 90-day announcement and
+  a breaking-change note, per §5 of the runtime support document.
 - `jitter: true` (the default) now uses full jitter, a random delay from zero up
   to the exponential delay, instead of half the delay plus a random half. The
   worst-case retry time is unchanged; the average delay is lower and clients
@@ -48,11 +63,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and is called only when a retry will happen, as its documentation states. It
   is no longer called after the final failed attempt (#1056).
 
+### Fixed
+
+- Restored a valid `src/index.ts` barrel and removed duplicate claim-outcome
+  declarations left behind by the #979/#1007 merge, which broke `tsc` and the
+  barrel-length guard (#990). The typed `getClaimOutcome` /
+  `checkClaimOutcome` implementation from #1007 is the one that remains.
+
 ### Documentation
 
 - New "Indexer fast path (optional)" section covering the trust tradeoff, the
   three sources, contract-parity of the evaluation predicates, and the known
   divergences (wall clock vs. ledger timestamp, indexer lag, operator trust).
+- New "Runtime support" section in the README linking the per-release matrix
+  and the deprecation timeline (#990).
 
 ## [0.1.1] - 2026-09-26
 
