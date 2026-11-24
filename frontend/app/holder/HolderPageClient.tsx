@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
@@ -16,14 +15,17 @@ import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
-import { IMPORT_PARAM } from "@/lib/transfer";
 import { removeCredential, type Credential } from "@/lib/credential";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
+ feat/sdk-event-stream
+import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
+
 import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
+ main
 
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
 import { SectionLabel } from "@/components/holder/SectionLabel";
@@ -74,8 +76,6 @@ type BulkAction = {
 function HolderInner() {
   const { address, walletId, connect } = useWallet();
   const isPreview = usePreviewMode();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const toast = useToast();
 
   const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } =
@@ -91,6 +91,9 @@ function HolderInner() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
+ feat/sdk-event-stream
+  useTransferImportParam(setImportPayload);
+
   // A transfer QR opened directly (native camera app -> /holder?import=...)
   // lands here with the payload already in the URL â€” prompt for the
   // passphrase immediately, and strip it from the URL so a refresh or the
@@ -102,6 +105,7 @@ function HolderInner() {
     router.replace("/holder");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+ main
 
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
   const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);

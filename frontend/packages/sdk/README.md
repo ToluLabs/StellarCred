@@ -1294,3 +1294,20 @@ switch (status) {
 - **Dynamic On-Demand Module Loading**:
   - Heavy RPC modules and Soroban contract bindings (`@stellar/stellar-sdk` and `proof-registry`) are loaded on-demand via dynamic `import()` only when on-chain contract queries (`hasClaim`, `getClaim`) are executed.
   - Offline helpers like `buildVerifyUrl()`, `buildBadgeUrl()`, `buildBadgeEmbedCode()`, `CLAIM_TYPES`, `TimeoutError`, and `createClaimGate()` execute with zero network overhead and without loading heavy Soroban dependencies.
+
+### Real-time events (EventStream)
+
+```ts
+import { EventStream } from "@stellarcred/sdk";
+
+const stream = new EventStream({
+  url: "wss://indexer.example/events",
+  transport: "websocket", // or "sse" with an https:// URL
+  onError: console.error,
+});
+
+stream.on("proof.submitted", (e) => console.log(e.holder, e.claim, e.expiry));
+stream.on("proof.revoked", (e) => console.log("revoked", e.claim));
+stream.connect();
+// later: stream.disconnect();
+```
