@@ -468,7 +468,7 @@ export interface TelemetryEventMeta {
  */
 export function trackEvent(
   name: string,
-  attributes: TelemetryAttributes = {},
+  attributes: Record<string, unknown> = {},
   meta: TelemetryEventMeta = {},
 ): void {
   if (!_config.enabled) return;
