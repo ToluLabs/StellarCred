@@ -20,36 +20,16 @@ export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } fr
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
 
+// Imports below stay condensed (prettier-ignore) so the barrel stays under
+// its 150-line cap (#690).
+// prettier-ignore
 import {
-  configure,
-  healthCheck,
-  isConfigured,
-  hasClaim,
-  getClaim,
-  getClaimRecord,
-  checkClaimStatus,
-  getClaimOutcome,
-  checkClaimOutcome,
-  hasClaims,
-  getClaims,
-  verifyPreset,
-  buildVerifyUrl,
-  buildBadgeUrl,
-  buildBadgeEmbedCode,
-  parseReturnParams,
-  watchClaim,
-  withRetry,
-  normalizeRpcError,
-  classifyTransientFailure,
-  CLAIM_TYPES,
-  deriveNullifier,
-  isNullifierUsed,
-  verifyUniquePersonhood,
-  invalidateClaimCache,
-  clearClaimCache,
-  TimeoutError,
-  ConfigError,
-  InvalidAddressError,
+  configure, healthCheck, isConfigured, hasClaim, getClaim, getClaimRecord, checkClaimStatus,
+  getClaimOutcome, checkClaimOutcome,
+  hasClaims, getClaims, verifyPreset, buildVerifyUrl, buildBadgeUrl, buildBadgeEmbedCode,
+  parseReturnParams, watchClaim, withRetry, normalizeRpcError, classifyTransientFailure,
+  CLAIM_TYPES, deriveNullifier, isNullifierUsed, verifyUniquePersonhood, invalidateClaimCache,
+  clearClaimCache, TimeoutError, ConfigError, InvalidAddressError,
 } from "./claims";
 import {
   RpcError,
@@ -67,19 +47,15 @@ import { subscribeClaims } from "./subscriptions";
 // Version helpers — Issue #841
 export * from "./version";
 
+// prettier-ignore
 import {
-  getCredentialCircuitVersion,
-  isCompatibleCredential,
-  getCredentialVersionStatus,
-  getDeploymentCircuitVersion,
-  KNOWN_CIRCUIT_VERSIONS,
+  getCredentialCircuitVersion, isCompatibleCredential, getCredentialVersionStatus,
+  getDeploymentCircuitVersion, KNOWN_CIRCUIT_VERSIONS,
 } from "./version";
 
+// prettier-ignore
 import {
-  validateCredential,
-  parseCredentialJson,
-  assertValidCredential,
-  CredentialValidationError,
+  validateCredential, parseCredentialJson, assertValidCredential, CredentialValidationError,
 } from "./validateCredential";
 import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
 import { telemetry } from "./telemetry";

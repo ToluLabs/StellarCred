@@ -190,7 +190,11 @@ function registerSuite(
       await db.enqueueWebhookEvent(event);
       await db.enqueueWebhookEvent(event);
 
-      const deliveries = await db.pendingWebhookDeliveries(1_724_000_000, 10, 8);
+      // The Postgres leg shares one database with the other suites, which may
+      // have left their own deliveries queued — only count this test's event.
+      const deliveries = (await db.pendingWebhookDeliveries(1_724_000_000, 10, 8)).filter(
+        (d) => d.event_id === event.event_id,
+      );
       expect(deliveries).toHaveLength(1);
       expect(deliveries[0]).toMatchObject({
         subscription_id: id,
@@ -201,7 +205,9 @@ function registerSuite(
 
       expect(await db.deleteWebhookSubscription(id)).toBe(true);
       expect(await db.deleteWebhookSubscription(id)).toBe(false);
-      expect(await db.webhookDeliveries(id, 10)).toHaveLength(1);
+      expect(
+        (await db.webhookDeliveries(id, 10)).filter((d) => d.event_id === event.event_id),
+      ).toHaveLength(1);
     });
 
     it("returns only subscribed active claims whose expiry has passed", async () => {
