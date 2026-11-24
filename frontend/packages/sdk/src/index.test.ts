@@ -25,6 +25,7 @@ vi.mock("@stellar/stellar-sdk", () => ({
 
 import {
   configure,
+  resetConfig,
   hasClaim,
   getClaims,
   getClaimRecord,
@@ -102,18 +103,16 @@ describe("hasClaim â€” address validation", () => {
   });
 
   it("throws InvalidAddressError for an invalid address when throwOnError is enabled", async () => {
-    await expect(
-      hasClaim("invalid-address", "kyc", { throwOnError: true }),
-    ).rejects.toBeInstanceOf(InvalidAddressError);
+    await expect(hasClaim("invalid-address", "kyc", { throwOnError: true })).rejects.toBeInstanceOf(
+      InvalidAddressError,
+    );
 
     expect(isVerified).not.toHaveBeenCalled();
     expect(checkClaim).not.toHaveBeenCalled();
   });
 
   it("does not make an RPC call for an invalid threshold claim", async () => {
-    await expect(
-      hasClaim("invalid-address", "age", { minThreshold: 21 }),
-    ).resolves.toBe(false);
+    await expect(hasClaim("invalid-address", "age", { minThreshold: 21 })).resolves.toBe(false);
 
     expect(isVerified).not.toHaveBeenCalled();
     expect(checkClaim).not.toHaveBeenCalled();
@@ -218,6 +217,8 @@ describe("read request timeout", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    // configure() merges, so the 25 ms timeout must not leak into later suites.
+    resetConfig();
   });
 
   it("returns false when is_verified never settles", async () => {
@@ -291,9 +292,9 @@ describe("getClaims â€” address validation", () => {
   });
 
   it("throws InvalidAddressError when getClaims receives an invalid address and throwOnError is enabled", async () => {
-    await expect(
-      getClaims("invalid-address", { throwOnError: true }),
-    ).rejects.toBeInstanceOf(InvalidAddressError);
+    await expect(getClaims("invalid-address", { throwOnError: true })).rejects.toBeInstanceOf(
+      InvalidAddressError,
+    );
 
     expect(isVerified).not.toHaveBeenCalled();
     expect(checkClaim).not.toHaveBeenCalled();
@@ -348,20 +349,23 @@ describe("SDK withRetry with exponential backoff", () => {
 
   it("should fail fast if error is non-retryable", async () => {
     const operation = vi.fn().mockRejectedValue(new Error("invalid argument provided"));
-    
+
     await expect(withRetry(operation)).rejects.toThrow("invalid argument provided");
     expect(operation).toHaveBeenCalledTimes(1);
   });
 
   it("should retry on transient errors and eventually succeed", async () => {
-    const operation = vi.fn()
+    const operation = vi
+      .fn()
       .mockRejectedValueOnce(new Error("network error"))
       .mockRejectedValueOnce(new Error("timeout"))
       .mockResolvedValueOnce("success");
 
     let error: any;
-    const promise = withRetry(operation).catch(e => { error = e; });
-    
+    const promise = withRetry(operation).catch((e) => {
+      error = e;
+    });
+
     // First attempt fails, wait for delay (100ms)
     await vi.advanceTimersByTimeAsync(100);
     // Second attempt fails, wait for delay (200ms)
@@ -376,8 +380,10 @@ describe("SDK withRetry with exponential backoff", () => {
     const operation = vi.fn().mockRejectedValue(new Error("network error"));
 
     let error: any;
-    const promise = withRetry(operation).catch(e => { error = e; });
-    
+    const promise = withRetry(operation).catch((e) => {
+      error = e;
+    });
+
     // Attempt 1 fails -> wait 100
     await vi.advanceTimersByTimeAsync(100);
     // Attempt 2 fails -> wait 200
@@ -489,8 +495,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     configure({ registryId: "C_SERVER_REGISTRY" });
 
     // No boundary warning should fire â€” we're in Node, not a browser.
-    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+      ([msg]) =>
+        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
     );
     expect(boundaryWarnings).toHaveLength(0);
   });
@@ -503,9 +510,7 @@ describe("warnOnClientServerBoundaryViolation", () => {
 
     configure({ registryId: "C_LEAKED_REGISTRY" });
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[StellarCred]"),
-    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("[StellarCred]"));
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining("server-only environment variables"),
     );
@@ -518,9 +523,7 @@ describe("warnOnClientServerBoundaryViolation", () => {
     // Simulate the integrator mistake: using the server-only var value in configure().
     configure({ registryId: process.env["PROOF_REGISTRY_ID"] });
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[StellarCred]"),
-    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("[StellarCred]"));
   });
 
   it("does NOT warn in a browser context when no suspicious env indicators are present", () => {
@@ -532,8 +535,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     // Use a fresh value not in process.env.
     configure({ registryId: "C_FRESH_PUBLIC_REGISTRY_ID_NOT_IN_ENV" });
 
-    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+      ([msg]) =>
+        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
     );
     expect(boundaryWarnings).toHaveLength(0);
   });
@@ -546,8 +550,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     configure({ registryId: "C_LEAKED" });
     configure({ registryId: "C_LEAKED" });
 
-    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+      ([msg]) =>
+        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
     );
     expect(boundaryWarnings).toHaveLength(1);
   });
@@ -562,8 +567,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     try {
       configure({ registryId: "C_LEAKED_PROD" });
 
-      const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+      const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+        ([msg]) =>
+          typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
       );
       expect(boundaryWarnings).toHaveLength(0);
     } finally {
@@ -735,9 +741,7 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
 
   it("throws RpcError when RPC throws and throwOnError is true (#1007)", async () => {
     getRecord.mockRejectedValue(new Error("Network connection dropped"));
-    await expect(
-      checkClaimStatus(WALLET, "kyc", { throwOnError: true }),
-    ).rejects.toThrow(RpcError);
+    await expect(checkClaimStatus(WALLET, "kyc", { throwOnError: true })).rejects.toThrow(RpcError);
   });
 
   it("getClaimOutcome and checkClaimOutcome alias checkClaimStatus (#1007)", async () => {
