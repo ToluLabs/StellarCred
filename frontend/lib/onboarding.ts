@@ -103,13 +103,9 @@ export function useOnboarding() {
 
   const nextStep = useCallback(() => {
     setState((prev) => {
-      const nextStep = prev.step + 1;
-      if (nextStep >= ONBOARDING_STEPS.length) {
-        const next = { ...prev, step: ONBOARDING_STEPS.length - 1, completed: true };
-        saveState(next);
-        return next;
-      }
-      const next = { ...prev, step: nextStep };
+      const lastStep = ONBOARDING_STEPS.length - 1;
+      const nextStep = Math.min(prev.step + 1, lastStep);
+      const next = { ...prev, step: nextStep, completed: nextStep === lastStep };
       saveState(next);
       return next;
     });

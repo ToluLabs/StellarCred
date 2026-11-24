@@ -1,45 +1,25 @@
-// @stellarcred/sdk — read-only ProofRegistry client and integration helpers.
-// On-chain reads are the default trust boundary; optional indexer reads trust
-// the indexer operator and must not be the sole basis for a security decision.
-// See README.md for setup, examples, peer dependencies, and the indexer model.
- feat/1064-telemetry-opt-in-sanitization
-// @stellarcred/sdk
-//
-// A tiny, zero-dependency* read-only client for protocols integrating
-// StellarCred. By default the only thing a protocol trusts is the on-chain
-// ProofRegistry — there is no API key, no backend, and no personal data
-// handling. `hasClaim` is the primary integration call.
-// Reads can optionally be sourced from a StellarCred indexer instead
-// (`{ source: "indexer" }`), which is much faster but trusts whoever operates
-// that indexer. It is off by default and must never be the sole basis for a
-// security decision. See the SDK README §Indexer fast path (issue #613).
-// *Requires @stellar/stellar-sdk as a peer dependency.
-//
-// Quick start and every configuration option: see README.md.
-
 // @stellarcred/sdk — read-only client for protocols integrating StellarCred.
 // The on-chain ProofRegistry is the default source of truth; the optional
-// indexer fast path (`{ source: "indexer" }`, #613) trusts its operator and
-// must never be the sole basis for a security decision. See the SDK README
-// for quick start, configuration and env vars. Peer dep: @stellar/stellar-sdk.
-  main
+// indexer fast path trusts its operator and must not be the sole basis for a
+// security decision. See the SDK README for setup and trust-model details.
 
 export * from "./claims";
-export * from "./issuers"; // IssuerRegistry reads
+export * from "./issuers";
 export * from "./capabilities";
 export * from "./challenge";
 export * from "./subscriptions";
-export * from "./errors"; // Typed error taxonomy (#404)
-export * from "./telemetry"; // Opt-in, zero-PII telemetry (#1064)
-export * from "./validateCredential"; // Credential JSON validation (#27)
+export * from "./errors";
+export * from "./telemetry";
+export * from "./validateCredential";
 export * from "./buildVerifyUrl";
 export * from "./key-derivation";
-export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
+export { submitTransaction } from "./submit";
 export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
+export * from "./version";
 
 import {
   configure,
@@ -50,10 +30,7 @@ import {
   getClaimRecord,
   checkClaimStatus,
   getClaimOutcome,
- feat/979-typed-claim-read-outcomes
-
   checkClaimOutcome,
- main
   hasClaims,
   getClaims,
   verifyPreset,
@@ -87,10 +64,6 @@ import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
 import { subscribeClaims } from "./subscriptions";
-
-// Version helpers — Issue #841
-export * from "./version";
-
 import {
   getCredentialCircuitVersion,
   isCompatibleCredential,
@@ -98,7 +71,6 @@ import {
   getDeploymentCircuitVersion,
   KNOWN_CIRCUIT_VERSIONS,
 } from "./version";
-
 import {
   validateCredential,
   parseCredentialJson,
@@ -120,10 +92,7 @@ export const StellarCred = {
   getClaimRecord,
   checkClaimStatus,
   getClaimOutcome,
- feat/979-typed-claim-read-outcomes
-
   checkClaimOutcome,
- main
   hasClaims,
   getClaims,
   verifyPreset,
@@ -132,7 +101,6 @@ export const StellarCred = {
   buildBadgeEmbedCode,
   parseReturnParams,
   watchClaim,
-  /** Drop cached claim reads for a wallet (see `configure({ claimCache })`). */
   invalidate: invalidateClaimCache,
   invalidateClaimCache,
   clearClaimCache,
@@ -159,7 +127,6 @@ export const StellarCred = {
   ConfigError,
   InvalidAddressError,
   RpcError,
-  // Version helpers (#841)
   getCredentialCircuitVersion,
   isCompatibleCredential,
   getCredentialVersionStatus,
@@ -171,6 +138,7 @@ export const StellarCred = {
   TransactionSubmissionError,
   CredentialValidationError,
   parseContractError,
-  telemetry, // Opt-in, zero-PII telemetry (#1064)
+  telemetry,
 };
+
 export default StellarCred;
