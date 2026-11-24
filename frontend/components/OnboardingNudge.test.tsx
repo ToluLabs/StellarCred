@@ -8,21 +8,26 @@ import { ONBOARDING_STEPS } from "@/lib/onboarding";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-let mockOnboardingState = {
-  state: { step: 4, dismissed: false, completed: false },
-  currentStep: "generate-proof" as string,
-  mounted: true,
-  resumeAt: vi.fn(),
-};
-vi.mock("@/lib/onboarding", async (orig) => ({
-  ...(await orig()),
-  useOnboarding: () => mockOnboardingState,
-  ONBOARDING_STEPS,
+const mockHolder = vi.hoisted(() => ({
+  onboardingState: {
+    state: { step: 4, dismissed: false, completed: false },
+    currentStep: "generate-proof" as string,
+    mounted: true,
+    resumeAt: vi.fn(),
+  },
+  wallet: { address: "GTEST" as string | null },
 }));
 
-let mockWallet = { address: "GTEST" as string | null };
+vi.mock("@/lib/onboarding", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/onboarding")>();
+  return {
+    ...actual,
+    useOnboarding: () => mockHolder.onboardingState,
+  };
+});
+
 vi.mock("@/lib/wallet-context", () => ({
-  useWallet: () => mockWallet,
+  useWallet: () => mockHolder.wallet,
 }));
 
 vi.mock("next-intl", () => ({
@@ -51,13 +56,13 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
-  mockOnboardingState = {
+  mockHolder.onboardingState = {
     state: { step: 4, dismissed: false, completed: false },
     currentStep: "generate-proof",
     mounted: true,
     resumeAt: vi.fn(),
   };
-  mockWallet = { address: "GTEST" };
+  mockHolder.wallet = { address: "GTEST" };
 });
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -70,26 +75,26 @@ describe("OnboardingNudge — gating", () => {
   });
 
   it("returns null when not mounted yet", () => {
-    mockOnboardingState.mounted = false;
+    mockHolder.onboardingState.mounted = false;
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
 
   it("returns null when onboarding is completed", () => {
-    mockOnboardingState.state = { step: 5, dismissed: false, completed: true };
+    mockHolder.onboardingState.state = { step: 5, dismissed: false, completed: true };
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
 
   it("returns null when wallet is not connected", () => {
-    mockWallet.address = null;
+    mockHolder.wallet.address = null;
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
 
   it("returns null when the user has already passed step 4 (generate-proof)", () => {
-    mockOnboardingState.currentStep = "unlock";
-    mockOnboardingState.state = { step: 5, dismissed: false, completed: false };
+    mockHolder.onboardingState.currentStep = "unlock";
+    mockHolder.onboardingState.state = { step: 5, dismissed: false, completed: false };
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
@@ -120,7 +125,7 @@ describe("OnboardingNudge — dismiss", () => {
 describe("OnboardingNudge — Continue setup", () => {
   it("calls resumeAt(4) when the Continue setup button is clicked", () => {
     const resumeAt = vi.fn();
-    mockOnboardingState.resumeAt = resumeAt;
+    mockHolder.onboardingState.resumeAt = resumeAt;
 
     render(<OnboardingNudge />);
     fireEvent.click(screen.getByText("Continue setup"));
