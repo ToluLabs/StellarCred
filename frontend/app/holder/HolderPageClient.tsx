@@ -4,14 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import {
-  IconArrowRight,
-  IconAlertTriangle,
-  IconCertificate,
-  IconDownload,
-  IconFileExport,
-  IconPlus,
-} from "@tabler/icons-react";
+import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
@@ -42,16 +35,42 @@ import { GuardianRecoveryControl } from "@/components/holder/GuardianRecoveryCon
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
 import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
+ fix/issue-991-staged-deploy
 import type { PageView, BulkAction } from "./types";
+
+import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
+import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
+ main
 
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer â€” load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
-const TransferExportModal = dynamic(() => import("@/components/TransferExportModal").then((m) => m.TransferExportModal), { ssr: false });
-const TransferImportModal = dynamic(() => import("@/components/TransferImportModal").then((m) => m.TransferImportModal), { ssr: false });
-const ExportDataModal = dynamic(() => import("@/components/ExportDataModal").then((m) => m.ExportDataModal), { ssr: false });
-const DisclosurePreviewModal = dynamic(() => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal), { ssr: false });
+const TransferExportModal = dynamic(
+  () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
+  { ssr: false },
+);
+const TransferImportModal = dynamic(
+  () => import("@/components/TransferImportModal").then((m) => m.TransferImportModal),
+  { ssr: false },
+);
+const ExportDataModal = dynamic(
+  () => import("@/components/ExportDataModal").then((m) => m.ExportDataModal),
+  { ssr: false },
+);
+const DisclosurePreviewModal = dynamic(
+  () => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal),
+  { ssr: false },
+);
 
+ fix/issue-991-staged-deploy
+type PageView =
+  { kind: "list" } | { kind: "single"; cred: Credential } | { kind: "batch"; creds: Credential[] };
+
+type BulkAction = {
+  type: "remove-selected" | "clear-expired";
+  commitments: string[];
+};
+        main
 function HolderInner() {
   const { address, walletId, connect } = useWallet();
   const isPreview = usePreviewMode();
@@ -59,7 +78,8 @@ function HolderInner() {
   const searchParams = useSearchParams();
   const toast = useToast();
 
-  const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } = useCredentialStore();
+  const { creds, reload, save, remove, markCredentialProved, markCredentialsProved } =
+    useCredentialStore();
   const { downloadBackup } = useImportExport();
 
   const [view, setView] = useState<PageView>({ kind: "list" });
@@ -181,28 +201,7 @@ function HolderInner() {
 
       <SponsorBanner />
 
-      {isPreview && (
-        <div
-          style={{
-            padding: "0.85rem 1rem",
-            borderRadius: "var(--radius)",
-            background: "rgba(62,207,142,0.1)",
-            border: "1px solid rgba(62,207,142,0.3)",
-            color: "var(--text)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>
-            Connect wallet to use your real credentials
-          </span>
-          <button className="btn btn-primary btn-sm" onClick={connect}>
-            Connect Wallet
-          </button>
-        </div>
-      )}
+      {isPreview && <PreviewWalletBanner onConnect={connect} />}
 
       {view.kind === "single" ? (
         <ProofFlowView
@@ -228,8 +227,10 @@ function HolderInner() {
               className="card"
               style={{
                 padding: "0.85rem 1.15rem",
-                backgroundColor: expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
-                borderColor: expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
+                backgroundColor:
+                  expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
+                borderColor:
+                  expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -240,7 +241,10 @@ function HolderInner() {
               <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
                 <IconAlertTriangle
                   size={18}
-                  style={{ color: expired.length > 0 ? "var(--danger)" : "var(--warn)", flexShrink: 0 }}
+                  style={{
+                    color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
+                    flexShrink: 0,
+                  }}
                 />
                 <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
                   {expired.length > 0
@@ -254,6 +258,7 @@ function HolderInner() {
             </div>
           )}
 
+ fix/issue-991-staged-deploy
           {/* -- Empty state -- */}
           {creds.length === 0 && !importing && (
             <div
@@ -285,6 +290,9 @@ function HolderInner() {
               </p>
             </div>
           )}
+
+          {creds.length === 0 && !importing && <EmptyCredentialsState />}
+ main
 
           {/* -- Expiring soon (action recommended) -- */}
           {expiringSoon.length > 0 && (
@@ -353,7 +361,9 @@ function HolderInner() {
                   selectedCount={selectedCreds.length}
                   atBatchLimit={atBatchLimit}
                   canSubmitBatch={canSubmitBatch}
-                  onProveBatch={() => proofApproval.request({ kind: "batch", creds: selectedCreds })}
+                  onProveBatch={() =>
+                    proofApproval.request({ kind: "batch", creds: selectedCreds })
+                  }
                   onClear={clearSelection}
                   onSelectEligible={selectEligible}
                   onRemoveSelected={() =>
@@ -400,7 +410,11 @@ function HolderInner() {
                   className="btn btn-ghost btn-sm"
                   onClick={downloadBackup}
                   disabled={creds.length === 0}
-                  title={creds.length === 0 ? "No credentials to back up yet" : "Download a JSON backup of all credentials"}
+                  title={
+                    creds.length === 0
+                      ? "No credentials to back up yet"
+                      : "Download a JSON backup of all credentials"
+                  }
                 >
                   <IconDownload size={14} />
                   Export backup
@@ -416,10 +430,20 @@ function HolderInner() {
                 </button>
                 <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
               </div>
+ fix/issue-991-staged-deploy
               <p className="faint" style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
                 Credentials live only in this browser (localStorage) â€” export a backup
                 before clearing site data or switching devices, and restore it here with{" "}
                 &ldquo;Import credential JSON&rdquo;.{" "}
+
+              <p
+                className="faint"
+                style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}
+              >
+                Credentials live only in this browser (localStorage) — export a backup before
+                clearing site data or switching devices, and restore it here with “Import credential
+                JSON”.{" "}
+ main
                 <Link
                   href="/docs#storage"
                   style={{ color: "var(--accent)", textDecoration: "underline" }}
@@ -472,7 +496,12 @@ function HolderInner() {
       />
 
       {proofApproval.creds && (
-        <DisclosurePreviewModal creds={proofApproval.creds} holder={address} onApprove={proofApproval.approve} onCancel={proofApproval.cancel} />
+        <DisclosurePreviewModal
+          creds={proofApproval.creds}
+          holder={address}
+          onApprove={proofApproval.approve}
+          onCancel={proofApproval.cancel}
+        />
       )}
 
       {confirmBulkAction && (
