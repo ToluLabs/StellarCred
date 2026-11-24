@@ -21,7 +21,7 @@ import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
-import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
+import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
 import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
 
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
@@ -79,13 +79,9 @@ function HolderInner() {
   const [importing, setImporting] = useState(false);
   const [detailCred, setDetailCred] = useState<Credential | null>(null);
   const [transferCred, setTransferCred] = useState<Credential | null>(null);
-  const [importPayload, setImportPayload] = useState<string | null>(null);
+  const { importPayload, setImportPayload } = useTransferQuery();
   const [showExportModal, setShowExportModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
-
-  // Open transfer QR payloads immediately, then strip the ciphertext from the
-  // URL so refresh/back cannot retrigger the passphrase prompt.
-  useTransferImportParam(setImportPayload);
 
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
   const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);

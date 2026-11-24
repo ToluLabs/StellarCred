@@ -28,3 +28,7 @@ proptest-regressions/
 
 # macOS
 .DS_Store
+
+# pgbench latency gate output (re-recorded per run; committed baseline lives in
+# services/indexer/perf/pgbench/baseline.json)
+services/indexer/perf/pgbench-report.json
