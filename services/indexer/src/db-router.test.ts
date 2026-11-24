@@ -265,10 +265,18 @@ describe("integration with createSharedDb + createPostgresDialect", () => {
     await db.setLastLedger(100);
     await db.insertAppSubmission("App", "desc", ["kyc"], "https://app", "a@b.c");
 
-    expect(replica1.calls).toHaveLength(0);
-    expect(replica2.calls).toHaveLength(0);
+    // The only thing a replica may have served so far is migrate()'s
+    // read-only schema_version compatibility check; no write or DDL.
+    const replicaCallsAfterWrites = [...replica1.calls, ...replica2.calls];
+    for (const call of replicaCallsAfterWrites) {
+      expect(isReadOnlyQuery(call.sql)).toBe(true);
+    }
+    expect(replicaCallsAfterWrites.length).toBeLessThanOrEqual(1);
     const primaryCountAfterWrites = primary.calls.length;
     expect(primaryCountAfterWrites).toBeGreaterThan(0);
+
+    const replica1Before = replica1.calls.length;
+    const replica2Before = replica2.calls.length;
 
     // Public read-only queries must be routed to replicas.
     await db.claimsByWallet("GALICE");
@@ -277,9 +285,12 @@ describe("integration with createSharedDb + createPostgresDialect", () => {
     await db.listApprovedApps();
 
     expect(primary.calls).toHaveLength(primaryCountAfterWrites);
-    expect(replica1.calls.length + replica2.calls.length).toBe(4);
-    expect(replica1.calls.length).toBe(2);
-    expect(replica2.calls.length).toBe(2);
+    const r1 = replica1.calls.length - replica1Before;
+    const r2 = replica2.calls.length - replica2Before;
+    expect(r1 + r2).toBe(4);
+    // Round-robin spreads the four reads evenly across both replicas.
+    expect(r1).toBe(2);
+    expect(r2).toBe(2);
 
     await db.close();
     expect(primary.isEnded()).toBe(true);

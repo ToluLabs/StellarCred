@@ -120,6 +120,8 @@ import {
   buildReadinessResponse,
   checkDatabase,
 } from "./health";
+import { logger } from "./logging";
+import { createTraceMiddleware } from "./trace-middleware";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;

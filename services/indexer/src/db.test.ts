@@ -146,7 +146,10 @@ function registerSuite(
       let rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBe(200_000);
 
-      await db.upsertClaim(makeClaim({ credential_type: "income", threshold: null }));
+      // A later event: upserts only apply strictly newer ledger sequences (#1004).
+      await db.upsertClaim(
+        makeClaim({ credential_type: "income", threshold: null, ledger_sequence: 101 }),
+      );
       rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBeNull();
     });

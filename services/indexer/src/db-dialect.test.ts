@@ -83,6 +83,9 @@ function fakeSqlite(respond?: (sql: string) => unknown) {
     close() {
       return undefined;
     },
+    async backup() {
+      return undefined;
+    },
   };
   return { db, calls, batches };
 }
@@ -531,8 +534,10 @@ describe("schema", () => {
 
     const p = fakePostgres();
     await createSharedDb(createPostgresDialect(p.conn)).migrate();
-    expect(p.calls[0].sql).toContain("INSERT INTO ledger_cursor");
-    expect(p.calls[0].sql).toContain("ON CONFLICT (id) DO NOTHING");
+    // migrate() first reads schema_version for the compatibility check, so
+    // look for the DDL batch rather than assuming it is the first call.
+    const ddl = p.calls.find((c) => c.sql.includes("INSERT INTO ledger_cursor"));
+    expect(ddl?.sql).toContain("ON CONFLICT (id) DO NOTHING");
   });
 });
 

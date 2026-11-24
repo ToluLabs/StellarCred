@@ -270,12 +270,14 @@ function registerConformanceSuite(
         let rows = await db.claimsByWallet(wallet);
         expect(rows[0].threshold).toBe(1_000_000_000);
 
-        // Update threshold to null
+        // Update threshold to null. Upserts only apply strictly newer ledger
+        // sequences (#1004 idempotency guard), so the update is a later event.
         await db.upsertClaim(
           makeClaim({
             wallet,
             credential_type: "income",
             threshold: null,
+            ledger_sequence: 101,
           }),
         );
 
