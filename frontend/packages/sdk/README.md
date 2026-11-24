@@ -646,6 +646,83 @@ does **not** prove the credential on-chain or verify that the commitment is
 valid — for that, keep using `hasClaim` / `checkClaimStatus`, which read from
 ProofRegistry.
 
+## Offline / air-gapped verification
+
+Air-gapped devices — border-control desks, venue-entry terminals, kiosks on a
+locked-down network — cannot reach a Soroban RPC endpoint. `createOfflineVerifier`
+verifies a zero-knowledge presentation using only material already on the device:
+cached verifier keys, a cached state snapshot, and a local UltraHonk verifier.
+The module performs no I/O at all; there is no `fetch`, no RPC client, and no
+fallback to the network.
+
+```ts
+import { readFileSync } from "node:fs";
+import { createOfflineVerifier } from "@stellarcred/sdk";
+
+const verifier = createOfflineVerifier({
+  verifierKeys: JSON.parse(readFileSync("cache/vks.json", "utf8")),
+  stateSnapshot: JSON.parse(readFileSync("cache/state.json", "utf8")),
+  trustedIssuers: ["GBBB…"],
+  maxSnapshotAgeSeconds: 86_400, // default: 24 hours
+});
+
+const result = await verifier.verify({
+  credential_type: "age",
+  holder: "GAAA…",
+  proof: "0x…", // UltraHonk proof bytes, hex
+  public_inputs: "0x…", // concatenated 32-byte field elements, hex
+  vk_version: 1,
+  issuer_id: "GBBB…",
+  issuer_pub_key: "0x…", // 64 bytes: x || y
+  commitment: "0x…",
+  min_threshold: 18,
+});
+
+if (!result.valid) console.error(result.code, result.message);
+```
+
+Verification is fail-closed and checks, in order: presentation shape and proof
+length; snapshot freshness and network; the cached verifier key (exact VK
+version, deprecation); the cached claim record (presence, VK version, revocation,
+expiry); commitment binding to the record, revocation list and public inputs;
+issuer trust and issuer-key binding; Merkle root; thresholds; nullifier replay;
+and finally the UltraHonk proof itself. Every failure carries a stable `code`
+(e.g. `stale_state_snapshot`, `revoked`, `issuer_key_mismatch`, `proof_invalid`)
+and a `checks` trace, so a terminal can log exactly where verification stopped.
+
+**Cache format.** The snapshot reuses the indexer's `/claims` wire shape for
+claim rows (`wallet`, `credential_type`, `verified_at`, `expiry`, `issuer`,
+`revoked`, `threshold`, `ledger_sequence`), so an exporter can persist
+`GET /claims` output verbatim and add the top-level metadata
+(`snapshotVersion: 1`, `capturedAt`, `ledgerSequence`) plus optional
+`nullifiers`, `issuerKeys`, `revokedCommitments` and `merkleRoot`. Rows may also
+carry `commitment`, `issuer_pub_key` and `vk_version` when the exporter has them.
+
+**Proof backend.** The built-in backend loads the optional `@aztec/bb.js`
+package from the device and verifies against the circuit bytecode cached on the
+verifier key (`circuit_bytecode`), since bb.js derives the verification key from
+the circuit artifact. It verifies single-threaded, so the device needs no
+`SharedArrayBuffer` or cross-origin isolation. A device that vendors bb.js
+elsewhere, or uses a native verifier, can pass its own `proofVerifier` instead:
+
+```ts
+const verifier = createOfflineVerifier({
+  verifierKeys,
+  stateSnapshot,
+  proofVerifier: async ({ verifierKey, proof, publicInputs }) =>
+    nativeUltraHonkVerify(verifierKey, proof, publicInputs),
+});
+```
+
+`public_inputs` is the prover's field list exactly as bb.js emits it: Noir
+flattens a `[u8; N]` public input into N single-byte fields, so pass the output
+through unchanged. The verifier binds a 64-byte issuer key in either the packed
+or the byte-expanded encoding.
+
+When the backend is unavailable the result is `proof_backend_missing` — never a
+silent `valid: true`. A stale snapshot is likewise a hard failure rather than a
+warning; refresh it on a networked device and carry the new file across.
+
 ## Types
 
 The package exports its public types so you can type your own wrappers without

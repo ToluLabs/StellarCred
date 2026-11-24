@@ -1943,6 +1943,7 @@ export interface ClaimReadResult {
   error?: string;
 }
 
+/** Backwards-friendly aliases for the result type. */
 /** Backwards-friendly alias for the detailed read result type. */
 export type ClaimReadOutcomeResult = ClaimReadResult;
 
@@ -2126,6 +2127,15 @@ async function performClaimRead(
   }
 }
 
+// Aliases for the detailed read API (issue #979). They all point at the
+// granular implementation declared below (function declarations are hoisted).
+export const readClaim = getClaimOutcome;
+export const readClaimOutcome = getClaimOutcome;
+export const getClaimReadOutcome = getClaimOutcome;
+export const getClaimReadResult = getClaimOutcome;
+export const readClaimResult = getClaimOutcome;
+export const getClaimStatusOutcome = getClaimOutcome;
+export const readClaimStatus = getClaimOutcome;
 export async function readClaim(
   wallet: string,
   claimType: string,
