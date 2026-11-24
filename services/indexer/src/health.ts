@@ -157,3 +157,141 @@ function baseFields(options: { now?: number; uptimeSeconds?: number }): Pick<
     uptimeSeconds: options.uptimeSeconds ?? Math.round(process.uptime()),
   };
 }
+
+/**
+ * Probes database connectivity by querying the current ledger cursor and
+ * measuring round-trip latency. Never throws — failures are captured in the
+ * returned check object so readiness/healthz endpoints can return structured 503s.
+ */
+export async function checkDatabase(
+  probe: () => number | Promise<number>
+): Promise<DatabaseCheckResult> {
+  const start = Date.now();
+  try {
+    const lastLedger = await probe();
+    return {
+      status: "ok",
+      latencyMs: Date.now() - start,
+      lastLedger,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      status: "error",
+      latencyMs: Date.now() - start,
+      lastLedger: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Evaluates Stellar Horizon / ingester sync state against both consecutive
+ * error thresholds and the maximum allowed ledger lag (default: 5 ledgers).
+ */
+export function evaluateHorizonHealth(
+  h: IngesterHealth,
+  maxLag: number = MAX_READY_LEDGER_LAG
+): HorizonCheckResult {
+  const synced = h.lag >= 0 && h.lag <= maxLag;
+  const baseStatus = statusFromHealth(h);
+
+  let status: HealthStatus;
+  let lastError = h.lastError;
+
+  if (baseStatus === "error" || !synced) {
+    status = "error";
+    if (!lastError && !synced) {
+      lastError =
+        h.lag < 0
+          ? "Horizon head ledger not yet synced"
+          : `Horizon lag (${h.lag}) exceeds maximum allowed (${maxLag} ledgers)`;
+    }
+  } else {
+    status = baseStatus;
+  }
+
+  return {
+    status,
+    synced,
+    headLedger: h.headLedger,
+    lastSuccessLedger: h.lastSuccessLedger,
+    lag: h.lag,
+    maxLag,
+    consecutiveErrors: h.consecutiveErrors,
+    lastError,
+  };
+}
+
+/** Liveness probe (/livez): process is alive and serving HTTP requests. */
+export function buildLivenessResponse(now: Date = new Date()): LivenessResponse {
+  return {
+    status: "ok",
+    alive: true,
+    service: SERVICE_NAME,
+    version: resolveVersion(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: now.toISOString(),
+  };
+}
+
+/**
+ * Readiness probe (/readyz): checks deep dependencies (database connectivity
+ * and Stellar Horizon sync within maxLag ledgers).
+ */
+export function buildReadinessResponse(
+  database: DatabaseCheckResult,
+  h: IngesterHealth,
+  now: Date = new Date(),
+  maxLag: number = MAX_READY_LEDGER_LAG
+): ReadinessResponse {
+  const horizon = evaluateHorizonHealth(h, maxLag);
+  const ready = database.status === "ok" && horizon.status !== "error";
+
+  let status: HealthStatus;
+  if (!ready) {
+    status = "error";
+  } else if (horizon.status === "degraded") {
+    status = "degraded";
+  } else {
+    status = "ok";
+  }
+
+  return {
+    status,
+    ready,
+    service: SERVICE_NAME,
+    version: resolveVersion(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: now.toISOString(),
+    checks: {
+      database,
+      horizon,
+    },
+  };
+}
+
+/**
+ * Combined deep health probe (/healthz): liveness + readiness + ingester metrics.
+ */
+export function buildHealthzResponse(
+  database: DatabaseCheckResult,
+  h: IngesterHealth,
+  now: Date = new Date(),
+  maxLag: number = MAX_READY_LEDGER_LAG
+): HealthzResponse {
+  const readiness = buildReadinessResponse(database, h, now, maxLag);
+  return {
+    ...readiness,
+    alive: true,
+    lastLedger: database.lastLedger,
+    headLedger: h.headLedger,
+    lag: h.lag,
+    lastSuccessLedger: h.lastSuccessLedger,
+    lastError: h.lastError,
+    lastErrorTime: h.lastErrorTime,
+    consecutiveErrors: h.consecutiveErrors,
+    fetchAttempts: h.fetchAttempts,
+    fetchFailures: h.fetchFailures,
+  };
+}

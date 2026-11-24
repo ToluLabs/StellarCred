@@ -1,5 +1,10 @@
 import type { SdkConfig, SdkRequestOptions, SdkResponse, SdkErrorBody } from './types';
 import { SdkError } from './types';
+import {
+  WebSocketEventListener,
+  type LedgerEvent,
+  type WebSocketListenerConfig,
+} from './ws-listener';
 
 export { SdkError };
 
@@ -160,6 +165,35 @@ export class SdkClient {
     }
     const isUsed = await this.checkNullifier(params.appContext, nullifier);
     return { unique: !isUsed, nullifier };
+  }
+
+  /**
+   * Creates a resilient WebSocket event listener with automatic reconnection,
+   * filter re-subscription, and HTTP ledger-sequence backfilling.
+   */
+  createEventListener(
+    config: Omit<WebSocketListenerConfig, 'url'> & { url?: string } = {}
+  ): WebSocketEventListener {
+    const wsUrl =
+      config.url ?? `${this.baseUrl.replace(/^http/i, 'ws')}/ws/events`;
+
+    const fetchMissedEvents =
+      config.fetchMissedEvents ??
+      (async ({ fromLedgerSequence }) => {
+        const res = await this.get<LedgerEvent[] | { events: LedgerEvent[] }>('/api/events', {
+          query: { fromLedgerSequence },
+        });
+        if (Array.isArray(res.data)) {
+          return res.data;
+        }
+        return Array.isArray(res.data?.events) ? res.data.events : [];
+      });
+
+    return new WebSocketEventListener({
+      ...config,
+      url: wsUrl,
+      fetchMissedEvents,
+    });
   }
 }
 

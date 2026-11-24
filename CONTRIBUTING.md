@@ -407,6 +407,7 @@ The `CI` workflow contains these jobs — **all must pass before merge**:
 | SDK integration tests (testnet) | `frontend/packages/sdk` integration suite |
 | Accessibility (axe-core) | Playwright + axe against the built app |
 | Coverage gate | merges frontend + indexer coverage and enforces thresholds (`.github/scripts/check-coverage.mjs`) |
+| Component ownership check | verifies `docs/COMPONENT_OWNERSHIP.md` paths, owners, and CODEOWNERS rules agree (`.github/scripts/check-component-ownership.mjs`) |
 
 Two jobs are environment-dependent and may not run on your PR: the SDK
 integration job only starts when the repository variables it needs
@@ -603,6 +604,12 @@ If you are proposing a change that touches any of the areas above, reference the
 
 Reviews are routed automatically by [`.github/CODEOWNERS`](.github/CODEOWNERS). Opening a PR requests review from the maintainers of every area the diff touches, so a change to `contracts/` never lands with the same scrutiny as a README typo.
 
+The per-component scope, owner, and required review path matrix is
+[docs/COMPONENT_OWNERSHIP.md](docs/COMPONENT_OWNERSHIP.md). This section is the
+review-depth summary; the matrix is what
+[`.github/scripts/check-component-ownership.mjs`](.github/scripts/check-component-ownership.mjs)
+keeps in sync with CODEOWNERS.
+
 **Note the rule order.** When several patterns match the same file, the *last* matching rule wins. CODEOWNERS is written general-to-specific — broad catch-alls first, narrow overrides after. If you add a rule, put it *below* the broad rule it is meant to refine, or it will be silently overridden.
 
 | Area | What it decides | Review depth |
@@ -610,9 +617,9 @@ Reviews are routed automatically by [`.github/CODEOWNERS`](.github/CODEOWNERS). 
 | `contracts/`, `circuits/` | The trust anchor: which issuers are trusted, and what a proof can assert | **Highest.** Reasoned review against [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and the relevant ADR, not just the diff. |
 | `Cargo.toml`, `Cargo.lock` | Pins `soroban-sdk` and the git-sourced UltraHonk verifier at exact revisions | Highest — a version bump can change verifier behaviour or invalidate existing proofs. |
 | `fixtures/`, `circuits/scripts/` | The committed VKs, proofs, and public inputs the contract tests verify against | Highest — must be regenerated through the documented circuit build, never by hand. |
-| `frontend/app/api/`, `frontend/lib/issuer-signer.ts`, `frontend/lib/persona-webhook.ts` | Issuance, signing, and the KYC webhook. Reads `ISSUER_PRIVATE_KEY` | **High.** Check for `NEXT_PUBLIC_` leaking server-only vars, that `prehash: false` is preserved, and that webhook payloads stay redacted. |
+| `frontend/app/api/`, `frontend/packages/issuer/`, `frontend/lib/issuer-signer.ts`, `frontend/lib/persona-webhook.ts` | Issuance, signing, and the KYC webhook. Reads `ISSUER_PRIVATE_KEY` | **High.** Check for `NEXT_PUBLIC_` leaking server-only vars, that `prehash: false` is preserved, and that webhook payloads stay redacted. |
 | `frontend/packages/issuer-registry/`, `frontend/packages/proof-registry/` | Client-facing view of the trust anchor | High, same as contracts. |
-| `frontend/packages/sdk/` | The published integrators' surface | Normal, but breaking changes need a version/migration note. |
+| `frontend/packages/sdk/`, `sdk/`, `frontend/packages/cli/` | The published integrators' surface and the clients built on it | Normal, but breaking changes need a version/migration note. |
 | `services/indexer/` | Reads chain state and republishes it to consumers | Normal, with extra attention to `auth.ts`, `cors.ts`, and `rate-limit.ts`. |
 | `.github/workflows/`, `.github/dependabot.yml`, `Makefile`, `deny.toml` | Runs with repo credentials; the release job publishes to npm | **High** — treat a workflow diff like a signing-path diff. |
 | `docs/adr/`, `SECURITY.md`, `docs/THREAT_MODEL.md`, `CONTRIBUTING.md`, `SUPPORT_POLICY.md` | Records the decisions and the review bar the rest of the routing relies on | High — reviewed alongside the CODEOWNERS rules themselves. |

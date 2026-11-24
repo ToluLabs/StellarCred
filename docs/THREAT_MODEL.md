@@ -38,7 +38,7 @@ This document records the assets StellarCred protects, the trust boundaries it c
 |---|---|
 | Forged proof accepted on-chain | The issuer signature is checked inside the circuit with `std::ecdsa_secp256k1`, and the contract verifies that the public key in the public inputs is one of the issuer's live keys in `IssuerRegistry` (`is_valid_issuer_key`: the current key, or a retired key still inside its validity window). A proof is only valid when it binds to a registered issuer. |
 | Replayed or stale proof submission | ProofRegistry stores verification state with expiry and the protocol reads the cached on-chain result instead of trusting a client-side assertion. Expiration must be aligned with ledger timing and proof freshness requirements. |
-| Stolen issuer key | Store `ISSUER_PRIVATE_KEY` in a secrets manager or HSM-backed environment, move it to a new key with `IssuerRegistry.rotate_issuer_key` (which keeps credentials signed with the old key valid until their expiry), and call `IssuerRegistry.revoke_issuer_key` to kill a key immediately if compromise is suspected. Both are admin-only, emit events, and the procedure is documented in [ISSUER_KEY_ROTATION.md](ISSUER_KEY_ROTATION.md). |
+| Stolen issuer key | Store `ISSUER_PRIVATE_KEY` in a secrets manager or HSM-backed environment, move it to a new key with `IssuerRegistry.rotate_issuer_key` (which keeps credentials signed with the old key valid until their expiry), and call `IssuerRegistry.revoke_issuer_key` to kill a key immediately if compromise is suspected. Both are admin-only, emit events, and the procedure is documented in [ISSUER_KEY_ROTATION.md](ISSUER_KEY_ROTATION.md). Revocation does not reach proofs already cached in `ProofRegistry`, so forged proofs submitted before it must be found and revoked by the issuer; the incident procedure is [ISSUER_KEY_COMPROMISE_RUNBOOK.md](ISSUER_KEY_COMPROMISE_RUNBOOK.md). |
 | Identity leakage | The API must not persist or log holder identity fields after the KYC call returns, and only the fields required to derive the credential should be handled. The PR checklist explicitly reviews this behavior. |
 | Network MITM | Keep the browser/API and API/provider interactions on authenticated TLS channels, avoid exposing server-side secrets to the client, and treat all client inputs as attacker-controlled. |
 | Malicious issuer registers the wrong public key | `IssuerRegistry` is the sole on-chain trust root for issuer binding, so issuer registration is an administrative action and contracts reject issuers that are not registered with the expected credential types. |
@@ -101,8 +101,8 @@ Use this checklist during review to connect the PR template’s security items t
 
 | PR template item | Threat mitigated | What to verify |
 |---|---|---|
-| [No `NEXT_PUBLIC_` prefix on server-only env vars](../.github/pull_request_template.md#L19-L20) | Secret exposure, forged credentials | Confirm `ISSUER_PRIVATE_KEY` and similar server-only values never become client-side environment variables or browser-visible configuration. |
-| [No identity fields stored or logged after KYC provider call](../.github/pull_request_template.md#L19-L20) | Identity leakage, privacy breach | Confirm the API handles only the minimum identity fields required for issuance and does not persist or log them after the provider response is processed. |
+| [No `NEXT_PUBLIC_` prefix on server-only env vars](../.github/pull_request_template.md#L43-L44) | Secret exposure, forged credentials | Confirm `ISSUER_PRIVATE_KEY` and similar server-only values never become client-side environment variables or browser-visible configuration. |
+| [No identity fields stored or logged after KYC provider call](../.github/pull_request_template.md#L43-L44) | Identity leakage, privacy breach | Confirm the API handles only the minimum identity fields required for issuance and does not persist or log them after the provider response is processed. |
 
 ## Review Notes
 

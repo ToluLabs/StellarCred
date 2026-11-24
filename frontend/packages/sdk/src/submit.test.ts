@@ -126,9 +126,9 @@ describe("submitTransaction does not retry terminal errors", () => {
       throw makeRpcError("Bad request", 400);
     };
 
-    await expect(
-      submitTransaction(op, { retryOptions: FAST_RETRY }),
-    ).rejects.toBeInstanceOf(TransactionSubmissionError);
+    await expect(submitTransaction(op, { retryOptions: FAST_RETRY })).rejects.toBeInstanceOf(
+      TransactionSubmissionError,
+    );
 
     expect(calls).toBe(1);
   });
@@ -140,9 +140,9 @@ describe("submitTransaction does not retry terminal errors", () => {
       throw makeContractError(ContractErrorCode.VerificationFailed);
     };
 
-    await expect(
-      submitTransaction(op, { retryOptions: FAST_RETRY }),
-    ).rejects.toBeInstanceOf(TransactionSubmissionError);
+    await expect(submitTransaction(op, { retryOptions: FAST_RETRY })).rejects.toBeInstanceOf(
+      TransactionSubmissionError,
+    );
 
     expect(calls).toBe(1);
   });
@@ -154,9 +154,9 @@ describe("submitTransaction does not retry terminal errors", () => {
       throw makeContractError(ContractErrorCode.IssuerNotTrusted);
     };
 
-    await expect(
-      submitTransaction(op, { retryOptions: FAST_RETRY }),
-    ).rejects.toBeInstanceOf(TransactionSubmissionError);
+    await expect(submitTransaction(op, { retryOptions: FAST_RETRY })).rejects.toBeInstanceOf(
+      TransactionSubmissionError,
+    );
 
     expect(calls).toBe(1);
   });
@@ -168,9 +168,9 @@ describe("submitTransaction does not retry terminal errors", () => {
       throw makeContractError(ContractErrorCode.IssuerKeyMismatch);
     };
 
-    await expect(
-      submitTransaction(op, { retryOptions: FAST_RETRY }),
-    ).rejects.toBeInstanceOf(TransactionSubmissionError);
+    await expect(submitTransaction(op, { retryOptions: FAST_RETRY })).rejects.toBeInstanceOf(
+      TransactionSubmissionError,
+    );
 
     expect(calls).toBe(1);
   });
@@ -182,9 +182,9 @@ describe("submitTransaction does not retry terminal errors", () => {
       throw new InvalidAddressError("Invalid Stellar address");
     };
 
-    await expect(
-      submitTransaction(op, { retryOptions: FAST_RETRY }),
-    ).rejects.toBeInstanceOf(TransactionSubmissionError);
+    await expect(submitTransaction(op, { retryOptions: FAST_RETRY })).rejects.toBeInstanceOf(
+      TransactionSubmissionError,
+    );
 
     expect(calls).toBe(1);
   });
@@ -225,10 +225,13 @@ describe("submitTransaction exhausts retries and throws TransactionSubmissionErr
     expect((err as TransactionSubmissionError).code).toBe("server_error");
     expect((err as TransactionSubmissionError).retryable).toBe(true);
     expect((err as TransactionSubmissionError).httpStatus).toBe(502);
+    expect(calls).toBeGreaterThan(1);
   });
 
   it("throws with code='network_error' for a plain network Error after all retries", async () => {
-    const op = async () => { throw new Error("ECONNRESET"); };
+    const op = async () => {
+      throw new Error("ECONNRESET");
+    };
 
     const err = await submitTransaction(op, { retryOptions: FAST_RETRY }).catch((e) => e);
 
@@ -248,12 +251,16 @@ describe("submitTransaction exhausts retries and throws TransactionSubmissionErr
     expect(err).toBeInstanceOf(TransactionSubmissionError);
     expect((err as TransactionSubmissionError).code).toBe("contract_error");
     expect((err as TransactionSubmissionError).retryable).toBe(false);
-    expect((err as TransactionSubmissionError).contractCode).toBe(ContractErrorCode.VerificationFailed);
+    expect((err as TransactionSubmissionError).contractCode).toBe(
+      ContractErrorCode.VerificationFailed,
+    );
     expect((err as TransactionSubmissionError).message).toContain("ZK proof is invalid");
   });
 
   it("surfaces retryable=true and code='contract_error' for SubmissionsPaused after all retries", async () => {
-    const op = async () => { throw makeContractError(ContractErrorCode.SubmissionsPaused); };
+    const op = async () => {
+      throw makeContractError(ContractErrorCode.SubmissionsPaused);
+    };
 
     const err = await submitTransaction(op, {
       retryOptions: { retries: 1, baseDelayMs: 0, maxDelayMs: 0, jitter: false },
@@ -262,7 +269,9 @@ describe("submitTransaction exhausts retries and throws TransactionSubmissionErr
     expect(err).toBeInstanceOf(TransactionSubmissionError);
     expect((err as TransactionSubmissionError).code).toBe("contract_error");
     expect((err as TransactionSubmissionError).retryable).toBe(true);
-    expect((err as TransactionSubmissionError).contractCode).toBe(ContractErrorCode.SubmissionsPaused);
+    expect((err as TransactionSubmissionError).contractCode).toBe(
+      ContractErrorCode.SubmissionsPaused,
+    );
   });
 });
 
@@ -529,7 +538,9 @@ describe("classifyTransientFailure correctly classifies error kinds", () => {
   });
 
   it("returns null for terminal ContractError (VerificationFailed)", () => {
-    const result = classifyTransientFailure(makeContractError(ContractErrorCode.VerificationFailed));
+    const result = classifyTransientFailure(
+      makeContractError(ContractErrorCode.VerificationFailed),
+    );
     expect(result).toBeNull();
   });
 
