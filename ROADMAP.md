@@ -223,6 +223,10 @@ above, with the security review on the critical path.
 
 Release manager runs this list and pastes it, ticked, into the release PR or issue.
 
+Role ownership, the two-person approval gate, preflight evidence and failure
+recovery are defined in [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md); this
+checklist is the release-specific summary.
+
 **Before tagging**
 - [ ] Milestone has no open issues, or each remaining one is moved with a reason.
 - [ ] `main` CI is green: CI, Contracts CI, reproducible-build, e2e, lint.
