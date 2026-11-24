@@ -28,7 +28,11 @@ import {
 const { strGetPublicKey, strSignTransaction, device } = vi.hoisted(() => ({
   strGetPublicKey: vi.fn(),
   strSignTransaction: vi.fn(),
-  device: { close: vi.fn(), lastTransport: null as unknown },
+  device: {
+    close: vi.fn(),
+    lastTransport: null as unknown,
+    disconnectListeners: new Set<() => void>(),
+  },
 }));
 
 vi.mock("@ledgerhq/hw-app-str", () => {
@@ -47,6 +51,14 @@ vi.mock("@ledgerhq/hw-app-str", () => {
 vi.mock("@ledgerhq/hw-transport-webusb", () => {
   class FakeTransportWebUSB {
     close = device.close;
+    // Mirrors Transport's event API: the module subscribes to "disconnect" so
+    // a pulled cable clears the cached session instead of reusing it.
+    on(event: string, listener: () => void) {
+      if (event === "disconnect") device.disconnectListeners.add(listener);
+    }
+    off(event: string, listener: () => void) {
+      if (event === "disconnect") device.disconnectListeners.delete(listener);
+    }
     static isSupported = vi.fn(async () => true);
     static create = vi.fn(async () => new FakeTransportWebUSB());
   }
@@ -66,7 +78,19 @@ vi.mock("@creit.tech/stellar-wallets-kit", () => ({
   FREIGHTER_ID: "freighter",
 }));
 
-import { LedgerModule, LEDGER_ID } from "../ledger-module";
+import {
+  LedgerDeviceError,
+  LedgerModule,
+  LEDGER_ID,
+  classifyLedgerError,
+  ledgerDeviceErrorMessage,
+} from "../ledger-module";
+import { LEDGER_DEFAULT_PATH, deriveLedgerPath, parseLedgerPath } from "../ledger-guide";
+
+/** Simulate the browser/device dropping the USB session. */
+function emitDeviceDisconnect() {
+  for (const listener of Array.from(device.disconnectListeners)) listener();
+}
 
 // Test constants. The enum literal is passed by value so nothing besides the
 // mocked constants above is needed.
@@ -104,6 +128,8 @@ describe("LedgerModule typed signing (#753)", () => {
     strGetPublicKey.mockReset();
     strSignTransaction.mockReset();
     device.close.mockReset();
+    device.close.mockResolvedValue({});
+    device.disconnectListeners.clear();
 
     // Device behavior per the real @ledgerhq/hw-app-str Str class contracts:
     //   getPublicKey(path, display?) → { rawPublicKey: Buffer }
@@ -219,5 +245,156 @@ describe("LedgerModule typed signing (#753)", () => {
     device.lastTransport = null;
     await mod.getAddress();
     expect(device.lastTransport).not.toBeNull();
+  });
+});
+
+// Issue #1040: a dropped USB session used to surface as an opaque transport
+// error and left the module holding a dead Str app, so every later signature
+// failed with the same message until a full page reload.
+describe("LedgerModule connection recovery (#1040)", () => {
+  beforeEach(() => {
+    strGetPublicKey.mockReset();
+    strSignTransaction.mockReset();
+    device.close.mockReset();
+    device.close.mockResolvedValue({});
+    device.disconnectListeners.clear();
+
+    strGetPublicKey.mockResolvedValue({
+      rawPublicKey: Buffer.from(signer.rawPublicKey()),
+    });
+    strSignTransaction.mockImplementation(async (_path: string, base: Buffer) => ({
+      signature: Buffer.from(signer.sign(base)),
+    }));
+  });
+
+  it("reopens the transport and retries once after a disconnect", async () => {
+    strGetPublicKey
+      .mockRejectedValueOnce(new Error("DisconnectedDevice: device disconnected"))
+      .mockResolvedValueOnce({ rawPublicKey: Buffer.from(signer.rawPublicKey()) });
+
+    const mod = makeModule();
+    const { address } = await mod.getAddress();
+
+    expect(strGetPublicKey).toHaveBeenCalledTimes(2);
+    expect(device.close).toHaveBeenCalledTimes(1);
+    expect(address).toBe(signer.publicKey());
+    expect(mod.isConnected()).toBe(true);
+  });
+
+  it("never retries a request the user declined on the device", async () => {
+    strSignTransaction.mockRejectedValue(new Error("0x6985: denied by user"));
+
+    const mod = makeModule();
+    await expect(
+      mod.signTransaction(buildTx().toXDR(), {
+        address: optionsAddress,
+        networkPassphrase: TEST_NET,
+      }),
+    ).rejects.toThrow(/Failed to sign with Ledger.*declined/i);
+
+    // Exactly one prompt: a declined signature must not turn into a second one.
+    expect(strSignTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies each transport failure with its own actionable message", async () => {
+    expect(classifyLedgerError(new Error("0x5515: locked"))).toBe("locked");
+    expect(classifyLedgerError(new Error("0x6e00: instruction not supported"))).toBe("app-closed");
+    expect(classifyLedgerError(new Error("0x6985: condition of use not satisfied"))).toBe("rejected");
+    expect(classifyLedgerError(new Error("DisconnectedDeviceDuringOperation"))).toBe("disconnected");
+    expect(classifyLedgerError(new Error("No Ledger device found"))).toBe("unavailable");
+    expect(classifyLedgerError(new Error("WebUSB not supported"))).toBe("unsupported");
+
+    for (const kind of [
+      "locked",
+      "app-closed",
+      "rejected",
+      "disconnected",
+      "unavailable",
+      "unsupported",
+    ] as const) {
+      expect(ledgerDeviceErrorMessage(kind).length).toBeGreaterThan(20);
+    }
+  });
+
+  it("throws a LedgerDeviceError carrying the classified kind", async () => {
+    strGetPublicKey.mockRejectedValue(new Error("0x5515: device locked"));
+
+    const mod = makeModule();
+    const error = await mod.getAddress().catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(LedgerDeviceError);
+    expect((error as LedgerDeviceError).kind).toBe("locked");
+    expect((error as LedgerDeviceError).message).toMatch(/enter your pin/i);
+  });
+
+  it("notifies subscribers and clears the session when the transport disconnects", async () => {
+    const mod = makeModule();
+    await mod.getAddress();
+    expect(mod.isConnected()).toBe(true);
+
+    const onDisconnect = vi.fn();
+    const unsubscribe = mod.onDisconnect(onDisconnect);
+
+    emitDeviceDisconnect();
+
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+    expect(mod.isConnected()).toBe(false);
+
+    unsubscribe();
+    emitDeviceDisconnect();
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("signs again after a reconnect without a page reload", async () => {
+    const mod = makeModule();
+    await mod.getAddress();
+    emitDeviceDisconnect();
+
+    const tx = buildTx();
+    const { signedTxXdr } = await mod.signTransaction(tx.toXDR(), {
+      address: optionsAddress,
+      networkPassphrase: TEST_NET,
+    });
+
+    expect(new Transaction(signedTxXdr, TEST_NET).signatures.length).toBe(1);
+    expect(mod.isConnected()).toBe(true);
+  });
+
+  it("rejects a malformed derivation path before touching the device", async () => {
+    const mod = makeModule();
+    await expect(
+      mod.signTransaction(buildTx().toXDR(), {
+        address: optionsAddress,
+        networkPassphrase: TEST_NET,
+        path: "44/148/0",
+      }),
+    ).rejects.toThrow(/invalid derivation path/i);
+
+    expect(strSignTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("Ledger derivation paths (SEP-0005, #1040)", () => {
+  it("defaults to 44'/148'/0'", () => {
+    expect(LEDGER_DEFAULT_PATH).toBe("44'/148'/0'");
+    expect(deriveLedgerPath()).toBe(LEDGER_DEFAULT_PATH);
+  });
+
+  it("hardens every component of the path", () => {
+    expect(deriveLedgerPath(7)).toBe("44'/148'/7'");
+    expect(parseLedgerPath("44'/148'/7'")).toEqual({ purpose: 44, coinType: 148, accountIndex: 7 });
+  });
+
+  it("rejects unhardened, incomplete or non-numeric paths", () => {
+    expect(parseLedgerPath("44/148/0")).toBeNull();
+    expect(parseLedgerPath("44'/148'")).toBeNull();
+    expect(parseLedgerPath("44'/148'/abc'")).toBeNull();
+    expect(parseLedgerPath("m/44'/148'/0'")).toBeNull();
+  });
+
+  it("rejects an account index outside the hardened range", () => {
+    expect(() => deriveLedgerPath(-1)).toThrow(RangeError);
+    expect(() => deriveLedgerPath(2 ** 31)).toThrow(RangeError);
+    expect(() => deriveLedgerPath(1.5)).toThrow(RangeError);
   });
 });

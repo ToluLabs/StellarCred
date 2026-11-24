@@ -23,6 +23,7 @@ import {
   formatExpiryDate,
 } from "@/lib/proof-helpers";
 import type { Credential } from "@/lib/credential";
+import { CredTimelineSkeleton } from "@/components/holder/CredListSkeleton";
 
 export interface BatchSelection {
   checked: boolean;
@@ -50,7 +51,7 @@ export function CredCard({
   selection?: BatchSelection;
 }) {
   const status = proofStatus(c);
-  const { events } = useProofTimeline(c);
+  const { events, loading: historyLoading } = useProofTimeline(c);
   const [showHistory, setShowHistory] = useState(false);
 
   return (
@@ -170,9 +171,8 @@ export function CredCard({
         </div>
       </div>
 
-      {showHistory && (
-        <Timeline events={events} />
-      )}
+      {showHistory &&
+        (historyLoading ? <CredTimelineSkeleton /> : <Timeline events={events} />)}
     </div>
   );
 }

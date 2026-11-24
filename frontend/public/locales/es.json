@@ -39,6 +39,11 @@
   "wallet": {
     "connect": "Conectar cartera",
     "connecting": "Conectando…",
+    "reconnect": "Volver a conectar cartera",
+    "reconnecting": "Reconectando…",
+    "sessionLost": "Se perdió la conexión de la cartera. El formulario actual sigue abierto.",
+    "sessionExpired": "La sesión de la cartera caducó. El formulario actual sigue abierto.",
+    "sessionCountdown": "Vuelve a conectar en {seconds} segundos.",
     "disconnect": "Haz clic para desconectar",
     "disconnectAriaLabel": "Cartera conectada {address}. Haz clic para desconectar.",
     "connectingAriaLabel": "Conectando cartera",

@@ -39,6 +39,11 @@
   "wallet": {
     "connect": "Connect wallet",
     "connecting": "Connecting…",
+    "reconnect": "Reconnect wallet",
+    "reconnecting": "Reconnecting…",
+    "sessionLost": "Wallet connection lost. Your current form is still open.",
+    "sessionExpired": "Wallet session timed out. Your current form is still open.",
+    "sessionCountdown": "Reconnect within {seconds} seconds.",
     "disconnect": "Click to disconnect",
     "disconnectAriaLabel": "Connected wallet {address}. Click to disconnect.",
     "connectingAriaLabel": "Connecting wallet",

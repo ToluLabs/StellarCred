@@ -38,7 +38,7 @@ jobs:
   proving-perf:
     name: Proving performance regression gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
@@ -93,10 +93,26 @@ jobs:
             --circuit kyc_proof \
             --compare ../perf/proving-baselines.json
 
+      - name: Measure payload-size tiers (small / medium / large) against ceilings
+        shell: bash
+        run: |
+          export PATH="$HOME/.nargo/bin:$HOME/.bb:$HOME/.bb/bin:$PATH"
+          # Size guardrails (issue #943): the largest jobs the client resource
+          # guard allows (frontend/lib/proof-guard.ts) must stay affordable.
+          # Same pinned toolchain and committed Prover.toml inputs as the step
+          # above, median of 3 runs — reproducible locally with the exact
+          # command below. Exceeding a tier ceiling (perf/payloads-baselines.json)
+          # or the aggregate/small scaling ratio fails the PR.
+          node scripts/perf/measure-payloads.mjs \
+            --runs 3 \
+            --compare perf/payloads-baselines.json
+
       - name: Upload measurement report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: proving-perf-report
-          path: perf/proving-perf-report.json
+          path: |
+            perf/proving-perf-report.json
+            perf/proving-payloads-report.json
           retention-days: 14

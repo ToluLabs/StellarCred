@@ -86,6 +86,19 @@ jobs:
         # the job log.
         run: cargo test --locked
 
+      - name: Verify generated contract client freshness
+        # Fails if committed bindings have drifted from the built contract ABIs (#999).
+        run: bash scripts/verify-client-freshness.sh
+
+      - name: Upload contract client diff
+        # Uploads concise diff artifact if client drift check fails (#999).
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-client-diff
+          path: client-freshness.diff
+          if-no-files-found: ignore
+
       - name: Report cache status
         # Emits a short cache summary so contributors can tell whether a slow
         # run was a cold cache or a real build regression.
