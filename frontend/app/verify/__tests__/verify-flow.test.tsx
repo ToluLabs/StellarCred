@@ -38,6 +38,7 @@ vi.mock("@/lib/wallet-context", () => ({
     connecting: false,
     error: null,
     networkMismatch: false,
+    sessionLostAt: null,
     connect: vi.fn(),
     disconnect: vi.fn(),
   }),
@@ -56,13 +57,13 @@ vi.mock("@/components/WalletButton", () => ({
 
 // vitest deliberately leaves the contract IDs unset (lib/__tests__/config.test.ts
 // asserts that), which disables the issue button as "app not configured".
-vi.mock("@/lib/config", async (importOriginal: any) => {
-  const actual = (await importOriginal()) as typeof import("@/lib/config");
+vi.mock("@/lib/config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/config")>();
   return { ...actual, issuanceConfigured: () => true };
 });
 
-vi.mock("@/lib/credential", async (importOriginal: any) => {
-  const actual = (await importOriginal()) as typeof import("@/lib/credential");
+vi.mock("@/lib/credential", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/credential")>();
   return { ...actual, saveCredential: vi.fn() };
 });
 

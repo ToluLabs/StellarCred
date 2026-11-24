@@ -30,9 +30,12 @@ import {
   getClaimRecord,
   buildVerifyUrl,
   checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
   verifyPreset,
   ConfigError,
   InvalidAddressError,
+  InvalidClaimTypeError,
   RpcError,
   TimeoutError,
   StellarCred,
@@ -697,6 +700,143 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
       threshold: 21,
       vkVersion: 2,
     });
+  });
+
+  it("evaluates 'unsupported' when claim type is not a valid ClaimType (#1007)", async () => {
+    const res = await checkClaimStatus(WALLET, "unsupported_claim_type");
+    expect(res.valid).toBe(false);
+    expect(res.status).toBe("unsupported");
+    expect(res.error).toContain("unsupported");
+    expect(getRecord).not.toHaveBeenCalled();
+  });
+
+  it("throws InvalidClaimTypeError for unsupported claim when throwOnError is true (#1007)", async () => {
+    await expect(
+      checkClaimStatus(WALLET, "unsupported_claim_type", { throwOnError: true }),
+    ).rejects.toThrow(InvalidClaimTypeError);
+  });
+
+  it("evaluates 'unavailable' when RPC throws without conflating with not_verified (#1007)", async () => {
+    getRecord.mockRejectedValue(new Error("RPC timeout or network connection reset"));
+    const res = await checkClaimStatus(WALLET, "kyc");
+    expect(res.valid).toBe(false);
+    expect(res.status).toBe("unavailable");
+    expect(res.record).toBeNull();
+    expect(res.error).toContain("RPC timeout or network connection reset");
+  });
+
+  it("evaluates 'unavailable' when ProofRegistry client is not configured (#1007)", async () => {
+    configure({ registryId: "" });
+    const res = await checkClaimStatus(WALLET, "kyc");
+    expect(res.valid).toBe(false);
+    expect(res.status).toBe("unavailable");
+    expect(res.error).toContain("missing registryId");
+  });
+
+  it("throws RpcError when RPC throws and throwOnError is true (#1007)", async () => {
+    getRecord.mockRejectedValue(new Error("Network connection dropped"));
+    await expect(
+      checkClaimStatus(WALLET, "kyc", { throwOnError: true }),
+    ).rejects.toThrow(RpcError);
+  });
+
+  it("getClaimOutcome and checkClaimOutcome alias checkClaimStatus (#1007)", async () => {
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: 1_700_000_000n,
+        expiry: 2_000_000_000n,
+        revoked: false,
+        issuer: "G_TRUSTED_ISSUER",
+        threshold: undefined,
+        vk_version: 1,
+      },
+    });
+    const outcome1 = await getClaimOutcome(WALLET, "kyc");
+    expect(outcome1.status).toBe("verified");
+    expect(outcome1.valid).toBe(true);
+
+    const outcome2 = await checkClaimOutcome(WALLET, "kyc");
+    expect(outcome2.status).toBe("verified");
+  });
+});
+
+describe("proof expiry versus contract storage TTL agreement (#1006)", () => {
+  beforeEach(() => {
+    isVerified.mockReset();
+    checkClaim.mockReset();
+    getRecord.mockReset();
+    configure({ registryId: "C_TEST_REGISTRY" });
+  });
+
+  it("agrees with contract on active valid claim (now < expiry, TTL > 0)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    isVerified.mockResolvedValue({
+      result: [true, BigInt(now - 3600), BigInt(now + 86400)],
+    });
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: BigInt(now - 3600),
+        expiry: BigInt(now + 86400),
+        revoked: false,
+        issuer: "G_ISSUER_A",
+        threshold: null,
+        vk_version: 1,
+      },
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(true);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(true);
+    expect(status.status).toBe("verified");
+    expect(status.record?.verifiedAt).toBe(now - 3600);
+    expect(status.record?.expiry).toBe(now + 86400);
+  });
+
+  it("agrees with contract on active expired claim (now >= expiry, TTL > 0)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    isVerified.mockResolvedValue({
+      result: [false, BigInt(now - 86400 * 10), BigInt(now - 3600)],
+    });
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: BigInt(now - 86400 * 10),
+        expiry: BigInt(now - 3600),
+        revoked: false,
+        issuer: "G_ISSUER_A",
+        threshold: null,
+        vk_version: 1,
+      },
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(false);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(false);
+    expect(status.status).toBe("expired");
+    expect(status.record).not.toBeNull();
+    expect(status.record?.expiry).toBe(now - 3600);
+    expect(status.error).toContain("expired at");
+  });
+
+  it("agrees with contract on archived / lapsed storage entry (TTL == 0)", async () => {
+    isVerified.mockResolvedValue({
+      result: [false, 0n, 0n],
+    });
+    getRecord.mockResolvedValue({
+      result: null,
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(false);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(false);
+    expect(status.status).toBe("not_verified");
+    expect(status.record).toBeNull();
+    expect(status.error).toContain("no on-chain proof");
   });
 });
 describe("buildVerifyUrl expiry + single-use", () => {

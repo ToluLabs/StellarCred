@@ -1,7 +1,8 @@
 import { parseCredential, type Credential } from "./credential";
+import { validateImportPayload } from "./credential-import-bounds";
 
 export function parseCredentialDocument(json: string): Credential | Credential[] {
-  const value = JSON.parse(json) as unknown;
+  const value = validateImportPayload(json);
   if (Array.isArray(value)) {
     return value.map((credential) => parseCredential(JSON.stringify(credential)));
   }

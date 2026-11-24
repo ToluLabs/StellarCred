@@ -74,6 +74,13 @@ pub struct EventContractUpgraded {
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
 // Increment MINOR on additive changes (new events, new query endpoints)
 // Increment PATCH on bug fixes with no ABI changes
+//
+// v1 public-surface freeze: the contract ABI, event topics and payloads,
+// error codes, and version promises are frozen at 1.x. The canonical v1
+// compatibility page maps each frozen surface to its source of truth.
+// Any change touching the frozen surface requires sign-off from the
+// contract, circuits, and SDK maintainers before merge, and must update
+// the compatibility page in the same commit.
 const CONTRACT_VERSION: u32 = 1_000_000; // 1.0.0 encoded as (major * 1000000) + (minor * 1000) + patch
 
 // Persistent-entry lifetime management (~5s ledgers). VKs are long-lived.
