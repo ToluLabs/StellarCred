@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { IconShieldCheck } from "@tabler/icons-react";
 import { Badge } from "@/components/Badge";
+import { IssuerAvatar } from "@/components/IssuerAvatar";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
 import { isProtocolAccepted } from "@/lib/issuer-choice";
 import { truncateAddress } from "@/lib/format";
@@ -139,6 +140,12 @@ export function IssuerSelector({
                       />
                     )}
                   </span>
+                  <IssuerAvatar
+                    logoUrl={issuer.metadata?.logo}
+                    publicKey={issuer.pubkeyHex}
+                    name={issuer.name}
+                    size={36}
+                  />
                   <span style={{ minWidth: 0 }}>
                     <span
                       style={{
