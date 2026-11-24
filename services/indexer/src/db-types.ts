@@ -115,7 +115,14 @@ export interface Db {
 
   /** Upsert a verified claim event. */
   upsertClaim(row: ClaimRow): void | Promise<void>;
-  /** Upsert a verified claim event (the `id` cursor is assigned by the db). */
+  /**
+   * Upsert a verified claim event (the `id` cursor is assigned by the db).
+   *
+   * Idempotency (#1004): natural key is (wallet, credential_type). An incoming
+   * event only replaces the stored row when its ledger_sequence is STRICTLY
+   * greater, so duplicate deliveries are no-ops and out-of-order older events
+   * never overwrite newer state.
+   */
   upsertClaim(row: ClaimInput): void | Promise<void>;
 
   /** Mark a claim as revoked. */

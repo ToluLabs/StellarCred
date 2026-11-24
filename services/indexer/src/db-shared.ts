@@ -180,7 +180,8 @@ export function createSharedDb(dialect: SqlDialect): Db {
            ledger_sequence = ${ex}.ledger_sequence,
            threshold       = ${ex}.threshold,
            revoked         = ${ex}.revoked,
-           reason_code     = ${ex}.reason_code`,
+           reason_code     = ${ex}.reason_code
+         WHERE ${ex}.ledger_sequence > claims.ledger_sequence`,
         [
           row.wallet,
           row.credential_type,
