@@ -1,3 +1,10 @@
+/**
+ * Modal — focus-trapped dialog with Escape-close and backdrop click-out.
+ * Portal rendered to document.body to avoid SSR/hydration mismatch.
+ *
+ * Design tokens used: color.*, radius.lg, type.base, spacing.*
+ */
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -7,15 +14,29 @@ import { IconX } from "@tabler/icons-react";
 const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+export interface ModalProps {
+  /** Optional HTML id prefix for ARIA attributes */
+  id?: string;
+  /** Dialog title shown in the header */
+  title: string;
+  /** Called when the user dismisses the modal (Escape, backdrop click) */
+  onClose: () => void;
+  /** Dialog content */
+  children: React.ReactNode;
+  /** Optional className for the dialog body */
+  className?: string;
+  /** Override the default max-width */
+  maxWidth?: string;
+}
+
 export function Modal({
+  id,
   title,
   onClose,
   children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
+  className = "",
+  maxWidth = "360px",
+}: ModalProps) {
   // Portal to document.body only once mounted client-side, same as Toast.tsx —
   // avoids an SSR/hydration mismatch on document.body.
   const [mounted, setMounted] = useState(false);
@@ -23,6 +44,8 @@ export function Modal({
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  const titleId = id ? `${id}-title` : `modal-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
   // Keep the latest onClose in a ref so the keydown listener below can stay
   // registered once instead of tearing down/re-adding on every render (most
@@ -77,20 +100,34 @@ export function Modal({
     <div className="modal-overlay" onClick={onClose}>
       <div
         ref={dialogRef}
-        className="modal card"
+        className={`modal card ${className}`.trim()}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth,
+          maxHeight: "calc(100vh - 2.5rem)",
+        }}
       >
-        <div className="between" style={{ marginBottom: "1rem" }}>
-          <span className="eyebrow">{title}</span>
+        <div
+          className="modal-header"
+          style={{
+            marginBottom: "var(--spacing-lg, 1rem)",
+          }}
+        >
+          <h2
+            id={titleId}
+            className="eyebrow"
+            style={{ margin: 0, fontSize: "inherit", fontWeight: "inherit" }}
+          >
+            {title}
+          </h2>
           <button
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm modal-close-btn"
             onClick={onClose}
             aria-label="Close"
-            style={{ padding: "0.3rem" }}
           >
             <IconX size={15} />
           </button>

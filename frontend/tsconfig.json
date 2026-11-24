@@ -11,15 +11,25 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "paths": {
       "@/*": ["./*"],
-      "@stellarcred/sdk": ["./packages/sdk/index.ts"]
+      "@stellarcred/sdk": ["./packages/sdk/src/index.ts"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     // The SDK is a standalone package with its own tsconfig (include: src, test)
@@ -27,7 +37,11 @@
     // so its vitest config/tests would fail to resolve here. Exclude them from
     // the app typecheck; they are typechecked by the SDK's own toolchain.
     "packages/sdk/test",
+    "packages/sdk/dist",
     "packages/sdk/vitest.config.ts",
+    // The stellarcred CLI is likewise standalone (own tsconfig and vitest
+    // config, typechecked and tested in its own CI steps).
+    "packages/cli",
     // Node built-in test runner suite (pnpm test:theme), not part of app tsc.
     "lib/theme.test.ts"
   ]

@@ -7,13 +7,18 @@ node_modules
 .next
 dist
 
+# Coverage output
+coverage
+.nyc_output
+
 # Local settings
 .soroban
 .stellar
 .env.local
 
-# Local tooling config (not committed)
-.kilo/
+# Deployment artifacts (local; use git for version control)
+deployment-manifests/
+*.wasm.hash
 
 # Benchmark output (local results; see BENCHMARKS.md for documented figures)
 benchmark_results.txt

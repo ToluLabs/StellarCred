@@ -16,6 +16,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
+import path from "path";
+import os from "os";
 
 const HOLDER = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const ISSUER_ID = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2";
@@ -39,7 +41,10 @@ const ENV_KEYS = [
   "NEXT_PUBLIC_ISSUER_ADDRESS",
   "PERSONA_API_KEY",
   "PERSONA_KYC_TEMPLATE_ID",
+  "PLAID_CLIENT_ID",
+  "PLAID_SECRET",
   "PLAID_ACCESS_TOKEN",
+  "PLAID_ACCESS_TOKENS",
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -63,22 +68,20 @@ async function loadRoute() {
   return import("../route");
 }
 
-function postRequest(body: unknown) {
+function postRequest(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest("http://localhost/api/issue", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 }
 
 describe("mock-mode fallback (no ISSUER_PRIVATE_KEY)", () => {
-  it("derives the demo issuer key deterministically from sha256(\"stellarcred-demo-issuer\")", async () => {
+  it('derives the demo issuer key deterministically from sha256("stellarcred-demo-issuer")', async () => {
     delete process.env.ISSUER_PRIVATE_KEY;
     const { POST } = await loadRoute();
 
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
     expect(res.status).toBe(200);
     const { credentials } = await res.json();
 
@@ -99,9 +102,7 @@ describe("signature correctness", () => {
     delete process.env.ISSUER_PRIVATE_KEY;
     const { POST } = await loadRoute();
 
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
     const { credentials } = await res.json();
     const credential = credentials[0];
 
@@ -113,7 +114,181 @@ describe("signature correctness", () => {
   });
 });
 
+describe("funds issuance (aggregate proof-of-funds)", () => {
+  function plaidItemResponse(accounts: unknown[]) {
+    return { ok: true, json: async () => ({ accounts }) };
+  }
+
+  // Env validation requires client id, secret, and a token to be set
+  // together, so every aggregation test configures the full Plaid triple.
+  function setPlaidEnv(tokens: string) {
+    delete process.env.PLAID_ACCESS_TOKEN;
+    process.env.PLAID_CLIENT_ID = "test-plaid-client-id";
+    process.env.PLAID_SECRET = "test-plaid-secret";
+    process.env.PLAID_ACCESS_TOKENS = tokens;
+  }
+
+  it("overwrites a user-supplied balance with the aggregate summed across linked Plaid items", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    setPlaidEnv("item-a,item-b");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Checking", balances: { available: 1500 } },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Savings", balances: { available: 25000 } },
+          ]),
+        ),
+    );
+
+    const { POST } = await loadRoute();
+
+    const res = await POST(
+      postRequest({
+        credential_types: ["funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+        // User-supplied figure — Plaid's verified aggregate must win.
+        attributes: { balance: "1" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const { credentials } = await res.json();
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0].type).toBe("funds");
+    expect(credentials[0].value).toBe("26500");
+  });
+
+  it("fails closed when any linked item errors instead of attesting a partial sum", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    setPlaidEnv("item-a,item-broken");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Checking", balances: { available: 90000 } },
+          ]),
+        )
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({ error_code: "ITEM_LOGIN_REQUIRED" }),
+        }),
+    );
+
+    const { POST } = await loadRoute();
+
+    const res = await POST(
+      postRequest({
+        credential_types: ["funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+      }),
+    );
+
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.code).toBe("PLAID_ERROR");
+  });
+
+  it("attests only the aggregate — per-source account data never reaches the credential or the logs", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    setPlaidEnv("item-a,item-b");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Acme Checking", balances: { available: 1200 } },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          plaidItemResponse([
+            { type: "depository", name: "Acme Savings", balances: { available: 8800 } },
+          ]),
+        ),
+    );
+
+    const { POST } = await loadRoute();
+    // Imported after loadRoute()'s vi.resetModules() so this resolves to the
+    // same fresh logger instance route.ts itself just imported.
+    const { logger } = await import("@/lib/logger");
+    const infoSpy = vi.spyOn(logger, "info");
+    const warnSpy = vi.spyOn(logger, "warn");
+    const errorSpy = vi.spyOn(logger, "error");
+
+    const res = await POST(
+      postRequest({
+        credential_types: ["funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const { credentials } = await res.json();
+    // The aggregate (10000) is attested; component names/balances stay private.
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0].value).toBe("10000");
+    expect(credentials[0].accounts).toBeUndefined();
+    expect(credentials[0].sources).toBeUndefined();
+
+    for (const spy of [infoSpy, warnSpy, errorSpy]) {
+      for (const call of spy.mock.calls) {
+        const logged = JSON.stringify(call);
+        expect(logged).not.toMatch(/Acme|item-a|item-b/);
+      }
+    }
+  });
+});
+
 describe("validation", () => {
+  it("returns unsigned preview metadata without requiring a signing key or calling providers", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    process.env.PERSONA_API_KEY = "test-persona-key";
+    process.env.PERSONA_KYC_TEMPLATE_ID = "itmpl_test";
+    process.env.PLAID_CLIENT_ID = "test-plaid-client-id";
+    process.env.PLAID_SECRET = "test-plaid-secret";
+    process.env.PLAID_ACCESS_TOKENS = "test-plaid-token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { POST } = await loadRoute();
+    const { IssuerClient } = await import("@stellarcred/issuer");
+    const issueSpy = vi.spyOn(IssuerClient.prototype, "issue");
+
+    const res = await POST(
+      postRequest({
+        preview: true,
+        credential_types: ["age", "kyc", "funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+        attributes: { date_of_birth: "1995-06-15", balance: "25000" },
+        claimParams: { threshold_years: "21" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.preview).toBe(true);
+    expect(body.credentials).toHaveLength(3);
+    expect(body.credentials[0]).toMatchObject({ type: "age", claim: "age ≥ 21", signed: false });
+    expect(body.credentials[0]).toHaveProperty("publicInputs.commitment");
+    expect(body.credentials[0]).not.toHaveProperty("sig");
+    expect(body.credentials[0]).not.toHaveProperty("issuerPubX");
+    expect(body.credentials[0]).not.toHaveProperty("value");
+    expect(issueSpy).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown credential type", async () => {
     delete process.env.ISSUER_PRIVATE_KEY;
     const { POST } = await loadRoute();
@@ -176,6 +351,122 @@ describe("validation", () => {
 
     const res = await POST(postRequest({ type: "kyc", issuerId: ISSUER_ID }));
     expect(res.status).toBe(400);
+  });
+});
+
+describe("idempotency", () => {
+  it("replays completed issuance with a redacted marker and stores no credential material", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    const { POST } = await loadRoute();
+    const { idempotencyGet } = await import("@/lib/idempotency");
+    const { IssuerClient } = await import("@stellarcred/issuer");
+    const issueSpy = vi.spyOn(IssuerClient.prototype, "issue");
+    const key = "issue-redacted-replay";
+    const body = {
+      credential_types: ["age"],
+      holder: HOLDER,
+      issuerId: ISSUER_ID,
+      attributes: { date_of_birth: "1995-06-15" },
+    };
+
+    const first = await POST(postRequest(body, { "Idempotency-Key": key }));
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toMatchObject({
+      credentials: [expect.objectContaining({ type: "age" })],
+    });
+    expect(issueSpy).toHaveBeenCalledTimes(1);
+
+    const serializedRecord = JSON.stringify(idempotencyGet(key));
+    expect(serializedRecord).toContain('"kind":"completed"');
+    for (const prohibited of ["1995-06-15", "credentials", "value", "salt", "commitment", "sig"]) {
+      expect(serializedRecord).not.toContain(prohibited);
+    }
+
+    const replay = await POST(postRequest(body, { "Idempotency-Key": key }));
+    expect(replay.status).toBe(409);
+    expect(replay.headers.get("X-Idempotent")).toBe("true");
+    expect(replay.headers.get("X-Idempotency-Replay")).toBe("redacted");
+    await expect(replay.json()).resolves.toMatchObject({
+      code: "IDEMPOTENCY_RESPONSE_REDACTED",
+    });
+    expect(issueSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays a Persona redirect without retaining request attributes", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    process.env.PERSONA_API_KEY = "test-persona-key";
+    process.env.PERSONA_KYC_TEMPLATE_ID = "itmpl_test";
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "inq_idempotency" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { POST } = await loadRoute();
+    const { idempotencyGet } = await import("@/lib/idempotency");
+    const key = "persona-redirect-replay";
+    const body = {
+      credential_types: ["kyc"],
+      holder: HOLDER,
+      issuerId: ISSUER_ID,
+      attributes: { date_of_birth: "1995-06-15" },
+    };
+
+    const first = await POST(postRequest(body, { "Idempotency-Key": key }));
+    expect(first.status).toBe(202);
+    const firstBody = await first.json();
+    expect(firstBody).toMatchObject({
+      needsPersona: true,
+      inquiryId: "inq_idempotency",
+    });
+
+    const serializedRecord = JSON.stringify(idempotencyGet(key));
+    expect(serializedRecord).toContain('"kind":"persona_pending"');
+    expect(serializedRecord).not.toContain("attributes");
+    expect(serializedRecord).not.toContain("date_of_birth");
+    expect(serializedRecord).not.toContain("1995-06-15");
+
+    const replay = await POST(postRequest(body, { "Idempotency-Key": key }));
+    expect(replay.status).toBe(202);
+    expect(replay.headers.get("X-Idempotent")).toBe("true");
+    await expect(replay.json()).resolves.toEqual(firstBody);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps simultaneous retries single-flight after a failed leader", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    const { POST } = await loadRoute();
+    const { IssuerClient } = await import("@stellarcred/issuer");
+    let signalFirstIssueStarted!: () => void;
+    const firstIssueStarted = new Promise<void>((resolve) => {
+      signalFirstIssueStarted = resolve;
+    });
+    let rejectFirstIssue!: (reason?: unknown) => void;
+    const firstIssue = new Promise<never>((_resolve, reject) => {
+      rejectFirstIssue = reject;
+    });
+    const issueSpy = vi.spyOn(IssuerClient.prototype, "issue").mockImplementationOnce(async () => {
+      signalFirstIssueStarted();
+      return firstIssue;
+    });
+    const body = {
+      credential_types: ["age"],
+      holder: HOLDER,
+      issuerId: ISSUER_ID,
+      attributes: { date_of_birth: "1995-06-15" },
+    };
+    const headers = { "Idempotency-Key": "failed-leader-retry" };
+
+    const leader = POST(postRequest(body, headers));
+    await firstIssueStarted;
+    const duplicateOne = POST(postRequest(body, headers));
+    const duplicateTwo = POST(postRequest(body, headers));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    rejectFirstIssue(new Error("leader failed"));
+
+    const responses = await Promise.all([leader, duplicateOne, duplicateTwo]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409, 500]);
+    expect(issueSpy).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -242,6 +533,86 @@ describe("no identity leakage", () => {
   });
 });
 
+describe("issuance audit log (hash-chained, PII-free)", () => {
+  // Each test points AUDIT_LOG_PATH at a throwaway file so the chain asserted
+  // here is exactly what this test produced (the default path could carry
+  // entries from earlier runs / other tests).
+  afterEach(() => {
+    delete process.env.AUDIT_LOG_PATH;
+  });
+
+  it("appends one PII-free, chained entry per issued commitment", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    process.env.AUDIT_LOG_PATH = path.join(
+      os.tmpdir(),
+      `stellarcred-audit-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`,
+    );
+
+    const { POST } = await loadRoute();
+    // Imported after loadRoute()'s vi.resetModules() so this resolves to the
+    // same fresh audit-log module instance route.ts just imported.
+    const { auditLogEntries, auditLogVerify, auditLogSize } = await import("@/lib/audit-log");
+
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
+    expect(res.status).toBe(200);
+    const { credentials } = await res.json();
+    expect(credentials).toHaveLength(1);
+
+    expect(auditLogSize()).toBe(1);
+    const [entry] = auditLogEntries();
+    expect(entry.index).toBe(0);
+    expect(entry.commitment).toBe(credentials[0].commitment);
+    expect(entry.issuer).toBe(ISSUER_ID);
+    expect(entry.timestamp).toBe(credentials[0].issuedAt);
+    expect(entry.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(auditLogVerify().valid).toBe(true);
+
+    // The audit entry itself carries no identity data.
+    expect(JSON.stringify(entry)).not.toMatch(
+      /holder|wallet|first_name|last_name|id_number|date_of_birth|value|salt/,
+    );
+  });
+
+  it("chains successive issuances and persists a file a fresh verifier accepts", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    const auditFile = path.join(
+      os.tmpdir(),
+      `stellarcred-audit-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`,
+    );
+    process.env.AUDIT_LOG_PATH = auditFile;
+
+    const { POST } = await loadRoute();
+    const { auditLogEntries, auditLogVerify, readAuditLogFile, verifyAuditChain } =
+      await import("@/lib/audit-log");
+
+    const res1 = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
+    expect(res1.status).toBe(200);
+    const res2 = await POST(
+      postRequest({
+        credential_types: ["age"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+        attributes: { date_of_birth: "1995-06-15" },
+      }),
+    );
+    expect(res2.status).toBe(200);
+
+    const entries = auditLogEntries();
+    expect(entries).toHaveLength(2);
+    expect(entries[1].index).toBe(1);
+    expect(entries[1].prevHash).toBe(entries[0].hash);
+    expect(entries[1].hash).not.toBe(entries[0].hash);
+    expect(auditLogVerify().valid).toBe(true);
+
+    // The persisted file must be accepted by an independent verifier reading
+    // from disk — i.e. `pnpm verify:audit-log` semantics.
+    const reloaded = await readAuditLogFile(auditFile);
+    expect(reloaded).toHaveLength(2);
+    expect(reloaded).toEqual(entries);
+    expect(verifyAuditChain(reloaded).valid).toBe(true);
+  });
+});
+
 describe("issuer-key mismatch", () => {
   it("rejects when ISSUER_PRIVATE_KEY's pubkey doesn't match the registered issuer", async () => {
     delete process.env.ISSUER_PRIVATE_KEY; // demo key
@@ -252,9 +623,7 @@ describe("issuer-key mismatch", () => {
     vi.mocked(fetchIssuerPubkey).mockResolvedValue(new Uint8Array(64).fill(0xff));
 
     const { POST } = await loadRoute();
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
 
     expect(res.status).toBe(403);
     const body = await res.json();
@@ -278,9 +647,7 @@ describe("issuer-key mismatch", () => {
     vi.mocked(fetchIssuerPubkey).mockResolvedValue(matchingPubkeyBytes);
 
     const { POST } = await loadRoute();
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
 
     expect(res.status).toBe(200);
   });

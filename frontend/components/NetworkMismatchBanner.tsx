@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { NETWORK } from "@/lib/stellar";
 
@@ -10,9 +11,20 @@ import { NETWORK } from "@/lib/stellar";
 // user action, not something we can silently fix. `wallet-context.tsx` polls
 // live so this clears itself the moment the user switches (Issue #214).
 export function NetworkMismatchBanner() {
+  const t = useTranslations();
+
+  const networkLabel =
+    NETWORK === "mainnet"
+      ? t("network.mainnet")
+      : NETWORK === "futurenet"
+      ? t("network.futurenet")
+      : t("network.testnet");
+
   return (
     <div
       className="row"
+      role="alert"
+      aria-live="polite"
       style={{
         gap: "0.6rem",
         padding: "0.7rem 1rem",
@@ -23,12 +35,9 @@ export function NetworkMismatchBanner() {
         fontSize: "0.8125rem",
       }}
     >
-      <IconAlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} />
+      <IconAlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} aria-hidden="true" />
       <span>
-        Your wallet is on the wrong network. Switch to{" "}
-        <strong>{NETWORK === "public" ? "Mainnet" : "Testnet"}</strong> in your wallet
-        extension to submit — proving still works, but submission is blocked
-        until networks match.
+        {t("network.mismatchBanner", { network: networkLabel })}
       </span>
     </div>
   );

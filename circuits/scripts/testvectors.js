@@ -20,6 +20,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { versionOf } = require("./circuit-versions");
 
 const NOIR_VERSION = "1.0.0-beta.9";
 const BB_VERSION = "0.87.0";
@@ -111,9 +112,22 @@ function buildVector(name, toolchain) {
       fs.readFileSync(path.join(outDir, "public_inputs_fields.json"), "utf8"),
     );
     const witness = parseProverToml(fs.readFileSync(path.join(dir, "Prover.toml"), "utf8"));
+    // The declared circuit version is part of what these vectors pin. A VK hash
+    // change alone cannot tell you *which* circuit a credential was issued
+    // against, so the version is pinned alongside it and a circuit edit that
+    // forgets to bump circuits/circuit-versions.json fails here (#633).
+    const declared = versionOf(name);
+    if (!declared) {
+      throw new Error(
+        `Circuit "${name}" has no entry in circuits/circuit-versions.json — add its ` +
+          `version and vkVersion so credentials can record what they were issued against.`,
+      );
+    }
 
     return {
       circuit: name,
+      circuit_version: declared.version,
+      circuit_vk_version: declared.vkVersion,
       noir_version: toolchain.nargoVersion,
       bb_version: toolchain.bbVersion,
       witness,
@@ -134,23 +148,44 @@ function loadCommitted(name) {
 
 function main() {
   const mode = process.argv[2] || "check";
+  const targetCircuit = process.argv[3];
+
   if (!["check", "update"].includes(mode)) {
-    console.error(`usage: node ${path.basename(__filename)} [check|update]`);
+    console.error(`usage: node ${path.basename(__filename)} [check|update] [circuit_name]`);
+    process.exit(2);
+  }
+
+  const circuits = targetCircuit ? [targetCircuit] : CIRCUITS;
+  if (targetCircuit && !CIRCUITS.includes(targetCircuit)) {
+    console.error(`Unknown circuit "${targetCircuit}". Available circuits: ${CIRCUITS.join(", ")}`);
     process.exit(2);
   }
 
   const toolchain = toolVersions();
   if (toolchain.nargoVersion !== NOIR_VERSION || toolchain.bbVersion !== BB_VERSION) {
-    console.warn(
-      `warning: installed toolchain (nargo ${toolchain.nargoVersion}, bb ${toolchain.bbVersion}) ` +
-        `does not match the pinned toolchain (nargo ${NOIR_VERSION}, bb ${BB_VERSION}) that ` +
-        `circuits/testvectors/*.json were generated with. Drift reported below may just be a ` +
-        `local toolchain mismatch, not a real regression.\n`,
-    );
+    const errorMsg =
+      `\n[TOOLCHAIN MISMATCH] Installed Noir/Barretenberg toolchain has drifted:\n` +
+      `  - Installed: nargo ${toolchain.nargoVersion}, bb ${toolchain.bbVersion}\n` +
+      `  - Pinned:    nargo ${NOIR_VERSION}, bb ${BB_VERSION}\n\n` +
+      `This check enforces the pinned toolchain. To fix toolchain mismatch:\n` +
+      `  noirup -v ${NOIR_VERSION}\n` +
+      `  bbup -v ${BB_VERSION}\n\n` +
+      `If this toolchain upgrade was intentional, update NOIR_VERSION and BB_VERSION in:\n` +
+      `  - circuits/scripts/testvectors.js\n` +
+      `  - circuits/scripts/build.sh\n` +
+      `  - circuits/README.md\n` +
+      `then regenerate test vectors with: node circuits/scripts/testvectors.js update\n`;
+
+    if (mode === "check") {
+      console.error(errorMsg);
+      process.exit(1);
+    } else {
+      console.warn(errorMsg);
+    }
   }
 
   const drifted = [];
-  for (const name of CIRCUITS) {
+  for (const name of circuits) {
     process.stdout.write(`${name}... `);
     const fresh = buildVector(name, toolchain);
 
@@ -173,6 +208,22 @@ function main() {
 
     const mismatches = [];
     if (committed.vk_hash !== fresh.vk_hash) mismatches.push("vk_hash");
+    // A version bump that is not reflected in the committed vector means the
+    // vector was regenerated (or hand-edited) without the version being
+    // declared consistently — the credential <-> circuit <-> VK chain would
+    // then be ambiguous.
+    if (committed.circuit_version !== fresh.circuit_version) {
+      mismatches.push(
+        `circuit_version (committed ${committed.circuit_version ?? "none"} != ` +
+          `circuits/circuit-versions.json ${fresh.circuit_version})`,
+      );
+    }
+    if (committed.circuit_vk_version !== fresh.circuit_vk_version) {
+      mismatches.push(
+        `circuit_vk_version (committed ${committed.circuit_vk_version ?? "none"} != ` +
+          `circuits/circuit-versions.json ${fresh.circuit_vk_version})`,
+      );
+    }
     if (JSON.stringify(committed.public_inputs) !== JSON.stringify(fresh.public_inputs)) {
       mismatches.push("public_inputs");
     }
@@ -189,13 +240,16 @@ function main() {
   }
 
   if (mode === "check" && drifted.length) {
-    console.error("\nDeterministic proof-generation test vectors drifted from circuits/testvectors/*.json:");
+    console.error("\n[CIRCUIT DRIFT] Deterministic proof-generation test vectors drifted from circuits/testvectors/*.json:");
     for (const d of drifted) console.error(`  - ${d.name}: ${d.reason}`);
     console.error(
-      `\nPinned toolchain: nargo ${NOIR_VERSION} / bb ${BB_VERSION} (see circuits/README.md).\n` +
-        `If you changed a circuit or bumped the toolchain on purpose, regenerate the vectors with:\n` +
-        `  node circuits/scripts/testvectors.js update\n` +
-        `and commit the result. Otherwise this is a real regression — do not update the vectors to hide it.`,
+      `\nToolchain verified as pinned: nargo ${NOIR_VERSION} / bb ${BB_VERSION}.\n` +
+        `Because the toolchain matches, this drift indicates circuit code or witness changes.\n` +
+        `If you made a deliberate circuit update:\n` +
+        `  1. Bump its entry in circuits/circuit-versions.json\n` +
+        `  2. Regenerate the vectors with: node circuits/scripts/testvectors.js update ${circuits.length === 1 ? circuits[0] : ""}\n` +
+        `  3. Stage and commit the updated fixtures and test vectors.\n` +
+        `Otherwise, this is an unintended circuit regression — do not update vectors to hide it.\n`,
     );
     process.exit(1);
   }
@@ -203,4 +257,17 @@ function main() {
   console.log(mode === "check" ? "\nAll test vectors match." : "\nAll test vectors regenerated.");
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  NOIR_VERSION,
+  BB_VERSION,
+  CIRCUITS,
+  toolVersions,
+  parseProverToml,
+  buildVector,
+  loadCommitted,
+  main,
+};

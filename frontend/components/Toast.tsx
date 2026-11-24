@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
 import {
   IconCheck,
   IconX,
@@ -18,6 +19,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { EXPLORER_TX } from "@/lib/stellar";
+import { truncateTxHash } from "@/lib/format";
 
 type ToastVariant = "info" | "success" | "error";
 
@@ -150,6 +152,7 @@ function ToastStack({
 }
 
 function ToastItem({ toast, onDismiss }: { toast: ToastEntry; onDismiss: () => void }) {
+  const t = useTranslations();
   const icon =
     toast.variant === "success" ? (
       <IconCheck size={13} stroke={2.5} />
@@ -174,12 +177,12 @@ function ToastItem({ toast, onDismiss }: { toast: ToastEntry; onDismiss: () => v
             rel="noreferrer"
             className="toast-link"
           >
-            {toast.txHash.slice(0, 8)}...{toast.txHash.slice(-6)}
+            {truncateTxHash(toast.txHash)}
             <IconExternalLink size={11} />
           </a>
         )}
       </div>
-      <button className="toast-close" onClick={onDismiss} aria-label="Dismiss notification">
+      <button className="toast-close" onClick={onDismiss} aria-label={t("common.dismiss")}>
         <IconX size={13} />
       </button>
     </div>

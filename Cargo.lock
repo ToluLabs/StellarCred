@@ -340,9 +340,10 @@ dependencies = [
 
 [[package]]
 name = "credential_verifier"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "soroban-sdk",
+ "test_support",
  "ultrahonk_soroban_verifier",
 ]
 
@@ -737,13 +738,14 @@ dependencies = [
 
 [[package]]
 name = "gated_pool"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "credential_verifier",
  "issuer_registry",
  "proof_registry",
  "proptest",
  "soroban-sdk",
+ "test_support",
 ]
 
 [[package]]
@@ -935,10 +937,11 @@ checksum = "8e04e2fd2b8188ea827b32ef11de88377086d690286ab35747ef7f9bf3ccb590"
 
 [[package]]
 name = "issuer_registry"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "proptest",
  "soroban-sdk",
+ "test_support",
 ]
 
 [[package]]
@@ -1159,12 +1162,13 @@ dependencies = [
 
 [[package]]
 name = "proof_registry"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "credential_verifier",
  "issuer_registry",
  "proptest",
  "soroban-sdk",
+ "test_support",
 ]
 
 [[package]]
@@ -1831,6 +1835,17 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "test_support"
+version = "1.0.0"
+dependencies = [
+ "credential_verifier",
+ "gated_pool",
+ "issuer_registry",
+ "proof_registry",
+ "soroban-sdk",
 ]
 
 [[package]]

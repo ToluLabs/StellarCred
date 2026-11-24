@@ -17,6 +17,8 @@ import {
   hasClaim,
   getClaims,
   buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
   CLAIM_TYPES,
 } from "../src/index";
 import { TEST_WALLET, REGISTRY_ID, RPC_URL } from "./fixtures";

@@ -27,14 +27,16 @@ vi.mock("@creit.tech/stellar-wallets-kit", () => {
     openModal = vi.fn();
     setWallet = vi.fn();
     getAddress = vi.fn();
-    getNetwork = vi.fn();
+    // getNetwork() is async on the real kit — resolve a Promise, not a bare
+    // object, so `await kit.getNetwork()` works under the awaited getNetworkOk().
+    getNetwork = vi.fn(async () => ({ networkPassphrase: "Test SDF Network ; September 2015" }));
     signTransaction = vi.fn();
     constructor(opts: { modules: ModuleInterface[] }) {
       this.modules = opts.modules;
       MockKit.lastInstance = this;
     }
   }
-  return {
+  return { ModuleType: { HW_WALLET: "HW_WALLET" },
     StellarWalletsKit: MockKit,
     WalletNetwork: { PUBLIC: "Public Global Stellar Network ; September 2015", TESTNET: "Test SDF Network ; September 2015" },
     allowAllModules: () => [{ id: "freighter" }, { id: "albedo" }] as unknown as ModuleInterface[],
@@ -78,7 +80,7 @@ describe("lib/wallet.ts", () => {
     vi.resetModules();
     const mod = await import("../wallet");
     ({ getKit, connect, restore, signTx, getNetworkOk } = mod);
-    kit = getKit() as unknown as MockKitInstance;
+    kit = (await getKit()) as unknown as MockKitInstance;
   });
 
   describe("connect", () => {
@@ -146,6 +148,18 @@ describe("lib/wallet.ts", () => {
       });
 
       await expect(connect()).rejects.toMatchObject({ kind: "rejected" });
+    });
+
+    it("maps timeout error during approval to timeout kind with descriptive message", async () => {
+      kit.openModal.mockImplementation(async ({ onWalletSelected }: { onWalletSelected: (w: ISupportedWallet) => Promise<void> }) => {
+        kit.getAddress.mockRejectedValue(new Error("Request timed out while waiting for wallet approval"));
+        await onWalletSelected(wallet("freighter", "Freighter", "https://freighter.app"));
+      });
+
+      await expect(connect()).rejects.toMatchObject({
+        kind: "timeout",
+        message: expect.stringMatching(/timed out/i),
+      });
     });
   });
 
@@ -234,6 +248,21 @@ describe("lib/wallet.ts getWalletErrorInfo() per-kind error mapping", () => {
     expect(info.message.toLowerCase()).toMatch(/try again/i);
   });
 
+  it("maps device-disconnected to a reconnect-and-retry note (not benign)", () => {
+    const info = getWalletErrorInfo(
+      new WalletConnectError(
+        "device-disconnected",
+        "Your Ledger was disconnected. Reconnect it and try again.",
+        { walletName: "Ledger" },
+      ),
+    );
+    expect(info.benign).toBe(false);
+    expect(info.action).toBe("retry");
+    expect(info.title).toMatch(/hardware wallet disconnected/i);
+    expect(info.message).toMatch(/reconnect/i);
+    expect(info.message).toMatch(/nothing was signed/i);
+  });
+
   it("maps unknown to a generic message plus a way to report", () => {
     const info = getWalletErrorInfo(new WalletConnectError("unknown", "Something went wrong"));
     expect(info.benign).toBe(false);
@@ -267,7 +296,7 @@ describe("lib/wallet.ts getKit() WalletConnect module wiring", () => {
     const { getKit } = await import("../wallet");
     const { WalletConnectModule } = await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
 
-    const modules = (getKit() as unknown as MockKitInstance).modules;
+    const modules = ((await getKit()) as unknown as MockKitInstance).modules;
     expect(modules.some((m) => m instanceof WalletConnectModule)).toBe(false);
   });
 
@@ -277,9 +306,27 @@ describe("lib/wallet.ts getKit() WalletConnect module wiring", () => {
     const { getKit } = await import("../wallet");
     const { WalletConnectModule } = await import("@creit.tech/stellar-wallets-kit/modules/walletconnect.module");
 
-    const modules = (getKit() as unknown as MockKitInstance).modules;
+    const modules = ((await getKit()) as unknown as MockKitInstance).modules;
     const wc = modules.find((m) => m instanceof WalletConnectModule) as unknown as { params: { projectId: string } } | undefined;
     expect(wc).toBeDefined();
     expect(wc?.params.projectId).toBe("test-project-id");
+  });
+
+  it("registers a Ledger module", async () => {
+    vi.resetModules();
+    const { getKit } = await import("../wallet");
+    const { LEDGER_ID } = await import("../ledger-module");
+
+    const modules = ((await getKit()) as unknown as MockKitInstance).modules;
+    const ledger = modules.find((m) => m.productId === LEDGER_ID);
+    expect(ledger).toBeDefined();
+    expect(ledger?.productName).toBe("Ledger");
+  });
+
+  it("Ledger module is available when WebUSB is supported", async () => {
+    const { getLedgerModule } = await import("../ledger-module");
+    const ledger = getLedgerModule();
+    const available = await ledger.isAvailable();
+    expect(typeof available).toBe("boolean");
   });
 });

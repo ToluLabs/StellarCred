@@ -1,29 +1,57 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { headers } from "next/headers";
+import localFont from "next/font/local";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { SiteNav } from "@/components/SiteNav";
 import { NetworkBanner } from "@/components/NetworkBanner";
+import { RpcStatusBanner } from "@/components/RpcStatusBanner";
+import { Footer } from "@/components/Footer";
+import { LocaleMetaTags } from "@/components/LocaleMetaTags";
 import { WalletProvider } from "@/lib/wallet-context";
 import { ToastProvider } from "@/components/Toast";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
+import type { Locale } from "@/i18n.config";
+// OnboardingWizard is deferred via next/dynamic(ssr:false) inside this client
+// wrapper. next/dynamic with ssr:false cannot be used directly in a Server
+// Component, so the call lives in a "use client" boundary.
+import { OnboardingOverlays } from "@/components/OnboardingOverlays";
 
-const body = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+// Fonts are vendored as latin-subset variable woff2 files (from Google Fonts)
+// instead of next/font/google: the google loader downloads at build time,
+// which fails in CI when the runner cannot reach fonts.googleapis.com.
+const body = localFont({
   variable: "--font-body",
+  preload: false,
+  src: [{ path: "./fonts/inter-latin.woff2", weight: "400 500", style: "normal" }],
 });
 
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+const display = localFont({
   variable: "--font-display",
+  preload: false,
+  src: [
+    {
+      path: "./fonts/space-grotesk-latin.woff2",
+      weight: "500 700",
+      style: "normal",
+    },
+  ],
 });
 
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
   variable: "--font-mono",
+  preload: false,
+  src: [
+    {
+      path: "./fonts/jetbrains-mono-latin.woff2",
+      weight: "400 500",
+      style: "normal",
+    },
+  ],
 });
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "StellarCred — Prove anything. Reveal nothing.",
@@ -31,76 +59,55 @@ export const metadata: Metadata = {
     "Zero-knowledge credentials on Stellar. Prove facts about yourself without the data ever touching the chain.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  let locale = "en";
+  try {
+    locale = await getLocale();
+  } catch {
+    locale = "en";
+  }
+
+  let messages = {};
+  try {
+    messages = await getMessages();
+  } catch {
+    messages = {};
+  }
+
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${body.variable} ${display.variable} ${mono.variable}`}
-      // Omit `data-theme` so the blocking boot script owns first paint
-      // (avoids flashing the wrong palette before hydration).
       suppressHydrationWarning
     >
       <head>
         <script
           id="theme-detection"
+          nonce={nonce}
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
         />
+        <LocaleMetaTags locale={locale as Locale} />
       </head>
       <body>
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
-        <ToastProvider>
-          <WalletProvider>
-            <SiteNav />
-            <NetworkBanner />
-            <main id="main-content" tabIndex={-1} className="container">
-              {children}
-            </main>
-            <footer className="site-footer">
-              <div className="site-footer-inner">
-                <span className="faint" style={{ fontSize: "0.8125rem" }}>
-                  © {new Date().getFullYear()} StellarCred
-                </span>
-                <div className="row" style={{ gap: "1.5rem" }}>
-                  <a
-                    href="https://github.com/Psalmuel01/StellarCred"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="footer-link"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      aria-label="GitHub"
-                    >
-                      <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
-                    </svg>
-                    GitHub
-                  </a>
-                  <a
-                    href="https://github.com/Psalmuel01/StellarCred/tree/main/frontend/packages/sdk"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="footer-link mono"
-                    style={{ fontSize: "0.75rem" }}
-                  >
-                    @stellarcred/sdk
-                  </a>
-                  <a href="/developers" className="footer-link">
-                    Docs
-                  </a>
-                </div>
-              </div>
-            </footer>
-          </WalletProvider>
-        </ToastProvider>
+        <NextIntlClientProvider messages={messages} locale={locale}>
+          <ToastProvider>
+            <WalletProvider>
+              <OnboardingOverlays />
+              <SiteNav />
+              <NetworkBanner />
+              <RpcStatusBanner />
+              <main id="main-content" tabIndex={-1} className="container">
+                {children}
+              </main>
+              <Footer />
+            </WalletProvider>
+          </ToastProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

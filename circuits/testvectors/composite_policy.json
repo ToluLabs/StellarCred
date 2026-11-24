@@ -1,0 +1,198 @@
+{
+  "description": "Composite eligibility policy test vectors. Each vector encodes a bounded boolean formula over committed attributes and the expected single pass/fail result.",
+  "version": 1,
+  "circuit": "composite_policy",
+  "max_terms": 8,
+  "max_attributes": 4,
+  "policy_encoding": {
+    "description": "A policy is a flat list of terms combined with top-level AND. Each term is a clause of literals combined with OR. This is CNF (conjunctive normal form) over attribute checks.",
+    "term_format": "{ \"operator\": \"AND\", \"literals\": [ { \"attribute\": <string>, \"kind\": \"threshold\" | \"membership\", ... } ] }",
+    "threshold_literal": "{ \"attribute\": <string>, \"kind\": \"threshold\", \"op\": \">=\" | \">\", \"<\" | \"<=\" | \"==\", \"value\": <integer> }",
+    "membership_literal": "{ \"attribute\": <string>, \"kind\": \"membership\", \"set\": [ <integer> ] }",
+    "negation": "A literal may carry \"negate\": true to invert its boolean value.",
+    "semantics": "result = AND over terms of (OR over literals). Empty term list is true. An empty clause is false."
+  },
+  "attributes": {
+    "accredited": { "type": "boolean" },
+    "income": { "type": "integer", "min": 0, "max": 1000000000 },
+    "jurisdiction": { "type": "integer", "min": 0, "max": 9999 },
+    "age": { "type": "integer", "min": 0, "max": 150 }
+  },
+  "vectors": [
+    {
+      "name": "accredited_or_high_income_and_jurisdiction",
+      "description": "(accredited OR income >= 50000) AND jurisdiction in {1, 2, 3}",
+      "witness": { "accredited": false, "income": 60000, "jurisdiction": 2, "age": 40 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 },
+            { "attribute": "income", "kind": "threshold", "op": ">=", "value": 50000 }
+          ]
+        },
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "jurisdiction", "kind": "membership", "set": [1, 2, 3] }
+          ]
+        }
+      ],
+      "expected": true
+    },
+    {
+        "name": "accredited_or_high_income_and_jurisdiction_fail_income",
+        "description": "Fails the income threshold and is not accredited.",
+        "witness": { "accredited": false, "income": 49999, "jurisdiction": 2, "age": 40 },
+        "policy": [
+          {
+            "operator": "AND",
+            "literals": [
+              { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 },
+              { "attribute": "income", "kind": "threshold", "op": ">=", "value": 50000 }
+            ]
+          },
+          {
+            "operator": "AND",
+            "literals": [
+              { "attribute": "jurisdiction", "kind": "membership", "set": [1, 2, 3] }
+            ]
+          }
+        ],
+        "expected": false
+      },
+    {
+      "name": "accredited_or_high_income_and_jurisdiction_fail_jurisdiction",
+      "description": "Passes the accredited/income clause but jurisdiction is outside the accepted set.",
+      "witness": { "accredited": true, "income": 10000, "jurisdiction": 9, "age": 40 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 },
+            { "attribute": "income", "kind": "threshold", "op": ">=", "value": 50000 }
+          ]
+        },
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "jurisdiction", "kind": "membership", "set": [1, 2, 3] }
+          ]
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "accredited_via_boolean_true",
+      "description": "Accredited boolean is true, satisfying the OR clause regardless of income.",
+      "witness": { "accredited": true, "income": 0, "jurisdiction": 1, "age": 25 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 },
+            { "attribute": "income", "kind": "threshold", "op": ">=", "value": 50000 }
+          ]
+        },
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "jurisdiction", "kind": "membership", "set": [1, 2, 3] }
+          ]
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "negated_jurisdiction_exclusion",
+      "description": "Accredited AND jurisdiction NOT in {4, 5}.",
+      "witness": { "accredited": true, "income": 20000, "jurisdiction": 2, "age": 30 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 }
+          ]
+        },
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "jurisdiction", "kind": "membership", "set": [4, 5], "negate": true }
+          ]
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "negated_jurisdiction_exclusion_fail",
+      "description": "Accredited but jurisdiction is in the excluded set.",
+      "witness": { "accredited": true, "income": 20000, "jurisdiction": 4, "age": 30 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 }
+          ]
+        },
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "jurisdiction", "kind": "membership", "set": [4, 5], "negate": true }
+          ]
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "age_and_income_combination",
+      "description": "(age >= 18 AND income >= 25000) OR accredited.",
+      "witness": { "accredited": false, "income": 30000, "jurisdiction": 7, "age": 22 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "age", "kind": "threshold", "op": ">=", "value": 18 },
+            { "attribute": "income", "kind": "threshold", "op": ">=", "value": 25000 },
+            { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 }
+          ]
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "age_and_income_combination_fail",
+      "description ": "Underage or income too low, and not accredited.",
+      "witness": { "accredited": false, "income": 24999, "jurisdiction": 7, "age": 17 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": [
+            { "attribute": "age", "kind": "threshold", "op": ">=", "value": 18 },
+            { "attribute": "income", "kind": "threshold", "op": ">=", "value": 25000 },
+            { "attribute": "accredited", "kind": "threshold", "op": "==", "value": 1 }
+          ]
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "empty_policy_is_true",
+      "description": "An empty term list is true by convention.",
+      "witness": { "accredited": false, "income": 0,"jurisdiction": 0, "age": 0 },
+      "policy": [],
+      "expected": true
+    },
+    {
+      "name": "empty_clause_is_false",
+      "description": "An empty clause is false by convention.",
+      "witness": { "accredited": true, "income": 100000,"jurisdiction": 1, "age": 40 },
+      "policy": [
+        {
+          "operator": "AND",
+          "literals": []
+        }
+      ],
+      "expected": false
+    }
+  ]
+}

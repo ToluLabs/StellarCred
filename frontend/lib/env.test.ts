@@ -64,6 +64,13 @@ describe("loadEnv", () => {
     expect(env.PERSONA_KYC_TEMPLATE_ID).toBe("itmpl_123");
   });
 
+  it("accepts PERSONA_WEBHOOK_SECRET", () => {
+    const env = loadEnv({
+      PERSONA_WEBHOOK_SECRET: "whsec_test123",
+    });
+    expect(env.PERSONA_WEBHOOK_SECRET).toBe("whsec_test123");
+  });
+
   it("rejects a partial Plaid configuration", () => {
     expect(() => loadEnv({ PLAID_ACCESS_TOKEN: "access-sandbox-x" })).toThrow(EnvValidationError);
     expect(() => loadEnv({ PLAID_CLIENT_ID: "cid", PLAID_SECRET: "sec" })).toThrow(
@@ -80,11 +87,33 @@ describe("loadEnv", () => {
     expect(env.PLAID_CLIENT_ID).toBe("cid");
   });
 
+  it("accepts a multi-item Plaid configuration via PLAID_ACCESS_TOKENS", () => {
+    const env = loadEnv({
+      PLAID_CLIENT_ID: "cid",
+      PLAID_SECRET: "sec",
+      PLAID_ACCESS_TOKENS: "access-sandbox-x,access-sandbox-y",
+    });
+    expect(env.PLAID_ACCESS_TOKENS).toBe("access-sandbox-x,access-sandbox-y");
+    expect(env.PLAID_ACCESS_TOKEN).toBeUndefined();
+  });
+
+  it("rejects PLAID_ACCESS_TOKENS without credentials", () => {
+    expect(() =>
+      loadEnv({ PLAID_ACCESS_TOKENS: "access-sandbox-x,access-sandbox-y" }),
+    ).toThrow(EnvValidationError);
+  });
+
   it("rejects a NEXT_PUBLIC_-prefixed server secret before running schema validation", () => {
     expect(() => loadEnv({ NEXT_PUBLIC_ISSUER_PRIVATE_KEY: "leaked" })).toThrow(
       EnvValidationError,
     );
     expect(() => loadEnv({ NEXT_PUBLIC_PLAID_SECRET: "leaked" })).toThrow(EnvValidationError);
+    expect(() => loadEnv({ NEXT_PUBLIC_PLAID_ACCESS_TOKENS: "leaked" })).toThrow(
+      EnvValidationError,
+    );
+    expect(() => loadEnv({ NEXT_PUBLIC_PERSONA_WEBHOOK_SECRET: "leaked" })).toThrow(
+      EnvValidationError,
+    );
   });
 
   it("reports multiple invalid base fields in a single error rather than failing on the first", () => {

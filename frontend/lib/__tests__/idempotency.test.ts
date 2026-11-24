@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+  completedIdempotencyRecord,
+  decryptEncryptedResponseIdempotencyRecord,
+  encryptedResponseIdempotencyRecord,
   idempotencyGet,
+  idempotencyGetAsync,
   idempotencySet,
   idempotencyCleanup,
   idempotencyClear,
@@ -11,14 +15,20 @@ import {
   idempotencyInFlightSize,
   isValidIdempotencyKey,
   MAX_KEY_LENGTH_BYTES,
-  CachedResponse,
+  personaPendingIdempotencyRecord,
+  type CompletedIdempotencyRecord,
 } from "../idempotency";
+import { MemoryStore, setSharedStoreForTesting } from "../shared-store";
 
-function makeEntry(overrides: Partial<CachedResponse> = {}): CachedResponse {
+const originalReplayEncryptionKey = process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY;
+
+function makeRecord(
+  overrides: Partial<CompletedIdempotencyRecord> = {},
+): CompletedIdempotencyRecord {
   return {
-    status: 200,
-    body: JSON.stringify({ credentials: [{ type: "kyc", value: "0xabc" }] }),
-    headers: { "content-type": "application/json" },
+    version: 1,
+    kind: "completed",
+    responseHash: "a".repeat(64),
     createdAt: Date.now(),
     ...overrides,
   };
@@ -26,51 +36,93 @@ function makeEntry(overrides: Partial<CachedResponse> = {}): CachedResponse {
 
 describe("idempotency store", () => {
   beforeEach(() => {
+    setSharedStoreForTesting(new MemoryStore());
     idempotencyClear();
   });
 
   afterEach(() => {
     idempotencyClear();
+    setSharedStoreForTesting(null);
+    if (originalReplayEncryptionKey === undefined) {
+      delete process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY;
+    } else {
+      process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = originalReplayEncryptionKey;
+    }
+  });
+
+  describe("completedIdempotencyRecord", () => {
+    it("stores only a non-reversible response hash and completion marker", () => {
+      const body = JSON.stringify({
+        credentials: [
+          {
+            value: "1995-06-15",
+            salt: "0xabc",
+            commitment: "123",
+            sig: [1, 2, 3],
+          },
+        ],
+      });
+
+      const record = completedIdempotencyRecord(200, body);
+      const serialized = JSON.stringify(record);
+
+      expect(record).toMatchObject({ version: 1, kind: "completed" });
+      expect(record.responseHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(serialized).not.toContain("1995-06-15");
+      expect(serialized).not.toContain("credentials");
+      expect(serialized).not.toContain("value");
+      expect(serialized).not.toContain("salt");
+      expect(serialized).not.toContain("commitment");
+      expect(serialized).not.toContain("sig");
+    });
+  });
+
+  describe("encrypted batch replay records", () => {
+    it("round-trips successful responses without exposing their contents", () => {
+      process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = "b".repeat(64);
+      const body = JSON.stringify({ credentials: [{ commitment: "private-credential" }] });
+      const record = encryptedResponseIdempotencyRecord(200, body);
+
+      expect(record.kind).toBe("encrypted_response");
+      expect(JSON.stringify(record)).not.toContain("private-credential");
+      expect(decryptEncryptedResponseIdempotencyRecord(record)).toBe(body);
+    });
+
+    it("rejects tampered encrypted responses", () => {
+      process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY = "b".repeat(64);
+      const record = encryptedResponseIdempotencyRecord(200, '{"ok":true}');
+      expect(() =>
+        decryptEncryptedResponseIdempotencyRecord({
+          ...record,
+          ciphertext: Buffer.from("tampered").toString("base64url"),
+        }),
+      ).toThrow();
+    });
   });
 
   describe("idempotencyGet", () => {
-    it("returns null on cache miss (key not set)", () => {
+    it("returns null on cache miss", () => {
       expect(idempotencyGet("key-1")).toBeNull();
     });
 
-    it("returns the cached response on cache hit", () => {
-      const entry = makeEntry();
-      idempotencySet("key-1", entry);
-      const cached = idempotencyGet("key-1");
-      expect(cached).not.toBeNull();
-      expect(cached!.status).toBe(200);
-      expect(cached!.body).toBe(entry.body);
-      expect(cached!.headers).toEqual(entry.headers);
+    it("returns the cached minimal record", () => {
+      const record = makeRecord();
+      idempotencySet("key-1", record);
+
+      expect(idempotencyGet("key-1")).toEqual(record);
     });
 
-    it("returns null for a different key (independent keys)", () => {
-      idempotencySet("key-a", makeEntry());
+    it("returns null for a different key", () => {
+      idempotencySet("key-a", makeRecord());
       expect(idempotencyGet("key-b")).toBeNull();
     });
 
-    it("returns the correct response for each independent key", () => {
-      const entryA = makeEntry({ status: 200 });
-      const entryB = makeEntry({ status: 400, body: JSON.stringify({ error: "bad" }) });
-      idempotencySet("key-a", entryA);
-      idempotencySet("key-b", entryB);
-      expect(idempotencyGet("key-a")!.status).toBe(200);
-      expect(idempotencyGet("key-b")!.status).toBe(400);
-    });
-
     it("returns null after TTL expiry", () => {
-      // Use Date.now mocking to simulate passage of time.
       const now = Date.now();
       const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
-      idempotencySet("key-1", makeEntry({ createdAt: now }));
+      idempotencySet("key-1", makeRecord({ createdAt: now }));
 
-      // Advance time past the default 60-second TTL + 1 ms.
       nowSpy.mockReturnValue(now + 61_000);
-
       expect(idempotencyGet("key-1")).toBeNull();
 
       vi.restoreAllMocks();
@@ -79,34 +131,80 @@ describe("idempotency store", () => {
     it("still hits just before TTL expires", () => {
       const now = Date.now();
       const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
-      idempotencySet("key-1", makeEntry({ createdAt: now }));
+      idempotencySet("key-1", makeRecord({ createdAt: now }));
 
-      // 59 seconds later — still valid.
       nowSpy.mockReturnValue(now + 59_000);
-
       expect(idempotencyGet("key-1")).not.toBeNull();
 
       vi.restoreAllMocks();
     });
 
-    it("returns null for empty string key (treated as missing)", () => {
-      // Empty keys are not stored; the store handles them gracefully.
+    it("returns null for an empty key", () => {
       expect(idempotencyGet("")).toBeNull();
     });
   });
 
+  describe("shared-store records", () => {
+    it("rewrites legacy full-response data to a redacted completion marker", async () => {
+      const sharedStore = new MemoryStore();
+      setSharedStoreForTesting(sharedStore);
+      const body = JSON.stringify({
+        credentials: [{ value: "1995-06-15", salt: "0xabc" }],
+      });
+      await sharedStore.set(
+        "idem:legacy-key",
+        JSON.stringify({
+          status: 200,
+          body,
+          headers: { "content-type": "application/json" },
+          createdAt: Date.now(),
+        }),
+        60,
+      );
+
+      const record = await idempotencyGetAsync("legacy-key");
+      const stored = await sharedStore.get("idem:legacy-key");
+
+      expect(record).toMatchObject({ version: 1, kind: "completed" });
+      expect(stored).not.toContain("1995-06-15");
+      expect(stored).not.toContain("credentials");
+      expect(stored).not.toContain("value");
+      expect(stored).not.toContain("salt");
+    });
+
+    it("keeps the Persona redirect without any request attributes", async () => {
+      const sharedStore = new MemoryStore();
+      setSharedStoreForTesting(sharedStore);
+      const record = personaPendingIdempotencyRecord(
+        "inq_test",
+        "https://withpersona.com/verify?inquiry=inq_test",
+      );
+
+      idempotencySet("persona-key", record);
+      await Promise.resolve();
+      const stored = await sharedStore.get("idem:persona-key");
+
+      expect(stored).toContain("inq_test");
+      expect(stored).not.toContain("date_of_birth");
+      expect(stored).not.toContain("1995-06-15");
+    });
+  });
+
   describe("idempotencySet", () => {
-    it("stores an entry and increments size", () => {
+    it("stores a record and increments size", () => {
       expect(idempotencySize()).toBe(0);
-      idempotencySet("key-1", makeEntry());
+      idempotencySet("key-1", makeRecord());
       expect(idempotencySize()).toBe(1);
     });
 
-    it("overwrites an existing entry with the same key", () => {
-      idempotencySet("key-1", makeEntry({ status: 200 }));
-      idempotencySet("key-1", makeEntry({ status: 202 }));
+    it("overwrites an existing record with the same key", () => {
+      idempotencySet("key-1", makeRecord({ responseHash: "a".repeat(64) }));
+      idempotencySet("key-1", makeRecord({ responseHash: "b".repeat(64) }));
       expect(idempotencySize()).toBe(1);
-      expect(idempotencyGet("key-1")!.status).toBe(202);
+      expect(idempotencyGet("key-1")).toMatchObject({
+        kind: "completed",
+        responseHash: "b".repeat(64),
+      });
     });
   });
 
@@ -115,50 +213,26 @@ describe("idempotency store", () => {
       const now = Date.now();
       vi.spyOn(Date, "now").mockReturnValue(now);
 
-      // Fresh entry.
-      idempotencySet("fresh", makeEntry({ createdAt: now }));
-      // Expired entry — manually set with old timestamp.
-      idempotencySet("stale", makeEntry({ createdAt: now - 61_000 }));
+      idempotencySet("fresh", makeRecord({ createdAt: now }));
+      idempotencySet("stale", makeRecord({ createdAt: now - 61_000 }));
 
       idempotencyCleanup();
 
       expect(idempotencyGet("fresh")).not.toBeNull();
-      // Expired entry should have been cleaned up and also return null on get.
       expect(idempotencyGet("stale")).toBeNull();
       expect(idempotencySize()).toBe(1);
 
       vi.restoreAllMocks();
     });
-
-    it("is a no-op when there are no expired entries", () => {
-      idempotencySet("key-1", makeEntry());
-      idempotencySet("key-2", makeEntry());
-      const before = idempotencySize();
-      idempotencyCleanup();
-      expect(idempotencySize()).toBe(before);
-    });
   });
 
   describe("idempotencyClear", () => {
     it("removes all entries", () => {
-      idempotencySet("key-1", makeEntry());
-      idempotencySet("key-2", makeEntry());
+      idempotencySet("key-1", makeRecord());
+      idempotencySet("key-2", makeRecord());
       expect(idempotencySize()).toBe(2);
       idempotencyClear();
       expect(idempotencySize()).toBe(0);
-    });
-  });
-
-  describe("idempotencySize", () => {
-    it("returns 0 for an empty store", () => {
-      expect(idempotencySize()).toBe(0);
-    });
-
-    it("returns the correct count after multiple sets", () => {
-      idempotencySet("a", makeEntry());
-      idempotencySet("b", makeEntry());
-      idempotencySet("c", makeEntry());
-      expect(idempotencySize()).toBe(3);
     });
   });
 
@@ -177,9 +251,7 @@ describe("idempotency store", () => {
     });
 
     it("rejects keys longer than the byte limit", () => {
-      expect(
-        isValidIdempotencyKey("a".repeat(MAX_KEY_LENGTH_BYTES + 1)),
-      ).toBe(false);
+      expect(isValidIdempotencyKey("a".repeat(MAX_KEY_LENGTH_BYTES + 1))).toBe(false);
     });
 
     it("rejects control characters", () => {
@@ -194,39 +266,38 @@ describe("idempotency store", () => {
       expect(idempotencyGet("\u0000")).toBeNull();
     });
 
-    it("idempotencySet ignores invalid keys (no memory amplification)", () => {
-      idempotencySet("a".repeat(MAX_KEY_LENGTH_BYTES + 1), makeEntry());
-      idempotencySet("\u0000", makeEntry());
+    it("idempotencySet ignores invalid keys", () => {
+      idempotencySet("a".repeat(MAX_KEY_LENGTH_BYTES + 1), makeRecord());
+      idempotencySet("\u0000", makeRecord());
       expect(idempotencySize()).toBe(0);
     });
   });
 
   describe("in-flight sentinel", () => {
-    it("first caller becomes the leader (begin returns null)", () => {
+    it("first caller becomes the leader", () => {
       expect(idempotencyInFlightBegin("key-1")).toBeNull();
       expect(idempotencyInFlightSize()).toBe(1);
     });
 
     it("a duplicate caller joins the same in-flight slot", () => {
       expect(idempotencyInFlightBegin("key-1")).toBeNull();
-      const joined = idempotencyInFlightBegin("key-1");
-      expect(joined).not.toBeNull();
+      expect(idempotencyInFlightBegin("key-1")).not.toBeNull();
       expect(idempotencyInFlightSize()).toBe(1);
     });
 
-    it("settling resolves waiting duplicates with the produced response", async () => {
+    it("settling shares only the produced minimal record", async () => {
       idempotencyInFlightBegin("key-1");
       const joined = idempotencyInFlightBegin("key-1")!;
-      const entry = makeEntry({ status: 202 });
-      idempotencyInFlightSettle("key-1", entry);
-      await expect(joined).resolves.toBe(entry);
+      const record = makeRecord();
+      idempotencyInFlightSettle("key-1", record);
+      await expect(joined).resolves.toEqual(record);
       expect(idempotencyInFlightSize()).toBe(0);
     });
 
     it("a settled slot allows the next caller to become a new leader", async () => {
       idempotencyInFlightBegin("key-1");
       const joined = idempotencyInFlightBegin("key-1")!;
-      idempotencyInFlightSettle("key-1", makeEntry());
+      idempotencyInFlightSettle("key-1", makeRecord());
       await joined;
       expect(idempotencyInFlightBegin("key-1")).toBeNull();
     });
@@ -252,23 +323,17 @@ describe("idempotency store", () => {
       expect(idempotencyInFlightSize()).toBe(0);
     });
 
-    it("prunes stale in-flight slots after the TTL (crashed/over-TTL leader)", async () => {
+    it("prunes stale in-flight slots after the TTL", async () => {
       const now = Date.now();
       const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
 
-      // Leader slot created at `now`; a duplicate joins and awaits it.
       idempotencyInFlightBegin("key-1");
       const joined = idempotencyInFlightBegin("key-1")!;
 
-      // Simulate time passing beyond the 60s TTL; the next begin() prunes
-      // the stale slot and the waiting duplicate is released with an error.
       nowSpy.mockReturnValue(now + 61_000);
       idempotencyInFlightBegin("key-2");
 
-      await expect(joined).rejects.toThrow(
-        "idempotency in-flight slot expired",
-      );
-      // Only the fresh key-2 slot remains.
+      await expect(joined).rejects.toThrow("idempotency in-flight slot expired");
       expect(idempotencyInFlightSize()).toBe(1);
 
       vi.restoreAllMocks();

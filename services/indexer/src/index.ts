@@ -15,37 +15,48 @@ import http from "http";
 import { loadConfig } from "./config";
 import { createDb } from "./db";
 import { createIngester } from "./ingester";
+import { createIntegrityChecker } from "./integrity";
 import { buildApp } from "./api";
+import { logger } from "./logging";
 
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // ── Database ─────────────────────────────────────────────────────────────
+  // ── Database ────────────────────────────────────────────────────────────
   const db = createDb(config);
   await db.migrate();
-  console.log(`[indexer] Database ready (driver: ${config.dbDriver})`);
+  logger.info("indexer_database_ready", { db_driver: config.dbDriver });
 
-  // ── Ingester ──────────────────────────────────────────────────────────────
+  // ── Ingester ────────────────────────────────────────────────────────────
   const ingester = createIngester(config, db);
   ingester.start();
 
+  // ── On-chain data-integrity checks (#612) ────────────────────────────────
+  // Periodically re-reads a rotating sample of claims out of contract state so
+  // drift in the event-derived table surfaces as a metric instead of silently
+  // wrong answers for consumers.
+  const integrity = createIntegrityChecker(config, db);
+  integrity.start();
+
   // ── HTTP API ──────────────────────────────────────────────────────────────
-  const app = buildApp(db, ingester, config);
+  const app = buildApp(db, ingester, config, integrity);
   const server = http.createServer(app);
 
   await new Promise<void>((resolve, reject) => {
     server.listen(config.port, () => resolve());
     server.once("error", reject);
   });
-  console.log(`[indexer] HTTP API listening on :${config.port}`);
+  logger.info("indexer_listening", { port: config.port });
 
-  // ── Graceful shutdown ─────────────────────────────────────────────────────
+  // ── Graceful shutdown ───────────────────────────────────────────────────
   const shutdown = async (): Promise<void> => {
-    console.log("[indexer] Shutting down…");
+    logger.info("indexer_shutting_down");
     ingester.stop();
+    await ingester.shutdown();
+    await integrity.stop();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await db.close();
-    console.log("[indexer] Goodbye.");
+    logger.info("indexer_stopped");
     process.exit(0);
   };
 
@@ -54,6 +65,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[indexer] Fatal startup error:", err);
+  logger.error("indexer_startup_failed", { error: err });
   process.exit(1);
 });

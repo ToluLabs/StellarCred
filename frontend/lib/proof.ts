@@ -1,4 +1,4 @@
-// Client-side zero-knowledge proof generation.
+// Client-side zero-knowledge proof generation — the proving *engine*.
 //
 // Witness generation (Noir circuit execution) runs server-side via POST /api/witness —
 // this avoids bundling @noir-lang/acvm_js WASM through Next.js/webpack, which fails in
@@ -10,70 +10,36 @@
 // for witness generation only; the proof itself is computed locally.
 //
 // Toolchain must match the contracts: Noir 1.0.0-beta.9 / bb 0.87.0.
+//
+// ── Where this code runs ────────────────────────────────────────────────────
+// Everything below is context-free on purpose: it touches no DOM and reads
+// cross-origin isolation off `globalThis`, so the exact same module runs either
+//   • inside the dedicated prover worker (lib/proof-worker.ts) — the normal
+//     path, keeping witness decoding, backend construction and proof
+//     orchestration off the main thread — or
+//   • on the main thread, as the fallback lib/proof-client.ts uses when Web
+//     Workers are unavailable (jsdom/unit tests, a worker blocked by CSP, or a
+//     worker script that failed to load).
+// Because both paths share this module, the fallback is behaviourally identical
+// to the worker path — only the thread differs.
 
 import type { CredentialType } from "./stellar";
+import { assertCredentialCircuitCompatible, CircuitVersionMismatchError } from "./circuit-versions";
 
-// ── Proof timeout ─────────────────────────────────────────────────────────────
-// Stalled provers (wasm hang, network stall on witness fetch) should fail
-// visibly instead of spinning forever. withTimeout composes a deadline onto
-// the existing AbortController plumbing: the caller's signal is forwarded
-// unchanged so user-initiated cancellation still works; when the deadline
-// fires first we throw ProofTimeoutError instead of a raw AbortError.
-
-/** Default maximum time (ms) a proof generation step may take. */
-export const DEFAULT_PROOF_TIMEOUT_MS = 120_000; // 2 minutes
-
-/** Thrown when proof generation exceeds the timeout window. */
-export class ProofTimeoutError extends Error {
-  constructor(ms: number) {
-    super(`Proof timed out after ${ms / 1000} seconds`);
-    this.name = "ProofTimeoutError";
-  }
-}
-
-/**
- * Wraps an abortable async function with a deadline. Returns the result or
- * throws `ProofTimeoutError` if the deadline fires before the function
- * resolves. The caller's `signal` is forwarded — when the *caller* aborts
- * (user cancel), the original error propagates unchanged; only a timeout
- * produces `ProofTimeoutError`.
+/** The compiled Noir circuit artifact emitted by circuits/scripts/build.sh to
+ * /public/circuits/<type>.json.
  */
-export function withTimeout<T>(
-  fn: (signal: AbortSignal) => Promise<T>,
-  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
-): Promise<T> {
-  const {
-    timeoutMs = DEFAULT_PROOF_TIMEOUT_MS,
-    signal: callerSignal,
-  } = opts;
-
-  // Short-circuit: caller already cancelled.
-  if (callerSignal?.aborted) {
-    return Promise.reject(new DOMException("Aborted", "AbortError"));
-  }
-
-  const controller = new AbortController();
-  let timedOut = false;
-
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-
-  // Forward caller abort to our controller.
-  const onCallerAbort = () => controller.abort();
-  callerSignal?.addEventListener("abort", onCallerAbort);
-
-  const promise = fn(controller.signal).finally(() => {
-    clearTimeout(timer);
-    callerSignal?.removeEventListener("abort", onCallerAbort);
-  });
-
-  // If timeout fired, swap the raw AbortError for a ProofTimeoutError.
-  return promise.catch((err) => {
-    if (timedOut) throw new ProofTimeoutError(timeoutMs);
-    throw err;
-  });
+export interface CircuitArtifact {
+  bytecode: string;
+  /**
+   * Declared circuit version (issue #633), stamped into the artifact by
+   * circuits/scripts/stamp-circuit-version.js from
+   * circuits/circuit-versions.json. Present on every artifact built after
+   * versioning was introduced; older artifacts simply lack it.
+   */
+  circuit_version?: string;
+  /** The `CredentialVerifier` VK counter paired with `circuit_version`. */
+  circuit_vk_version?: number;
 }
 
 export interface GeneratedProof {
@@ -82,6 +48,14 @@ export interface GeneratedProof {
   /** Public inputs serialized as concatenated 32-byte big-endian field elements. */
   publicInputs: Uint8Array;
 }
+
+/**
+ * A circuit the prover can run: any single-credential type, plus the
+ * multi-credential `aggregate` circuit (which is not itself a credential type
+ * but is compiled and served exactly like one). Naming this once keeps the
+ * `as any` casts the aggregate path used to need out of the codebase.
+ */
+export type ProverCircuit = CredentialType | "aggregate";
 
 // bb.js returns public inputs as an array of 0x-prefixed field hex strings. The
 // contract expects them concatenated as 32-byte big-endian values.
@@ -133,22 +107,30 @@ type Backend = InstanceType<BbModule["UltraHonkBackend"]>;
 // destroyAllBackends when it's time to let the wasm memory go (e.g. the
 // holder page unmounting or the tab closing) -- this module never does so on
 // its own.
-const backendCache = new Map<CredentialType, Promise<Backend>>();
+const backendCache = new Map<ProverCircuit, Promise<Backend>>();
 
-// Multithreading is only safe once the page is crossOriginIsolated (COOP/COEP
-// headers — see next.config.mjs). Read the live value at construction time
-// rather than caching it, so a proxy/CDN stripping those headers still falls
-// back correctly to the single-threaded path. Omitting `threads` when
-// isolated lets bb.js pick its own worker-pool size (it reads
-// navigator.hardwareConcurrency internally); logged once so the choice is
-// visible in the field.
+// Multithreading is only safe once the *realm running this code* is
+// crossOriginIsolated (COOP/COEP headers — see next.config.mjs). Read the live
+// value at construction time rather than caching it, so a proxy/CDN stripping
+// those headers still falls back correctly to the single-threaded path.
+// Omitting `threads` when isolated lets bb.js pick its own worker-pool size
+// (it reads navigator.hardwareConcurrency internally); logged once so the
+// choice is visible in the field.
+//
+// `globalThis`, not `window`: this module normally executes inside the
+// dedicated prover worker, which has no `window`. A dedicated worker created
+// by a cross-origin-isolated page is itself cross-origin isolated, so
+// `globalThis.crossOriginIsolated` / SharedArrayBuffer stay available there and
+// bb.js takes the same multithreaded path it took on the main thread. (bb.js
+// makes the identical `typeof window !== "undefined" ? window : globalThis`
+// check internally before choosing its thread count.)
 let loggedIsolation = false;
 
 function backendOptions(): { threads?: number } {
-  const isolated = typeof window !== "undefined" && window.crossOriginIsolated;
+  const isolated = Boolean(globalThis.crossOriginIsolated);
   if (!loggedIsolation) {
     loggedIsolation = true;
-    console.info(`[proof] crossOriginIsolated=${!!isolated}`);
+    console.info(`[proof] crossOriginIsolated=${isolated}`);
   }
   if (isolated) {
     return {};
@@ -156,14 +138,14 @@ function backendOptions(): { threads?: number } {
   return { threads: 1 };
 }
 
-async function buildBackend(type: CredentialType): Promise<Backend> {
+async function buildBackend(type: ProverCircuit): Promise<Backend> {
   const circuitRes = await fetch(`/circuits/${type}.json`);
   if (!circuitRes.ok) {
     throw new Error(
       `Compiled circuit "${type}" not found. Run the circuit build to emit /public/circuits/${type}.json.`,
     );
   }
-  const circuit = (await circuitRes.json()) as { bytecode: string };
+  const circuit = (await circuitRes.json()) as CircuitArtifact;
   const { UltraHonkBackend } = await loadBb();
   return new UltraHonkBackend(circuit.bytecode, backendOptions());
 }
@@ -174,7 +156,7 @@ async function buildBackend(type: CredentialType): Promise<Backend> {
 // an in-flight warm -- share this exact promise instead of racing separate
 // constructions, since the cache is checked and populated synchronously
 // (no `await` between the `get` and the `set`).
-function getBackend(type: CredentialType): Promise<Backend> {
+function getBackend(type: ProverCircuit): Promise<Backend> {
   let pending = backendCache.get(type);
   if (!pending) {
     pending = buildBackend(type);
@@ -196,7 +178,7 @@ function getBackend(type: CredentialType): Promise<Backend> {
 // eventual prove click hits an already-warm cache. If warming fails (network
 // error, wasm init failure, etc.) it's logged and swallowed -- the real
 // prove click still falls back to constructing fresh via proveWithBackend.
-export function warmBackend(type: CredentialType): void {
+export function warmBackend(type: ProverCircuit): void {
   const before = backendCache.get(type);
   const pending = getBackend(type);
   if (pending !== before) {
@@ -208,7 +190,7 @@ export function warmBackend(type: CredentialType): void {
 
 // Destroys and evicts the cached backend for `type`, if one exists. Safe to
 // call even when nothing was ever warmed/proved for that type.
-export async function destroyBackend(type: CredentialType): Promise<void> {
+export async function destroyBackend(type: ProverCircuit): Promise<void> {
   const pending = backendCache.get(type);
   if (!pending) return;
   backendCache.delete(type);
@@ -228,14 +210,68 @@ export async function destroyAllBackends(): Promise<void> {
   await Promise.all(Array.from(backendCache.keys()).map(destroyBackend));
 }
 
+/**
+ * Decodes the hex-string witness returned by /api/witness into bytes.
+ *
+ * The old implementation called `parseInt(hex.slice(i*2, i*2+2), 16)` per
+ * byte — two temporary string allocations per byte. For the larger circuits
+ * (aggregate, set membership) that is tens of thousands of short-lived
+ * strings per proof inside the confined prover-worker heap, adding real GC
+ * pressure exactly when inputs are large (#803). This reads the same bytes in
+ * a single pass with a nibble lookup, allocating only the output buffer, and
+ * fails loudly on a malformed response instead of silently decoding garbage.
+ */
+export function decodeWitnessHex(hex: string): Uint8Array {
+  if (typeof hex !== "string" || hex.length % 2 !== 0) {
+    throw new Error("Witness response was malformed (odd-length hex)");
+  }
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0, j = 0; i < hex.length; i += 2, j++) {
+    const hi = nibble(hex.charCodeAt(i));
+    const lo = nibble(hex.charCodeAt(i + 1));
+    if (hi < 0 || lo < 0) {
+      throw new Error("Witness response was malformed (invalid hex)");
+    }
+    bytes[j] = (hi << 4) | lo;
+  }
+  return bytes;
+}
+
+/** Hex-digit value of a char code, or -1 when it is not a hex digit. */
+function nibble(code: number): number {
+  if (code >= 48 && code <= 57) return code - 48; // 0-9
+  if (code >= 97 && code <= 102) return code - 87; // a-f
+  if (code >= 65 && code <= 70) return code - 55; // A-F
+  return -1;
+}
+
+/** Pull the human-readable `error` out of a JSON API body, if it is one. */
+function extractErrorMessage(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === "string" && parsed.error.length > 0 ? parsed.error : null;
+  } catch {
+    return null;
+  }
+}
+
 // Stage 1 — server computes the witness (Noir circuit execution).
 // Exported so ProofFlow can report progress between stages.
 // When signal is provided, fetch abort cancels the server-side witness computation.
 export async function computeWitness(
-  type: CredentialType,
+  type: ProverCircuit,
   credential: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  // Circuit-compatibility gate (#633), before any work is spent. A credential
+  // issued against a superseded circuit version may no longer be expressible by
+  // the circuit this build serves, and the only way to find that out from the
+  // witness alone is an opaque Noir failure. Checking the recorded version here
+  // turns it into a message that names both versions. This is also the path
+  // the prover worker takes, so the guard applies on both the worker and the
+  // main-thread fallback.
+  assertCredentialCircuitCompatible(credential, type);
+
   const res = await fetch("/api/witness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -244,14 +280,19 @@ export async function computeWitness(
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
+    // The server owns the compiled circuits, so its verdict is authoritative
+    // when it disagrees with this build's registry (a deploy skewed between the
+    // two, or an older client that does not carry the check). Surface its
+    // explanation as a CircuitVersionMismatchError rather than burying it in a
+    // generic "witness generation failed" string.
+    if (/circuit_version_mismatch/.test(msg)) {
+      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
+      throw new CircuitVersionMismatchError(detail);
+    }
     throw new Error(`Witness generation failed: ${msg}`);
   }
   const { witness: hex } = (await res.json()) as { witness: string };
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+  return decodeWitnessHex(hex);
 }
 
 // Stage 2 — browser runs UltraHonk over the witness.
@@ -266,7 +307,7 @@ export async function computeWitness(
 // destroyAllBackends, called from use-warm-prover.ts on unmount).
 // When signal is provided, aborting it terminates the WASM worker mid-proof.
 export async function proveWithBackend(
-  type: CredentialType,
+  type: ProverCircuit,
   witness: Uint8Array,
   signal?: AbortSignal,
   onStep?: (step: "circuit" | "proof") => void,
@@ -294,7 +335,7 @@ export async function proveWithBackend(
 
 // Convenience wrapper — runs both stages in sequence.
 export async function generateProof(
-  type: CredentialType,
+  type: ProverCircuit,
   credential: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<GeneratedProof> {
@@ -342,7 +383,16 @@ function resolveAggregateField(
 
 export async function computeAggregateWitness(
   inputs: AggregateInput,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  // The aggregate circuit re-verifies the KYC and age claims itself, so both
+  // inner credentials must be provable by their own circuits under their own
+  // versions. Check each before spending witness-generation time; the type
+  // override is required because the merged payload below is keyed
+  // `kyc_*`/`age_*` and carries no `type` of its own.
+  assertCredentialCircuitCompatible(inputs.kyc, "kyc");
+  assertCredentialCircuitCompatible(inputs.age, "age");
+
   // Build the merged credential object with prefixed keys matching the aggregate
   // circuit's parameter names. Noir treats `pub` parameters as ordinary witness
   // inputs too — the backend never derives them from the private inputs — so the
@@ -374,35 +424,40 @@ export async function computeAggregateWitness(
     // Days since epoch — mirrors the single-proof age path, which derives
     // current_date server-side.
     age_current_date: String(Math.floor(Date.now() / 86_400_000)),
-    age_threshold_years: String(
-      inputs.age.threshold_years ?? ageParams.threshold_years ?? 18,
-    ),
+    age_threshold_years: String(inputs.age.threshold_years ?? ageParams.threshold_years ?? 18),
     // ── Metadata (public) ───────────────────────────────────────────────────
     // The PoC circuit asserts num_credentials == 2.
     num_credentials: "2",
+    // Circuit version each inner credential was issued against. buildInputs
+    // ignores these (they are not circuit inputs), but the witness route reads
+    // them to enforce the same compatibility gate on the aggregate path that
+    // single proofs get.
+    kyc_circuitVersion: inputs.kyc.circuitVersion,
+    age_circuitVersion: inputs.age.circuitVersion,
   };
 
   const res = await fetch("/api/witness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "aggregate", credential: aggregateCredential }),
+    signal,
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
+    if (/circuit_version_mismatch/.test(msg)) {
+      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
+      throw new CircuitVersionMismatchError(detail);
+    }
     throw new Error(`Aggregate witness generation failed: ${msg}`);
   }
   const { witness: hex } = (await res.json()) as { witness: string };
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+  return decodeWitnessHex(hex);
 }
 
 export async function generateAggregateProof(
   inputs: AggregateInput,
+  signal?: AbortSignal,
 ): Promise<GeneratedProof> {
-  const witness = await computeAggregateWitness(inputs);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return proveWithBackend("aggregate" as any, witness);
+  const witness = await computeAggregateWitness(inputs, signal);
+  return proveWithBackend("aggregate", witness, signal);
 }

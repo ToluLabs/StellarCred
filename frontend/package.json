@@ -4,21 +4,33 @@
   "private": true,
   "scripts": {
     "copy-bb": "node scripts/copy-bb.mjs",
-    "predev": "node scripts/copy-bb.mjs",
-    "prebuild": "node scripts/copy-bb.mjs",
+    "build-worker": "node scripts/build-proof-worker.mjs",
+    "predev": "node scripts/copy-bb.mjs && node scripts/build-proof-worker.mjs",
+    "prebuild": "node scripts/copy-bb.mjs && node scripts/build-proof-worker.mjs",
     "postinstall": "pnpm --dir packages/issuer build",
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint app components lib i18n",
     "test:theme": "node --import tsx --test lib/theme.test.ts",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "size": "size-limit"
+    "first-load": "pnpm dlx @lhci/cli@0.14.0 autorun --config=.lighthouserc.json && node scripts/assert-no-prover-on-critical-path.mjs",
+    "size": "size-limit",
+    "check:i18n": "node scripts/check-i18n-parity.mjs",
+    "verify:audit-log": "node --import tsx --experimental-strip-types scripts/verify-audit-log.ts",
+    "validate-proof": "node --import tsx scripts/validate-proof.ts",
+    "credential:cli": "node --import tsx scripts/credential-cli.ts",
+    "format": "prettier --write \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"lib/**/*.{ts,tsx}\"",
+    "prepare": "cd .. && npx husky .husky || exit 0"
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",
     "@creit.tech/stellar-wallets-kit": "^1.7.0",
+    "@ledgerhq/hw-app-str": "^7.0.0",
+    "@ledgerhq/hw-transport-webusb": "^6.28.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@noir-lang/noir_js": "1.0.0-beta.9",
@@ -28,35 +40,56 @@
     "blakejs": "^1.2.1",
     "buffer": "^6.0.3",
     "jsqr": "^1.4.0",
-    "next": "14.2.15",
+    "next": "16.4.2",
+    "next-intl": "^4.14.9",
+    "@ledgerhq/devices": "6.27.1",
     "pino": "^10.3.1",
     "process": "^0.11.10",
     "qrcode": "^1.5.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
-    "@next/bundle-analyzer": "^14.2.35",
+    "@next/bundle-analyzer": "^16.4.2",
     "@playwright/test": "^1.62.0",
     "@size-limit/file": "^13.0.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "@typescript-eslint/eslint-plugin": "^8.68.0",
     "@typescript-eslint/parser": "^8.68.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.35",
+    "@vitest/coverage-v8": "^2.1.9",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.0",
+    "eslint-config-next": "^16.4.2",
     "jsdom": "^25.0.1",
     "size-limit": "^13.0.1",
     "tsx": "^4.23.5",
     "typescript": "^5",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "prettier": "^3.2.5",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.2"
   },
-  "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be"
+  "pnpm": {
+    "overrides": {
+      "@ledgerhq/devices": "6.27.1"
+    }
+  },
+  "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be",
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
+  }
 }

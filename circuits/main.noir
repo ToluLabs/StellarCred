@@ -1,0 +1,21 @@
+// circuits/src/main.noir
+use dep::poseidon::poseidon2::Poseidon2;
+
+fn main(
+    // Private inputs
+    secret: Field,
+    credential_salt: Field,
+    // Public inputs
+    context_id: pub Field,
+    merkle_root: pub Field,
+) -> pub Field {
+    // 1. Verify credential membership (Poseidon2 commitment)
+    let commitment = Poseidon2::hash([secret, credential_salt], 2);
+    assert(commitment != 0);
+
+    // 2. Derive deterministic per-context nullifier: Poseidon2([secret, context_id], 2)
+    let nullifier = Poseidon2::hash([secret, context_id], 2);
+
+    // Return or output nullifier as a public output
+    nullifier
+}

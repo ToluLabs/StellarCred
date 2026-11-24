@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     NextResponse.json(
       result.mock
         ? { balance: result.balance, mock: true }
-        : { balance: result.balance, accounts: result.accounts },
+        : { balance: result.balance, sources: result.sources, accounts: result.accounts },
     ),
   );
 }

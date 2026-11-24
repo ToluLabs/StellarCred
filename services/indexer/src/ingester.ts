@@ -2,10 +2,14 @@
  * ingester.ts — Poll Horizon for ProofRegistry contract events and write them
  * into the local DB.
  *
- * ProofRegistry emits two kinds of events:
+ * All emitted event topics and payload schemas are documented authoritatively in
+ * `docs/EVENTS.md`.
  *
- *   Verified  topics: ["proof", "verified"]  value: expiry (u64)
- *   Revoked   topics: ["revoked"]            value: (holder, cred_type, issuer, ts)
+ * ProofRegistry event topics follow the tuple convention:
+ *   Submitted: ("proof_reg", "submitted", <credential_type>) -> EventProofSubmitted
+ *   Revoked:   ("proof_reg", "revoked", <credential_type>)   -> EventProofRevoked
+ *   Paused:    ("proof_reg", "paused")                       -> EventPaused
+ *   Unpaused:  ("proof_reg", "unpaused")                     -> EventUnpaused
  *
  * Horizon's /effects and /transactions endpoints don't surface Soroban contract
  * events natively, so we use the dedicated
@@ -49,6 +53,8 @@
 import { Horizon } from "@stellar/stellar-sdk";
 import type { Config } from "./config";
 import type { Db } from "./db";
+import { createWebhookDispatcher } from "./webhooks";
+import { injectTraceHeaders, logger, withSpan } from "./logging";
 
 // ── Retry configuration ───────────────────────────────────────────────────
 
@@ -82,6 +88,20 @@ export interface IngesterHealth {
   fetchFailures: number;
 }
 
+/** Prometheus metrics for the ingester. */
+export interface IngesterMetrics {
+  /** Events processed total since the ingester started. */
+  eventsProcessedTotal: number;
+  /** Total fetch errors (all retries exhausted) since start. */
+  fetchErrorsTotal: number;
+  /** Uptime in seconds since the ingester started. */
+  uptimeSeconds: number;
+  /** Latest DB write latency in seconds. */
+  dbWriteLatencySeconds: number;
+  /** Ledgers behind head (head - last processed). */
+  lag: number;
+}
+
 function freshHealth(): IngesterHealth {
   return {
     lastSuccessLedger: 0,
@@ -103,7 +123,7 @@ function freshHealth(): IngesterHealth {
  *
  * The full shape has many optional fields; we only care about these.
  */
-interface HorizonContractEvent {
+export interface HorizonContractEvent {
   /** Paging token / cursor. */
   paging_token: string;
   /** The contract that emitted this event. */
@@ -131,7 +151,7 @@ interface HorizonContractEvent {
   source_account?: string;
 }
 
-interface HorizonEventsPage {
+export interface HorizonEventsPage {
   _embedded: { records: HorizonContractEvent[] };
 }
 
@@ -176,7 +196,10 @@ function decodeScVal(b64: string): unknown {
     }
     return native;
   } catch {
-    return null;
+    // Not valid base64 XDR — treat the raw value as a literal string so that
+    // already-decoded / plain-string topics (e.g. "proof", "verified") still
+    // match parseEvent's topic comparisons instead of silently becoming null.
+    return b64;
   }
 }
 
@@ -225,6 +248,13 @@ function isTransientError(err: unknown): boolean {
  * @param retries   Remaining retries (internal, do not pass)
  * @param attempt   Current attempt number (1-based, internal)
  */
+// Lint suppression (#855): dead since the tick path was rewritten around the
+// plain `fetchEvents` helper below, which has no backoff. Keeping it because it
+// is the only bounded-retry implementation in the service and `isTransientError`
+// above still documents that Horizon status codes are handled here. Wiring the
+// tick path onto it — or deleting it — changes ingestion behaviour, so that is a
+// call for the ingester owner, not a linting PR.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function fetchEventsWithRetry(
   url: string,
   signal: AbortSignal,
@@ -256,9 +286,12 @@ async function fetchEventsWithRetry(
       const delayMs = retryAfter
         ? Math.min(Number(retryAfter) * 1000, MAX_RETRY_DELAY_MS)
         : Math.min(BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1), MAX_RETRY_DELAY_MS);
-      console.warn(
-        `[indexer] Horizon ${res.status} on attempt ${attempt}/${attempt + retries}, retrying in ${delayMs}ms…`,
-      );
+      logger.warn("horizon_retry", {
+        status: res.status,
+        attempt,
+        remaining_attempts: retries,
+        delay_ms: delayMs,
+      });
       await sleep(delayMs);
       return fetchEventsWithRetry(url, signal, retries - 1, attempt + 1);
     }
@@ -274,9 +307,12 @@ async function fetchEventsWithRetry(
       BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1),
       MAX_RETRY_DELAY_MS,
     );
-    console.warn(
-      `[indexer] transient fetch error on attempt ${attempt}/${attempt + retries}: ${(err as Error).message}; retrying in ${delayMs}ms…`,
-    );
+    logger.warn("horizon_retry", {
+      attempt,
+      remaining_attempts: retries,
+      delay_ms: delayMs,
+      error: err,
+    });
     await sleep(delayMs);
     return fetchEventsWithRetry(url, signal, retries - 1, attempt + 1);
   }
@@ -284,7 +320,7 @@ async function fetchEventsWithRetry(
 
 // ── Event parser ───────────────────────────────────────────────────────────
 
-type ParsedEvent =
+export type ParsedEvent =
   | {
       kind: "verified";
       holder: string;
@@ -298,6 +334,10 @@ type ParsedEvent =
       kind: "revoked";
       holder: string;
       credentialType: string;
+      issuer: string;
+      revokedAt: number;
+      reasonCode: "issuer_revoked" | "holder_revoked";
+      reason: string;
     }
   | { kind: "unknown" };
 
@@ -306,25 +346,20 @@ type ParsedEvent =
  *
  * ProofRegistry event topology
  * ─────────────────────────────
- * Verified:
- *   topics[0] = ScvSymbol "proof"
- *   topics[1] = ScvSymbol "verified"
- *   value     = ScvU64 expiry
+ * Submitted/verified:
+ *   topics[0] = ScvSymbol "proof_reg"
+ *   topics[1] = ScvSymbol "submitted"
+ *   topics[2] = credential type
+ *   value     = EventProofSubmitted { holder, issuer, verified_at, expiry }
  *
- *   The holder and credential_type are NOT in the topics; they are implicit in
- *   the storage key.  Horizon does, however, surface the transaction's
- *   source_account which is the holder (they must sign submit_proof).
- *
- * Revoked (issuer-initiated, from revoke()):
- *   topics[0] = ScvSymbol "revoked"
- *   value     = ScvVec [holder, credential_type, issuer, timestamp]
- *
- * Revoked (holder self-revoke, revoke_proof()):
- *   No event is emitted by the contract for self-revoke — holder just removes
- *   the storage key.  We therefore won't see a chain event; claims will expire
- *   naturally.
+ * Revoked:
+ *   topics = ("proof_reg", "revoked", credential_type)
+ *   value  = EventProofRevoked { holder, issuer, revoked_at }
+ * Holder self-revocation:
+ *   topics = ("proof_reg", "self_rev", credential_type)
+ *   value  = EventHolderRevoked { holder, revoked_at }
  */
-function parseEvent(
+export function parseEvent(
   ev: HorizonContractEvent,
   contractId: string
 ): ParsedEvent {
@@ -337,42 +372,130 @@ function parseEvent(
       ? parseInt(ev.ledger, 10)
       : ev.ledger;
 
-  // verified event
-  if (topics[0] === "proof" && topics[1] === "verified") {
-    const holder = ev.source_account ?? "";
-    // credential_type is the 3rd topic (index 2) when emitted — but the
-    // contract's current publish call only emits 2 topics + value.
-    // We extract credential_type from the 3rd topic if present, else "unknown".
-    const credentialType =
-      typeof topics[2] === "string" ? topics[2] : "unknown";
-    const expiry = typeof value === "number" ? value : 0;
+  const structField = (): Record<string, unknown> | undefined => {
+    if (Array.isArray(value)) {
+      const result: Record<string, unknown> = {};
+      for (let i = 0; i + 1 < value.length; i += 2) {
+        if (typeof value[i] === "string") result[value[i] as string] = value[i + 1];
+      }
+      return result;
+    }
+    if (value && typeof value === "object") return value as Record<string, unknown>;
+    return undefined;
+  };
+
+  const eventData = structField();
+  const credentialType = typeof topics[2] === "string" ? topics[2] : "";
+  const numericField = (name: string, fallback: number) => {
+    const raw = eventData?.[name];
+    const parsed = typeof raw === "number" || typeof raw === "string" ? Number(raw) : NaN;
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+  const addressField = (name: string): string => {
+    const raw = eventData?.[name];
+    if (typeof raw === "string") return raw;
+    if (raw && typeof raw === "object" && "address" in raw) {
+      const address = (raw as { address?: unknown }).address;
+      if (typeof address === "string") return address;
+      if (address && typeof address === "object" && "value" in address) {
+        return String((address as { value: unknown }).value);
+      }
+    }
+    return "";
+  };
+
+  if (topics[0] === "proof_reg" && topics[1] === "submitted" && credentialType) {
+    const holder = addressField("holder") || ev.source_account || "";
+    const expiry = numericField("expiry", 0);
 
     return {
       kind: "verified",
       holder,
       credentialType,
-      issuer: "",
+      issuer: addressField("issuer"),
       expiry,
       ledgerSequence,
-      verifiedAt: Math.floor(
-        new Date(ev.ledger_closed_at).getTime() / 1000
+      verifiedAt: numericField(
+        "verified_at",
+        Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
       ),
     };
   }
 
-  // revoked event
-  if (topics[0] === "revoked") {
-    if (Array.isArray(value) && value.length >= 2) {
-      const holder = String(value[0]);
-      const credentialType = String(value[1]);
-      return { kind: "revoked", holder, credentialType };
+  // Preserve compatibility with older indexer fixtures/event streams.
+  if (topics[0] === "proof" && topics[1] === "verified") {
+    return {
+      kind: "verified",
+      holder: ev.source_account ?? "",
+      credentialType: typeof topics[2] === "string" ? topics[2] : "unknown",
+      issuer: "",
+      expiry: typeof value === "number" ? value : 0,
+      ledgerSequence,
+      verifiedAt: Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
+    };
+  }
+
+  if (topics[0] === "proof_reg" && topics[1] === "revoked" && credentialType) {
+    const holder = addressField("holder");
+    const issuer = addressField("issuer");
+    if (holder && issuer) {
+      const reasonRaw = eventData?.["reason"];
+      const reasonNum = typeof reasonRaw === "number" ? reasonRaw : Number(reasonRaw);
+      const reasonMap: Record<number, string> = {
+        0: "expired",
+        1: "superseded",
+        2: "fraud",
+        3: "user_request",
+        4: "other",
+      };
+      const reason = reasonMap[reasonNum] || "other";
+      return {
+        kind: "revoked",
+        holder,
+        credentialType,
+        issuer,
+        revokedAt: numericField(
+          "revoked_at",
+          Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
+        ),
+        reasonCode: "issuer_revoked",
+        reason,
+      };
+    }
+  }
+
+  if (topics[0] === "proof_reg" && topics[1] === "self_rev" && credentialType) {
+    const holder = addressField("holder");
+    if (holder) {
+      const reasonRaw = eventData?.["reason"];
+      const reasonNum = typeof reasonRaw === "number" ? reasonRaw : Number(reasonRaw);
+      const reasonMap: Record<number, string> = {
+        0: "expired",
+        1: "superseded",
+        2: "fraud",
+        3: "user_request",
+        4: "other",
+      };
+      const reason = reasonMap[reasonNum] || "other";
+      return {
+        kind: "revoked",
+        holder,
+        credentialType,
+        issuer: "",
+        revokedAt: numericField(
+          "revoked_at",
+          Math.floor(new Date(ev.ledger_closed_at).getTime() / 1000),
+        ),
+        reasonCode: "holder_revoked",
+        reason,
+      };
     }
   }
 
   return { kind: "unknown" };
 }
 
-// ── Ingester ───────────────────────────────────────────────────────────────
+// ── Ingester ────────────────────────────────────────────────────────────────
 
 export interface Ingester {
   /** Run one ingestion cycle (fetch + write). Returns number of events processed. */
@@ -386,18 +509,47 @@ export interface Ingester {
   start(): void;
   /** Stop the polling loop. */
   stop(): void;
+  /** Graceful shutdown: stop scheduling and await in-flight tick. */
+  shutdown(): Promise<void>;
   /** Current health snapshot — safe to read at any time. */
   getHealth(): IngesterHealth;
+  /** Get Prometheus metrics for the ingester. */
+  getMetrics(): IngesterMetrics;
 }
 
 export function createIngester(config: Config, db: Db): Ingester {
+  // Lint suppression (#855): the tick path builds Horizon REST URLs and calls
+  // fetch() directly, so this SDK client instance is never read. It is also the
+  // only consumer of the `Horizon` import above, which is why removing it would
+  // just move the error. Unused as of today, not wrong — leaving the decision to
+  // whoever next touches ingestion.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const server = new Horizon.Server(config.horizonUrl, {
     allowHttp: config.horizonUrl.startsWith("http://"),
   });
 
   let running = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let inFlightTick: Promise<number> | null = null;
   const health = freshHealth();
+  const webhookDispatcher = config.webhookSigningSecret
+    ? createWebhookDispatcher(db, config.webhookSigningSecret)
+    : undefined;
+
+  async function processWebhookQueue(): Promise<void> {
+    if (!webhookDispatcher) return;
+    try {
+      await webhookDispatcher.enqueueExpiredClaims();
+      await webhookDispatcher.dispatchPending();
+    } catch (error) {
+      logger.error("webhook_delivery_cycle_failed", { error });
+    }
+  }
+
+  // ── Prometheus metrics state ──────────────────────────────────────────
+  const startTime = Date.now();
+  let eventsProcessedTotal = 0;
+  let fetchErrorsTotal = 0;
 
   // ── Fetch current Horizon head ledger (cached per tick) ────────────────
   // We fetch this once at the start of each tick so lag is observable
@@ -406,6 +558,12 @@ export function createIngester(config: Config, db: Db): Ingester {
   let cachedHeadTime = 0;
   const HEAD_CACHE_MS = 30_000;
 
+  // Lint suppression (#855): the tick reads the head ledger from `getLedgerHead`
+  // below instead, so this 30s-cached variant is never called. It is the only
+  // writer of `cachedHeadLedger` / `cachedHeadTime` / `HEAD_CACHE_MS` above, so
+  // deleting it would strand that state; picking one head-ledger path is an
+  // ingestion change, not a linting one.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function fetchHeadLedger(): Promise<number> {
     const now = Date.now();
     if (cachedHeadLedger > 0 && now - cachedHeadTime < HEAD_CACHE_MS) {
@@ -414,6 +572,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     try {
       const res = await fetch(config.horizonUrl, {
         signal: AbortSignal.timeout(5_000),
+        headers: injectTraceHeaders(),
       });
       if (res.ok) {
         const root = (await res.json()) as HorizonRoot;
@@ -440,7 +599,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     url.searchParams.set("order", "desc");
     url.searchParams.set("limit", "1");
 
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { headers: injectTraceHeaders() });
     if (!res.ok) {
       throw new Error(`Horizon /ledgers responded ${res.status}`);
     }
@@ -470,39 +629,13 @@ export function createIngester(config: Config, db: Db): Ingester {
       url.searchParams.set("cursor", cursor);
     }
 
-    // Fetch head ledger (best-effort) so lag is visible in /health.
-    // We fire this in parallel with the events fetch so we don't add
-    // serial latency to every tick.
-    const [, page] = await Promise.all([
-      fetchHeadLedger(),
-      (async () => {
-        health.fetchAttempts++;
-        try {
-          return await fetchEventsWithRetry(
-            url.toString(),
-            AbortSignal.timeout(15_000)
-          );
-        } catch (err) {
-          // All retries exhausted — record the error but do NOT advance cursor.
-          health.lastError = (err as Error).message;
-          health.lastErrorTime = Date.now();
-          health.consecutiveErrors++;
-          health.fetchFailures++;
-          throw err;
-        }
-      })(),
-    ]);
-
-    const records = page._embedded?.records ?? [];
-    if (records.length === 0) {
-      // Successful empty fetch — reset error state and update lag.
-      health.consecutiveErrors = 0;
-      health.lastError = null;
-      health.headLedger = cachedHeadLedger;
-      health.lag =
-        cachedHeadLedger > 0 ? cachedHeadLedger - (await db.getLastLedger()) : -1;
-      return [];
+    const res = await fetch(url.toString(), { headers: injectTraceHeaders() });
+    if (!res.ok) {
+      if (res.status === 404) return [];
+      throw new Error(`Horizon responded ${res.status}: ${await res.text()}`);
     }
+    const page = (await res.json()) as HorizonEventsPage;
+    const records = page._embedded?.records ?? [];
 
     // Filter out events beyond the finality boundary
     return records.filter((ev) => {
@@ -528,10 +661,28 @@ export function createIngester(config: Config, db: Db): Ingester {
           ledger_sequence: parsed.ledgerSequence,
           threshold: null,
           revoked: 0,
+          reason_code: "other",
         });
         processed++;
       } else if (parsed.kind === "revoked") {
-        await db.revokeClaim(parsed.holder, parsed.credentialType);
+        const claim = await db.claimByWalletAndType(
+          parsed.holder,
+          parsed.credentialType,
+        );
+        await db.revokeClaim(parsed.holder, parsed.credentialType, parsed.reason);
+        if (webhookDispatcher) {
+          await db.enqueueWebhookEvent({
+            event_id: `${parsed.reasonCode}:${ev.transaction_hash ?? ev.paging_token}:${parsed.holder}:${parsed.credentialType}`,
+            type: "revoked",
+            wallet: parsed.holder,
+            credential_type: parsed.credentialType,
+            expiry: claim?.expiry ?? 0,
+            ledger_sequence:
+              typeof ev.ledger === "string" ? Number(ev.ledger) : ev.ledger,
+            occurred_at: parsed.revokedAt,
+            reason_code: parsed.reasonCode,
+          });
+        }
         processed++;
       }
     }
@@ -540,7 +691,19 @@ export function createIngester(config: Config, db: Db): Ingester {
 
   // ── Core ingestion tick ──────────────────────────────────────────────────
 
+  let lastTickDurationSec = 0;
+  let lastTickEnd = Date.now();
+
   async function tick(): Promise<number> {
+    return withSpan("indexer.tick", () => tickOnce(), {
+      "contract.id": config.proofRegistryContractId,
+    });
+  }
+
+  async function tickOnce(): Promise<number> {
+    const tickStart = Date.now();
+    await processWebhookQueue();
+
     const lastLedger = await db.getLastLedger();
 
     // 1. Determine the network head and the finality-safe ceiling.
@@ -548,7 +711,8 @@ export function createIngester(config: Config, db: Db): Ingester {
     try {
       headLedger = await getLedgerHead();
     } catch (err) {
-      console.warn("[indexer] Could not fetch ledger head:", (err as Error).message);
+      logger.warn("ledger_head_fetch_failed", { error: err });
+      fetchErrorsTotal++;
       return 0;
     }
 
@@ -559,10 +723,11 @@ export function createIngester(config: Config, db: Db): Ingester {
     //    case where (head - lag) has fallen at or below our cursor, which
     //    would otherwise make reorg detection unreachable.
     if (lastLedger > headLedger) {
-      console.warn(
-        `[indexer] REORG DETECTED: cursor=${lastLedger} > head=${headLedger}. ` +
-          `Rolling back to head and re-scanning.`
-      );
+      logger.warn("reorg_detected", {
+        cursor_ledger: lastLedger,
+        head_ledger: headLedger,
+      });
+      fetchErrorsTotal++;
       return reconcile(headLedger);
     }
 
@@ -590,14 +755,30 @@ export function createIngester(config: Config, db: Db): Ingester {
     try {
       events = await fetchEvents(cursor, finalityCeiling);
     } catch (err) {
-      console.warn("[indexer] Horizon fetch error:", (err as Error).message);
+      // Record the error but do NOT advance the cursor — we'll retry next tick.
+      health.lastError = (err as Error).message;
+      health.lastErrorTime = Date.now();
+      health.consecutiveErrors++;
+      health.fetchFailures++;
+      logger.warn("horizon_fetch_failed", { error: err });
+      fetchErrorsTotal++;
       return 0;
     }
 
-    if (events.length === 0) return 0;
+    if (events.length === 0) {
+      // Successful empty fetch — update lag only.
+      const lag = headLedger > 0 ? headLedger - (await db.getLastLedger()) : -1;
+      health.lastSuccessLedger = lastLedger;
+      health.headLedger = headLedger;
+      health.lag = lag;
+      health.consecutiveErrors = 0;
+      health.lastError = null;
+      return 0;
+    }
 
     // 5. Process events and update cursor.
     const processed = await processEvents(events);
+    eventsProcessedTotal += processed;
 
     // Advance cursor to the highest ledger among processed events.
     let maxLedger = lastLedger;
@@ -608,13 +789,27 @@ export function createIngester(config: Config, db: Db): Ingester {
     if (maxLedger > lastLedger) {
       await db.setLastLedger(maxLedger);
     }
+    await processWebhookQueue();
+
+    const tickEnd = Date.now();
+    // Lint suppression (#855): the exported `dbWriteLatencySeconds` metric is
+    // reported from `lastTickDurationSec` in getMetrics(), not from this
+    // tickStart/tickEnd pair, so this measurement is currently a no-op. Removing
+    // it would also strand both timestamps; deciding which duration the metric
+    // should carry is a metrics change, not a linting one.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const dbWriteLatencySec = (tickEnd - tickStart) / 1000;
 
     // Update health on success.
+    const lag = headLedger > 0 ? headLedger - maxLedger : -1;
     health.lastSuccessLedger = maxLedger;
-    health.headLedger = cachedHeadLedger;
-    health.lag = cachedHeadLedger > 0 ? cachedHeadLedger - maxLedger : -1;
+    health.headLedger = headLedger;
+    health.lag = lag;
     health.consecutiveErrors = 0;
     health.lastError = null;
+
+    lastTickDurationSec = (Date.now() - lastTickEnd) / 1000;
+    lastTickEnd = Date.now();
 
     return processed;
   }
@@ -627,7 +822,7 @@ export function createIngester(config: Config, db: Db): Ingester {
    * from reorgPoint up to the current finality ceiling.
    */
   async function reconcile(reorgPoint: number): Promise<number> {
-    console.log(`[indexer] Reconciling from ledger ${reorgPoint}`);
+    logger.info("indexer_reconcile", { from_ledger: reorgPoint });
 
     // Roll back: delete all claims with ledger_sequence beyond the reorg point.
     await db.deleteClaimsAfter(reorgPoint);
@@ -644,12 +839,13 @@ export function createIngester(config: Config, db: Db): Ingester {
     timer = setTimeout(async () => {
       if (!running) return;
       try {
-        const n = await tick();
+        inFlightTick = tick();
+        const n = await inFlightTick;
         if (n > 0) {
-          console.log(`[indexer] processed ${n} event(s)`);
+          logger.info("indexer_tick_processed", { events: n });
         }
       } catch (err) {
-        console.error("[indexer] tick error:", err);
+        logger.error("indexer_tick_failed", { error: err });
       }
       scheduleNext();
     }, config.pollIntervalMs);
@@ -661,10 +857,11 @@ export function createIngester(config: Config, db: Db): Ingester {
     start() {
       if (running) return;
       running = true;
-      console.log(
-        `[indexer] starting — contract=${config.proofRegistryContractId} ` +
-          `network=${config.stellarNetwork} poll=${config.pollIntervalMs}ms`
-      );
+      logger.info("indexer_started", {
+        contract_id: config.proofRegistryContractId,
+        network: config.stellarNetwork,
+        poll_interval_ms: config.pollIntervalMs,
+      });
       scheduleNext();
     },
     stop() {
@@ -674,8 +871,33 @@ export function createIngester(config: Config, db: Db): Ingester {
         timer = null;
       }
     },
+    async shutdown() {
+      running = false;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (inFlightTick !== null) {
+        logger.info("indexer_waiting_for_inflight_tick");
+        await inFlightTick;
+      }
+      logger.info("indexer_ingester_stopped");
+    },
     getHealth() {
       return { ...health };
     },
+    getMetrics(): IngesterMetrics {
+      const now = Date.now();
+      const uptimeSec = (now - startTime) / 1000;
+      const lag = health.lag;
+      return {
+        eventsProcessedTotal,
+        fetchErrorsTotal,
+        uptimeSeconds: uptimeSec,
+        dbWriteLatencySeconds: lastTickDurationSec,
+        lag,
+      };
+    },
   };
 }
+

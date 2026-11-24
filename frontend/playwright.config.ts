@@ -22,10 +22,32 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: "pnpm start",
+        command: `pnpm exec next start -p ${port}`,
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
-        env: { PORT: port },
+        env: {
+          PORT: port,
+          NEXT_PUBLIC_PROOF_REGISTRY_ID:
+            process.env.NEXT_PUBLIC_PROOF_REGISTRY_ID ||
+            "C000000000000000000000000000000000000000000000000000000000000001",
+          NEXT_PUBLIC_ISSUER_REGISTRY_ID:
+            process.env.NEXT_PUBLIC_ISSUER_REGISTRY_ID ||
+            "C000000000000000000000000000000000000000000000000000000000000002",
+          NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID:
+            process.env.NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID ||
+            "C000000000000000000000000000000000000000000000000000000000000003",
+          NEXT_PUBLIC_GATED_POOL_ID:
+            process.env.NEXT_PUBLIC_GATED_POOL_ID ||
+            "C000000000000000000000000000000000000000000000000000000000000004",
+          NEXT_PUBLIC_ISSUER_ADDRESS:
+            process.env.NEXT_PUBLIC_ISSUER_ADDRESS ||
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+          NEXT_PUBLIC_STELLAR_NETWORK:
+            process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet",
+          NEXT_PUBLIC_RPC_URL:
+            process.env.NEXT_PUBLIC_RPC_URL ||
+            "https://soroban-testnet.stellar.org",
+        },
       },
 });

@@ -260,3 +260,72 @@ for d in commit kyc_proof income_proof funds_proof accreditation_proof age_proof
   echo "=== $d ===" && cd "$d" && nargo info && cd -
 done
 ```
+
+---
+
+## Variable Aggregate Proof — Revert Post-Mortem (#607)
+
+> Recorded here so the next attempt starts informed.  
+> Related: issue [#538](https://github.com/ToluLabs/StellarCred/issues/538),
+> PR [#570](https://github.com/ToluLabs/StellarCred/pull/570) (merged),
+> revert PR [#579](https://github.com/ToluLabs/StellarCred/pull/579),
+> follow-up issue [#580](https://github.com/ToluLabs/StellarCred/issues/580).
+
+### What was attempted
+
+PR #570 generalised `aggregate_proof` from a hardcoded KYC + age two-circuit
+proof to a variable-N proof supporting up to a configurable maximum of credential
+types in a single on-chain transaction (feature spec: #538).
+
+### Why it was reverted (#579)
+
+The revert was necessary due to a **public-input layout mismatch** between the
+generalised circuit and the on-chain `submit_aggregate_proof` contract entry
+point.
+
+Specifically:
+
+1. **Fixed public-input ABI assumption in the Soroban contract.**  
+   `submit_aggregate_proof` (in `contracts/proof_registry/src/lib.rs`) expects
+   a flat public-input array whose layout is determined at compile time from the
+   two-credential circuit's VK. The variable-N circuit produces a different
+   number of public inputs depending on `num_credentials`, which the contract
+   cannot handle without a corresponding upgrade and new VK registration.
+
+2. **VK / fixture regeneration not completed.**  
+   The PR updated the Noir circuit but did not regenerate `fixtures/aggregate/vk`
+   from the new circuit. CI's "Check staged artifacts are current" step (`bb
+   write_vk` diff) failed, blocking merge of the revert's fix branch.
+
+3. **Proving cost increase not benchmarked.**  
+   The variable-N circuit adds one ECDSA blackbox call per additional credential
+   slot, each costing ~30,000 UltraHonk gates. For N=4 this roughly doubles
+   browser proving time vs. the two-credential baseline. No profiling data was
+   collected before the PR was merged, so the cost was unknown at review time.
+
+### What the next attempt must address
+
+Before re-opening work on #538 / #580:
+
+1. **Contract-first design.** Define the final public-input ABI for variable-N
+   in the Soroban contract first, then write the circuit to match it. The two
+   must be co-designed; neither can be changed independently once deployed.
+
+2. **VK registration.** The aggregate VK is stored on-chain in `IssuerRegistry`.
+   A variable-N circuit produces a different VK from the fixed-N one. The
+   upgrade path requires: new circuit → new VK → contract migration or a new
+   entry point. Plan this before writing any Noir.
+
+3. **Benchmark before merging.** Run `bb prove` (not just `nargo info`) on the
+   variable-N circuit for N=2, N=3, N=4 and record wall-clock proving time in
+   both single-threaded and multi-threaded WASM environments. Proving time
+   budget for the browser is roughly ≤30 s on a mid-range device.
+
+4. **Regenerate all fixtures.** `circuits/scripts/build.sh` must be re-run and
+   the new `fixtures/aggregate/vk` committed before the PR can pass CI.
+
+### Current state
+
+`aggregate_proof` on `main` is the original hardcoded KYC + age two-circuit
+version. It is correct and production-tested. Do not change it without
+addressing the points above.

@@ -1,10 +1,29 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { IconCheck, IconX, IconLoader2 } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconX,
+  IconLoader2,
+  IconQuestionMark,
+} from "@tabler/icons-react";
 import { truncateHash } from "@/lib/format";
 import { isVerified } from "@/lib/contracts";
+import { classifyRpcError, type RpcIssue } from "@/lib/rpc-health";
+
+/**
+ * The embedded badge reads ProofRegistry for one (wallet, claim) pair.
+ *
+ * Degraded mode (Issue #634): the badge has three outcomes, not two. A read
+ * that never reached the ledger renders as "Unknown — network unavailable" in
+ * amber, never as "Not verified": an embedded badge that says "not verified"
+ * during an outage misleads every third party that embeds it.
+ */
+type BadgeStatus = "loading" | "verified" | "unverified" | "unknown";
+
+/** Re-check cadence while the network is unreachable, in ms. */
+const UNKNOWN_RETRY_MS = 10_000;
 
 function BadgeContent() {
   const searchParams = useSearchParams();
@@ -15,39 +34,48 @@ function BadgeContent() {
     searchParams.get("compact") === "1" ||
     searchParams.get("compact") === "true";
 
-  const [verified, setVerified] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [status, setStatus] = useState<BadgeStatus>("loading");
+  const [issue, setIssue] = useState<RpcIssue | null>(null);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     if (!wallet) {
-      setLoading(false);
-      setVerified(false);
+      setStatus("unverified");
+      setIssue(null);
       return;
     }
 
     let isMounted = true;
-    async function checkStatus() {
+    setStatus("loading");
+    (async () => {
       try {
-        setLoading(true);
         const result = await isVerified(wallet, claim);
-        if (isMounted) {
-          setVerified(result.valid);
-          setLoading(false);
-        }
+        if (!isMounted) return;
+        // `unknown` means the ledger never answered — a failed read is not a
+        // negative result and must not render as one.
+        setStatus(result.status === "unknown" ? "unknown" : result.status);
+        setIssue(result.status === "unknown" ? result.issue : null);
       } catch (err) {
-        console.error("Badge verification lookup failed:", err);
-        if (isMounted) {
-          setVerified(false);
-          setLoading(false);
-        }
+        if (!isMounted) return;
+        setStatus("unknown");
+        setIssue(classifyRpcError(err));
       }
-    }
+    })();
 
-    checkStatus();
     return () => {
       isMounted = false;
     };
-  }, [wallet, claim]);
+  }, [wallet, claim, nonce]);
+
+  // While the read cannot be completed, keep trying: the badge heals itself
+  // once the node is back instead of staying "Unknown" until someone reloads.
+  useEffect(() => {
+    if (status !== "unknown") return;
+    const timer = setTimeout(() => setNonce((n) => n + 1), UNKNOWN_RETRY_MS);
+    return () => clearTimeout(timer);
+  }, [status, nonce]);
+
+  const retry = useCallback(() => setNonce((n) => n + 1), []);
 
   const isDark =
     theme === "dark" ||
@@ -60,6 +88,16 @@ function BadgeContent() {
   const borderColor = isDark ? "#30363d" : "#e2e8f0";
   const faintColor = isDark ? "#8b949e" : "#64748b";
 
+  // Amber is reserved for "cannot determine" — never used for a negative.
+  const toneColor =
+    status === "verified" ? "#10b981" : status === "unverified" ? "#ef4444" : "#e3b341";
+  const toneBg =
+    status === "verified"
+      ? "rgba(16, 185, 129, 0.15)"
+      : status === "unverified"
+        ? "rgba(239, 68, 68, 0.15)"
+        : "rgba(227, 179, 65, 0.15)";
+
   const claimLabels: Record<string, string> = {
     kyc: "KYC",
     age: "Age 18+",
@@ -71,6 +109,17 @@ function BadgeContent() {
   };
 
   const claimText = claimLabels[claim.toLowerCase()] || claim.toUpperCase();
+
+  const title =
+    status === "loading"
+      ? "Verifying StellarCred claim on-chain..."
+      : status === "verified"
+        ? `StellarCred: ${claimText} Verified for ${wallet}`
+        : status === "unknown"
+          ? `StellarCred: ${claimText} status unknown — ${
+              issue?.message ?? "the network could not be reached"
+            } This is not a rejection.`
+          : `StellarCred: ${claimText} Not Verified`;
 
   return (
     <div
@@ -91,13 +140,9 @@ function BadgeContent() {
         href="https://stellarcred.xyz"
         target="_blank"
         rel="noopener noreferrer"
-        title={
-          loading
-            ? "Verifying StellarCred claim on-chain..."
-            : verified
-              ? `StellarCred: ${claimText} Verified for ${wallet}`
-              : `StellarCred: ${claimText} Not Verified`
-        }
+        title={title}
+        // data-status lets embedders style or script around the unknown state.
+        data-status={status}
         style={{
           textDecoration: "none",
           display: "inline-flex",
@@ -123,26 +168,17 @@ function BadgeContent() {
             width: isCompact ? "18px" : "22px",
             height: isCompact ? "18px" : "22px",
             borderRadius: "50%",
-            background: loading
-              ? "rgba(148, 163, 184, 0.15)"
-              : verified
-                ? "rgba(16, 185, 129, 0.15)"
-                : "rgba(239, 68, 68, 0.15)",
-            color: loading
-              ? faintColor
-              : verified
-                ? "#10b981"
-                : "#ef4444",
+            background: status === "loading" ? "rgba(148, 163, 184, 0.15)" : toneBg,
+            color: status === "loading" ? faintColor : toneColor,
             flexShrink: 0,
           }}
         >
-          {loading ? (
-            <IconLoader2
-              size={isCompact ? 12 : 14}
-              className="animate-spin"
-            />
-          ) : verified ? (
+          {status === "loading" ? (
+            <IconLoader2 size={isCompact ? 12 : 14} className="animate-spin" />
+          ) : status === "verified" ? (
             <IconCheck size={isCompact ? 12 : 14} stroke={2.5} />
+          ) : status === "unknown" ? (
+            <IconQuestionMark size={isCompact ? 12 : 14} stroke={2.5} />
           ) : (
             <IconX size={isCompact ? 12 : 14} stroke={2.5} />
           )}
@@ -173,12 +209,16 @@ function BadgeContent() {
                 marginTop: "0.1rem",
               }}
             >
-              {loading ? (
+              {status === "loading" ? (
                 "Checking on-chain..."
-              ) : verified ? (
+              ) : status === "verified" ? (
                 <span style={{ color: "#10b981", fontWeight: 500 }}>
                   Verified{" "}
                   {wallet ? `(${truncateHash(wallet)})` : ""}
+                </span>
+              ) : status === "unknown" ? (
+                <span style={{ color: "#e3b341" }}>
+                  Unknown — network unavailable
                 </span>
               ) : (
                 <span style={{ color: "#ef4444" }}>Not verified</span>
@@ -187,6 +227,26 @@ function BadgeContent() {
           )}
         </div>
       </a>
+
+      {/* Recovering the badge must not require a reload of the embedding page. */}
+      {status === "unknown" && !isCompact && (
+        <button
+          type="button"
+          onClick={retry}
+          style={{
+            marginLeft: "0.5rem",
+            padding: "0.25rem 0.5rem",
+            fontSize: "0.7rem",
+            color: faintColor,
+            background: "transparent",
+            border: `1px solid ${borderColor}`,
+            borderRadius: "6px",
+            cursor: "pointer",
+          }}
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import jsQR from "jsqr";
 import { Modal } from "./Modal";
+import type jsQRType from "jsqr";
 
 export function QrScanner({
   title = "Scan QR code",
@@ -23,8 +23,21 @@ export function QrScanner({
 
   useEffect(() => {
     let cancelled = false;
+    // jsqr is lazy-loaded: it's only needed while the camera loop is actually
+    // decoding frames, and QrScanner itself is only mounted via next/dynamic
+    // (ssr:false) — but a static import would still pin it in the verify
+    // chunk for every visitor of the page, scanner open or not.
+    let jsQR: typeof jsQRType | null = null;
 
-    function tick() {
+    async function tick() {
+      if (!jsQR) {
+        try {
+          ({ default: jsQR } = await import("jsqr"));
+        } catch {
+          return;
+        }
+        if (cancelled || !jsQR) return;
+      }
       const video = videoRef.current;
       const canvas = canvasRef.current;
       if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {

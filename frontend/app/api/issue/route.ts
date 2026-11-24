@@ -1,297 +1,135 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sha256 } from "@noble/hashes/sha2.js";
+import { previewCredential, type CredentialType } from "@stellarcred/issuer";
+import { bodyErrorResponse } from "@/lib/request-limits";
+import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
+import { recordIssuance } from "@/lib/metrics";
 import {
-  IssuerClient,
-  CREDENTIAL_TYPES,
-  type CredentialType,
-  type ClaimParams,
-} from "@stellarcred/issuer";
-import { fetchIssuerPubkey } from "@/lib/issuer-registry";
-import { readJsonBody, bodyErrorResponse } from "../../../lib/request-limits";
-import {
-  logger,
-  stripSensitiveFields,
-  resolveRequestId,
-} from "../../../lib/logger";
-import { env } from "../../../lib/env";
-import { fetchPlaidBalance } from "../../../lib/plaid";
-import {
-  checkLimit,
-  extractIp,
-  hashForLog,
-  tooManyRequestsResponse,
-  LIMITS,
-} from "../../../lib/rate-limit";
-import {
-  idempotencyGet,
-  idempotencySet,
+  completedIdempotencyRecord,
+  idempotencyGetAsync,
+  idempotencySetAsync,
   idempotencyInFlightBegin,
   idempotencyInFlightSettle,
   idempotencyInFlightFail,
   isValidIdempotencyKey,
   MAX_KEY_LENGTH_BYTES,
-  type CachedResponse,
-} from "../../../lib/idempotency";
+  personaPendingIdempotencyRecord,
+  type IdempotencyRecord,
+} from "@/lib/idempotency";
+import {
+  normalizeIssueRequest,
+  parseIssueBody,
+  resolveIssuerClient,
+  validateIssueRequest,
+  validateIssuerRegistration,
+  type ValidationFailure,
+} from "./handlers/validate";
+import { enforceIpRateLimit, enforceWalletRateLimit } from "./handlers/rateLimit";
+import { runIssuanceFlow } from "./handlers/issuanceFlow";
+import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
 
-// Server-side only — never shipped to the browser.
-// Set ISSUER_PRIVATE_KEY in .env.local to the 64-char hex secp256k1 private
-// key whose public key was registered in IssuerRegistry. The registered pubkey
-// and the signing key must match or ProofRegistry will reject every proof.
-// Falls back to a deterministic demo key so the app runs without one set —
-// this fallback is intentionally app-specific and not part of @stellarcred/issuer.
-const DEMO_SK_HEX =
-  env.ISSUER_PRIVATE_KEY ||
-  Buffer.from(
-    sha256(new TextEncoder().encode("stellarcred-demo-issuer")),
-  ).toString("hex");
-
-if (!env.ISSUER_PRIVATE_KEY) {
-  logger.warn(
-    stripSensitiveFields({ event: "demo_issuer_key_active" }),
-    "USING PUBLIC DEMO ISSUER KEY — not for production. Set ISSUER_PRIVATE_KEY to use a real issuer key.",
-  );
-}
-
-const issuer = new IssuerClient({ privateKey: DEMO_SK_HEX });
-const SIM_ACCOUNT =
-  env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-
-// The server's own public key (x || y, 64 bytes) — derived from the same key
-// `issuer` signs with, via the package's publicKey(), not re-derived locally.
-// Used to confirm the selected issuerId's on-chain registered key actually
-// matches this server's signing key before issuing.
-function localIssuerPubkeyBytes(): Buffer {
-  const { x, y } = issuer.publicKey();
-  return Buffer.from([...x, ...y]);
-}
-
-// ---------------------------------------------------------------------------
-// Persona identity verification relay
-// ---------------------------------------------------------------------------
-// Two templates are supported:
-//   PERSONA_KYC_TEMPLATE_ID  — government ID flow; issues kyc + age + jurisdiction
-//   PERSONA_AGE_TEMPLATE_ID  — selfie age estimation; issues age credential only
-//
-// If PERSONA_API_KEY is not set → demo fallback (always passes).
-// If PERSONA_API_KEY is set but the relevant template ID is missing → loud error.
-// ---------------------------------------------------------------------------
-
-const PERSONA_BASE = "https://withpersona.com/api/v1";
-const PERSONA_VERSION = "2023-01-05";
-
-function personaHeaders() {
-  return {
-    Authorization: `Bearer ${env.PERSONA_API_KEY}`,
-    "Content-Type": "application/json",
-    "Persona-Version": PERSONA_VERSION,
-  };
-}
-
-async function createPersonaInquiry(
-  templateId: string,
-  redirectUri: string,
-): Promise<{ url: string; id: string }> {
-  const res = await fetch(`${PERSONA_BASE}/inquiries`, {
-    method: "POST",
-    headers: personaHeaders(),
-    body: JSON.stringify({
-      data: {
-        attributes: {
-          "inquiry-template-id": templateId,
-          "redirect-uri": redirectUri,
-        },
-      },
-    }),
-  });
-  const json = await res.json();
-  if (!res.ok)
-    throw new Error(
-      `Persona: failed to create inquiry — ${JSON.stringify(json)}`,
-    );
-  const id: string = json.data.id;
-  // Persona hosted flow URL
-  const url = `https://withpersona.com/verify?inquiry-id=${id}`;
-  return { url, id };
-}
-
-async function retrievePersonaInquiry(inquiryId: string): Promise<{
-  status: string;
-  fields: Record<string, { value: unknown }>;
-}> {
-  const res = await fetch(`${PERSONA_BASE}/inquiries/${inquiryId}`, {
-    headers: personaHeaders(),
-  });
-  const json = await res.json();
-  if (!res.ok)
-    throw new Error(
-      `Persona: failed to retrieve inquiry — ${JSON.stringify(json)}`,
-    );
-  return {
-    status: json.data.attributes.status as string,
-    fields: (json.data.attributes.fields ?? {}) as Record<
-      string,
-      { value: unknown }
-    >,
-  };
-}
-
-// Minimal ISO 3166-1 alpha-2 → numeric map for countries we care about.
-// Persona returns alpha-2 codes; our jurisdiction circuit uses numeric.
-const ALPHA2_TO_NUMERIC: Record<string, string> = {
-  NG: "566",
-  US: "840",
-  DE: "276",
-  IN: "356",
-  IR: "364",
-  GB: "826",
-  FR: "250",
-  CA: "124",
-  AU: "036",
-  BR: "076",
-  CN: "156",
-  JP: "392",
-  KR: "410",
-  ZA: "710",
-  GH: "288",
-  KE: "404",
-  EG: "818",
-  MX: "484",
-  AR: "032",
-  SG: "702",
-};
-
-function alpha2ToNumeric(code: string): string {
-  return ALPHA2_TO_NUMERIC[code.toUpperCase()] ?? "0";
-}
-
-// Called after user returns from Persona KYC (gov ID) inquiry.
-// Returns DOB and country so we can issue age + jurisdiction credentials.
-async function resolvePersonaKYC(inquiryId: string): Promise<{
-  ok: boolean;
-  dob?: string;
-  countryNumeric?: string;
-  error?: string;
-}> {
-  const { status, fields } = await retrievePersonaInquiry(inquiryId);
-  if (status !== "approved") {
-    return { ok: false, error: `Persona KYC inquiry status: ${status}` };
-  }
-  const dob =
-    String(
-      fields["birthdate"]?.value ?? fields["birth-date"]?.value ?? "",
-    ).trim() || undefined;
-  const alpha2 =
-    String(
-      fields["selected-country-code"]?.value ??
-        fields["country-code"]?.value ??
-        fields["address-country-code"]?.value ??
-        "",
-    ).trim() || undefined;
-  return {
-    ok: true,
-    dob,
-    countryNumeric: alpha2 ? alpha2ToNumeric(alpha2) : undefined,
-  };
-}
-
-// Resolved Plaid conflict
-// readonly CredentialType[] widened to string[] so .includes() accepts any
-// user-supplied string during validation, before it's known to be valid.
-const VALID_TYPES: readonly string[] = CREDENTIAL_TYPES;
-
+/**
+ * POST /api/issue — thin dispatcher.
+ *
+ * The work is split into focused modules so this file only sequences it:
+ *
+ *   ../_middleware.ts         tenant authentication (shared auth guard)
+ *   handlers/validate.ts      parsing, normalisation, field, tenant and
+ *                             issuer-registry checks
+ *   handlers/rateLimit.ts     the per-IP and per-wallet limits
+ *   handlers/issuanceFlow.ts  Persona, Plaid, signing, deployment/circuit stamps
+ *
+ * What stays here is request lifecycle: the idempotency cache (lookup, replay,
+ * single-flight join, write-back), the ordering of those steps, and turning an
+ * outcome into a response with `x-request-id` on it.
+ */
 export async function POST(req: NextRequest) {
   const requestId = resolveRequestId(req.headers.get("x-request-id"));
 
   // ── Idempotency-Key support ────────────────────────────────────────────────
-  // A retried /api/issue request (network blip, double-click) can trigger
-  // duplicate signing/provider calls. Accept an Idempotency-Key header so
-  // identical retries return the cached original result without re-processing.
-  // Keys are validated (non-empty, printable, ≤ 256 bytes) before use so an
-  // oversized header cannot be stored verbatim and amplify memory usage.
   const rawKey = req.headers.get("Idempotency-Key")?.trim() || undefined;
-  const idempotencyKey =
-    rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
+  const idempotencyKey = rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
   if (rawKey && !idempotencyKey) {
     logger.warn(
       stripSensitiveFields({
         event: "idempotency_key_rejected",
         requestId,
         reason:
-          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES
-            ? "too_long"
-            : "invalid",
+          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES ? "too_long" : "invalid",
       }),
     );
   }
 
   if (idempotencyKey) {
-    // Cache hit — replay the original response (X-Idempotent: true so clients
-    // can tell this is a replayed, not fresh, result).
-    const cached = idempotencyGet(idempotencyKey);
-    if (cached) {
-      logger.info(stripSensitiveFields({ event: "idempotency_hit", requestId }));
-      return replayCached(cached, requestId);
-    }
+    while (true) {
+      const record = await idempotencyGetAsync(idempotencyKey);
+      if (record) {
+        logger.info(stripSensitiveFields({ event: "idempotency_hit", requestId }));
+        return replayIdempotencyRecord(record, requestId);
+      }
 
-    // Concurrent duplicate — another request with this key is already
-    // executing. Await its result and replay it instead of running the
-    // provider calls / signing a second time.
-    const inFlight = idempotencyInFlightBegin(idempotencyKey);
-    if (inFlight) {
-      logger.info(
-        stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }),
-      );
+      const inFlight = idempotencyInFlightBegin(idempotencyKey);
+      if (!inFlight) break;
+
+      logger.info(stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }));
       try {
-        return replayCached(await inFlight, requestId);
+        return replayIdempotencyRecord(await inFlight, requestId);
       } catch {
-        // The leader failed before producing a response — process this
-        // request normally instead of replaying the leader's error. Re-acquire
-        // the in-flight slot so a third concurrent duplicate joining while we
-        // execute is still de-duplicated instead of running in parallel.
-        idempotencyInFlightBegin(idempotencyKey);
+        // A failed leader releases the slot. Rejoining prevents simultaneous
+        // retries from all becoming leaders.
       }
     }
   }
 
-  // ── Rate limiting ────────────────────────────────────────────────────────
-  // Applied after idempotency: a request that hits the idempotency cache is
-  // already free — it's a replay, not a new issuance. New requests (including
-  // the first leg of a Persona KYC redirect flow) count against both the IP
-  // and, when the wallet address is available in the URL params, the wallet
-  // limit. The wallet address from the body is checked separately inside
-  // executeRequest once the body is parsed; the pre-body IP check is cheap and
-  // blocks floods before any body is read.
-  const ip = extractIp(req);
-  const windowMs = LIMITS.windowMs();
-  const ipResult = checkLimit(`issue:ip:${ip}`, LIMITS.issuePerIp(), windowMs);
-  if (ipResult.throttled) {
-    logger.warn(
-      stripSensitiveFields({
-        event: "rate_limited",
-        route: "issue",
-        dimension: "ip",
-        ipToken: hashForLog(ip),
-        requestId,
-      }),
-    );
-    return tooManyRequestsResponse(ipResult.retryAfterMs);
+  // Per-IP limit runs before the body is read, and before the idempotency
+  // cache, so a throttled IP never gets its 429 stored and replayed.
+  const ipLimited = enforceIpRateLimit(req, requestId);
+  if (ipLimited) {
+    if (idempotencyKey) {
+      idempotencyInFlightFail(idempotencyKey, new Error("rate limited"));
+    }
+    return ipLimited;
   }
 
   try {
     return await executeRequest(req, requestId, idempotencyKey);
   } catch (e) {
-    // Release any duplicate waiting on this key so it can retry itself.
     if (idempotencyKey) idempotencyInFlightFail(idempotencyKey, e);
     throw e;
   }
 }
 
-/** Reconstruct a NextResponse from a cached entry, tagging it as replayed. */
-function replayCached(cached: CachedResponse, requestId: string): NextResponse {
-  const headers = new Headers(cached.headers as Record<string, string>);
-  headers.set("x-request-id", requestId);
-  headers.set("X-Idempotent", "true");
-  return new NextResponse(cached.body, { status: cached.status, headers });
+/** A replay never re-sends credential material: only the Persona redirect is
+ * reproducible, because it is just a URL the holder must still complete. */
+function replayIdempotencyRecord(record: IdempotencyRecord, requestId: string): NextResponse {
+  const headers = new Headers({
+    "x-request-id": requestId,
+    "X-Idempotent": "true",
+  });
+
+  if (record.kind === "persona_pending") {
+    return NextResponse.json(
+      {
+        needsPersona: true,
+        personaUrl: record.personaUrl,
+        inquiryId: record.inquiryId,
+      },
+      { status: 202, headers },
+    );
+  }
+
+  headers.set("X-Idempotency-Replay", "redacted");
+  return NextResponse.json(
+    {
+      code: "IDEMPOTENCY_RESPONSE_REDACTED",
+      error: "This Idempotency-Key already completed; credential data is not retained for replay.",
+    },
+    { status: 409, headers },
+  );
+}
+
+/** Render a validation verdict as the JSON error response callers expect. */
+function failureResponse(failure: ValidationFailure): NextResponse {
+  return NextResponse.json({ error: failure.error }, { status: failure.status });
 }
 
 async function executeRequest(
@@ -302,30 +140,58 @@ async function executeRequest(
   const startTime = Date.now();
   let outcome: "success" | "failure" = "failure";
   let credentialTypes: string[] = [];
-  let issuerId: string | undefined;
-  let walletAddress: string | undefined;
 
-  const sendResponse = async (response: NextResponse) => {
+  // Tenant authentication comes first: a request that cannot prove which
+  // tenant it belongs to must not have its body read or cached.
+  const tenantRes = await authenticateTenant(req);
+  if (!tenantRes.ok) {
+    if (idempotencyKey) {
+      idempotencyInFlightFail(idempotencyKey, new Error(tenantRes.error));
+    }
+    return authErrorResponse(tenantRes, requestId);
+  }
+  const tenant = tenantRes.value;
+
+  // A body that cannot be read or parsed is answered directly: it is not a
+  // verdict on an issuance request, so it is neither cached nor logged as one.
+  const parsed = await parseIssueBody(req);
+  if (!parsed.ok) {
+    if (idempotencyKey) {
+      idempotencyInFlightFail(idempotencyKey, new Error("invalid request body"));
+    }
+    const res = bodyErrorResponse(parsed.error);
+    res.headers.set("x-request-id", requestId);
+    return res;
+  }
+
+  const request = normalizeIssueRequest(parsed.body, tenant);
+  const walletAddress = request.holder;
+  const issuerId = request.issuerId;
+
+  const sendResponse = async (response: NextResponse, record?: IdempotencyRecord) => {
     const durationMs = Date.now() - startTime;
     response.headers.set("x-request-id", requestId);
 
-    // Cache this response under the idempotency key if provided, and release
-    // any concurrent duplicate that joined the in-flight slot.
     if (idempotencyKey) {
       try {
-        const cloned = response.clone();
-        const body = await cloned.text();
-        const entry: CachedResponse = {
-          status: response.status,
-          body,
-          headers: Object.fromEntries(response.headers.entries()),
-          createdAt: Date.now(),
-        };
-        idempotencySet(idempotencyKey, entry);
-        idempotencyInFlightSettle(idempotencyKey, entry);
+        // Only outcomes that can be replayed without retaining credential
+        // material are cached: a 200 stores a hash, a Persona redirect stores
+        // the inquiry URL. Everything else releases the in-flight slot.
+        const completedRecord =
+          record ??
+          (response.status === 200
+            ? completedIdempotencyRecord(response.status, await response.clone().text())
+            : undefined);
+        if (completedRecord) {
+          await idempotencySetAsync(idempotencyKey, completedRecord);
+          idempotencyInFlightSettle(idempotencyKey, completedRecord);
+        } else {
+          idempotencyInFlightFail(
+            idempotencyKey,
+            new Error("request did not complete an idempotent operation"),
+          );
+        }
       } catch (e) {
-        // If cloning/caching fails (edge case), don't break the response —
-        // but do fail any waiting duplicate so it can retry for itself.
         idempotencyInFlightFail(idempotencyKey, e);
       }
     }
@@ -342,357 +208,87 @@ async function executeRequest(
           requestId,
         }),
       );
+      // Record metrics for every completed issuance request.
+      recordIssuance(
+        type || "unknown",
+        outcome === "success" ? "success" : "failure",
+        durationMs,
+      );
+    }
+    // If no credential types were parsed yet (early rejection), record once.
+    if (credentialTypes.length === 0) {
+      recordIssuance("unknown", "invalid_request", durationMs);
     }
     return response;
   };
 
-  type BodyType = {
-    credential_types?: string[];
-    // Legacy single-type shape — still accepted for backward compatibility.
-    type?: string;
-    holder?: string;
-    issuerId?: string;
-    issuerName?: string;
-    expiry?: string;
-    attributes?: Record<string, string>;
-    attribute?: string;
-    claimParams?: ClaimParams;
-    // Set by the frontend after the user returns from Persona's hosted flow.
-    persona_inquiry_id?: string;
-    returnUrl?: string;
-  };
-
-  const parsed = await readJsonBody<BodyType>(req);
-  if (!parsed.ok) {
-    return sendResponse(bodyErrorResponse(parsed.error));
-  }
-  const body = parsed.body;
-
-  const {
-    holder,
-    issuerId: reqIssuerId,
-    issuerName = "StellarCred Authority",
-    expiry = "90 days",
-    claimParams,
-    persona_inquiry_id: personaInquiryId,
-    returnUrl,
-  } = body;
-  issuerId = reqIssuerId;
-  walletAddress = holder;
-
   // ── Per-wallet rate limit ────────────────────────────────────────────────
-  // Checked here (after body parse) because the wallet address lives in the
-  // body. Returns 429 before any provider call or signing work is started.
-  if (holder) {
-    const walletResult = checkLimit(
-      `issue:wallet:${holder}`,
-      LIMITS.issuePerWallet(),
-      LIMITS.windowMs(),
-    );
-    if (walletResult.throttled) {
-      logger.warn(
-        stripSensitiveFields({
-          event: "rate_limited",
-          route: "issue",
-          dimension: "wallet",
-          walletToken: hashForLog(holder),
-          requestId,
-        }),
-      );
-      return sendResponse(tooManyRequestsResponse(walletResult.retryAfterMs));
-    }
+  if (walletAddress) {
+    const walletLimited = enforceWalletRateLimit(walletAddress, requestId);
+    if (walletLimited) return sendResponse(walletLimited);
   }
 
-  // Normalize to the multi-claim shape. Legacy callers send { type, attribute };
-  // map that single attribute onto the right key in `attributes`.
-  credentialTypes = body.credential_types ?? (body.type ? [body.type] : []);
-  for (const type of credentialTypes) {
-    logger.info(
-      stripSensitiveFields({
-        event: "request_received",
-        credentialType: type,
-        issuerId,
-        walletAddress,
-        requestId,
-      }),
-    );
-  }
+  // `credentialTypes` is set only once the request is past the wallet limit,
+  // so a throttled wallet still produces no `response_sent` lines.
+  credentialTypes = request.credentialTypes;
 
-  const attributes: Record<string, string> = { ...(body.attributes ?? {}) };
-  if (body.attribute !== undefined && body.type) {
-    if (body.type === "age") attributes.date_of_birth ??= body.attribute;
-    else if (body.type === "income") attributes.income ??= body.attribute;
-    else if (body.type === "jurisdiction")
-      attributes.country_code ??= body.attribute;
-    else if (body.type === "employment")
-      attributes.seniority ??= body.attribute;
-  }
+  const validated = validateIssueRequest(request, requestId, tenant);
+  if (!validated.ok) return sendResponse(failureResponse(validated.failure));
 
-  if (credentialTypes.length === 0) {
-    return sendResponse(
-      NextResponse.json(
-        { error: "credential_types must contain at least one type" },
-        { status: 400 },
-      ),
-    );
-  }
-  const invalid = credentialTypes.find((t) => !VALID_TYPES.includes(t));
-  if (invalid) {
-    for (const type of credentialTypes) {
-      logger.info(
-        stripSensitiveFields({
-          event: "validation_result",
-          credentialType: type,
-          issuerId,
-          walletAddress,
-          outcome: "invalid_type",
-          requestId,
-        }),
-      );
-    }
-    return sendResponse(
-      NextResponse.json(
-        { error: `Invalid credential type: ${invalid}` },
-        { status: 400 },
-      ),
-    );
-  }
-  if (!holder) {
-    return sendResponse(
-      NextResponse.json(
-        { error: "holder address is required" },
-        { status: 400 },
-      ),
-    );
-  }
-  if (!issuerId) {
-    return sendResponse(
-      NextResponse.json({ error: "issuerId is required" }, { status: 400 }),
-    );
-  }
-
-  if (env.NEXT_PUBLIC_ISSUER_REGISTRY_ID) {
-    const registered = await fetchIssuerPubkey(issuerId, SIM_ACCOUNT);
-    if (!registered) {
-      return sendResponse(
-        NextResponse.json(
-          { error: "Selected issuer is not registered on IssuerRegistry." },
-          { status: 400 },
+  if (validated.request.preview === true) {
+    try {
+      const previews = await Promise.all(
+        Array.from(new Set(validated.request.credentialTypes), (type) =>
+          previewCredential({
+            type: type as CredentialType,
+            holder: validated.request.holder,
+            issuerId: validated.request.issuerId,
+            issuerName: validated.request.issuerName,
+            expiry: validated.request.expiry,
+            attribute: validated.request.attributes,
+            claimParams: validated.request.claimParams,
+          }),
         ),
       );
+      outcome = "success";
+      return sendResponse(NextResponse.json({ preview: true, credentials: previews }));
+    } catch (e) {
+      return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 400 }));
     }
-    const localKey = localIssuerPubkeyBytes();
-    if (!Buffer.from(registered).equals(localKey)) {
+  }
+
+  const issuerClient = await resolveIssuerClient(tenant);
+  const registrationFailure = await validateIssuerRegistration(
+    validated.request.issuerId,
+    issuerClient,
+  );
+  if (registrationFailure) {
+    return sendResponse(failureResponse(registrationFailure));
+  }
+
+  const result = await runIssuanceFlow(validated.request, {
+    requestId,
+    origin: req.nextUrl.origin,
+    issuerClient,
+  });
+
+  switch (result.kind) {
+    case "persona":
       return sendResponse(
         NextResponse.json(
           {
-            error:
-              "ISSUER_PRIVATE_KEY does not match the selected issuer's registered public key on IssuerRegistry. Choose the issuer that matches your server key, or update ISSUER_PRIVATE_KEY.",
+            needsPersona: true,
+            personaUrl: result.personaUrl,
+            inquiryId: result.inquiryId,
           },
-          { status: 403 },
+          { status: 202 },
         ),
+        personaPendingIdempotencyRecord(result.inquiryId, result.personaUrl),
       );
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Identity verification via Persona
-  // ---------------------------------------------------------------------------
-  // needsKyc = any of kyc / jurisdiction, OR age when KYC template is available
-  // needsAgeOnly = age-only request when only the selfie age template is available
-  //
-  // Decision tree:
-  //   PERSONA_API_KEY not set                           → demo fallback (always passes)
-  //   PERSONA_API_KEY set, KYC types requested:
-  //     PERSONA_KYC_TEMPLATE_ID not set                → 500 (misconfiguration)
-  //     no inquiry_id yet                              → 202 + Persona URL (redirect)
-  //     inquiry_id present                             → verify + extract DOB/country
-  //   PERSONA_API_KEY set, age-only requested:
-  //     PERSONA_AGE_TEMPLATE_ID not set                → 500 (misconfiguration)
-  //     no inquiry_id yet                              → 202 + Persona URL (redirect)
-  //     inquiry_id present                             → verify + extract min_age
-  // ---------------------------------------------------------------------------
-  // Gate the kyc credential on Persona identity verification (gov ID flow).
-  // Age and jurisdiction are standalone — user-provided values, no external verification.
-  // If PERSONA_API_KEY is not set → demo fallback, verification skipped.
-  // If PERSONA_API_KEY is set but PERSONA_KYC_TEMPLATE_ID is missing → 500.
-  const needsIdentity = credentialTypes.includes("kyc");
-  if (needsIdentity) {
-    if (!env.PERSONA_API_KEY) {
-      logger.info(
-        stripSensitiveFields({
-          event: "provider_call",
-          credentialType: "kyc",
-          issuerId,
-          walletAddress,
-          outcome: "demo_mode",
-          requestId,
-        }),
-      );
-    } else {
-      // lib/env.ts already requires PERSONA_KYC_TEMPLATE_ID whenever
-      // PERSONA_API_KEY is set, so this branch is unreachable in practice —
-      // the misconfiguration this used to catch is now a startup failure
-      // instead of a per-request 500. Kept as defense-in-depth.
-      const templateId = env.PERSONA_KYC_TEMPLATE_ID;
-      if (!templateId) {
-        return sendResponse(
-          NextResponse.json(
-            {
-              error:
-                "PERSONA_KYC_TEMPLATE_ID is required when PERSONA_API_KEY is set",
-            },
-            { status: 500 },
-          ),
-        );
-      }
-      const baseUrl =
-        env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? req.nextUrl.origin;
-      if (!personaInquiryId) {
-        // First request — create a Persona inquiry and ask the frontend to redirect.
-        logger.info(
-          stripSensitiveFields({
-            event: "provider_call",
-            credentialType: "kyc",
-            issuerId,
-            walletAddress,
-            outcome: "inquiry_created",
-            requestId,
-          }),
-        );
-        const redirectUrl = returnUrl
-          ? `${baseUrl}/verify?return_url=${encodeURIComponent(returnUrl)}`
-          : `${baseUrl}/verify`;
-        const { url, id } = await createPersonaInquiry(templateId, redirectUrl);
-        return sendResponse(
-          NextResponse.json(
-            { needsPersona: true, personaUrl: url, inquiryId: id },
-            { status: 202 },
-          ),
-        );
-      }
-      // Second request — user returned from Persona, verify the completed inquiry.
-      const kyc = await resolvePersonaKYC(personaInquiryId);
-      if (!kyc.ok) {
-        logger.info(
-          stripSensitiveFields({
-            event: "provider_call",
-            credentialType: "kyc",
-            issuerId,
-            walletAddress,
-            outcome: "verification_failed",
-            requestId,
-          }),
-        );
-        return sendResponse(
-          NextResponse.json(
-            { error: kyc.error ?? "Identity verification failed" },
-            { status: 403 },
-          ),
-        );
-      }
-      logger.info(
-        stripSensitiveFields({
-          event: "provider_call",
-          credentialType: "kyc",
-          issuerId,
-          walletAddress,
-          outcome: "verified",
-          requestId,
-        }),
-      );
-      if (kyc.dob) attributes.date_of_birth = kyc.dob;
-      if (kyc.countryNumeric) attributes.country_code = kyc.countryNumeric;
-    }
-  }
-
-  // Gate funds issuance on Plaid balance attestation. Plaid is the source of
-  // truth — we overwrite any user-supplied balance with the verified figure.
-  const needsFunds = credentialTypes.includes("funds");
-  if (needsFunds) {
-    const plaid = await fetchPlaidBalance(requestId);
-    if (!plaid.ok) {
-      logger.info(
-        stripSensitiveFields({
-          event: "provider_call",
-          credentialType: "funds",
-          issuerId,
-          walletAddress,
-          outcome: "verification_failed",
-          requestId,
-        }),
-      );
-      return sendResponse(
-        NextResponse.json(
-          { error: plaid.error, code: plaid.code },
-          { status: plaid.status },
-        ),
-      );
-    }
-    logger.info(
-      stripSensitiveFields({
-        event: "provider_call",
-        credentialType: "funds",
-        issuerId,
-        walletAddress,
-        outcome: "verified",
-        requestId,
-      }),
-    );
-    attributes.balance = String(plaid.balance ?? 0);
-  }
-
-  try {
-    // De-duplicate types so the same claim isn't issued twice in one call.
-    const uniqueTypes = Array.from(new Set(credentialTypes));
-    const credentials = [];
-    for (const type of uniqueTypes) {
-      logger.info(
-        stripSensitiveFields({
-          event: "signing_started",
-          credentialType: type,
-          issuerId,
-          walletAddress,
-          requestId,
-        }),
-      );
-      const credential = await issuer.issue({
-        type: type as CredentialType,
-        holder,
-        issuerId,
-        issuerName,
-        expiry,
-        attribute: attributes,
-        claimParams,
-      });
-      credentials.push(credential);
-      logger.info(
-        stripSensitiveFields({
-          event: "signing_success",
-          credentialType: type,
-          issuerId,
-          walletAddress,
-          requestId,
-        }),
-      );
-    }
-    outcome = "success";
-    return sendResponse(NextResponse.json({ credentials }));
-  } catch (e) {
-    for (const type of credentialTypes) {
-      logger.error(
-        stripSensitiveFields({
-          event: "signing_failed",
-          credentialType: type,
-          issuerId,
-          walletAddress,
-          error: (e as Error).message,
-          requestId,
-        }),
-      );
-    }
-    return sendResponse(
-      NextResponse.json({ error: (e as Error).message }, { status: 500 }),
-    );
+    case "issued":
+      outcome = "success";
+      return sendResponse(NextResponse.json({ credentials: result.credentials }));
+    case "error":
+      return sendResponse(NextResponse.json(result.body, { status: result.status }));
   }
 }

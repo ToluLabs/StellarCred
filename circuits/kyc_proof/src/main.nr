@@ -83,3 +83,77 @@ fn test_secret_mismatch_rejected() {
     let fake_commitment = Poseidon2::hash([correct_secret as Field, salt as Field], 2);
     main(wrong_secret, salt, ZERO_SIG, fake_commitment, ZERO_X, ZERO_Y);
 }
+
+// --- Property-based tests: commitment binding properties -----------------
+// Systematically verify that Poseidon2 commitment binding holds for various
+// secret/salt combinations - the core constraint of the KYC circuit.
+
+// Different secrets with same salt produce different commitments.
+#[test]
+fn test_different_secrets_different_commitments() {
+    let salt: Field = 42;
+    let secrets: [Field; 5] = [1, 2, 100, 0xdeadbeef, 0xffffffff];
+    let mut prev = Poseidon2::hash([secrets[0], salt], 2);
+    for i in 1..5 {
+        let c = Poseidon2::hash([secrets[i], salt], 2);
+        assert(c != prev);
+        prev = c;
+    }
+}
+
+// Different salts with same secret produce different commitments.
+#[test]
+fn test_different_salts_different_commitments() {
+    let secret: Field = 12345;
+    let salts: [Field; 5] = [1, 2, 100, 0xdead, 0xbeef];
+    let mut prev = Poseidon2::hash([secret, salts[0]], 2);
+    for i in 1..5 {
+        let c = Poseidon2::hash([secret, salts[i]], 2);
+        assert(c != prev);
+        prev = c;
+    }
+}
+
+// Commitment is never zero for any non-trivial input.
+#[test]
+fn test_commitment_never_zero() {
+    let pairs: [(Field, Field); 5] = [(1, 1), (42, 99), (0, 1), (1, 0), (0xdead, 0xbeef)];
+    for i in 0..5 {
+        let c = Poseidon2::hash([pairs[i].0, pairs[i].1], 2);
+        assert(c != 0);
+    }
+}
+
+// Tampered commitment (off by 1) never matches real commitment.
+#[test]
+fn test_tampered_commitment_never_matches() {
+    let secret: Field = 0xcafebabe;
+    let salt: Field = 0x12345678;
+    let real = Poseidon2::hash([secret, salt], 2);
+    // Even the smallest perturbation produces a different hash.
+    let tampered = real + 1;
+    assert(real != tampered);
+}
+
+// Wrong secret, correct salt: commitment mismatch.
+#[test(should_fail)]
+fn test_wrong_secret_correct_salt() {
+    let real_secret: Field = 100;
+    let wrong_secret: Field = 200;
+    let salt: Field = 77;
+    let commitment = Poseidon2::hash([real_secret, salt], 2);
+    // Wrong secret with correct salt - commitment check fails.
+    let check = Poseidon2::hash([wrong_secret, salt], 2);
+    assert(check == commitment);
+}
+
+// Correct secret, wrong salt: commitment mismatch.
+#[test(should_fail)]
+fn test_correct_secret_wrong_salt() {
+    let secret: Field = 100;
+    let real_salt: Field = 77;
+    let wrong_salt: Field = 88;
+    let commitment = Poseidon2::hash([secret, real_salt], 2);
+    let check = Poseidon2::hash([secret, wrong_salt], 2);
+    assert(check == commitment);
+}

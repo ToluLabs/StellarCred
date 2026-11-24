@@ -4,21 +4,23 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { useSearchParams } from "next/navigation";
-import { IconLock, IconCheck, IconCircle, IconArrowRight } from "@tabler/icons-react";
+import { IconLock, IconCheck, IconCircle, IconArrowRight, IconAlertCircle } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
 import { ConfigBanner } from "@/components/ConfigBanner";
-import { checkClaim } from "@/lib/contracts";
+import { checkClaim, type ReadStatus } from "@/lib/contracts";
+import type { RpcIssue } from "@/lib/rpc-health";
 
 interface Requirement {
   label: string;
   type: string;
   minThreshold?: number;
-  proved: boolean;
+  /** Tri-state: a read that failed is `unknown`, never `unverified`. */
+  status: ReadStatus;
 }
 
-const REQUIREMENTS: Omit<Requirement, "proved">[] = [
+const REQUIREMENTS: Omit<Requirement, "status">[] = [
   { label: "KYC verified", type: "kyc" },
   { label: "Age ≥ 18", type: "age", minThreshold: 18 },
   { label: "Accredited investor", type: "income", minThreshold: 200000 },
@@ -39,30 +41,40 @@ function VerifierInner() {
   // LendFi gates deposits on three credential proofs, read live from the
   // ProofRegistry.
   const [reqs, setReqs] = useState<Requirement[]>(
-    REQUIREMENTS.map((r) => ({ ...r, proved: false })),
+    REQUIREMENTS.map((r) => ({ ...r, status: "unverified" as ReadStatus })),
   );
+  const [issue, setIssue] = useState<RpcIssue | null>(null);
   const [amount, setAmount] = useState("5,000");
   const [checked, setChecked] = useState(false);
-  const eligible = reqs.every((r) => r.proved);
+  const eligible = reqs.every((r) => r.status === "verified");
+  /** True when the ledger could not be read at all — not a rejection. */
+  const undetermined = reqs.some((r) => r.status === "unknown");
 
   // Reflect real on-chain status for each requirement whenever the wallet we
   // care about changes - connected wallet, or the one handed back in sc_wallet.
   useEffect(() => {
     if (!activeWallet) {
       setChecked(false);
+      setIssue(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const statuses = await Promise.all(
+        const results = await Promise.all(
           REQUIREMENTS.map((r) => checkClaim(activeWallet, r.type, r.minThreshold)),
         );
-        if (!cancelled) {
-          setReqs((rs) => rs.map((r, i) => ({ ...r, proved: statuses[i] })));
-        }
+        if (cancelled) return;
+        setReqs((rs) =>
+          rs.map((r, i) => ({ ...r, status: results[i].status as ReadStatus })),
+        );
+        const unreadable = results.find((r) => r.status === "unknown");
+        setIssue(unreadable && unreadable.status === "unknown" ? unreadable.issue : null);
       } catch {
-        // contracts not deployed / account unfunded - requirements stay unmet
+        // A throw (not a read result) also means "cannot determine", so the
+        // rows stay unknown rather than flipping to "Needed".
+        setReqs((rs) => rs.map((r) => ({ ...r, status: "unknown" as ReadStatus })));
+        setIssue({ kind: "read-failed", message: "The eligibility read failed." });
       } finally {
         if (!cancelled) setChecked(true);
       }
@@ -142,16 +154,20 @@ function VerifierInner() {
             {reqs.map((r) => (
               <div className="line" key={r.label}>
                 <span className="row" style={{ gap: "0.6rem" }}>
-                  {r.proved ? (
+                  {r.status === "unknown" ? (
+                    <IconAlertCircle size={16} color="var(--warn)" />
+                  ) : r.status === "verified" ? (
                     <IconCheck size={16} color="var(--accent)" stroke={2.5} />
                   ) : (
                     <IconCircle size={16} color="var(--faint)" />
                   )}
-                  <span style={{ color: r.proved ? "var(--text)" : "var(--muted)" }}>
+                  <span style={{ color: r.status === "verified" ? "var(--text)" : "var(--muted)" }}>
                     {r.label}
                   </span>
                 </span>
-                {r.proved ? (
+                {r.status === "unknown" ? (
+                  <Badge variant="pending" >Unknown</Badge>
+                ) : r.status === "verified" ? (
                   <Badge variant="verified">Proved</Badge>
                 ) : (
                   <Badge variant="pending">Needed</Badge>
@@ -160,7 +176,15 @@ function VerifierInner() {
             ))}
           </div>
 
-          {checked && !eligible && (
+          {checked && undetermined && (
+            <p className="faint" style={{ marginTop: "1.25rem", fontSize: "0.8125rem" }}>
+              {issue
+                ? `${issue.message} Eligibility is unknown, not refused.`
+                : "Eligibility could not be determined from the ledger."}
+            </p>
+          )}
+
+          {checked && !eligible && !undetermined && (
             <p className="faint" style={{ marginTop: "1.25rem", fontSize: "0.8125rem" }}>
               Missing proofs? Generate and submit them on the Holder page, then
               reconnect here.
@@ -190,6 +214,8 @@ function VerifierInner() {
             <span className="eyebrow">Deposit</span>
             {eligible ? (
               <Badge variant="verified">Access granted</Badge>
+            ) : undetermined ? (
+              <Badge variant="pending">Unknown</Badge>
             ) : (
               <Badge variant="denied">Access denied</Badge>
             )}
@@ -210,6 +236,11 @@ function VerifierInner() {
           >
             {eligible ? (
               "Deposit"
+            ) : undetermined ? (
+              <>
+                <IconAlertCircle size={15} />
+                Cannot verify access — network unavailable
+              </>
             ) : (
               <>
                 <IconLock size={15} />
@@ -221,7 +252,9 @@ function VerifierInner() {
           <p className="faint" style={{ marginTop: "1.25rem", fontSize: "0.8125rem", lineHeight: 1.6 }}>
             {eligible
               ? "LendFi read ProofRegistry.is_verified and found valid proofs for your address. No personal data was shared."
-              : "LendFi only reads ProofRegistry.is_verified for your address - it never sees the credential data behind your proofs."}
+              : undetermined
+                ? "LendFi could not reach the network, so it reports unknown. That is not a rejection of your credentials."
+                : "LendFi only reads ProofRegistry.is_verified for your address - it never sees the credential data behind your proofs."}
           </p>
         </div>
       </div>

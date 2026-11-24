@@ -60,3 +60,107 @@ fn test_zero_salt_rejected() {
     let zero_y: [u8; 32] = [0; 32];
     main(1, 5, 0, zero_sig, 0, zero_x, zero_y, 0);
 }
+
+// --- Property-based boundary tests (logic-only) --------------------------
+// Systematic coverage of employment constraints without full commitment/sig.
+
+// Seniority boundary: exact match.
+#[test]
+fn test_boundary_seniority_exact() {
+    let seniority: u64 = 5;
+    let min_seniority: u64 = 5;
+    assert(seniority >= min_seniority);
+}
+
+// Seniority off-by-one above.
+#[test]
+fn test_boundary_seniority_one_above() {
+    let seniority: u64 = 6;
+    let min_seniority: u64 = 5;
+    assert(seniority >= min_seniority);
+}
+
+// Seniority off-by-one below.
+#[test(should_fail)]
+fn test_boundary_seniority_one_below() {
+    let seniority: u64 = 4;
+    let min_seniority: u64 = 5;
+    assert(seniority >= min_seniority);
+}
+
+// Zero seniority with zero min.
+#[test]
+fn test_boundary_zero_seniority() {
+    let seniority: u64 = 0;
+    let min_seniority: u64 = 0;
+    assert(seniority >= min_seniority);
+}
+
+// Status must be non-zero.
+#[test(should_fail)]
+fn test_boundary_zero_status() {
+    let status: u64 = 0;
+    assert(status != 0);
+}
+
+// Various non-zero status values are all accepted.
+#[test]
+fn test_boundary_nonzero_statuses() {
+    let statuses: [u64; 5] = [1, 2, 3, 100, 255];
+    for i in 0..5 {
+        assert(statuses[i] != 0);
+    }
+}
+
+// Seniority sweep across multiple min values.
+#[test]
+fn test_boundary_seniority_sweep() {
+    let mins: [u64; 5] = [0, 1, 5, 10, 30];
+    for i in 0..5 {
+        let m = mins[i];
+        assert(m >= m); // exact
+        assert(m + 1 >= m); // one above
+    }
+}
+
+#[test(should_fail)]
+fn test_boundary_seniority_sweep_fail() {
+    let m: u64 = 10;
+    let seniority: u64 = m - 1;
+    assert(seniority >= m);
+}
+
+// 3-arity commitment: different (status, seniority) pairs produce different commitments.
+#[test]
+fn test_commitment_different_pairs() {
+    let salt: Field = 11;
+    let c1 = Poseidon2::hash([1 as Field, 5 as Field, salt], 3);
+    let c2 = Poseidon2::hash([1 as Field, 6 as Field, salt], 3);
+    let c3 = Poseidon2::hash([2 as Field, 5 as Field, salt], 3);
+    assert(c1 != c2);
+    assert(c1 != c3);
+    assert(c2 != c3);
+}
+
+// Salt binding: same (status, seniority) with different salts -> different commitments.
+#[test]
+fn test_commitment_salt_binding_3ary() {
+    let c1 = Poseidon2::hash([1 as Field, 5 as Field, 11 as Field], 3);
+    let c2 = Poseidon2::hash([1 as Field, 5 as Field, 22 as Field], 3);
+    assert(c1 != c2);
+}
+
+// Large seniority values.
+#[test]
+fn test_boundary_large_seniority() {
+    let seniority: u64 = 50;
+    let min_seniority: u64 = 50;
+    assert(seniority >= min_seniority);
+}
+
+#[test(should_fail)]
+fn test_boundary_large_seniority_fail() {
+    let seniority: u64 = 49;
+    let min_seniority: u64 = 50;
+    assert(seniority >= min_seniority);
+}

@@ -12,6 +12,13 @@ and submits it once on-chain. Any Stellar protocol can then check the result
 with a single read-only contract call — **verify once, trusted everywhere** —
 and the underlying credential data never touches the chain.
 
+> **Scope of that guarantee.** StellarCred hides the *contents* of a credential, not the
+> *fact* of a verification. On-chain claims, the wallet-to-claim link, the issuer's view of
+> the attribute at issuance, and delegation grants are deliberately **not** private. See
+> **[Limitations and non-goals](docs/LIMITATIONS.md)** for exactly what each party — issuer,
+> verifier, chain observer, indexer operator — observes, and what the system does not hide,
+> recover, or guarantee.
+
 StellarCred is not a KYC app. It's the interoperability layer between issuers
 and protocols: issuers integrate once, protocols integrate once, and users carry
 reusable proofs instead of re-submitting personal data to every app.
@@ -23,8 +30,8 @@ reusable proofs instead of re-submitting personal data to every app.
 - **Real on-chain ZK verification.** `CredentialVerifier` runs the host-native
   BN254 UltraHonk verifier ([`rs-soroban-ultrahonk`](https://github.com/yugocabrio/rs-soroban-ultrahonk)),
   not a stub. The full path — protocol → ProofRegistry → IssuerRegistry +
-  CredentialVerifier → BN254 — is covered by **21 passing contract tests** over
-  genuine proofs for all four credential types.
+  CredentialVerifier → BN254 — is covered by **125 passing contract tests** over
+  genuine proofs for all credential types.
 - **Issuer signature verified in zero-knowledge.** Each circuit verifies the
   issuer's secp256k1 ECDSA signature over the credential commitment
   (`std::ecdsa_secp256k1`) inside the proof, and the contract binds that key to
@@ -36,6 +43,9 @@ reusable proofs instead of re-submitting personal data to every app.
 - **Drop-in integration.** The [`@stellarcred/sdk`](frontend/packages/sdk) gives
   protocols `hasClaim`, `getClaims`, and `buildVerifyUrl`, plus a return-URL
   redirect flow so users verify and bounce straight back.
+- **Scriptable from the command line.** [`npx stellarcred`](frontend/packages/cli)
+  checks credentials, lists issuers, builds verify links and prepares issuer
+  registration for CI, ops and issuer tooling — built on the same SDK.
 
 ---
 
@@ -74,6 +84,7 @@ proof once and caches the result; every protocol afterwards reads
 ## Architecture & Overview
 
 For a detailed architectural description with diagrams, see the [Architecture Documentation](docs/ARCHITECTURE.md).
+For the authoritative specification of contract events, topic schemas, and indexer integration, see [docs/EVENTS.md](docs/EVENTS.md).
 
 ---
 
@@ -81,7 +92,7 @@ For a detailed architectural description with diagrams, see the [Architecture Do
 
 ```
 contracts/              Soroban workspace (Rust, soroban-sdk 26)
-  issuer_registry/        trust root; submit_proof checks is_valid_issuer
+  issuer_registry/        trust root; submit_proof checks is_valid_issuer_key
   credential_verifier/    real UltraHonk verify via host-native BN254 (VK per type)
   proof_registry/         caches verifications w/ expiry + TTL; gated on issuer key
   gated_pool/             demo DeFi pool gated on a KYC proof
@@ -89,6 +100,7 @@ circuits/               Noir circuits (UltraHonk · Noir 1.0.0-beta.9 / bb 0.87.
   commit/                 issuer helper: returns Poseidon2([value, salt], 2)
   kyc_proof/              "I hold a credential the issuer committed to"
   age_proof/              "I am over N" without revealing date of birth
+  date_range/             "my credential was issued in this window" without revealing the date
   income_proof/           "my income exceeds T" without revealing it
   jurisdiction_proof/     "my country is not restricted" without revealing it
   funds_proof/            "my balance exceeds T" without revealing it
@@ -105,6 +117,9 @@ services/
 scripts/deploy.sh       deploy + wire + register issuer + install all VKs on testnet
 scripts/benchmark.sh    measure instruction budget for every public function on testnet
 BENCHMARKS.md           per-function instruction counts, ledger I/O, and fee estimates
+docs/EVENTS.md          authoritative contract event topic & payload schemas
+docs/BACKFILL.md        when and how to backfill the indexer (ranges, resume, timing)
+docs/STORAGE_TTL.md     contract storage lifetime model, rent fees, and archival behavior
 ```
 
 All five credential circuits share one commitment scheme,
@@ -123,6 +138,12 @@ npm install @stellarcred/sdk
 ```
 
 > Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
+>
+> **Canonical Integration Example**: Looking for a complete, runnable end-to-end integration with wallet control challenge proof and server-side route gating? See [`examples/canonical-integration`](examples/canonical-integration).
+>
+> **TypeScript SDK Example**: Minimal TypeScript integration demonstrating typed imports, anti-spoofing challenge verification, and credential-gated Stellar transaction creation and signing. See [`examples/typescript`](examples/typescript).
+>
+> **TypeScript quickstart**: A minimal, CI-typechecked walkthrough — typed claim reads, a signed Stellar transaction, and the challenge flow — is in [`docs/SDK_TYPESCRIPT_EXAMPLE.md`](docs/SDK_TYPESCRIPT_EXAMPLE.md) and [`examples/typescript-quickstart`](examples/typescript-quickstart).
 
 Protocols never handle credential data - they ask the on-chain registry one
 question: _has this wallet proven the claim I require?_
@@ -134,8 +155,6 @@ import { StellarCred } from "@stellarcred/sdk";
 const canDeposit = await StellarCred.hasClaim(wallet, "kyc");
 
 // Threshold claim — enforce minimum on-chain
-const canAccessVault = await StellarCred.hasClaim(wallet, "funds", { minThreshold: 50000 });
-const canTrade = await StellarCred.hasClaim(wallet, "age", { minThreshold: 21 });
 const canAccessVault = await StellarCred.hasClaim(wallet, "funds", {
   minThreshold: 50000,
 });
@@ -177,7 +196,31 @@ full reference.
 | `age`          | Age ≥ threshold              | Date of birth             |
 | `income`       | Income ≥ threshold           | Actual income             |
 | `jurisdiction` | Country not restricted       | Country code              |
-| `funds`        | Balance ≥ threshold          | Exact balance (from Plaid)|
+| `funds`        | Balance ≥ threshold          | Exact balances (aggregate of linked Plaid accounts) |
+
+### Aggregate proof-of-funds
+
+Real proof-of-funds spans multiple accounts — checking here, a high-yield
+savings there. `funds` credentials attest to the **aggregate** balance summed
+across every linked Plaid item:
+
+- Configure one item via `PLAID_ACCESS_TOKEN`, or several (up to 25) via
+  `PLAID_ACCESS_TOKENS` (comma-separated); both may be set together.
+- The issuance server fetches each linked item, sums the available depository
+  balances, and the issuer signs a single commitment to the **sum**.
+- The `funds_proof` circuit then proves `sum ≥ threshold` without revealing
+  any component balance.
+- Per-source data (account names, per-item balances, access tokens) stays
+  server-side: it is never committed, logged (only source/account counts
+  reach the logs), stored in the browser credential, or written on-chain.
+- Aggregation **fails closed** — if any linked item errors or times out, no
+  balance is attested at all, because a partial sum is not the sum the
+  issuer would be attesting to.
+
+**Issuing credentials?** The issuer is the trust anchor of the system and has
+the most responsibility of the three roles — registration, key custody, what a
+signature actually attests to, rotation and revocation. Start here:
+**[Issuer onboarding guide](docs/ISSUER_ONBOARDING.md)**.
 
 ---
 
@@ -195,13 +238,24 @@ full reference.
    [`/api/issue`](frontend/app/api/issue/route.ts) route handler and signs with
    `ISSUER_PRIVATE_KEY` (never prefixed `NEXT_PUBLIC_`, never shipped to the
    browser). A production issuer would hold this key in an HSM or secrets
-   manager. With no key set, the route runs a clearly-logged demo fallback.
+   manager, and move it between HSMs with `IssuerRegistry.rotate_issuer_key`
+   (see [docs/ISSUER_KEY_ROTATION.md](docs/ISSUER_KEY_ROTATION.md)). With no key
+   set, the route runs a clearly-logged demo fallback.
 3. **Attestation relay.** Issuance can be gated on a real KYC provider — the
    route integrates Persona's sandbox and only signs credentials after a positive
    result. Identity fields are sent once to the provider and never stored.
 4. **Proof expiry.** `ProofRegistry` uses persistent storage with an explicit
    `expiry` (checked against ledger time) plus TTL extension.
-5. **Contract upgradeability.** `ProofRegistry` supports an admin-controlled upgrade path using Soroban's native `update_current_contract_wasm` capability. The administrative key is initialized at deployment time and can be subsequently transferred to a multisig wallet or DAO.
+5. **Contract governance is role-based.** Privileged actions on `CredentialVerifier`, `IssuerRegistry`, and `ProofRegistry` are gated by a role map (`Map<Symbol, Address>`) rather than a single admin key. The deployer is seeded the `admin` role (plus `upgrader` and `pauser` on `ProofRegistry`) at construction, and the root admin can delegate or rotate holders with `grant_role` / `revoke_role` (`has_role` is a public view). Each privileged function is guarded by its specific role: `set_vk` / `deprecate_version` / `refresh_latest_version_ttl` → `admin`, issuer registration / revocation / metadata → `admin`, `ProofRegistry.upgrade` → `upgrader`, `pause` / `unpause` → `pauser`, `migrate_record` → `admin`. Upgrade and pause power can therefore live on separate keys (multisig, release engineer, security/ops key, DAO) from day-to-day administration, and each key can be rotated independently. The two-step `propose_admin` / `accept_admin` flow transfers the root key together with every role the old root held, so the existing deploy/upgrade flow is unchanged.
+
+Points 1–3 are **obligations on every issuer**, not background reading. The
+[issuer onboarding guide](docs/ISSUER_ONBOARDING.md) states each of them as a
+requirement, with the custody, rotation and revocation duties that go with them.
+
+These controls enforce what the cryptography protects. They do not make a verification
+private: for what the system deliberately does **not** hide, recover, or guarantee — broken
+down by which party observes what — see
+**[Limitations and non-goals](docs/LIMITATIONS.md)**.
 
 ---
 
@@ -218,11 +272,24 @@ no StellarCred account and no server-side credential database. This means:
   backup** to download a JSON file of every credential (treat it like a
   password — it contains the raw values). Restore on any device with **Import
   credential JSON**.
+- **Guardian recovery (Shamir Secret Sharing).** On the **Holder** page, click
+  **Guardian recovery** to split your 256-bit credential-encryption key among
+  $N$ chosen guardians or devices with a threshold $K$ (e.g. 2-of-3). Guardians
+  receive only key shares (never credential data). Entering any threshold of
+  shares reconstructs the key client-side and restores credentials.
 - **Move one credential at a time.** A credential's detail view offers
   **Transfer to another device**: you pick a passphrase and the app shows a QR
   code whose payload is encrypted (AES-256-GCM, PBKDF2 key derivation) before
   leaving the device — scan it on the other device and enter the passphrase to
   import.
+- **Choose which PII fields exports include.** On the Holder page, **Export
+  field visibility** controls the sensitive credential attribute value and
+  holder wallet address. Both are included by default (including for existing
+  browser profiles). Turning either off omits that key from credential JSON
+  backups, encrypted transfers, and Guardian recovery exports; proof-history
+  JSON/CSV contain proof metadata only. An export with an omitted field cannot
+  fully restore or prove that credential. Preferences are local to this browser
+  profile, and no admin override exists for local exports.
 - **What reaches the server and chain.** The only server round-trip is
   `POST /api/witness` (rate-limited, never logged or persisted), which runs the
   Noir circuit and returns witness bytes for in-browser proving. On chain, only
@@ -246,7 +313,7 @@ no StellarCred account and no server-side credential database. This means:
 
 ```bash
 # Contracts — real proof verification in tests
-cargo test                 # 21 tests, incl. genuine BN254 verification
+cargo test                 # 125 tests, incl. genuine BN254 verification
 stellar contract build     # wasm artifacts → target/wasm32v1-none/release
 
 # Circuits — compile, prove, and stage circuit JSON for the frontend
@@ -259,9 +326,104 @@ cd frontend && pnpm install && pnpm dev
 
 ---
 
-## Deployments
+## Local development setup
 
-A public record of deployed contract IDs on testnet and mainnet, along with instructions to verify the bytecode integrity from source, is maintained in [DEPLOYMENTS.md](DEPLOYMENTS.md).
+Step-by-step for running the whole stack locally. For the full contract
+deployment walkthrough, see **Run it end to end (testnet)** below.
+
+### 1. Install prerequisites
+
+```bash
+rustup target add wasm32v1-none
+# Stellar CLI v26+ (verified on 27.0.0): https://developers.stellar.org/docs/tools/cli
+node --version   # 20+
+corepack enable && corepack prepare pnpm@9 --activate
+```
+
+### 2. Configure environment variables
+
+Copy the sample env file and fill in what you need. Every variable is
+documented inline in the sample — required vs optional, public vs server-only:
+
+```bash
+cp frontend/.env.example frontend/.env.local
+```
+
+The minimum to boot the frontend against a deployed set of contracts:
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_PROOF_REGISTRY_ID` | yes | ProofRegistry contract id |
+| `NEXT_PUBLIC_ISSUER_REGISTRY_ID` | yes | IssuerRegistry contract id |
+| `NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID` | yes | CredentialVerifier contract id |
+| `NEXT_PUBLIC_GATED_POOL_ID` | demo | GatedPool contract id (demo pool) |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | no | `testnet` (default) / `mainnet` / `futurenet` |
+| `NEXT_PUBLIC_RPC_URL` | no | Soroban RPC (defaults to testnet) |
+| `ISSUER_PRIVATE_KEY` | server | secp256k1 hex key for mock issuance |
+| `NEXT_PUBLIC_ISSUER_ADDRESS` | no | G-address of the registered issuer |
+
+Contract ids are printed by `./scripts/deploy.sh` and written into
+`frontend/.env.local` automatically. See `frontend/.env.example` for the full
+list (WalletConnect, Persona, Plaid, webhooks, Sentry — all optional).
+
+### 3. Run the frontend
+
+```bash
+cd frontend
+pnpm install          # also builds @stellarcred/issuer via postinstall
+pnpm dev              # http://localhost:3000
+```
+
+### 4. (Optional) Run the indexer
+
+The indexer service serves the claims/apps API used by the gallery and
+revocation dashboard. It is not required for the core prove/verify flow.
+
+```bash
+cd services/indexer
+npm install
+npm run build
+npm start             # http://localhost:3001
+```
+
+**Database & migrations.** No manual migration step: `loadConfig()` creates the
+schema on startup. Pick a backend with `DB_DRIVER`:
+
+| `DB_DRIVER` | Engine | Config | Best for |
+|---|---|---|---|
+| `sqlite` (default) | better-sqlite3 | file on disk | local development |
+| `postgres` | node-postgres | `DATABASE_URL` | production / multi-instance |
+
+### Ports
+
+| Service | Default port | Override |
+|---|---|---|
+| Frontend (Next.js) | `3000` | `pnpm dev -- -p <port>` |
+| Indexer API | `3001` | `PORT` env var |
+| Playwright e2e | `3100` | `PORT` / `PLAYWRIGHT_BASE_URL` |
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `pnpm dev` fails on missing contract ids | Deploy with `./scripts/deploy.sh` (or copy ids from `DEPLOYMENTS.md`) into `frontend/.env.local` |
+| Circuit/proof errors mention VK mismatch | `nargo` must be `1.0.0-beta.9` and `bb` must be `0.87.0` — re-run `noirup`/`bbup` with those exact versions, then `./circuits/scripts/build.sh` |
+| Wallet connects but shows the wrong network | Switch the wallet extension to the same network as `NEXT_PUBLIC_STELLAR_NETWORK` (default `testnet`) |
+| In-browser proving hangs or is single-threaded | The app needs cross-origin isolation (COOP/COEP headers set in `next.config.mjs`). Hard-refresh after `pnpm dev`; check DevTools → Application → Cross-origin Isolation |
+| Testnet reset wiped the contracts | Run `ISSUER_PRIVATE_KEY=<hex> SOURCE=deployer ./scripts/reset-testnet.sh` to redeploy and rewrite `frontend/.env.local` |
+| Indexer `DATABASE_URL must be set` | Set `DB_DRIVER=postgres` only when `DATABASE_URL` points at a live Postgres; leave `DB_DRIVER` unset for SQLite |
+| `playwright test` can't reach the app | Build first (`pnpm build`), or set `PLAYWRIGHT_BASE_URL` to an already-running server |
+| Frontend tests fail after switching branches | `pnpm install` again — the `postinstall` rebuilds `@stellarcred/issuer` |
+
+More detail: [`SETUP.md`](./SETUP.md) · [`QUICK_START.md`](./QUICK_START.md) ·
+[`services/indexer/README.md`](./services/indexer/README.md)
+
+---
+
+## Contract Deployments
+
+See [`DEPLOYMENTS.md`](./DEPLOYMENTS.md) for the authoritative list of live
+contract IDs, versions, WASM hashes, and deployment dates by network.
 
 ---
 
@@ -330,6 +492,7 @@ StellarCred spans four toolchains (Rust contracts, Noir zk-circuits, Next.js fro
 
 | Command | Workspace | Description |
 |---|---|---|
+| `make verify-deployment` | Verification | End-to-end verification of contract IDs, on-chain versions, reproducible WASM hashes, and VKs (`NETWORK=testnet|mainnet`). |
 | `make all` | All | Runs `build`, `test`, and `lint` across all workspaces (mirrors CI). |
 | `make build` | All | Builds Soroban contracts, frontend bundles, and indexer service. |
 | `make test` | All | Runs contract unit/snapshot tests, frontend/SDK tests, and indexer tests. |
@@ -340,6 +503,7 @@ StellarCred spans four toolchains (Rust contracts, Noir zk-circuits, Next.js fro
 | `make compile-circuits`| Circuits | Compiles Noir circuits and verifies verification keys (`bb`). |
 | `make test-frontend` | Frontend | Runs frontend SDK tests, theme tests, and issuer package tests. |
 | `make test-sdk` | SDK | Runs standalone `@stellarcred/sdk` integration tests. |
+| `make test-example` | Examples | Runs typecheck and test suite for `examples/canonical-integration` and `examples/typescript`. |
 | `make test-a11y` | Frontend | Runs axe-core accessibility checks via Playwright. |
 | `make test-indexer` | Indexer | Runs Jest test suite for the indexer service. |
 | `make run-indexer` | Indexer | Starts the local indexer service. |
@@ -360,10 +524,15 @@ are supported), switch it to **testnet**, and fund the account
   different claim type; watch *access denied → granted* as `is_verified` flips.
 
 **Rotating the issuer key** doesn't require a redeploy — generate a new key and
-call `register_issuer` on the existing IssuerRegistry with the new public key.
+call `rotate_issuer_key` on the existing IssuerRegistry. The previous key is
+retired with a validity window, so credentials it already signed keep verifying
+until they reach their natural expiry. If a key is compromised instead, call
+`revoke_issuer_key` to kill it immediately. See
+[docs/ISSUER_KEY_ROTATION.md](docs/ISSUER_KEY_ROTATION.md).
 
 > In-browser proving uses cross-origin isolation (COOP/COEP headers in
-> `next.config.mjs`) for multithreading, falling back to single-threaded.
+> `next.config.mjs`) for multithreading, falling back to single-threaded. See
+> [docs/CSP.md](docs/CSP.md) for the Content-Security-Policy configuration and headers.
 
 ### Testnet reset recovery
 
@@ -407,9 +576,12 @@ Deploy and wire the contracts on the Stellar Mainnet:
   (~13.5% of the 100M per-transaction budget), confirming the protocol fits
   comfortably within Soroban's limits. Read-only functions (`is_verified`,
   `check_claim`) use <400K instructions (<0.4%). See [BENCHMARKS.md](BENCHMARKS.md).
-- **21 contract tests pass**, including real proof verification for all credential
-  types, in-circuit ECDSA, untrusted-issuer and wrong-issuer-key rejections, and
-  a proof-expiry test that advances ledger time.
+- **154 contract tests pass**, including real proof verification for all credential
+  types, in-circuit ECDSA, untrusted-issuer and wrong-issuer-key rejections,
+  issuer key rotation (a credential signed before a rotation still verifies, and
+  stops verifying once its validity window closes or the key is revoked),
+  proof-expiry tests that advance ledger time, and role-based access control
+  (role holder can act, non-holder cannot, admin can grant/revoke).
 - **Toolchain is pinned**: Noir `1.0.0-beta.9`, Barretenberg `bb 0.87.0`, matching
   the verifier crate; the VK is deterministic from the circuit.
 - Server-side issuance, multi-claim flow, the return-URL redirect, the

@@ -1,0 +1,23 @@
+[package]
+name = "test_support"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+# lib-only (no cdylib): this crate is never deployed as WASM. It is pulled into
+# the WASM build graph only through the contracts' dev-dependencies, which
+# `cargo build --release --target wasm32v1-none` does not resolve. The root
+# workspace also lists the four deployable contracts as `default-members` so a
+# bare `cargo build` never tries to compile this crate for wasm32v1-none.
+crate-type = ["lib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
+# The real contract crates, linked natively so `Env::register` can deploy them.
+# Same pattern as the per-contract dev-dependencies that predate this crate.
+credential_verifier = { path = "../credential_verifier" }
+gated_pool = { path = "../gated_pool" }
+issuer_registry = { path = "../issuer_registry" }
+proof_registry = { path = "../proof_registry" }

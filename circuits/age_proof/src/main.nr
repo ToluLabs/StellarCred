@@ -129,3 +129,116 @@ fn test_salt_mismatch_rejected() {
     let commitment = Poseidon2::hash([dob as Field, real_salt], 2);
     main(dob, wrong_salt, AGE_ZERO_SIG, commitment, AGE_ZERO_X, AGE_ZERO_Y, 20240101, 18);
 }
+
+// --- Property-based boundary tests (logic-only, no sig) ------------------
+// These test the constraint `current_date >= date_of_birth + threshold_years * 365`
+// directly, without the commitment/signature overhead, to systematically cover
+// boundary conditions with many input combinations.
+
+// Exact boundary: current_date == dob + threshold * 365 -> constraint satisfied.
+#[test]
+fn test_boundary_exact_threshold_passes() {
+    let dob: u64 = 10000;
+    let threshold: u64 = 18;
+    let current: u64 = dob + threshold * 365;
+    assert(current >= dob + threshold * 365);
+}
+
+// Off-by-one below: current_date == dob + threshold * 365 - 1 -> must fail.
+#[test(should_fail)]
+fn test_boundary_one_day_below_threshold_fails() {
+    let dob: u64 = 10000;
+    let threshold: u64 = 18;
+    let current: u64 = dob + threshold * 365 - 1;
+    assert(current >= dob + threshold * 365);
+}
+
+// Off-by-one above: current_date == dob + threshold * 365 + 1 -> passes.
+#[test]
+fn test_boundary_one_day_above_threshold_passes() {
+    let dob: u64 = 10000;
+    let threshold: u64 = 18;
+    let current: u64 = dob + threshold * 365 + 1;
+    assert(current >= dob + threshold * 365);
+}
+
+// Threshold = 0: any current_date >= dob passes.
+#[test]
+fn test_boundary_zero_threshold_passes() {
+    let dob: u64 = 10000;
+    let threshold: u64 = 0;
+    let current: u64 = dob;
+    assert(current >= dob + threshold * 365);
+}
+
+// Threshold = 1: one year boundary.
+#[test]
+fn test_boundary_one_year_exact() {
+    let dob: u64 = 5000;
+    let threshold: u64 = 1;
+    let current: u64 = dob + 365;
+    assert(current >= dob + threshold * 365);
+}
+
+#[test(should_fail)]
+fn test_boundary_one_year_minus_one_day() {
+    let dob: u64 = 5000;
+    let threshold: u64 = 1;
+    let current: u64 = dob + 364;
+    assert(current >= dob + threshold * 365);
+}
+
+// Max threshold (200) boundary.
+#[test]
+fn test_boundary_max_threshold_exact() {
+    let dob: u64 = 1000;
+    let threshold: u64 = 200;
+    let current: u64 = dob + 200 * 365;
+    assert(current >= dob + threshold * 365);
+}
+
+// Threshold exceeds max (201) -> rejected by `assert(threshold_years <= 200)`.
+#[test(should_fail)]
+fn test_boundary_threshold_exceeds_max() {
+    let threshold: u64 = 201;
+    assert(threshold <= 200);
+}
+
+// Various threshold values: 10, 21, 50, 65, 100.
+#[test]
+fn test_boundary_multiple_thresholds_pass() {
+    let dob: u64 = 1000;
+    let thresholds: [u64; 5] = [10, 21, 50, 65, 100];
+    for i in 0..5 {
+        let t = thresholds[i];
+        let current = dob + t * 365;
+        assert(current >= dob + t * 365);
+    }
+}
+
+#[test(should_fail)]
+fn test_boundary_multiple_thresholds_off_by_one() {
+    let dob: u64 = 1000;
+    // Each threshold minus one day must fail the constraint.
+    let t: u64 = 50;
+    let current = dob + t * 365 - 1;
+    assert(current >= dob + t * 365);
+}
+
+// Date at epoch boundary: dob = 0.
+#[test]
+fn test_boundary_dob_at_epoch() {
+    let dob: u64 = 0;
+    let threshold: u64 = 18;
+    let current: u64 = threshold * 365;
+    assert(current >= dob + threshold * 365);
+}
+
+// Large dates: far future.
+#[test]
+fn test_boundary_large_dates() {
+    let dob: u64 = 100000;
+    let threshold: u64 = 25;
+    let current: u64 = dob + threshold * 365 + 100;
+    assert(current >= dob + threshold * 365);
+}

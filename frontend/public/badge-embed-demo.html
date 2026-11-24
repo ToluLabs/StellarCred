@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StellarCred Badge Embedding Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #3ecf8e;
+    }
+    p {
+      color: #94a3b8;
+      margin-bottom: 2rem;
+    }
+    .demo-section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .demo-section h2 {
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+      color: #e2e8f0;
+    }
+    .demo-section p {
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    .badge-container {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+    .badge-wrapper {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .badge-wrapper.dark-bg {
+      background: #0d1117;
+    }
+    iframe {
+      border: none;
+      border-radius: 6px;
+    }
+    code {
+      background: #0f172a;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-family: "Courier New", monospace;
+      font-size: 0.875rem;
+      color: #3ecf8e;
+    }
+    .code-block {
+      background: #0f172a;
+      padding: 1rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin-top: 1rem;
+      border: 1px solid #334155;
+    }
+    .code-block code {
+      background: transparent;
+      padding: 0;
+      display: block;
+      white-space: pre;
+      color: #e2e8f0;
+    }
+    .note {
+      background: rgba(62, 207, 142, 0.1);
+      border-left: 3px solid #3ecf8e;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>StellarCred Badge Embedding Demo</h1>
+    <p>
+      The StellarCred verification badge is designed to be embedded in third-party
+      sites via iframe. This page demonstrates various embedding configurations
+      and theme options.
+    </p>
+
+    <div class="demo-section">
+      <h2>Dark Theme Badge</h2>
+      <p>Badge on a light background with dark theme:</p>
+      <div class="badge-container">
+        <div class="badge-wrapper">
+          <iframe 
+            src="/badge?wallet=GTEST&claim=kyc&theme=dark"
+            width="320" 
+            height="80"
+            title="StellarCred Verification Badge - Dark Theme"
+          ></iframe>
+        </div>
+      </div>
+      <div class="code-block">
+        <code>&lt;iframe 
+  src="/badge?wallet=GTEST&claim=kyc&theme=dark"
+  width="320" 
+  height="80"
+&gt;&lt;/iframe&gt;</code>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Light Theme Badge</h2>
+      <p>Badge on a dark background with light theme:</p>
+      <div class="badge-container">
+        <div class="badge-wrapper dark-bg">
+          <iframe 
+            src="/badge?wallet=GTEST&claim=kyc&theme=light"
+            width="320" 
+            height="80"
+            title="StellarCred Verification Badge - Light Theme"
+          ></iframe>
+        </div>
+      </div>
+      <div class="code-block">
+        <code>&lt;iframe 
+  src="/badge?wallet=GTEST&claim=kyc&theme=light"
+  width="320" 
+  height="80"
+&gt;&lt;/iframe&gt;</code>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Compact Mode</h2>
+      <p>Smaller badge suitable for sidebars and constrained layouts:</p>
+      <div class="badge-container">
+        <div class="badge-wrapper">
+          <iframe 
+            src="/badge?wallet=GTEST&claim=kyc&theme=dark&compact=1"
+            width="260" 
+            height="60"
+            title="StellarCred Verification Badge - Compact"
+          ></iframe>
+        </div>
+      </div>
+      <div class="code-block">
+        <code>&lt;iframe 
+  src="/badge?wallet=GTEST&claim=kyc&theme=dark&compact=1"
+  width="260" 
+  height="60"
+&gt;&lt;/iframe&gt;</code>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Different Claim Types</h2>
+      <p>Badge supports various credential types:</p>
+      <div class="badge-container">
+        <div class="badge-wrapper">
+          <iframe 
+            src="/badge?wallet=GTEST&claim=kyc&theme=dark"
+            width="280" 
+            height="70"
+            title="KYC Badge"
+          ></iframe>
+        </div>
+        <div class="badge-wrapper">
+          <iframe 
+            src="/badge?wallet=GTEST&claim=age&theme=dark"
+            width="280" 
+            height="70"
+            title="Age Verification Badge"
+          ></iframe>
+        </div>
+        <div class="badge-wrapper">
+          <iframe 
+            src="/badge?wallet=GTEST&claim=accreditation&theme=dark"
+            width="280" 
+            height="70"
+            title="Accreditation Badge"
+          ></iframe>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Query Parameters</h2>
+      <p>The badge accepts the following URL parameters:</p>
+      <ul style="list-style: none; padding-left: 0; color: #cbd5e1;">
+        <li style="margin-bottom: 0.5rem;">
+          <code>wallet</code> (required) — Stellar wallet address to verify
+        </li>
+        <li style="margin-bottom: 0.5rem;">
+          <code>claim</code> or <code>type</code> (required) — Credential type 
+          (kyc, age, income, jurisdiction, funds, accreditation, employment)
+        </li>
+        <li style="margin-bottom: 0.5rem;">
+          <code>theme</code> (optional) — "light", "dark", or "auto" (default: dark)
+        </li>
+        <li style="margin-bottom: 0.5rem;">
+          <code>compact</code> (optional) — "1" or "true" for compact layout
+        </li>
+      </ul>
+      
+      <div class="note">
+        <strong>Note:</strong> The badge reads verification status from the Soroban
+        blockchain in real-time. Network unavailability is displayed as "Unknown" 
+        rather than "Not verified" to avoid misleading embeds during outages.
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Security & Framing Policy</h2>
+      <p>
+        Only the <code>/badge</code> route is frameable. All other StellarCred
+        routes (holder, issuer, verify, etc.) deny framing via 
+        <code>X-Frame-Options: DENY</code> and <code>frame-ancestors 'none'</code>.
+      </p>
+      <p>
+        Operators can optionally restrict which origins may embed the badge by
+        setting the <code>BADGE_ALLOWED_ORIGINS</code> environment variable to a
+        comma-separated list of allowed domains. When unset, the badge is
+        frameable by any origin.
+      </p>
+      <div class="code-block">
+        <code># Allow only specific domains to embed the badge
+BADGE_ALLOWED_ORIGINS=https://example.com,https://partner.org</code>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

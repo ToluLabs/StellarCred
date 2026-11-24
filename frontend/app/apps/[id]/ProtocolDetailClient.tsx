@@ -13,6 +13,7 @@ import {
   IconAlertCircle,
   IconRefresh,
   IconQrcode,
+  IconFlask,
 } from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
@@ -35,7 +36,7 @@ function ProtocolDetailBody({
   isPreview: boolean;
   scVerified: boolean;
 }) {
-  const { state, statuses, retry, eligible, checking } = useProtocolAccessCheck(
+  const { state, statuses, retry, eligible, checking, unresolved, issue } = useProtocolAccessCheck(
     protocol.requirements,
     activeWallet,
     // Preview mode is "!address"; don't auto-grant when disconnected — match /apps list cards.
@@ -63,6 +64,30 @@ function ProtocolDetailBody({
           <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
             <span style={{ color: "var(--accent)" }}>{protocol.icon}</span>
             <h1 style={{ fontSize: "2rem", margin: 0 }}>{protocol.name}</h1>
+            {protocol.isDemo && (
+              <span
+                title="This is an illustrative demo — not a live integration"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.3rem",
+                  padding: "0.2rem 0.6rem",
+                  borderRadius: "999px",
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  background: "rgba(250,180,50,0.12)",
+                  color: "#f5b942",
+                  border: "1px solid rgba(250,180,50,0.3)",
+                  alignSelf: "center",
+                  marginTop: "0.25rem",
+                }}
+              >
+                <IconFlask size={11} stroke={2.2} />
+                Demo
+              </span>
+            )}
           </div>
           <p className="mono faint" style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>
             {protocol.tagline}
@@ -96,6 +121,37 @@ function ProtocolDetailBody({
       )}
 
       <ConfigBanner />
+
+      {protocol.isDemo && (
+        <div
+          style={{
+            marginBottom: "1.5rem",
+            padding: "0.75rem 1rem",
+            borderRadius: "var(--radius)",
+            background: "rgba(250,180,50,0.07)",
+            border: "1px solid rgba(250,180,50,0.25)",
+            fontSize: "0.8125rem",
+            color: "var(--muted)",
+            lineHeight: 1.6,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "0.6rem",
+          }}
+        >
+          <IconFlask
+            size={15}
+            stroke={2}
+            color="#f5b942"
+            style={{ flexShrink: 0, marginTop: "0.1rem" }}
+          />
+          <span>
+            <strong style={{ color: "#f5b942" }}>Illustrative demo.</strong>{" "}
+            {protocol.name} is not a real deployed protocol. It exists to show how
+            StellarCred credential gating works end-to-end — the access check and
+            the ZK proofs are real, the app behind the gate is not.
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-2" style={{ alignItems: "start", gap: "1.5rem" }}>
         <div className="card">
@@ -135,8 +191,8 @@ function ProtocolDetailBody({
                 <span className="row" style={{ gap: "0.6rem" }}>
                   {checking ? (
                     <IconLoader2 size={15} color="var(--faint)" className="spin" />
-                  ) : state === "error" ? (
-                    <IconAlertCircle size={15} color="var(--danger)" />
+                  ) : unresolved ? (
+                    <IconAlertCircle size={15} color="var(--warn)" />
                   ) : statuses[i] ? (
                     <IconCheck size={15} color="var(--accent)" stroke={2.5} />
                   ) : (
@@ -146,7 +202,7 @@ function ProtocolDetailBody({
                     style={{
                       fontSize: "0.875rem",
                       color:
-                        !checking && state !== "error" && statuses[i]
+                        !checking && !unresolved && statuses[i]
                           ? "var(--text)"
                           : "var(--muted)",
                     }}
@@ -156,8 +212,8 @@ function ProtocolDetailBody({
                 </span>
                 {checking ? (
                   <Badge variant="pending">Checking</Badge>
-                ) : state === "error" ? (
-                  <Badge variant="denied">Unavailable</Badge>
+                ) : unresolved ? (
+                  <Badge variant="pending">Unknown</Badge>
                 ) : statuses[i] ? (
                   <Badge variant="verified">Proved</Badge>
                 ) : (
@@ -167,7 +223,7 @@ function ProtocolDetailBody({
             ))}
           </div>
 
-          {state === "error" && (
+          {unresolved && (
             <button
               type="button"
               className="btn btn-secondary"
@@ -177,6 +233,13 @@ function ProtocolDetailBody({
               <IconRefresh size={14} />
               Retry access check
             </button>
+          )}
+
+          {issue && (
+            <p className="faint" style={{ fontSize: "0.8rem", marginBottom: "0.75rem" }}>
+              Access could not be determined: {issue.message} This is a network
+              problem, not a failed check.
+            </p>
           )}
 
           {state === "denied" && !isPreview && (
@@ -238,7 +301,7 @@ function ProtocolDetailBody({
             )}
             {state === "granted" && <Badge variant="verified">Access granted</Badge>}
             {state === "denied" && <Badge variant="denied">Access denied</Badge>}
-            {state === "error" && <Badge variant="denied">Check failed</Badge>}
+            {unresolved && <Badge variant="pending">Cannot verify</Badge>}
           </div>
 
           <label className="field-label" htmlFor="protocol-input">

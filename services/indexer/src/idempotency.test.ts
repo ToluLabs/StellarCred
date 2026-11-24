@@ -39,7 +39,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     rateLimitMax: 120,
     rateLimitEnabled: true,
     ...overrides,
-  };
+  } as Config;
 }
 
 function claim(overrides: Partial<ClaimInput> = {}): ClaimInput {
@@ -52,6 +52,7 @@ function claim(overrides: Partial<ClaimInput> = {}): ClaimInput {
     ledger_sequence: 10,
     threshold: null,
     revoked: 0,
+    reason_code: "other",
     ...overrides,
   };
 }

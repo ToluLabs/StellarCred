@@ -2,11 +2,17 @@
 
 // Move a credential to another device via an encrypted QR code: the holder
 // picks a passphrase, this encrypts the credential JSON with it (never the
-// raw secret in cleartext — see lib/crypto.ts), and embeds the ciphertext in
-// a /holder?import=<payload> URL that the other device scans or opens.
+// raw secret in cleartext — see lib/credential-crypto.ts), and embeds the
+// ciphertext in a /holder?import=<payload> URL that the other device scans
+// or opens.
 
 import { parseCredential, type Credential } from "./credential";
-import { encryptWithPassphrase, decryptWithPassphrase, DecryptionError } from "./crypto";
+import { filterCredentialForExport } from "./export-visibility";
+import {
+  encryptWithPassphrase,
+  decryptWithPassphrase,
+  DecryptionError,
+} from "./credential-crypto";
 
 export { DecryptionError };
 
@@ -25,7 +31,8 @@ export async function buildTransferUrl(
   passphrase: string,
   origin: string = BASE_URL,
 ): Promise<string> {
-  const payload = await encryptWithPassphrase(JSON.stringify(cred), passphrase);
+  const exportableCredential = filterCredentialForExport(cred);
+  const payload = await encryptWithPassphrase(JSON.stringify(exportableCredential), passphrase);
   const url = new URL("/holder", origin);
   url.searchParams.set(IMPORT_PARAM, payload);
   return url.toString();

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { RPC_URL } from "../../../lib/stellar";
+import { RPC_URL, CONTRACTS } from "../../../lib/stellar";
 import { missingContractEnvVars } from "../../../lib/config";
 import { env } from "../../../lib/env";
 
@@ -15,12 +15,22 @@ interface SignerStatus extends DependencyStatus {
   issuer: "demo" | "configured";
 }
 
+interface ContractVersion {
+  address: string;
+  version: string;
+  status: "ok" | "error";
+  message?: string;
+}
+
 interface ReadyResponse {
   ready: boolean;
   signer: SignerStatus;
   contracts: DependencyStatus;
+  contract_versions?: Record<string, ContractVersion>;
   rpc: DependencyStatus;
   persona: DependencyStatus;
+  app_version?: string;
+  deployment_timestamp?: number;
 }
 
 async function checkRpc(): Promise<DependencyStatus> {
@@ -76,12 +86,48 @@ function checkPersona(): DependencyStatus {
   return { status: "ok" };
 }
 
+/**
+ * Fetch contract versions from deployed contracts.
+ * Note: A full implementation would call the version() endpoint on each contract.
+ * For now, this returns hardcoded versions matching Cargo.toml.
+ */
+async function fetchContractVersions(): Promise<Record<string, ContractVersion> | undefined> {
+  // Only fetch versions if contracts are configured
+  if (missingContractEnvVars().length > 0) {
+    return undefined;
+  }
+
+  const versions: Record<string, ContractVersion> = {};
+
+  // Build version map from deployed contract IDs
+  // All contracts are currently at version 1.0.0
+  const contractMap: Record<string, string> = {
+    issuerRegistry: CONTRACTS.issuerRegistry,
+    credentialVerifier: CONTRACTS.credentialVerifier,
+    proofRegistry: CONTRACTS.proofRegistry,
+    gatedPool: CONTRACTS.gatedPool,
+  };
+
+  for (const [name, address] of Object.entries(contractMap)) {
+    if (address) {
+      versions[name] = {
+        address,
+        version: "1.0.0", // Matches Cargo.toml versions
+        status: "ok",
+      };
+    }
+  }
+
+  return Object.keys(versions).length > 0 ? versions : undefined;
+}
+
 export async function GET() {
-  const [signer, contracts, rpc, persona] = await Promise.all([
+  const [signer, contracts, rpc, persona, contractVersions] = await Promise.all([
     Promise.resolve(checkSigner()),
     Promise.resolve(checkContracts()),
     checkRpc(),
     Promise.resolve(checkPersona()),
+    fetchContractVersions(),
   ]);
 
   const ready =
@@ -90,7 +136,22 @@ export async function GET() {
     rpc.status === "ok" &&
     persona.status === "ok";
 
-  const body: ReadyResponse = { ready, signer, contracts, rpc, persona };
+  const body: ReadyResponse = {
+    ready,
+    signer,
+    contracts,
+    rpc,
+    persona,
+  };
+
+  // Add contract versions if available
+  if (contractVersions) {
+    body.contract_versions = contractVersions;
+  }
+
+  // Add app version from environment (will be set during deployment)
+  body.app_version = process.env.NEXT_PUBLIC_APP_VERSION ?? "dev";
+  body.deployment_timestamp = Date.now();
 
   return NextResponse.json(body, { status: ready ? 200 : 503 });
 }

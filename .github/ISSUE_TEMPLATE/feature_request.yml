@@ -40,3 +40,16 @@ body:
       description: Any other approaches you thought about?
     validations:
       required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Depends on / blocked by
+      description: >-
+        List any issues that must land before this one can be worked on
+        (e.g. `Blocked by #123`). Leave blank if none. Do not apply the
+        `good first issue` label to an issue that lists a dependency.
+      placeholder: |
+        Blocked by #<issue number>
+    validations:
+      required: false

@@ -1,0 +1,56 @@
+{
+  "$comment": [
+    "Proving-performance regression baselines (GitHub #629; pairs with #534).",
+    "",
+    "How to read / update this file:",
+    "- Stage numbers are the MEDIAN of 5 runs of CPU milliseconds (user+sys via",
+    "  bash `time`), measured by scripts/perf/measure-proving.mjs on the GitHub",
+    "  ubuntu-latest runner. CPU time is the gate metric because it is close to",
+    "  deterministic across runner noise; wall medians are recorded too but only",
+    "  informed the original numbers.",
+    "- The original baseline was established from the first dedicated runs of the",
+    "  proving-perf workflow. To refresh after an intentional change (toolchain",
+    "  bump, deliberate circuit growth), run the workflow on main and copy the",
+    "  medians from the uploaded perf/proving-perf-report.json artifact into the",
+    "  fields below, then note the reason in $history.",
+    "- witnessMs/proveMs gate with regressionThresholds.stageRatio (default 1.75x;",
+    "  warn at ~1.3x). submitProxyMs and unknown stages are warn-only: the proxy",
+    "  cannot see Soroban RPC, and missing data must not fake a green gate.",
+    "- ACIR opcode counts (the #534 pairing) gate at",
+    "  regressionThresholds.gateRatio (default 1.15x) so circuit growth is",
+    "  attributed independently of client-side slowdowns.",
+    "- provenance.bytecodeSha256 pins the compiled kyc_proof bytecode this",
+    "  baseline was taken against, so a toolchain bump that changes codegen is",
+    "  visible as a provenance mismatch (warn-only) rather than silently",
+    "  re-baselining the clock."
+  ],
+  "version": 1,
+  "circuit": "kyc_proof",
+  "runs": 5,
+  "regressionThresholds": {
+    "stageRatio": 1.75,
+    "gateRatio": 1.15
+  },
+  "stages": {
+    "witnessMs": 700,
+    "proveMs": 2300,
+    "submitProxyMs": 15
+  },
+  "circuits": {
+    "kyc_proof": {
+      "totalAcirOpcodes": 582,
+      "$comment": "Matches circuits/AUDIT.md's committed nargo-info figure for kyc_proof (582 total ACIR opcodes). The workflow refreshes it from live measurement; drift vs AUDIT.md surfaces as a warning."
+    }
+  },
+  "provenance": {
+    "tool": { "nargo": "1.0.0-beta.9", "bb": "0.87.0" },
+    "bytecodeSha256": null,
+    "$comment2": "bytecodeSha256 is filled on the first workflow run on main and committed; until then provenance checks are skipped (warn-only path)."
+  },
+  "$history": [
+    {
+      "date": "2026-09-28",
+      "change": "Initial gate established (issue #629). Stage numbers are provisional until the first measured runs on the fixed runner replace them; ACIR opcode count is the committed audit figure."
+    }
+  ]
+}

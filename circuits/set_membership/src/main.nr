@@ -188,28 +188,18 @@ fn test_root() -> Field {
     let n11 = node(n02, n03);
 
     // Level 3
-    let n20 = node(n10, n11);
-    // Remaining levels pair identical zero subtrees.
-    let z3 = zero_subtree(3); // zero subtree of height 3 above leaf
-    let n21 = node(z3, z3);
+    let mut current = node(n10, n11);
 
-    // Level 4
-    let n30 = node(n20, n21);
-    let z4 = zero_subtree(4);
-    let n31 = node(z4, z4);
+    // Levels 3..7: every remaining sibling is an all-zero subtree. The sibling
+    // at level `h` is exactly `zero_subtree(h)` -- the root of a zero subtree
+    // standing `h` levels above the leaf row. (Pairing `zero_subtree(h)` with
+    // itself would produce `zero_subtree(h + 1)`, i.e. the sibling one level
+    // too high, which is the off-by-one this helper previously had.)
+    for h in 3..8 {
+        current = node(current, zero_subtree(h));
+    }
 
-    // Level 5
-    let n40 = node(n30, n31);
-    let z5 = zero_subtree(5);
-    let n41 = node(z5, z5);
-
-    // Level 6
-    let n50 = node(n40, n41);
-    let z6 = zero_subtree(6);
-    let n51 = node(z6, z6);
-
-    // Level 7 (root level)
-    node(n50, n51)
+    current
 }
 
 // Build the Merkle path for leaf index 0 (value 840) in the test tree.
@@ -224,27 +214,22 @@ fn path_for_index_0() -> [Field; 8] {
     let n02 = node(zero, zero);
     let n03 = node(zero, zero);
     let n11 = node(n02, n03);
-    let z3 = zero_subtree(3);
-    let n21 = node(z3, z3);
-    let z4 = zero_subtree(4);
-    let n31 = node(z4, z4);
-    let z5 = zero_subtree(5);
-    let n41 = node(z5, z5);
-    let z6 = zero_subtree(6);
-    let n51 = node(z6, z6);
 
     // Siblings at each level (leaf 0 is always the LEFT child at every level
     // because its binary position is 00000000):
-    //   level 0: sibling = leaf(276)      = l1
-    //   level 1: sibling = node(l2,l3)    = n01
-    //   level 2: sibling = node(n02,n03)  = n11
-    //   level 3: sibling = n21
-    //   level 4: sibling = n31
-    //   level 5: sibling = n41
-    //   level 6: sibling = n51
-    //   level 7: sibling = zero subtree of height 7
-    let z7 = zero_subtree(7);
-    [l1, n01, n11, n21, n31, n41, n51, z7]
+    //   level 0: sibling = leaf(276)         = l1
+    //   level 1: sibling = node(l2,l3)       = n01
+    //   level 2: sibling = node(n02,n03)     = n11
+    //   level 3..7: sibling = zero_subtree(h) -- the zero subtree whose root
+    //   sits h levels above the leaf row. Must match test_root() exactly.
+    let mut path: [Field; 8] = [0; 8];
+    path[0] = l1;
+    path[1] = n01;
+    path[2] = n11;
+    for h in 3..8 {
+        path[h] = zero_subtree(h);
+    }
+    path
 }
 
 // --- Merkle logic-only tests (no sig/commitment overhead) -------------------

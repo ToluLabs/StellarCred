@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StellarCred — Canonical Integration Example</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: #131a29;
+      --border: #232f46;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font-sans: system-ui, -apple-system, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.6rem;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+    p.subtitle { color: var(--muted); font-size: 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 {
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 9999px;
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 0.85rem;
+      font-weight: bold;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    input, select, textarea {
+      width: 100%;
+      background: #0b111c;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .mono { font-family: var(--font-mono); }
+    .btn-group { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    button {
+      background: var(--accent);
+      color: #0b111c;
+      border: none;
+      border-radius: 0.5rem;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    button:hover { background: var(--accent-hover); }
+    button.secondary {
+      background: #1e293b;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover { background: #334155; }
+    button.danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+    button.danger:hover { background: rgba(239, 68, 68, 0.35); }
+    .log-box {
+      background: #06090e;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .callout {
+      border-left: 4px solid var(--warning);
+      background: rgba(245, 158, 11, 0.1);
+      padding: 0.75rem 1rem;
+      border-radius: 0.25rem;
+      font-size: 0.88rem;
+      margin-bottom: 1rem;
+    }
+    .callout.danger {
+      border-left-color: var(--danger);
+      background: rgba(239, 68, 68, 0.1);
+    }
+    .callout.success {
+      border-left-color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Canonical Integration Reference</span>
+      <h1>StellarCred Integration Flow</h1>
+      <p class="subtitle">Complete reference application demonstrating wallet-control proof, on-chain re-verification, route gating, and failure state diagnostics.</p>
+    </header>
+
+    <!-- Step 1: Redirect to Verify -->
+    <div class="card">
+      <h2><span class="step-num">1</span> Redirect to Verify (buildVerifyUrl)</h2>
+      <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem;">
+        Generate the StellarCred verification link to redirect unverified users so they can generate and submit their ZK proof.
+      </p>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div>
+          <label>Credential Type</label>
+          <select id="claimType">
+            <option value="kyc">kyc (Identity Verified)</option>
+            <option value="age">age (Age Threshold)</option>
+            <option value="funds">funds (Balance Threshold)</option>
+            <option value="income">income (Income Threshold)</option>
+          </select>
+        </div>
+        <div>
+          <label>Optional Threshold</label>
+          <input type="text" id="claimThreshold" placeholder="e.g. 50000 or 21" />
+        </div>
+      </div>
+      <div class="btn-group">
+        <button onclick="generateVerifyUrl()">Generate Verify URL</button>
+      </div>
+      <div id="verifyUrlResult" class="log-box" style="display: none;"></div>
+    </div>
+
+    <!-- Step 2: Handle Return Redirect -->
+    <div class="card">
+      <h2><span class="step-num">2</span> Return Redirect & Untrusted Hint (parseReturnParams)</h2>
+      <div class="callout">
+        <strong>⚠️ Crucial Security Principle:</strong> URL parameters like <code>?sc_verified=true&sc_wallet=G...</code> returned from redirects are <em>untrusted client hints</em>. Anyone can construct a URL containing another person's verified wallet address. Never grant access or issue session tokens based on URL hints alone.
+      </div>
+      <div class="btn-group">
+        <button class="secondary" onclick="simulateReturnRedirect()">Simulate Return URL Callback</button>
+      </div>
+      <div id="returnLog" class="log-box" style="display: none;"></div>
+    </div>
+
+    <!-- Step 3 & 4: Prove Wallet Control & Re-verify On-Chain -->
+    <div class="card">
+      <h2><span class="step-num">3 & 4</span> Prove Wallet Control & Verify On-Chain (verifyWalletClaim)</h2>
+      <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem;">
+        The server generates a replay-protected challenge. The client signs it with their wallet (Ed25519), and the server verifies both wallet control AND on-chain claim status atomically.
+      </p>
+      <label>Wallet Address (G...)</label>
+      <input type="text" id="walletInput" class="mono" value="GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVWGS" />
+      <div class="btn-group">
+        <button onclick="requestChallengeAndAuthenticate()">Authenticate (Prove Control + Verify)</button>
+        <button class="secondary" onclick="generateSimulatedWallet()">Generate Random Wallet</button>
+      </div>
+      <div id="authLog" class="log-box" style="display: none;"></div>
+    </div>
+
+    <!-- Step 5: Gated Route -->
+    <div class="card">
+      <h2><span class="step-num">5</span> Gated Route: Protected Treasury</h2>
+      <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem;">
+        Access sensitive server-side endpoints conditioned on an active, authenticated session.
+      </p>
+      <div class="btn-group">
+        <button onclick="accessProtectedTreasury()">Access Gated Treasury (with session)</button>
+        <button class="secondary" onclick="accessProtectedTreasuryWithoutToken()">Access Without Token (401 check)</button>
+      </div>
+      <div id="treasuryLog" class="log-box" style="display: none;"></div>
+    </div>
+
+    <!-- Step 6: Attack & Failure State Matrix -->
+    <div class="card">
+      <h2><span class="step-num">6</span> Failure State & Attack Simulator</h2>
+      <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem;">
+        Verify that the application properly detects and defends against attacks and failure states.
+      </p>
+      <div class="btn-group">
+        <button class="danger" onclick="testSpoofingAttack()">Test Spoofing Attack (#543)</button>
+        <button class="danger" onclick="testReplayAttack()">Test Replay Attack</button>
+        <button class="secondary" onclick="testUnverifiedWallet()">Check Unverified Wallet</button>
+      </div>
+      <div id="failureLog" class="log-box" style="display: none;"></div>
+    </div>
+  </div>
+
+  <script>
+    let activeSessionToken = null;
+    let lastChallenge = null;
+
+    async function generateVerifyUrl() {
+      const claim = document.getElementById("claimType").value;
+      const threshold = document.getElementById("claimThreshold").value.trim();
+      let endpoint = `/api/verify-url?claim=${claim}`;
+      if (threshold) endpoint += `&threshold=${threshold}`;
+
+      const res = await fetch(endpoint);
+      const data = await res.json();
+      const box = document.getElementById("verifyUrlResult");
+      box.style.display = "block";
+      box.textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function simulateReturnRedirect() {
+      const wallet = document.getElementById("walletInput").value.trim();
+      const res = await fetch(`/verify-return?sc_verified=true&sc_wallet=${wallet}&sc_claims=kyc`);
+      const data = await res.json();
+      const box = document.getElementById("returnLog");
+      box.style.display = "block";
+      box.textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function requestChallengeAndAuthenticate() {
+      const wallet = document.getElementById("walletInput").value.trim();
+      const claim = document.getElementById("claimType").value;
+      const box = document.getElementById("authLog");
+      box.style.display = "block";
+      box.textContent = "1. Fetching replay-protected challenge from /api/auth/challenge...";
+
+      // 1. Get Challenge
+      const challengeRes = await fetch("/api/auth/challenge");
+      const { challenge } = await challengeRes.json();
+      lastChallenge = challenge;
+
+      box.textContent += "\n2. Challenge received. Simulating Ed25519 signature...\n";
+
+      // 2. Mock Ed25519 signature for demonstration (in production, use Freighter signMessage())
+      // For real testnet testing, client signs challenge.message with their wallet key
+      const mockSig = "00".repeat(64); // 64 bytes hex
+
+      // 3. Post to /api/auth/verify
+      const verifyRes = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet,
+          challenge,
+          signature: mockSig,
+          claim,
+        }),
+      });
+
+      const verifyData = await verifyRes.json();
+      if (verifyData.ok && verifyData.sessionToken) {
+        activeSessionToken = verifyData.sessionToken;
+      }
+      box.textContent += "\n3. Server response:\n" + JSON.stringify(verifyData, null, 2);
+    }
+
+    async function accessProtectedTreasury() {
+      const box = document.getElementById("treasuryLog");
+      box.style.display = "block";
+
+      const headers = {};
+      if (activeSessionToken) {
+        headers["Authorization"] = `Bearer ${activeSessionToken}`;
+      }
+
+      const res = await fetch("/api/protected/treasury", { headers });
+      const data = await res.json();
+      box.textContent = `Status: ${res.status}\n` + JSON.stringify(data, null, 2);
+    }
+
+    async function accessProtectedTreasuryWithoutToken() {
+      const box = document.getElementById("treasuryLog");
+      box.style.display = "block";
+      const res = await fetch("/api/protected/treasury");
+      const data = await res.json();
+      box.textContent = `Status: ${res.status} (Expected 401 Unauthorized)\n` + JSON.stringify(data, null, 2);
+    }
+
+    async function testSpoofingAttack() {
+      const box = document.getElementById("failureLog");
+      box.style.display = "block";
+      box.textContent = "Simulating Spoofing Attack: Attacker passes victim's verified wallet with invalid signature...";
+
+      const challengeRes = await fetch("/api/auth/challenge");
+      const { challenge } = await challengeRes.json();
+
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVWGS",
+          challenge,
+          signature: "11".repeat(64), // Invalid signature
+          claim: "kyc",
+        }),
+      });
+
+      const data = await res.json();
+      box.textContent += `\nStatus: ${res.status} (Expected 403 Forbidden)\n` + JSON.stringify(data, null, 2);
+    }
+
+    async function testReplayAttack() {
+      const box = document.getElementById("failureLog");
+      box.style.display = "block";
+      box.textContent = "Simulating Replay Attack: Reusing previously consumed challenge...";
+
+      if (!lastChallenge) {
+        const cRes = await fetch("/api/auth/challenge");
+        const { challenge } = await cRes.json();
+        lastChallenge = challenge;
+      }
+
+      // First consumption
+      await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVWGS",
+          challenge: lastChallenge,
+          signature: "00".repeat(64),
+          claim: "kyc",
+        }),
+      });
+
+      // Second consumption (replay)
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallet: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVWGS",
+          challenge: lastChallenge,
+          signature: "00".repeat(64),
+          claim: "kyc",
+        }),
+      });
+
+      const data = await res.json();
+      box.textContent += `\nStatus: ${res.status} (Expected 403 Replay Attack Prevented)\n` + JSON.stringify(data, null, 2);
+    }
+
+    async function testUnverifiedWallet() {
+      const box = document.getElementById("failureLog");
+      box.style.display = "block";
+      const randomWallet = "GB5W5GTYFBLGELNDNML3ZJ6M6V4R6UOX3BZXTYOQGLXN3WBL66O4Q42F";
+      const res = await fetch(`/api/claim-status?wallet=${randomWallet}&claim=kyc`);
+      const data = await res.json();
+      box.textContent = `Diagnostic query for unverified wallet:\n` + JSON.stringify(data, null, 2);
+    }
+
+    function generateSimulatedWallet() {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      let key = "G";
+      for (let i = 0; i < 55; i++) {
+        key += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      document.getElementById("walletInput").value = key;
+    }
+  </script>
+</body>
+</html>

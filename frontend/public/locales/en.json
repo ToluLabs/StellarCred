@@ -1,0 +1,251 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "close": "Close",
+    "retry": "Retry",
+    "connecting": "Connecting…",
+    "show": "Show",
+    "hide": "Hide",
+    "selectLanguage": "Select language",
+    "dismiss": "Dismiss notification"
+  },
+  "nav": {
+    "brand": "StellarCred",
+    "wallet": "Wallet",
+    "verify": "Verify",
+    "issuer": "Issuer",
+    "apps": "Apps",
+    "docs": "Docs",
+    "developers": "Developers",
+    "toggleMenu": "Toggle menu",
+    "tour": "Tour",
+    "login": "Login"
+  },
+  "footer": {
+    "copyright": "© {year} StellarCred",
+    "github": "GitHub",
+    "sdk": "@stellarcred/sdk",
+    "docs": "Docs",
+    "versionInfo": "Click to show version information",
+    "deploymentVersions": "Deployment Versions",
+    "app": "App",
+    "sdk_label": "SDK",
+    "unknown": "unknown"
+  },
+  "theme": {
+    "dark": "Switch to dark mode",
+    "light": "Switch to light mode"
+  },
+  "wallet": {
+    "connect": "Connect wallet",
+    "connecting": "Connecting…",
+    "disconnect": "Click to disconnect",
+    "disconnectAriaLabel": "Connected wallet {address}. Click to disconnect.",
+    "connectingAriaLabel": "Connecting wallet",
+    "install": "Install {walletName}",
+    "retry": "Retry",
+    "report": "Report",
+    "error": "Error",
+    "errorMessage": "An error occurred"
+  },
+  "home": {
+    "hero": {
+      "badge": "Zero-knowledge credentials · Stellar testnet",
+      "title_part1": "Prove anything.",
+      "title_part2": "Reveal nothing.",
+      "subtitle": "Hold a credential from a trusted issuer, generate an UltraHonk zero-knowledge proof locally, and verify your claim on Stellar — without the underlying data ever touching the chain.",
+      "cta_demo": "See the demo",
+      "cta_credential": "Get a credential"
+    },
+    "stats": {
+      "types": "Credential types",
+      "system": "ZK proof system",
+      "generation": "Proof generation",
+      "validity": "Proof validity"
+    },
+    "how_it_works": {
+      "title": "How StellarCred works",
+      "step_01_title": "Issue",
+      "step_01_body": "A trusted issuer signs a credential to your wallet. It lives on your device — never on a server.",
+      "step_02_title": "Prove",
+      "step_02_body": "Generate a zero-knowledge proof locally in your browser. Only the claim leaves; the data behind it never does.",
+      "step_03_title": "Verify",
+      "step_03_body": "Any Stellar protocol reads ProofRegistry on-chain. One proof, valid across every protocol, for 30 days."
+    },
+    "trusted_everywhere": {
+      "title": "Verified once. Trusted everywhere.",
+      "subtitle": "Any protocol on Stellar can verify your credentials in one contract call. Your proof is valid everywhere.",
+      "direct_verify": "Verify directly",
+      "direct_verify_body": "Visit StellarCred before using any app. Your credentials work everywhere, instantly.",
+      "get_verified": "Get verified",
+      "verify_through_app": "Verify through an app",
+      "verify_through_app_body": "Apps that integrate StellarCred show a \"Verify\" button. Complete verification and return automatically."
+    },
+    "developers": {
+      "title": "Built for developers",
+      "claim": "Require a claim",
+      "redirect": "Redirect if needed",
+      "verified": "User returns verified",
+      "verified_body": "On-chain proof, read in one call. No backend needed.",
+      "learn_more": "Read the developer docs"
+    },
+    "cta": {
+      "title": "Ready to try it?",
+      "subtitle": "Connect a Stellar wallet on testnet, get a credential, generate your first on-chain ZK proof in under a minute.",
+      "get_started": "Get started",
+      "dashboard": "Open dashboard"
+    }
+  },
+  "network": {
+    "wrongNetwork": "Wrong network detected. Switch your wallet to {network} to continue.",
+    "mismatchBanner": "Your wallet is on the wrong network. Switch to {network} in your wallet extension to submit — proving still works, but submission is blocked until networks match.",
+    "testnet": "Testnet",
+    "mainnet": "Mainnet",
+    "futurenet": "Futurenet"
+  },
+  "config": {
+    "notConfigured": "App not fully configured.",
+    "issuanceDisabled": "Credential issuance and On-chain submission is disabled — missing env vars:",
+    "submissionDisabled": "On-chain submission is disabled — missing env vars:",
+    "deployScript": "./scripts/deploy.sh",
+    "envLocation": "frontend/.env.local",
+    "activeNetwork": "Active network",
+    "mixedNetwork": "Mixed-network configuration detected.",
+    "mixedNetworkFix": "Fix NEXT_PUBLIC_STELLAR_NETWORK (or the conflicting overrides) in {envLocation} — signing and indexing are unsafe until the config is coherent.",
+    "credentialIssuanceAnd": "Credential issuance and ",
+    "onChainSubmissionDisabled": "On-chain submission is disabled — missing env vars:"
+  },
+  "credential": {
+    "details": "Credential details",
+    "transfer": "Transfer to another device",
+    "rawJson": "raw JSON",
+    "type": "Type",
+    "issuer": "Issuer",
+    "issuerId": "Issuer ID",
+    "commitment": "Commitment",
+    "issued": "Issued",
+    "expiry": "Expiry",
+    "claim": "Claim"
+  },
+  "errors": {
+    "title": "Error",
+    "generic": "An error occurred"
+  },
+  "formats": {
+    "dateTime": {
+      "short": "MMM d, yyyy",
+      "medium": "MMM d, yyyy h:mm a",
+      "long": "EEEE, MMMM d, yyyy"
+    }
+  },
+  "onboarding": {
+    "steps": {
+      "welcome": {
+        "title": "Welcome to StellarCred",
+        "summary": "Prove facts about yourself without revealing personal data. This walkthrough takes you through the full loop once: a wallet, a credential, and a proof anyone can verify.",
+        "tip": "Your credentials live in this browser only — never on a server. You can replay this tour anytime with the “Tour” button in the header.",
+        "railLabel": "Welcome"
+      },
+      "connect-wallet": {
+        "title": "Set up your wallet",
+        "summary": "Connect a Stellar wallet on testnet. Your wallet address is the identity your credentials are bound to — proofs are always submitted by its key.",
+        "tip": "Credentials are sealed to the address that received them, so use the same wallet every time. Nothing is sent to us when you connect; the wallet only shares its public address.",
+        "railLabel": "Wallet"
+      },
+      "get-credential": {
+        "title": "Create your credential",
+        "summary": "Request a demo age credential from the StellarCred Authority. It attests “age ≥ 18” without carrying your date of birth — only a cryptographic commitment is stored.",
+        "tip": "The credential is encrypted at rest in your browser with a key derived from your unlock passphrase. Back it up from the dashboard before clearing site data.",
+        "railLabel": "Credential"
+      },
+      "verify-trust": {
+        "title": "Verify issuer trust",
+        "summary": "Protocols only accept proofs from issuers registered on-chain. This check reads the issuer of your new credential from the IssuerRegistry contract and confirms its signing key is still trusted.",
+        "tip": "A trusted issuer is what makes a proof meaningful: anyone verifying on-chain re-runs this same check, so seeing “Trusted” here means your future proofs will be accepted.",
+        "railLabel": "Trust"
+      },
+      "generate-proof": {
+        "title": "Generate a proof",
+        "summary": "Generate a zero-knowledge proof locally. Only the claim (“age ≥ 18”) and the proof leave your device — the data behind it never does.",
+        "tip": "Proving runs entirely in your browser, so the first proof takes a few seconds to load the circuit. Onboarding stays available until you finish.",
+        "railLabel": "Proof"
+      },
+      "unlock": {
+        "title": "You're ready",
+        "summary": "Wallet, credential, trust — the core loop is done. Any Stellar protocol can now verify your proofs in a single contract call.",
+        "tip": "Explore apps that accept StellarCred proofs, or open your dashboard to generate a real proof on-chain.",
+        "railLabel": "Finish"
+      }
+    },
+    "trust": {
+      "active": {
+        "label": "Trusted",
+        "message": "The issuer is registered on-chain and its signing key is accepted. Proofs from this credential will pass the protocol's trusted-issuer gate."
+      },
+      "key_retired": {
+        "label": "Trusted (key retiring)",
+        "message": "The issuer rotated to a new signing key, but this credential's key is still inside its validity window. Proofs work now; the issuer's newer credentials use the new key."
+      },
+      "key_revoked": {
+        "label": "Key revoked",
+        "message": "This issuer's signing key was emergency-revoked, so proofs from this credential may be rejected. Wait for the issuer to install a replacement key, or get a fresh credential."
+      },
+      "issuer_revoked": {
+        "label": "Issuer revoked",
+        "message": "This issuer was permanently removed from the registry, so protocols will reject its credentials. Get a new credential from a trusted issuer to continue."
+      },
+      "unknown": {
+        "label": "Couldn't check",
+        "message": "The registry couldn't be reached right now. This does not block onboarding — the same check runs automatically whenever you prove, and you can retry here."
+      },
+      "checkError": {
+        "label": "Check failed",
+        "message": "The trust check hit an error. Try again — if the network is unreachable it will keep working once connectivity returns."
+      }
+    },
+    "buttons": {
+      "next": "Next",
+      "back": "Back",
+      "skipTour": "Skip tour",
+      "getStarted": "Get started",
+      "openProofDashboard": "Open Proof Dashboard",
+      "skipForNow": "Skip for now",
+      "getNewCredential": "Get new credential",
+      "connectWallet": "Connect wallet",
+      "connecting": "Connecting…",
+      "getAgeCredential": "Get age credential",
+      "creating": "Creating…",
+      "runTrustCheck": "Run trust check",
+      "runAgain": "Run the check again",
+      "checking": "Checking…",
+      "tryAgain": "Try again"
+    },
+    "nav": {
+      "stepOf": "Step {current} of {total}",
+      "stepAriaLabel": "Step {num}: {label}",
+      "stepDone": "(done)",
+      "backToStep": "Back to: {title}"
+    },
+    "wizard": {
+      "title": "Setup guide",
+      "skipAriaLabel": "Skip onboarding",
+      "helpLink": "Learn more in the docs",
+      "stepCounter": "Step {current} of {total}"
+    },
+    "proofGuide": {
+      "step1": "Select a credential on the dashboard",
+      "step2": "Choose the verifier app you want to use",
+      "step3": "Click Generate proof — the circuit runs locally",
+      "step4": "Submit the proof on-chain"
+    },
+    "revokedGuidance": {
+      "title": "Credential from a revoked key",
+      "message": "Your credential was issued by a revoked key. To continue using StellarCred, get a new credential from a trusted issuer."
+    },
+    "nudge": {
+      "message": "Complete your setup — generate your first proof to finish onboarding",
+      "continueSetup": "Continue setup",
+      "dismiss": "Dismiss nudge"
+    }
+  }
+}

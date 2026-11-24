@@ -35,3 +35,65 @@ fn test_commitment_is_deterministic() {
 fn test_zero_salt_rejected() {
     let _ = main(1, 5, 0);
 }
+
+// --- Property-based boundary tests ---------------------------------------
+
+// Different (status, seniority) pairs produce different commitments.
+#[test]
+fn test_different_pairs_different_commitments() {
+    let salt: Field = 11;
+    let c1 = main(1, 5, salt);
+    let c2 = main(1, 6, salt);
+    let c3 = main(2, 5, salt);
+    let c4 = main(0, 5, salt);
+    assert(c1 != c2);
+    assert(c1 != c3);
+    assert(c1 != c4);
+    assert(c2 != c3);
+}
+
+// Same inputs always produce same output.
+#[test]
+fn test_deterministic_across_calls() {
+    let c1 = main(1, 10, 42);
+    let c2 = main(1, 10, 42);
+    let c3 = main(1, 10, 42);
+    assert(c1 == c2);
+    assert(c2 == c3);
+}
+
+// Salt binding: same (status, seniority) with different salts.
+#[test]
+fn test_salt_binding() {
+    let c1 = main(1, 5, 11);
+    let c2 = main(1, 5, 22);
+    let c3 = main(1, 5, 33);
+    assert(c1 != c2);
+    assert(c2 != c3);
+    assert(c1 != c3);
+}
+
+// Commitment is never zero.
+#[test]
+fn test_commitment_never_zero() {
+    let c1 = main(1, 1, 1);
+    let c2 = main(100, 50, 99);
+    let c3 = main(0, 0, 1);
+    assert(c1 != 0);
+    assert(c2 != 0);
+    assert(c3 != 0);
+}
+
+// Wide sweep: various status and seniority values.
+#[test]
+fn test_property_wide_sweep() {
+    let salt: Field = 7;
+    let c1 = main(0, 0, salt);
+    let c2 = main(1, 0, salt);
+    let c3 = main(0, 1, salt);
+    let c4 = main(255, 50, salt);
+    assert(c1 != c2);
+    assert(c1 != c3);
+    assert(c2 != c3);
+    assert(c4 != c1);
+}
