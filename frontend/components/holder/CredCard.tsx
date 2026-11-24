@@ -8,8 +8,10 @@ import {
   IconInfoCircle,
 } from "@tabler/icons-react";
 import { Badge } from "@/components/Badge";
+import { IssuerAvatar } from "@/components/IssuerAvatar";
 import { Timeline } from "@/components/Timeline";
 import { truncateHash } from "@/lib/format";
+import { pubkeyHexFromParts } from "@/lib/issuer-avatar";
 import { EXPLORER_TX } from "@/lib/stellar";
 import { proofSubmissionConfigured } from "@/lib/config";
 import { useProofTimeline } from "@/lib/useProofTimeline";
@@ -65,7 +67,22 @@ export function CredCard({
           </div>
           <div className="cred-card__meta">
             <div>
-              {c.issuer} &middot; <span>{truncateHash(c.commitment)}</span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  verticalAlign: "middle",
+                }}
+              >
+                <IssuerAvatar
+                  publicKey={pubkeyHexFromParts(c.issuerPubX, c.issuerPubY)}
+                  name={c.issuer}
+                  size={22}
+                />
+                {c.issuer}
+              </span>{" "}
+              &middot; <span>{truncateHash(c.commitment)}</span>
               {status === "proved" && (
                 <>
                   {" "}

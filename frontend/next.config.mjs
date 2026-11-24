@@ -18,6 +18,17 @@ const nextConfig = {
   reactStrictMode: true,
   // Don't advertise the framework/version to scanners (#800 audit).
   poweredByHeader: false,
+
+  images: {
+    // Issuer logos are remote URLs from on-chain metadata (#1052), so their
+    // hosts cannot be enumerated up front. The wildcard lets next/image
+    // optimize them; the optimizer only fetches the URL to resize it — the
+    // same URL a plain <img> would have the browser fetch — and serves the
+    // result same-origin from /_next/image, so no CSP img-src change is
+    // needed for remote logos.
+    remotePatterns: [{ protocol: "https", hostname: "**" }],
+  },
+
   experimental: {
     optimizePackageImports: ["@tabler/icons-react"],
   },

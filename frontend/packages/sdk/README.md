@@ -94,6 +94,53 @@ Setting `STELLARCRED_INDEXER_URL` alone changes nothing: reads still go to the
 chain until you pass `source` explicitly. See
 [Indexer fast path](#indexer-fast-path-optional).
 
+### Retries and backoff
+
+Every RPC read, indexer request, webhook delivery and `submitTransaction` call
+retries transient failures (HTTP 429, 5xx, timeouts and network errors) with
+jittered exponential backoff. Terminal errors such as invalid input, other 4xx
+responses and contract panics are never retried. Jitter keeps clients that
+failed together from retrying together, so a congested or rate-limited RPC
+endpoint is not hit by the same burst again on every retry.
+
+```ts
+StellarCred.configure({
+  retries: 3, // retry ceiling per call
+  baseDelayMs: 500, // smallest delay and start of the backoff curve
+  maxDelayMs: 5000, // ceiling on any single delay
+  maxElapsedMs: 15_000, // optional total retry budget per call (default: none)
+  jitter: true, // true = "full"; or "decorrelated", "equal", "none" (false)
+});
+```
+
+| `jitter`           | Delay before retry _n_                                                    |
+| ------------------ | ------------------------------------------------------------------------- |
+| `true` / `"full"`  | random in `[0, min(maxDelayMs, baseDelayMs × 2^(n-1))]` (default)         |
+| `"decorrelated"`   | random in `[baseDelayMs, min(maxDelayMs, 3 × previous delay)]`            |
+| `"equal"`          | half of the exponential delay plus a random half (behaviour before #1056) |
+| `false` / `"none"` | `min(maxDelayMs, baseDelayMs × 2^(n-1))`                                  |
+
+Full jitter is the default because its worst case equals plain exponential
+backoff (3.5 s for the default 3 retries), so a fail-soft read never waits
+longer during an outage than it used to. Decorrelated jitter never retries
+sooner than `baseDelayMs` but can wait up to about 11 s with the same settings.
+
+Every setting can also be passed per call through `retryOptions` (for example
+`hasClaim(wallet, "kyc", { retryOptions: { retries: 1 } })` or
+`submitTransaction(op, { retryOptions })`), together with:
+
+- `signal`: an `AbortSignal`. Aborting cancels a pending delay at once and
+  throws the abort reason; an attempt that fails because of the abort is never
+  retried. `withRetry` also passes the signal to your operation as
+  `({ attempt, signal })` so you can forward it to `fetch`.
+- `onRetry({ attempt, delayMs, error, elapsedMs })`: called before each retry
+  with the exact delay. Errors thrown by the hook are ignored.
+
+Stopping a `watchClaim` (the returned function, a match, or its timeout) and
+unsubscribing from `subscribeClaims` cancel any retry still waiting, so a
+stopped poller sends no further requests. `computeBackoffDelay` is exported for
+callers that want the same curve in their own polling loops.
+
 ### Claim cache (optional)
 
 Calling `hasClaim` on every render sends one RPC simulation per render. Turn on
