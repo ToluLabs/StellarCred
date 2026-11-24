@@ -256,6 +256,8 @@ function makeCredential(overrides: Partial<Credential> = {}): Credential {
     claim: "age >= 18",
     issuer: "Demo Issuer",
     issuerId: "GISSUER",
+    issuerPubX: Array(32).fill(1),
+    issuerPubY: Array(32).fill(2),
     commitment: "0xabc1234567890",
     issuedAt: Math.floor(Date.now() / 1000),
     expiry: "30 days",

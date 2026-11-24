@@ -51,6 +51,9 @@ vi.mock("@/components/Toast", () => ({
 // are stubbed out.
 vi.mock("@/components/WalletButton", () => ({ WalletButton: () => null }));
 vi.mock("@/components/ConfigBanner", () => ({ ConfigBanner: () => null }));
+vi.mock("@/components/OnboardingNudge", () => ({ OnboardingNudge: () => null }));
+vi.mock("@/components/WalletOnboarding", () => ({ WalletOnboarding: () => null }));
+vi.mock("@/components/holder/SponsorBanner", () => ({ SponsorBanner: () => null }));
 vi.mock("@/components/DataWipePanel", () => ({ DataWipePanel: () => null }));
 vi.mock("@/components/CredentialDetailModal", () => ({ default: () => null }));
 vi.mock("@/components/holder/CredCard", () => ({ CredCard: () => null }));
@@ -71,9 +74,7 @@ describe("HolderPageClient loading state", () => {
     render(<HolderPageClient />);
 
     // Mid-hydration: skeleton placeholders, no "No credentials yet" flash.
-    expect(
-      screen.getByRole("status", { name: /loading credentials/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /loading credentials/i })).toBeInTheDocument();
     expect(screen.queryByText(/no credentials yet/i)).not.toBeInTheDocument();
 
     // Once hydration settles with an empty store, the empty state appears and
@@ -83,8 +84,6 @@ describe("HolderPageClient loading state", () => {
     });
 
     expect(await screen.findByText(/no credentials yet/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("status", { name: /loading credentials/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /loading credentials/i })).not.toBeInTheDocument();
   });
 });
