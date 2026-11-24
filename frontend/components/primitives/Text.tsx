@@ -8,7 +8,7 @@
  */
 
 export type TextVariant =
-  | "xs" | "sm" | "md" | "base" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "hero";
+  "xs" | "sm" | "md" | "base" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "hero";
 
 export interface TextProps extends React.HTMLAttributes<HTMLParagraphElement> {
   /** Which size from the type scale */
@@ -67,11 +67,7 @@ export function Text({
   // so we widen to ElementType where the spread is accepted.
   const tagName = as as string;
   const Tag = tagName as React.ElementType;
-  const classes = [
-    eyebrow ? "eyebrow" : "",
-    gradient ? "gradient-text" : "",
-    className,
-  ]
+  const classes = [eyebrow ? "eyebrow" : "", gradient ? "gradient-text" : "", className]
     .filter(Boolean)
     .join(" ");
 

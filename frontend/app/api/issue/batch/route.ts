@@ -460,9 +460,7 @@ async function executeBatchRequest(
         index,
         success: false,
         error:
-          index === (failure?.index ?? -1)
-            ? message
-            : "Batch aborted because another item failed.",
+          index === (failure?.index ?? -1) ? message : "Batch aborted because another item failed.",
       })),
     };
     return sendResponse(NextResponse.json(payload, { status: 422 }));

@@ -25,10 +25,7 @@ export interface KeyValueStore {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
   del(key: string): Promise<void>;
-  incr(
-    key: string,
-    ttlSeconds?: number,
-  ): Promise<{ count: number; ttlRemainingMs: number }>;
+  incr(key: string, ttlSeconds?: number): Promise<{ count: number; ttlRemainingMs: number }>;
   clear?(): Promise<void>;
 }
 
@@ -56,8 +53,7 @@ export class MemoryStore implements KeyValueStore {
   }
 
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
-    const expiresAt =
-      ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : null;
+    const expiresAt = ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : null;
     this.store.set(key, { value, expiresAt });
   }
 
@@ -65,16 +61,12 @@ export class MemoryStore implements KeyValueStore {
     this.store.delete(key);
   }
 
-  async incr(
-    key: string,
-    ttlSeconds?: number,
-  ): Promise<{ count: number; ttlRemainingMs: number }> {
+  async incr(key: string, ttlSeconds?: number): Promise<{ count: number; ttlRemainingMs: number }> {
     const now = Date.now();
     const entry = this.store.get(key);
 
     if (!entry || (entry.expiresAt !== null && now > entry.expiresAt)) {
-      const expiresAt =
-        ttlSeconds && ttlSeconds > 0 ? now + ttlSeconds * 1000 : null;
+      const expiresAt = ttlSeconds && ttlSeconds > 0 ? now + ttlSeconds * 1000 : null;
       this.store.set(key, { value: "1", expiresAt });
       return {
         count: 1,
@@ -179,10 +171,7 @@ export class UpstashRedisStore implements KeyValueStore {
     await this.execute(["DEL", key]);
   }
 
-  async incr(
-    key: string,
-    ttlSeconds?: number,
-  ): Promise<{ count: number; ttlRemainingMs: number }> {
+  async incr(key: string, ttlSeconds?: number): Promise<{ count: number; ttlRemainingMs: number }> {
     const results = await this.pipeline<Array<{ result?: unknown; error?: string }>>([
       ["INCR", key],
       ["PTTL", key],
@@ -238,10 +227,8 @@ export function isMultiInstanceOrServerless(): boolean {
  */
 export function isSharedStoreConfigured(): boolean {
   if (typeof process === "undefined" || !process.env) return false;
-  const url =
-    process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token =
-    process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
   return !!(url && token);
 }
 
@@ -292,10 +279,8 @@ export function getSharedStore(): KeyValueStore {
     return _sharedStoreInstance;
   }
 
-  const url =
-    process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token =
-    process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
   if (url && token) {
     _sharedStoreInstance = new UpstashRedisStore({ url, token });

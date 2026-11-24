@@ -33,14 +33,18 @@ interface CredentialDetailModalProps {
   onTransfer?: (credential: unknown) => void;
 }
 
-export default function CredentialDetailModal({ credential: c, onClose, onTransfer }: CredentialDetailModalProps) {
+export default function CredentialDetailModal({
+  credential: c,
+  onClose,
+  onTransfer,
+}: CredentialDetailModalProps) {
   const [showRaw, setShowRaw] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const locale = useLocale() as Locale;
   const t = useTranslations();
-  
+
   onCloseRef.current = onClose;
 
   useEffect(() => {
@@ -83,18 +87,22 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
   const ttlSecs = parseTtlSecs(c.expiry);
   const expiryDate = c.issuedAt + ttlSecs;
   const localeStr = getLocaleString(locale);
-  
-  const rawJson = JSON.stringify({
-    type: c.type,
-    title: c.title,
-    claim: c.claim,
-    issuer: c.issuer,
-    issuerId: c.issuerId,
-    commitment: c.commitment,
-    issuedAt: c.issuedAt,
-    expiry: c.expiry,
-    ...(c.claimParams ? { claimParams: c.claimParams } : {}),
-  }, null, 2);
+
+  const rawJson = JSON.stringify(
+    {
+      type: c.type,
+      title: c.title,
+      claim: c.claim,
+      issuer: c.issuer,
+      issuerId: c.issuerId,
+      commitment: c.commitment,
+      issuedAt: c.issuedAt,
+      expiry: c.expiry,
+      ...(c.claimParams ? { claimParams: c.claimParams } : {}),
+    },
+    null,
+    2,
+  );
 
   const fields: Array<{ label: string; value: string }> = [
     { label: t("credential.type"), value: c.title },
@@ -186,7 +194,9 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
                 gap: "1rem",
               }}
             >
-              <span style={{ fontSize: "0.8rem", color: "var(--muted)", flexShrink: 0 }}>{f.label}</span>
+              <span style={{ fontSize: "0.8rem", color: "var(--muted)", flexShrink: 0 }}>
+                {f.label}
+              </span>
               <span
                 className="mono"
                 style={{
@@ -231,7 +241,10 @@ export default function CredentialDetailModal({ credential: c, onClose, onTransf
             {showRaw ? t("common.hide") : t("common.show")} {t("credential.rawJson")}
           </button>
           {showRaw && (
-            <div id="credential-raw-json-viewer" style={{ position: "relative", marginTop: "0.5rem" }}>
+            <div
+              id="credential-raw-json-viewer"
+              style={{ position: "relative", marginTop: "0.5rem" }}
+            >
               <pre
                 className="mono"
                 style={{

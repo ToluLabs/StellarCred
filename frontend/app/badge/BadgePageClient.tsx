@@ -2,12 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  IconCheck,
-  IconX,
-  IconLoader2,
-  IconQuestionMark,
-} from "@tabler/icons-react";
+import { IconCheck, IconX, IconLoader2, IconQuestionMark } from "@tabler/icons-react";
 import { truncateHash } from "@/lib/format";
 import { isVerified } from "@/lib/contracts";
 import { classifyRpcError, type RpcIssue } from "@/lib/rpc-health";
@@ -30,9 +25,7 @@ function BadgeContent() {
   const wallet = searchParams.get("wallet") || "";
   const claim = searchParams.get("claim") || searchParams.get("type") || "kyc";
   const theme = searchParams.get("theme") || "dark";
-  const isCompact =
-    searchParams.get("compact") === "1" ||
-    searchParams.get("compact") === "true";
+  const isCompact = searchParams.get("compact") === "1" || searchParams.get("compact") === "true";
 
   const [status, setStatus] = useState<BadgeStatus>("loading");
   const [issue, setIssue] = useState<RpcIssue | null>(null);
@@ -132,8 +125,7 @@ function BadgeContent() {
         alignItems: "center",
         justifyContent: "flex-start",
         background: "transparent",
-        fontFamily:
-          "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
       <a
@@ -184,9 +176,7 @@ function BadgeContent() {
           )}
         </div>
 
-        <div
-          style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}
-        >
+        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
           <div
             style={{
               display: "flex",
@@ -196,9 +186,7 @@ function BadgeContent() {
           >
             <span style={{ fontWeight: 600 }}>StellarCred</span>
             <span style={{ color: faintColor }}>·</span>
-            <span style={{ fontWeight: 500, color: faintColor }}>
-              {claimText}
-            </span>
+            <span style={{ fontWeight: 500, color: faintColor }}>{claimText}</span>
           </div>
 
           {!isCompact && (
@@ -213,13 +201,10 @@ function BadgeContent() {
                 "Checking on-chain..."
               ) : status === "verified" ? (
                 <span style={{ color: "#10b981", fontWeight: 500 }}>
-                  Verified{" "}
-                  {wallet ? `(${truncateHash(wallet)})` : ""}
+                  Verified {wallet ? `(${truncateHash(wallet)})` : ""}
                 </span>
               ) : status === "unknown" ? (
-                <span style={{ color: "#e3b341" }}>
-                  Unknown — network unavailable
-                </span>
+                <span style={{ color: "#e3b341" }}>Unknown — network unavailable</span>
               ) : (
                 <span style={{ color: "#ef4444" }}>Not verified</span>
               )}

@@ -1,9 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  MemoryStore,
-  setSharedStoreForTesting,
-} from "./shared-store";
+import { MemoryStore, setSharedStoreForTesting } from "./shared-store";
 import {
   buildExportRows,
   createExportJob,
@@ -165,7 +162,7 @@ describe("export-job-store", () => {
     expect(rows.every((r) => r.id === "rec-1")).toBe(true);
   });
 
-  it("buildExportRows emits value:\"\" for null optional fields", () => {
+  it('buildExportRows emits value:"" for null optional fields', () => {
     const record = {
       id: "rec-2",
       issuer: "GISS",

@@ -45,7 +45,9 @@ export function Modal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
-  const titleId = id ? `${id}-title` : `modal-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const titleId = id
+    ? `${id}-title`
+    : `modal-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
   // Keep the latest onClose in a ref so the keydown listener below can stay
   // registered once instead of tearing down/re-adding on every render (most

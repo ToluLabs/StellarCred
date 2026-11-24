@@ -3,11 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { saveCredential, TYPE_META, type Credential } from "@/lib/credential";
 import type { CredentialType } from "@/lib/stellar";
-import {
-  eligibleIssuers,
-  isProtocolAccepted,
-  pickDefaultIssuer,
-} from "@/lib/issuer-choice";
+import { eligibleIssuers, isProtocolAccepted, pickDefaultIssuer } from "@/lib/issuer-choice";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
 import { savePersonaPending } from "@/lib/persona-pending";
 import { getOrCreateRequestId } from "@/lib/verify-session";
@@ -76,9 +72,7 @@ export function useVerifyFlow({
   const justIssuedClaims = useRef<string[]>([]);
 
   // Jurisdiction mode: "0" = denylist (block), "1" = allowlist (allow)
-  const [jurisdictionMode, setJurisdictionMode] = useState<string>(
-    claimParamsFromUrl.mode ?? "0",
-  );
+  const [jurisdictionMode, setJurisdictionMode] = useState<string>(claimParamsFromUrl.mode ?? "0");
 
   // #620 — several registered issuers can attest the same claim type, so let
   // the holder pick which one issues to them.
@@ -98,14 +92,10 @@ export function useVerifyFlow({
     };
   }, []);
 
-  const issuersForType = useMemo(
-    () => eligibleIssuers(issuers, selected),
-    [issuers, selected],
-  );
+  const issuersForType = useMemo(() => eligibleIssuers(issuers, selected), [issuers, selected]);
 
   const selectedIssuer = useMemo(
-    () =>
-      issuersForType.find((issuer) => issuer.id === selectedIssuerId) ?? null,
+    () => issuersForType.find((issuer) => issuer.id === selectedIssuerId) ?? null,
     [issuersForType, selectedIssuerId],
   );
 
@@ -123,14 +113,10 @@ export function useVerifyFlow({
     : true;
   const anyAccepted =
     trustedIssuerGate === undefined ||
-    issuersForType.some((issuer) =>
-      isProtocolAccepted(issuer.id, trustedIssuerGate),
-    );
+    issuersForType.some((issuer) => isProtocolAccepted(issuer.id, trustedIssuerGate));
 
   const [plaidBalance, setPlaidBalance] = useState<number | null>(null);
-  const [plaidAccounts, setPlaidAccounts] = useState<
-    { name: string; available: number }[]
-  >([]);
+  const [plaidAccounts, setPlaidAccounts] = useState<{ name: string; available: number }[]>([]);
   const [plaidSources, setPlaidSources] = useState<number | null>(null);
   const [plaidMock, setPlaidMock] = useState(false);
 
@@ -186,9 +172,7 @@ export function useVerifyFlow({
 
     setDone(true);
     toast.success(
-      credentials.length > 1
-        ? "Credentials issued successfully"
-        : "Credential issued successfully",
+      credentials.length > 1 ? "Credentials issued successfully" : "Credential issued successfully",
     );
     setTimeout(redirectAfterIssue, 1500);
   };
@@ -204,9 +188,7 @@ export function useVerifyFlow({
       const issuerId = selectedIssuer?.id ?? DEMO_ISSUER_ID;
       const issuerName = selectedIssuer?.name ?? "StellarCred Authority";
       if (!issuerId) {
-        throw new Error(
-          "NEXT_PUBLIC_ISSUER_ADDRESS is not set — cannot issue credentials",
-        );
+        throw new Error("NEXT_PUBLIC_ISSUER_ADDRESS is not set — cannot issue credentials");
       }
       const payload = {
         credential_types: [selected],

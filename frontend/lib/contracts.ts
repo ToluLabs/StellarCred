@@ -32,11 +32,7 @@ export {
 } from "./contract-errors";
 
 // ── contract-simulation ───────────────────────────────────────────────────────
-export type {
-  ReadStatus,
-  ClaimResult,
-  VerificationResult,
-} from "./contract-simulation";
+export type { ReadStatus, ClaimResult, VerificationResult } from "./contract-simulation";
 export { checkClaim, isVerified } from "./contract-simulation";
 
 // ── contract-transactions ─────────────────────────────────────────────────────

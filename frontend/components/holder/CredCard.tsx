@@ -1,12 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  IconExternalLink,
-  IconTrash,
-  IconHistory,
-  IconInfoCircle,
-} from "@tabler/icons-react";
+import { IconExternalLink, IconTrash, IconHistory, IconInfoCircle } from "@tabler/icons-react";
 import { Badge } from "@/components/Badge";
 import { IssuerAvatar } from "@/components/IssuerAvatar";
 import { Timeline } from "@/components/Timeline";
@@ -63,7 +58,9 @@ export function CredCard({
         <div className="cred-card__info">
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <span className="cred-card__title">{c.title}</span>
-            <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
+            <span className="mono faint" style={{ fontSize: "0.7rem" }}>
+              {c.claim}
+            </span>
           </div>
           <div className="cred-card__meta">
             <div>
@@ -86,9 +83,7 @@ export function CredCard({
               {status === "proved" && (
                 <>
                   {" "}
-                  <span className="cred-card__expires">
-                    expires in {daysRemaining(c)}d
-                  </span>
+                  <span className="cred-card__expires">expires in {daysRemaining(c)}d</span>
                   {c.provedTxHash && (
                     <>
                       {" "}
@@ -98,14 +93,18 @@ export function CredCard({
                         rel="noreferrer"
                         className="cred-card__tx-link"
                       >
-                        {c.provedTxHash.slice(0, 6)}&hellip;<IconExternalLink size={10} />
+                        {c.provedTxHash.slice(0, 6)}&hellip;
+                        <IconExternalLink size={10} />
                       </a>
                     </>
                   )}
                 </>
               )}
               {status === "expired" && (
-                <> <span className="cred-card__expired">expired</span></>
+                <>
+                  {" "}
+                  <span className="cred-card__expired">expired</span>
+                </>
               )}
             </div>
             <div className="cred-card__expiry">
@@ -130,26 +129,32 @@ export function CredCard({
               title={selection.blockedReason ?? undefined}
               onChange={selection.onToggle}
               aria-label={`Select ${c.title} for batch`}
-              style={{ cursor: selection.blockedReason && !selection.checked ? "not-allowed" : "pointer" }}
+              style={{
+                cursor: selection.blockedReason && !selection.checked ? "not-allowed" : "pointer",
+              }}
             />
           )}
           {isPreview && <Badge variant="pending">Preview</Badge>}
-          <Badge variant="verified" dot={false}>Held</Badge>
+          <Badge variant="verified" dot={false}>
+            Held
+          </Badge>
           {status === "proved" && !isExpiringSoon(c) && (
-            <Badge variant="verified" dot={false}>On-chain</Badge>
+            <Badge variant="verified" dot={false}>
+              On-chain
+            </Badge>
           )}
           {status === "proved" && isExpiringSoon(c) && (
-            <Badge variant="pending" dot={true}>Expiring in {daysRemaining(c)}d</Badge>
+            <Badge variant="pending" dot={true}>
+              Expiring in {daysRemaining(c)}d
+            </Badge>
           )}
           {status === "expired" && (
-            <Badge variant="denied" dot={true}>Proof Expired</Badge>
+            <Badge variant="denied" dot={true}>
+              Proof Expired
+            </Badge>
           )}
           {onInspect && (
-            <button
-              className="btn btn-ghost btn-sm"
-              title="View details"
-              onClick={onInspect}
-            >
+            <button className="btn btn-ghost btn-sm" title="View details" onClick={onInspect}>
               <IconInfoCircle size={13} />
             </button>
           )}
@@ -167,9 +172,11 @@ export function CredCard({
             }
             onClick={onProve}
           >
-            {status === "proved" ? "Re-prove" :
-             status === "expired" ? "Re-prove" :
-                                    "Generate proof"}
+            {status === "proved"
+              ? "Re-prove"
+              : status === "expired"
+                ? "Re-prove"
+                : "Generate proof"}
           </button>
           <button
             className="btn btn-ghost btn-sm"
@@ -178,18 +185,13 @@ export function CredCard({
           >
             <IconHistory size={13} />
           </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            title="Remove"
-            onClick={onRemove}
-          >
+          <button className="btn btn-ghost btn-sm" title="Remove" onClick={onRemove}>
             <IconTrash size={13} />
           </button>
         </div>
       </div>
 
-      {showHistory &&
-        (historyLoading ? <CredTimelineSkeleton /> : <Timeline events={events} />)}
+      {showHistory && (historyLoading ? <CredTimelineSkeleton /> : <Timeline events={events} />)}
     </div>
   );
 }

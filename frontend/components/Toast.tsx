@@ -89,11 +89,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           resultId = last.id;
           const timer = timers.current.get(last.id);
           if (timer) clearTimeout(timer);
-          timers.current.set(last.id, setTimeout(() => dismiss(last.id), AUTO_DISMISS_MS));
+          timers.current.set(
+            last.id,
+            setTimeout(() => dismiss(last.id), AUTO_DISMISS_MS),
+          );
           return [...prev.slice(0, -1), { ...last, count: last.count + 1 }];
         }
 
-        const entry: ToastEntry = { id: resultId, variant, message, txHash: opts?.txHash, count: 1 };
+        const entry: ToastEntry = {
+          id: resultId,
+          variant,
+          message,
+          txHash: opts?.txHash,
+          count: 1,
+        };
         const next = [...prev, entry];
         const removed = next.length > MAX_VISIBLE_TOASTS ? next.slice(0, -MAX_VISIBLE_TOASTS) : [];
         removed.forEach((toast) => {
@@ -101,7 +110,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           if (timer) clearTimeout(timer);
           timers.current.delete(toast.id);
         });
-        timers.current.set(resultId, setTimeout(() => dismiss(resultId), AUTO_DISMISS_MS));
+        timers.current.set(
+          resultId,
+          setTimeout(() => dismiss(resultId), AUTO_DISMISS_MS),
+        );
         return next.slice(-MAX_VISIBLE_TOASTS);
       });
       return resultId;
@@ -122,8 +134,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {mounted &&
-        createPortal(<ToastStack toasts={toasts} onDismiss={dismiss} />, document.body)}
+      {mounted && createPortal(<ToastStack toasts={toasts} onDismiss={dismiss} />, document.body)}
     </ToastContext.Provider>
   );
 }

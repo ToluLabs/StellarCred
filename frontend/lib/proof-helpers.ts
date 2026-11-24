@@ -10,9 +10,7 @@ export function credTtlSecs(cred: Credential): number {
 
 export function proofStatus(cred: Credential): "unproved" | "proved" | "expired" {
   if (!cred.provedAt) return "unproved";
-  return cred.provedAt + credTtlSecs(cred) > Math.floor(Date.now() / 1000)
-    ? "proved"
-    : "expired";
+  return cred.provedAt + credTtlSecs(cred) > Math.floor(Date.now() / 1000) ? "proved" : "expired";
 }
 
 export function isExpiringSoon(cred: Credential, windowDays = 7): boolean {

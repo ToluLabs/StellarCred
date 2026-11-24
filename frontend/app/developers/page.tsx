@@ -28,7 +28,11 @@ function Code({ children }: { children: string }) {
       <code>
         {lines.map((line, i) => (
           <span key={i}>
-            <span style={{ color: line.trimStart().startsWith("//") ? "var(--faint)" : "var(--accent)" }}>
+            <span
+              style={{
+                color: line.trimStart().startsWith("//") ? "var(--faint)" : "var(--accent)",
+              }}
+            >
               {line}
             </span>
             {i < lines.length - 1 ? "\n" : null}
@@ -39,18 +43,10 @@ function Code({ children }: { children: string }) {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ marginTop: "3rem" }}>
-      <h2 style={{ fontSize: "1.25rem", marginBottom: "0.5rem", color: "var(--text)" }}>
-        {title}
-      </h2>
+      <h2 style={{ fontSize: "1.25rem", marginBottom: "0.5rem", color: "var(--text)" }}>{title}</h2>
       {children}
     </section>
   );
@@ -84,10 +80,9 @@ export default function DevelopersPage() {
 
       <Section title="How it works">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          StellarCred stores zero-knowledge proofs on Stellar. Your protocol
-          reads them with one contract call. No API keys, no backend, no data
-          handling — the only thing you trust is the on-chain{" "}
-          <span className="mono">ProofRegistry</span>.
+          StellarCred stores zero-knowledge proofs on Stellar. Your protocol reads them with one
+          contract call. No API keys, no backend, no data handling — the only thing you trust is the
+          on-chain <span className="mono">ProofRegistry</span>.
         </p>
       </Section>
 
@@ -97,10 +92,10 @@ export default function DevelopersPage() {
 
       <Section title="Checking a claim">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          The primary call. Returns <span className="mono">true</span> if the
-          wallet has a valid, unexpired proof of the claim. For parameterised
-          claims (age, income, funds), pass <span className="mono">minThreshold</span> to
-          enforce the threshold on-chain — trustlessly.
+          The primary call. Returns <span className="mono">true</span> if the wallet has a valid,
+          unexpired proof of the claim. For parameterised claims (age, income, funds), pass{" "}
+          <span className="mono">minThreshold</span> to enforce the threshold on-chain —
+          trustlessly.
         </p>
         <Code>{`import { StellarCred } from "@stellarcred/sdk";
 
@@ -116,7 +111,8 @@ const fundsOk = await StellarCred.hasClaim(wallet, "funds", { minThreshold: 5000
 
       <Section title="Fetching all claims">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          Protocols that gate on multiple claims simultaneously benefit from fetching everything at once rather than making N separate <span className="mono">hasClaim</span> calls.
+          Protocols that gate on multiple claims simultaneously benefit from fetching everything at
+          once rather than making N separate <span className="mono">hasClaim</span> calls.
         </p>
         <Code>{`import { StellarCred } from "@stellarcred/sdk";
 
@@ -135,8 +131,8 @@ const canAccess = claims.kyc.verified && claims.age.verified;`}</Code>
 
       <Section title="Configuration">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          Call <span className="mono">configure()</span> once at startup, or set env vars.
-          Both approaches work in Node.js, Next.js, and edge runtimes.
+          Call <span className="mono">configure()</span> once at startup, or set env vars. Both
+          approaches work in Node.js, Next.js, and edge runtimes.
         </p>
         <Code>{`import { StellarCred } from "@stellarcred/sdk";
 
@@ -152,13 +148,13 @@ StellarCred.configure({
 // STELLARCRED_RPC_URL=https://soroban-testnet.stellar.org
 // (also reads NEXT_PUBLIC_PROOF_REGISTRY_ID / NEXT_PUBLIC_RPC_URL)`}</Code>
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "1rem" }}>
-          A missing <span className="mono">registryId</span> doesn&rsquo;t throw &mdash;
-          it makes every <span className="mono">hasClaim</span>/
-          <span className="mono">getClaims</span> call silently return{" "}
-          <span className="mono">false</span>/<span className="mono">[]</span>, which can
-          look like &ldquo;nobody is verified&rdquo; instead of &ldquo;misconfigured.&rdquo;
-          Use <span className="mono">healthCheck()</span> to diagnose it directly (a dev-only
-          console warning also fires automatically the first time this happens).
+          A missing <span className="mono">registryId</span> doesn&rsquo;t throw &mdash; it makes
+          every <span className="mono">hasClaim</span>/<span className="mono">getClaims</span> call
+          silently return <span className="mono">false</span>/<span className="mono">[]</span>,
+          which can look like &ldquo;nobody is verified&rdquo; instead of
+          &ldquo;misconfigured.&rdquo; Use <span className="mono">healthCheck()</span> to diagnose
+          it directly (a dev-only console warning also fires automatically the first time this
+          happens).
         </p>
         <Code>{`const health = StellarCred.healthCheck();
 // { configured: false, registryId: false, rpcUrl: true, networkPassphrase: true,
@@ -170,9 +166,8 @@ if (!health.configured) console.error("StellarCred misconfigured:", health.missi
 
       <Section title="Redirecting users to verify">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          If a user hasn&rsquo;t verified yet, send them to StellarCred and get
-          them back automatically. Use <span className="mono">claimParams</span> to
-          customise thresholds.
+          If a user hasn&rsquo;t verified yet, send them to StellarCred and get them back
+          automatically. Use <span className="mono">claimParams</span> to customise thresholds.
         </p>
         <Code>{`import { StellarCred } from "@stellarcred/sdk";
 
@@ -200,16 +195,28 @@ const fundsUrl = StellarCred.buildVerifyUrl({
 // sc_claims contains only the claim types issued in the current session.
 const verified = await StellarCred.hasClaim(wallet, "kyc");`}</Code>
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "1rem" }}>
-          <strong>The return URL params are untrusted hints, not a proof.</strong>{" "}
-          Nothing binds this redirect to your session &mdash; anyone can craft a
-          URL shaped exactly like a real one and open it. Use{" "}
-          <span className="mono">parseReturnParams</span> to read them, but
+          <strong>The return URL params are untrusted hints, not a proof.</strong> Nothing binds
+          this redirect to your session &mdash; anyone can craft a URL shaped exactly like a real
+          one and open it. Use <span className="mono">parseReturnParams</span> to read them, but
           always re-verify with <span className="mono">hasClaim</span> or{" "}
-          <span className="mono">verifyWalletClaim</span> against the on-chain
-          ProofRegistry before granting access.
+          <span className="mono">verifyWalletClaim</span> against the on-chain ProofRegistry before
+          granting access.
         </p>
-        <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "0.75rem", borderLeft: "3px solid #f59e0b", paddingLeft: "0.75rem" }}>
-          <strong>⚠️ Wallet spoofing pitfall:</strong> Calling <span className="mono">hasClaim(wallet)</span> alone on your backend only proves that <em>someone</em> owns credentials for that address &mdash; not that the current caller actually controls that private key. For secure access gating, have the user sign a challenge and call <span className="mono">verifyWalletClaim</span>.
+        <p
+          className="muted"
+          style={{
+            fontSize: "0.95rem",
+            lineHeight: 1.7,
+            marginTop: "0.75rem",
+            borderLeft: "3px solid #f59e0b",
+            paddingLeft: "0.75rem",
+          }}
+        >
+          <strong>⚠️ Wallet spoofing pitfall:</strong> Calling{" "}
+          <span className="mono">hasClaim(wallet)</span> alone on your backend only proves that{" "}
+          <em>someone</em> owns credentials for that address &mdash; not that the current caller
+          actually controls that private key. For secure access gating, have the user sign a
+          challenge and call <span className="mono">verifyWalletClaim</span>.
         </p>
         <Code>{`import { StellarCred, createWalletChallenge, verifyWalletClaim } from "@stellarcred/sdk";
 
@@ -238,8 +245,8 @@ if (!result.ok) {
 
       <Section title="Canonical Integration Example">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          Looking for a complete, runnable reference application demonstrating the full integration pattern end to end?
-          See{" "}
+          Looking for a complete, runnable reference application demonstrating the full integration
+          pattern end to end? See{" "}
           <a
             href="https://github.com/ToluLabs/StellarCred/tree/main/examples/canonical-integration"
             target="_blank"
@@ -251,8 +258,9 @@ if (!result.ok) {
           in the repository.
         </p>
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "0.5rem" }}>
-          It includes interactive wallet challenge verification (eliminating the wallet-spoofing pitfall),
-          session token generation, server-side route gating, and granular failure-state handling (unverified, expired, revoked, wrong issuer, unmet threshold, replayed nonce).
+          It includes interactive wallet challenge verification (eliminating the wallet-spoofing
+          pitfall), session token generation, server-side route gating, and granular failure-state
+          handling (unverified, expired, revoked, wrong issuer, unmet threshold, replayed nonce).
         </p>
       </Section>
 
@@ -287,13 +295,31 @@ if (!result.ok) {
           <tbody>
             {CLAIMS.map(([claim, proves, by]) => (
               <tr key={claim}>
-                <td style={{ padding: "0.6rem 0.75rem", borderBottom: "1px solid var(--border)", color: "var(--accent)" }}>
+                <td
+                  style={{
+                    padding: "0.6rem 0.75rem",
+                    borderBottom: "1px solid var(--border)",
+                    color: "var(--accent)",
+                  }}
+                >
                   {claim}
                 </td>
-                <td style={{ padding: "0.6rem 0.75rem", borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
+                <td
+                  style={{
+                    padding: "0.6rem 0.75rem",
+                    borderBottom: "1px solid var(--border)",
+                    color: "var(--muted)",
+                  }}
+                >
                   {proves}
                 </td>
-                <td style={{ padding: "0.6rem 0.75rem", borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
+                <td
+                  style={{
+                    padding: "0.6rem 0.75rem",
+                    borderBottom: "1px solid var(--border)",
+                    color: "var(--muted)",
+                  }}
+                >
                   {by}
                 </td>
               </tr>
@@ -307,10 +333,19 @@ if (!result.ok) {
           The deployed StellarCred contracts on{" "}
           <span className="mono">{process.env.NEXT_PUBLIC_STELLAR_NETWORK ?? "testnet"}</span>.
         </p>
-         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "0.75rem" }}>
-           See{" "} <a href="/DEPLOYMENTS.md" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }} >
+        <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "0.75rem" }}>
+          See{" "}
+          <a
+            href="/DEPLOYMENTS.md"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "var(--accent)" }}
+          >
             DEPLOYMENTS.md
-            </a>{" "} for the authoritative contract IDs, versions, WASM hashes, and deployment dates for each network. </p>
+          </a>{" "}
+          for the authoritative contract IDs, versions, WASM hashes, and deployment dates for each
+          network.{" "}
+        </p>
         <table
           style={{
             width: "100%",
@@ -323,10 +358,24 @@ if (!result.ok) {
           <tbody>
             {ADDRESSES.map(([name, value]) => (
               <tr key={name}>
-                <td style={{ padding: "0.6rem 0.75rem", borderBottom: "1px solid var(--border)", color: "var(--faint)", whiteSpace: "nowrap" }}>
+                <td
+                  style={{
+                    padding: "0.6rem 0.75rem",
+                    borderBottom: "1px solid var(--border)",
+                    color: "var(--faint)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {name}
                 </td>
-                <td style={{ padding: "0.6rem 0.75rem", borderBottom: "1px solid var(--border)", color: "var(--muted)", wordBreak: "break-all" }}>
+                <td
+                  style={{
+                    padding: "0.6rem 0.75rem",
+                    borderBottom: "1px solid var(--border)",
+                    color: "var(--muted)",
+                    wordBreak: "break-all",
+                  }}
+                >
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <span>{value || "— not configured —"}</span>
                     {value && <CopyButton value={value} />}
@@ -340,14 +389,13 @@ if (!result.ok) {
 
       <Section title="Calling the contract directly">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          Prefer Soroban? Call ProofRegistry from your own contract — no SDK
-          required. Use <span className="mono">is_verified</span> for binary claims
-          and <span className="mono">check_claim</span> for threshold enforcement.
-          Both take a trailing <span className="mono">trusted_issuers</span>{" "}
-          parameter — pass <span className="mono">None</span> to accept a proof
-          from any registered issuer (unchanged default), or{" "}
-          <span className="mono">Some(vec![...])</span> to restrict a claim to
-          specific issuers, e.g. accepting KYC only from Persona or Jumio.
+          Prefer Soroban? Call ProofRegistry from your own contract — no SDK required. Use{" "}
+          <span className="mono">is_verified</span> for binary claims and{" "}
+          <span className="mono">check_claim</span> for threshold enforcement. Both take a trailing{" "}
+          <span className="mono">trusted_issuers</span> parameter — pass{" "}
+          <span className="mono">None</span> to accept a proof from any registered issuer (unchanged
+          default), or <span className="mono">Some(vec![...])</span> to restrict a claim to specific
+          issuers, e.g. accepting KYC only from Persona or Jumio.
         </p>
         <Code>{`// Binary claim (kyc, jurisdiction) — any registered issuer accepted
 let registry = ProofRegistryClient::new(&env, &registry_id);
@@ -368,11 +416,10 @@ require!(kyc_ok, Error::KycRequired);`}</Code>
 
       <Section title="Credential version compatibility">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
-          StellarCred stamps every credential with the deployment and circuit version
-          it was issued against. When a circuit is upgraded the verifying key changes,
-          so a proof generated by an old circuit cannot be verified on-chain. Use the
-          version helpers to detect stale credentials before the holder starts the proof
-          flow and prompt them to re-verify early.
+          StellarCred stamps every credential with the deployment and circuit version it was issued
+          against. When a circuit is upgraded the verifying key changes, so a proof generated by an
+          old circuit cannot be verified on-chain. Use the version helpers to detect stale
+          credentials before the holder starts the proof flow and prompt them to re-verify early.
         </p>
         <Code>{`import { StellarCred } from "@stellarcred/sdk";
 import { getDeploymentCircuitVersion } from "@stellarcred/sdk";
@@ -418,8 +465,7 @@ switch (status) {
     break;
 }`}</Code>
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "1rem" }}>
-          You can also inspect the raw version info without making a compatibility
-          decision:
+          You can also inspect the raw version info without making a compatibility decision:
         </p>
         <Code>{`import { getCredentialCircuitVersion } from "@stellarcred/sdk";
 
