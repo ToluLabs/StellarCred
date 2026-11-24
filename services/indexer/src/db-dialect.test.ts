@@ -40,7 +40,14 @@ interface Recorded {
 function fakePostgres(respond?: (sql: string) => unknown[]) {
   const calls: Recorded[] = [];
   const conn: PostgresConnection = {
-    async query(sql, params) {
+    // Accepts both the `(text, values)` and the `{ name, text, values }` form
+    // that `pg` supports, so the same fake covers simple and prepared modes.
+    async query(
+      textOrConfig: string | { text: string; values?: SqlParam[] },
+      values?: SqlParam[],
+    ) {
+      const sql = typeof textOrConfig === "string" ? textOrConfig : textOrConfig.text;
+      const params = typeof textOrConfig === "string" ? values : textOrConfig.values;
       calls.push(params ? { sql, params } : { sql });
       return { rows: respond?.(sql) ?? [] };
     },
