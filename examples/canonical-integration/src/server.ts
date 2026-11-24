@@ -123,7 +123,8 @@ function sendJson(res: ServerResponse, statusCode: number, data: unknown): void 
 }
 
 // ── Application Handler ───────────────────────────────────────────────────────
-export function createRequestHandler() {
+export function createRequestHandler(options: ExampleServerOptions = {}) {
+  const claimStatus = options.claimStatus ?? checkClaimStatus;
   return async function requestHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const reqUrl = req.url ?? "/";
     const host = req.headers.host ?? `localhost:${PORT}`;
@@ -388,7 +389,7 @@ export function createRequestHandler() {
         if (threshold) opts.minThreshold = Number(threshold);
         if (trusted && trusted.length > 0) opts.trustedIssuers = trusted;
 
-        const status = await checkClaimStatus(wallet, claim, opts);
+        const status = await claimStatus(wallet, claim, opts);
         sendJson(res, 200, {
           wallet,
           claim,
@@ -413,8 +414,17 @@ export function createRequestHandler() {
 }
 
 // ── Server Factory ────────────────────────────────────────────────────────────
-export function createExampleServer() {
-  const handler = createRequestHandler();
+
+/**
+ * Injected dependency for the on-chain read, so tests can exercise the HTTP
+ * surface without depending on a live RPC endpoint.
+ */
+export interface ExampleServerOptions {
+  claimStatus?: typeof checkClaimStatus;
+}
+
+export function createExampleServer(options: ExampleServerOptions = {}) {
+  const handler = createRequestHandler(options);
   return createServer(handler);
 }
 
