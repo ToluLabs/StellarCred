@@ -73,9 +73,7 @@ export function canonicalJson(value: unknown): string {
 
 /** Computes the hex SHA-256 checksum of a records array in canonical form. */
 export function computeBundleChecksum(records: unknown[]): string {
-  return createHash(BUNDLE_CHECKSUM_ALGORITHM)
-    .update(canonicalJson(records), "utf8")
-    .digest("hex");
+  return createHash(BUNDLE_CHECKSUM_ALGORITHM).update(canonicalJson(records), "utf8").digest("hex");
 }
 
 /**
@@ -83,7 +81,9 @@ export function computeBundleChecksum(records: unknown[]): string {
  * Throws if the label is empty, too long, or contains unsafe characters.
  */
 export function normalizeEnvironmentLabel(label: string): string {
-  const normalized = String(label ?? "").trim().toLowerCase();
+  const normalized = String(label ?? "")
+    .trim()
+    .toLowerCase();
   if (normalized.length === 0) {
     throw new Error("Environment label must not be empty");
   }
@@ -134,10 +134,7 @@ export function createCredentialBundle(
  * by that same environment or verification fails.
  * Throws descriptive errors for each failure mode so users can act on them.
  */
-export function verifyCredentialBundle(
-  bundle: unknown,
-  expectedEnvironment?: string,
-): unknown[] {
+export function verifyCredentialBundle(bundle: unknown, expectedEnvironment?: string): unknown[] {
   if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
     throw new Error("Bundle is not a valid object: expected an integrity envelope with records");
   }
@@ -278,8 +275,9 @@ export function validateStringLengths(
  * (optionally) the source environment label.
  *
  * Bundles (objects with an `integrity` envelope) are checksum-verified and
- * their records are returned. Legacy bare arrays are still accepted under the
- * same bounds, since they predate integrity metadata.
+ * their records are returned. Legacy bare arrays and single credential
+ * objects are still accepted under the same bounds, since they predate
+ * integrity metadata.
  */
 export function validateImportPayload(raw: string, expectedEnvironment?: string): unknown {
   if (typeof raw !== "string" || raw.trim().length === 0) {
@@ -330,9 +328,11 @@ export function validateImportPayload(raw: string, expectedEnvironment?: string)
     return records;
   }
 
-  throw new Error(
-    "Import payload has no integrity metadata. Re-export the bundle with a supported version to enable verification",
-  );
+  // A bare object is the single-credential plaintext format, which predates
+  // bundle integrity metadata (same as legacy bare arrays above). It has
+  // already passed the size/nesting/string bounds; the caller validates the
+  // record itself.
+  return parsed;
 }
 
 /**

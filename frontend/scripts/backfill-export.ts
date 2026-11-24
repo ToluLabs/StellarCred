@@ -33,6 +33,7 @@ import {
   LegacyExportError,
   parseLegacyExport,
   planBackfill,
+  sealArtifact,
   serializeArtifact,
   type SourceFormat,
 } from "../lib/export-schema";
@@ -52,7 +53,7 @@ function usage(message?: string): never {
   if (message) process.stderr.write(`error: ${message}\n`);
   process.stderr.write(
     "usage: backfill-export --input FILE [--output FILE] " +
-      "[--format json|csv] [--generator NAME] [--dry-run] [--force]\n"
+      "[--format json|csv] [--generator NAME] [--dry-run] [--force]\n",
   );
   process.exit(2);
 }
@@ -122,13 +123,11 @@ function parseArgs(argv: string[]): CliArgs {
   };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   if (!args.dryRun && existsSync(args.output) && !args.force) {
-    process.stderr.write(
-      `error: refusing to overwrite existing ${args.output} (pass --force)\n`
-    );
+    process.stderr.write(`error: refusing to overwrite existing ${args.output} (pass --force)\n`);
     process.exit(1);
   }
 
@@ -136,9 +135,7 @@ function main(): void {
   try {
     text = readFileSync(args.input, "utf8");
   } catch (e) {
-    process.stderr.write(
-      `error: cannot read ${args.input} (${(e as Error).message})\n`
-    );
+    process.stderr.write(`error: cannot read ${args.input} (${(e as Error).message})\n`);
     process.exit(1);
     return;
   }
@@ -166,7 +163,7 @@ function main(): void {
     `[${label}] schema v${EXPORT_SCHEMA_VERSION} from ${args.format}: ` +
       `${report.inputCount} read, ${report.outputCount} carried` +
       `${report.skipped.length ? `, ${report.skipped.length} skipped` : ""} ` +
-      `(${args.input})\n`
+      `(${args.input})\n`,
   );
   for (const skip of report.skipped) {
     process.stdout.write(`  - entry ${skip.index}: ${skip.reason}\n`);
@@ -179,15 +176,15 @@ function main(): void {
   }
 
   try {
-    writeFileSync(args.output, serializeArtifact(artifact), "utf8");
+    // The import pipeline rejects unsealed bundles, so seal before writing.
+    const sealed = await sealArtifact(artifact);
+    writeFileSync(args.output, serializeArtifact(sealed), "utf8");
   } catch (e) {
-    process.stderr.write(
-      `error: cannot write ${args.output} (${(e as Error).message})\n`
-    );
+    process.stderr.write(`error: cannot write ${args.output} (${(e as Error).message})\n`);
     process.exit(1);
     return;
   }
   process.stdout.write(`wrote ${args.output} (${artifact.count} entries)\n`);
 }
 
-main();
+void main();

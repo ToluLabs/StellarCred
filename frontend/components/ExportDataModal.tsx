@@ -1,20 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  IconX,
-  IconDownload,
-  IconClock,
-  IconLoader2,
-  IconCheck,
-  IconAlertTriangle,
-  IconLock,
-  IconRefresh,
-  IconFileText,
-  IconFileSpreadsheet,
-  IconShield,
-  IconFileExport,
-} from "@tabler/icons-react";
+import { IconX, IconCheck, IconAlertTriangle, IconFileExport } from "@tabler/icons-react";
 import type { ExportJob, ExportScope, ExportFormat, ScopeDefinition } from "@/lib/export-jobs";
 import { EXPORT_SCOPES } from "@/lib/export-jobs";
 
@@ -46,7 +33,11 @@ export interface ExportBundle {
 
 export type BundleValidationResult =
   | { ok: true }
-  | { ok: false; reason: "malformed" | "checksum_mismatch" | "unsupported_version" | "scope_mismatch"; message: string };
+  | {
+      ok: false;
+      reason: "malformed" | "checksum_mismatch" | "unsupported_version" | "scope_mismatch";
+      message: string;
+    };
 
 /** Deterministic JSON serialization (sorted object keys) for stable hashing. */
 function canonicalize(value: unknown): string {
@@ -115,7 +106,8 @@ export async function validateImportBundle(
     return {
       ok: false,
       reason: "unsupported_version",
-      message: "This export was created by an unsupported version of the app. Re-export it from a current build.",
+      message:
+        "This export was created by an unsupported version of the app. Re-export it from a current build.",
     };
   }
   if (expectedScope && integrity.scope !== expectedScope) {
@@ -130,7 +122,8 @@ export async function validateImportBundle(
     return {
       ok: false,
       reason: "checksum_mismatch",
-      message: "The export file appears to be corrupted or has been modified. Import was cancelled. Download a fresh export and try again.",
+      message:
+        "The export file appears to be corrupted or has been modified. Import was cancelled. Download a fresh export and try again.",
     };
   }
   return { ok: true };
@@ -144,14 +137,12 @@ export function ExportDataModal({
 }: ExportDataModalProps) {
   const [activeTab, setActiveTab] = useState<"request" | "monitor">("request");
   const [selectedScope, setSelectedScope] = useState<ExportScope>("full");
-  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
+  // The request form exposes only the scope; exports are always JSON today.
+  const selectedFormat: ExportFormat = "json";
   const [jobs, setJobs] = useState<ExportJob[]>([]);
   const [allowedScopes, setAllowedScopes] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [loadingJobs, setLoadingJobs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
-  const [timeRemainingMap, setTimeRemainingMap] = useState<Record<string, number>>({});
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -170,10 +161,7 @@ export function ExportDataModal({
   }, [userAddress, isAdmin]);
 
   useEffect(() => {
-    if (isOpen) {
-      setLoadingJobs(true);
-      fetchJobs().finally(() => setLoadingJobs(false));
-    }
+    if (isOpen) void fetchJobs();
   }, [isOpen, fetchJobs]);
 
   // Poll active jobs every 2 seconds
@@ -190,32 +178,10 @@ export function ExportDataModal({
     return () => clearInterval(interval);
   }, [isOpen, jobs, fetchJobs]);
 
-  // Expiration countdown ticker
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const tick = () => {
-      const now = Date.now();
-      const updated: Record<string, number> = {};
-      for (const job of jobs) {
-        if (job.expiresAt) {
-          const diffSec = Math.max(0, Math.floor((job.expiresAt - now) / 1000));
-          updated[job.id] = diffSec;
-        }
-      }
-      setTimeRemainingMap(updated);
-    };
-
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [isOpen, jobs]);
-
   if (!isOpen) return null;
 
   async function handleRequestExport(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
     setSuccessNotice(null);
 
@@ -244,16 +210,7 @@ export function ExportDataModal({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Request failed";
       setError(msg);
-    } finally {
-      setSubmitting(false);
     }
-  }
-
-  function formatCountdown(seconds: number): string {
-    if (seconds <= 0) return "Expired";
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs.toString().padStart(2, "0")}s`;
   }
 
   return (
@@ -465,8 +422,8 @@ export function ExportDataModal({
                         backgroundColor: isSelected
                           ? "rgba(62, 207, 142, 0.06)"
                           : isPermitted
-                          ? "var(--card-subtle, rgba(255,255,255,0.02))"
-                          : "rgba(0,0,0,0.2)",
+                            ? "var(--card-subtle, rgba(255,255,255,0.02))"
+                            : "rgba(0,0,0,0.2)",
                         opacity: isPermitted ? 1 : 0.5,
                         cursor: isPermitted ? "pointer" : "not-allowed",
                         transition: "border-color 0.15s, background-color 0.15s",
