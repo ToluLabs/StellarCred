@@ -80,6 +80,21 @@ export interface ExportArtifactV1 {
   entries: ExportEntry[];
 }
 
+export function isExportArtifact(val: unknown): val is ExportArtifactV1 {
+  if (!val || typeof val !== "object") return false;
+  const o = val as Partial<ExportArtifactV1>;
+  return (
+    o.schemaVersion === EXPORT_SCHEMA_VERSION &&
+    Array.isArray(o.entries) &&
+    typeof o.generation === "object" &&
+    o.generation !== null
+  );
+}
+
+export function serializeArtifact(artifact: ExportArtifactV1): string {
+  return JSON.stringify(artifact, null, 2) + "\n";
+}
+
 /** Outcome of a backfill run — reported in both dry-run and real runs. */
 export interface BackfillReport {
   sourceFormat: SourceFormat;

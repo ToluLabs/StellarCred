@@ -134,14 +134,16 @@ export interface SessionValidationOptions {
  * Creates a signed session token for testing and authentication.
  */
 export function createSignedSessionToken(
-  payload: Omit<SessionPayload, "iat"> & { iat?: number },
+  payload: Partial<SessionPayload>,
   secret: string,
   now: number = Math.floor(Date.now() / 1000),
 ): string {
   const header = { alg: "HS256", typ: "JWT" };
   const fullPayload: SessionPayload = {
-    ...payload,
+    sub: payload.sub ?? "anonymous",
+    exp: payload.exp ?? now + 3600,
     iat: payload.iat ?? now,
+    ...payload,
   };
   const headerB64 = Buffer.from(JSON.stringify(header), "utf8").toString("base64url");
   const payloadB64 = Buffer.from(JSON.stringify(fullPayload), "utf8").toString("base64url");
