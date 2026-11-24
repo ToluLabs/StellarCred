@@ -61,9 +61,9 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
   } as Config;
 }
 
-function makeTmpDb(cfg: Config): Db {
+async function makeTmpDb(cfg: Config): Promise<Db> {
   const db = createSqliteDb(cfg);
-  db.migrate();
+  await db.migrate();
   return db;
 }
 
@@ -169,9 +169,9 @@ describe("DB persistence — upsertClaim", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
   afterEach(() => {
@@ -272,9 +272,9 @@ describe("DB persistence — revokeClaim", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
   afterEach(() => {
@@ -342,9 +342,9 @@ describe("DB cursor durability", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
   afterEach(() => {
@@ -377,9 +377,9 @@ describe("Ingester.tick() — event parsing and persistence", () => {
   let cfg: Config;
   let fetchMock: jest.SpyInstance;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig({ finalityLag: 0 });
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
     fetchMock = jest.spyOn(global, "fetch");
   });
 
@@ -492,9 +492,9 @@ describe("DB stats", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
   afterEach(() => {

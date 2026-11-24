@@ -276,6 +276,7 @@ function registerConformanceSuite(
             wallet,
             credential_type: "income",
             threshold: null,
+            ledger_sequence: 101,
           }),
         );
 

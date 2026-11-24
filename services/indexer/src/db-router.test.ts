@@ -93,6 +93,9 @@ describe("isReadOnlyQuery", () => {
     expect(isReadOnlyQuery("SELECT * FROM claims FOR NO KEY UPDATE")).toBe(false);
     expect(isReadOnlyQuery("SELECT * FROM claims FOR SHARE")).toBe(false);
     expect(isReadOnlyQuery("SELECT nextval('claims_id_seq')")).toBe(false);
+    expect(isReadOnlyQuery("SELECT version FROM schema_version WHERE id = 1")).toBe(
+      false,
+    );
     expect(isReadOnlyQuery("SELECT 1; DELETE FROM claims")).toBe(false);
     expect(isReadOnlyQuery("")).toBe(false);
     expect(isReadOnlyQuery("   -- only a comment")).toBe(false);

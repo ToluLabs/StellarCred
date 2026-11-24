@@ -104,6 +104,8 @@ import type { Ingester } from "./ingester";
 import type { Config } from "./config";
 import { parseCorsOrigins } from "./config";
 import { createCorsMiddleware } from "./cors";
+import { createTraceMiddleware } from "./trace-middleware";
+import { logger } from "./logging";
 import { RateLimiter } from "./rate-limit";
 import type { RecentCursor } from "./db";
 import { requireAuth } from "./auth";

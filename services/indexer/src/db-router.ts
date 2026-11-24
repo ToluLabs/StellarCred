@@ -110,6 +110,12 @@ export function isReadOnlyQuery(sql: string): boolean {
     return false;
   }
 
+  // Schema version gates migrations and startup compatibility checks, so it
+  // must always reflect the primary, never a lagging replica.
+  if (/\bschema_version\b/i.test(withoutTrailingSemi)) {
+    return false;
+  }
+
   return true;
 }
 

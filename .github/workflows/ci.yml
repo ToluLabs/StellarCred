@@ -581,6 +581,13 @@ jobs:
           package_manager: pnpm
           directory: frontend
 
+      # size-limit-action checks out the base branch to measure the baseline and
+      # leaves the worktree there, so later steps would test the base tree
+      # instead of this PR's merge commit.
+      - name: Restore PR worktree after bundle-size report
+        if: github.event_name == 'pull_request'
+        run: git checkout --force "$GITHUB_SHA"
+
       - name: Restore CI Node version (#737)
         uses: actions/setup-node@v7
         with:
