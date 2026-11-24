@@ -1,3 +1,4 @@
+ feat/1064-telemetry-opt-in-sanitization
 // @stellarcred/sdk
 //
 // A tiny, zero-dependency* read-only client for protocols integrating
@@ -11,6 +12,13 @@
 // *Requires @stellar/stellar-sdk as a peer dependency.
 //
 // Quick start and every configuration option: see README.md.
+
+// @stellarcred/sdk — read-only client for protocols integrating StellarCred.
+// The on-chain ProofRegistry is the default source of truth; the optional
+// indexer fast path (`{ source: "indexer" }`, #613) trusts its operator and
+// must never be the sole basis for a security decision. See the SDK README
+// for quick start, configuration and env vars. Peer dep: @stellar/stellar-sdk.
+  main
 
 export * from "./claims";
 export * from "./issuers"; // IssuerRegistry reads
@@ -58,7 +66,12 @@ import {
   InvalidAddressError,
 } from "./claims";
 import {
-  RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
+  RpcError,
+  IndexerError,
+  ContractError,
+  ContractErrorCode,
+  parseContractError,
+  TransactionSubmissionError,
 } from "./errors";
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";

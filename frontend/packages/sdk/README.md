@@ -481,6 +481,7 @@ const options = {
 
 const url = buildVerifyUrl(options);
 ```
+
 Builds a strongly typed StellarCred verification URL to redirect users to. After verifying, StellarCred returns the user to `returnUrl` with `?sc_verified=true&sc_wallet=<address>&sc_claims=<claim-types>` appended. `sc_claims` is a comma-separated list of the claim types issued in the current session (not all-time claims), allowing protocols to optimistically update their UI before an on-chain read completes.
 
 ```ts
@@ -612,21 +613,21 @@ function gate(wallet: string, claim: ClaimType, opts?: ClaimOptions) {
 }
 ```
 
-| Export         | Kind                                                                              | Description                                                                                                                                                                                                                                                                                                                                                                                |
-| -------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ClaimType`    | `"kyc" \| "age" \| "income" \| "jurisdiction" \| "funds" \| "accreditation"`      | The credential types StellarCred supports. Mirrors the on-chain `CLAIM_TYPES` constant.                                                                                                                                                                                                                                                                                                    |
-| `ClaimOptions` | `{ minThreshold?: number; trustedIssuers?: string[]; requestTimeoutMs?: number }` | Optional settings for `hasClaim`. `minThreshold` is forwarded to the on-chain `check_claim` for parameterised claim types and ignored for binary claims (`kyc`, `jurisdiction`). `trustedIssuers` restricts which issuer(s) the proof must come from, for any claim type — omit to accept any registered issuer. `requestTimeoutMs` bounds the individual read and defaults to 10 seconds. |
-| `Claim`        | `{ type: string; verifiedAt: number; expiry: number }`                            | Shape returned by `getClaims`.                                                                                                                                                                                                                                                                                                                                                             |
-| `CLAIM_TYPES`  | `readonly ClaimType[]`                                                            | The runtime constant. Use `as const` strings for compile-time narrowing.                                                                                                                                                                                                                                                                                                                   |
-| `Claim` | `{ type: string; verifiedAt: number; expiry: number }` | Shape returned by `getClaims`. |
-| `CLAIM_TYPES` | `readonly ClaimType[]` | The runtime constant. Use `as const` strings for compile-time narrowing. |
-| `validateCredential` | `(value: unknown) => CredentialValidationResult` | Validates an already-parsed credential object and returns `{ valid, credential }` or `{ valid: false, errors }`. |
-| `parseCredentialJson` | `(json: string) => CredentialValidationResult` | Parses and validates credential JSON text without throwing. |
-| `assertValidCredential` | `(value: unknown) => asserts value is CredentialJson` | Throws `CredentialValidationError` (with an `issues` array) for invalid input. |
-| `CredentialJson` | interface | The canonical credential shape accepted by the validator. |
-| `BuildVerifyUrlOptions` | `{ returnUrl: string; claim?: ClaimType; ... }` | Strongly typed options accepted by `buildVerifyUrl`. |
-| `BuildVerifyUrlClaimParams` | `{ threshold?: string \| number; threshold_years?: string \| number; restricted?: string \| number \| (string \| number)[]; ... }` | Strongly typed claim parameters for `buildVerifyUrl`. |
-| `UntrustedReturnParams` | `{ verified: boolean; wallet: string \| null; claims: string[]; state: string \| null }` | Shape of parsed return-URL parameters returned by `parseReturnParams`. |
+| Export                      | Kind                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ClaimType`                 | `"kyc" \| "age" \| "income" \| "jurisdiction" \| "funds" \| "accreditation"`                                                       | The credential types StellarCred supports. Mirrors the on-chain `CLAIM_TYPES` constant.                                                                                                                                                                                                                                                                                                    |
+| `ClaimOptions`              | `{ minThreshold?: number; trustedIssuers?: string[]; requestTimeoutMs?: number }`                                                  | Optional settings for `hasClaim`. `minThreshold` is forwarded to the on-chain `check_claim` for parameterised claim types and ignored for binary claims (`kyc`, `jurisdiction`). `trustedIssuers` restricts which issuer(s) the proof must come from, for any claim type — omit to accept any registered issuer. `requestTimeoutMs` bounds the individual read and defaults to 10 seconds. |
+| `Claim`                     | `{ type: string; verifiedAt: number; expiry: number }`                                                                             | Shape returned by `getClaims`.                                                                                                                                                                                                                                                                                                                                                             |
+| `CLAIM_TYPES`               | `readonly ClaimType[]`                                                                                                             | The runtime constant. Use `as const` strings for compile-time narrowing.                                                                                                                                                                                                                                                                                                                   |
+| `Claim`                     | `{ type: string; verifiedAt: number; expiry: number }`                                                                             | Shape returned by `getClaims`.                                                                                                                                                                                                                                                                                                                                                             |
+| `CLAIM_TYPES`               | `readonly ClaimType[]`                                                                                                             | The runtime constant. Use `as const` strings for compile-time narrowing.                                                                                                                                                                                                                                                                                                                   |
+| `validateCredential`        | `(value: unknown) => CredentialValidationResult`                                                                                   | Validates an already-parsed credential object and returns `{ valid, credential }` or `{ valid: false, errors }`.                                                                                                                                                                                                                                                                           |
+| `parseCredentialJson`       | `(json: string) => CredentialValidationResult`                                                                                     | Parses and validates credential JSON text without throwing.                                                                                                                                                                                                                                                                                                                                |
+| `assertValidCredential`     | `(value: unknown) => asserts value is CredentialJson`                                                                              | Throws `CredentialValidationError` (with an `issues` array) for invalid input.                                                                                                                                                                                                                                                                                                             |
+| `CredentialJson`            | interface                                                                                                                          | The canonical credential shape accepted by the validator.                                                                                                                                                                                                                                                                                                                                  |
+| `BuildVerifyUrlOptions`     | `{ returnUrl: string; claim?: ClaimType; ... }`                                                                                    | Strongly typed options accepted by `buildVerifyUrl`.                                                                                                                                                                                                                                                                                                                                       |
+| `BuildVerifyUrlClaimParams` | `{ threshold?: string \| number; threshold_years?: string \| number; restricted?: string \| number \| (string \| number)[]; ... }` | Strongly typed claim parameters for `buildVerifyUrl`.                                                                                                                                                                                                                                                                                                                                      |
+| `UntrustedReturnParams`     | `{ verified: boolean; wallet: string \| null; claims: string[]; state: string \| null }`                                           | Shape of parsed return-URL parameters returned by `parseReturnParams`.                                                                                                                                                                                                                                                                                                                     |
 
 ## Full integration example
 
@@ -1078,6 +1079,73 @@ createSession(req, result.wallet);
 
 ---
 
+## Testing your integration (`@stellarcred/sdk/testing`)
+
+Unit-test a StellarCred integration in CI without a Soroban RPC, a deployed
+ProofRegistry, a Noir toolchain, or a browser wallet. Import the test doubles
+from `@stellarcred/sdk/testing` in test files only.
+
+```ts
+import { afterEach, expect, it } from "vitest";
+import { createWalletChallenge, hasClaim, verifyWalletClaim } from "@stellarcred/sdk";
+import {
+  CredentialFactory,
+  MockWalletProvider,
+  installMockRegistry,
+  uninstallMockRegistry,
+} from "@stellarcred/sdk/testing";
+
+afterEach(() => uninstallMockRegistry());
+
+it("lets a KYC'd wallet in", async () => {
+  const wallet = MockWalletProvider.random();
+  const registry = installMockRegistry(); // every SDK claim read now hits this
+  const credential = new CredentialFactory().create({ type: "kyc", holder: wallet.address });
+  registry.prove(credential); // simulated on-chain proof
+
+  expect(await hasClaim(wallet.address, "kyc")).toBe(true);
+
+  const challenge = createWalletChallenge({ domain: "app.test" });
+  const signature = await wallet.signChallenge(challenge);
+  const result = await verifyWalletClaim({
+    wallet: wallet.address,
+    challenge,
+    signature,
+    claim: "kyc",
+  });
+  expect(result.ok).toBe(true);
+});
+```
+
+- **`MockWalletProvider`**: a SEP-43 wallet (`getAddress`, `signMessage`,
+  `signTransaction`, plus `signChallenge`) backed by a real Ed25519 keypair, so
+  its signatures pass `verifyWalletSignature` / `verifyWalletClaim`. Pass
+  `{ secret }` for a fixed address, `{ reject: true }` (or call
+  `rejectRequests()`) to simulate a dismissed prompt (`MockWalletRejectedError`,
+  `code: -4`). `calls` records every request.
+- **`CredentialFactory`**: `create({ type, holder, claimParams, expiry, ... })`
+  returns credential JSON in the `/api/issue` shape that passes
+  `validateCredential`, signed with a real secp256k1 issuer key over the
+  commitment (low-s, no pre-hash, as `@stellarcred/issuer` signs). Pass
+  `issuerPrivateKey`, `issuerId` and `now` for deterministic output;
+  `createMany(types)` issues several for one holder;
+  `verifyCredentialSignature(credential)` checks a signature.
+- **`MockProofRegistry`**: an in-memory ProofRegistry with the contract's read
+  semantics. `prove(credential)` stores a proof (holder, type, issuer,
+  threshold and expiry taken from the credential); `addProof({ holder, type,
+issuer, threshold, expiresInSeconds })` stores one directly. Then
+  `revoke(holder, type, reason)`, `setLedgerTime(s)` / `advanceTime(s)` for
+  expiry, `useNullifier(context, nullifier)` for `verifyUniquePersonhood`,
+  `failNextReads(error, times)` for RPC failures, `reset()`, and `calls` for
+  assertions. `installMockRegistry(registry?)` routes `hasClaim`, `getClaim`,
+  `getClaims`, `hasClaims`, `checkClaimStatus`, `getClaimRecord`,
+  `verifyPreset`, `verifyWalletClaim` and `isNullifierUsed` to it without any
+  `registryId`; `uninstallMockRegistry()` restores the real client.
+
+Factory credentials are not provable: the commitment is a random field
+element rather than the Poseidon2 hash of `value` and `salt`, so a real prover
+or verifier rejects them. Never ship this entry point in production code.
+
 ## Batch signature verification (worker threads)
 
 Verifying thousands of wallet-signed presentations one at a time blocks the Node.js
@@ -1126,7 +1194,6 @@ The SDK follows [Semantic Versioning](https://semver.org/). Releases are fully a
    - Creates an official GitHub Release with release artifacts.
    - Publishes `@stellarcred/sdk` with public access to the npm registry using `NPM_TOKEN`.
 
-
 ## Credential version compatibility
 
 StellarCred stamps every issued credential with the deployment and circuit version it was issued against. When a ZK circuit is upgraded, the verifying key changes — a proof generated by the old circuit cannot be verified on-chain. The version helpers let you detect stale credentials before the holder starts the proof flow.
@@ -1138,10 +1205,7 @@ Returns the circuit version for a deployment, without needing a credential.
 ```ts
 import { getDeploymentCircuitVersion } from "@stellarcred/sdk";
 
-const current = getDeploymentCircuitVersion(
-  "testnet",
-  process.env.NEXT_PUBLIC_PROOF_REGISTRY_ID,
-);
+const current = getDeploymentCircuitVersion("testnet", process.env.NEXT_PUBLIC_PROOF_REGISTRY_ID);
 // "1.0.0-beta.9+0.87.0"  or  null (unrecognised deployment)
 ```
 
@@ -1179,12 +1243,12 @@ if (!isCompatibleCredential(credential, current)) {
 
 Returns a typed discriminant for richer UI handling:
 
-| Status | Meaning |
-|--------|---------|
-| `"compatible"` | Version matches — safe to prove |
-| `"incompatible"` | Version differs — holder must re-verify |
-| `"legacy"` | No deployment field — issued before version stamping |
-| `"unknown"` | Deployment recognised but not in the version registry |
+| Status           | Meaning                                               |
+| ---------------- | ----------------------------------------------------- |
+| `"compatible"`   | Version matches — safe to prove                       |
+| `"incompatible"` | Version differs — holder must re-verify               |
+| `"legacy"`       | No deployment field — issued before version stamping  |
+| `"unknown"`      | Deployment recognised but not in the version registry |
 
 ```ts
 import { StellarCred, getDeploymentCircuitVersion } from "@stellarcred/sdk";
@@ -1193,10 +1257,18 @@ const current = getDeploymentCircuitVersion("testnet", registryId) ?? "";
 const status = StellarCred.getCredentialVersionStatus(credential, current);
 
 switch (status) {
-  case "compatible":    startProofFlow(credential); break;
-  case "incompatible":  showReVerifyBanner(); break;
-  case "legacy":        showLegacyWarning(); break;
-  case "unknown":       showUnknownDeploymentError(); break;
+  case "compatible":
+    startProofFlow(credential);
+    break;
+  case "incompatible":
+    showReVerifyBanner();
+    break;
+  case "legacy":
+    showLegacyWarning();
+    break;
+  case "unknown":
+    showUnknownDeploymentError();
+    break;
 }
 ```
 
@@ -1208,6 +1280,7 @@ switch (status) {
 4. On re-verify completion, the holder receives a fresh credential stamped with the latest circuit version — subsequent compatibility checks will pass.
 
 > **Why re-verify instead of re-prove?** The ZK proof is tied to the commitment and circuit verifying key. A proof generated by an old circuit does not verify against the new key. The credential itself is also bound to the issuer's signature, so only the issuer can re-stamp it for the new circuit — the holder must go through a new issuance flow.
+
 ---
 
 ## Tree-Shaking & Bundle Optimization
