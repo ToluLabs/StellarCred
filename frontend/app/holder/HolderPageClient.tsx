@@ -35,11 +35,15 @@ import { GuardianRecoveryControl } from "@/components/holder/GuardianRecoveryCon
 import { ProofFlowView } from "@/components/holder/ProofFlowView";
 import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
+ fix/issue-991-staged-deploy
+import type { PageView, BulkAction } from "./types";
+
 import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
+ main
 
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
-// rendering) and only needed when the user actually starts a transfer — load
+// rendering) and only needed when the user actually starts a transfer â€” load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
 const TransferExportModal = dynamic(
   () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
@@ -58,6 +62,7 @@ const DisclosurePreviewModal = dynamic(
   { ssr: false },
 );
 
+ fix/issue-991-staged-deploy
 type PageView =
   { kind: "list" } | { kind: "single"; cred: Credential } | { kind: "batch"; creds: Credential[] };
 
@@ -65,7 +70,7 @@ type BulkAction = {
   type: "remove-selected" | "clear-expired";
   commitments: string[];
 };
-
+        main
 function HolderInner() {
   const { address, walletId, connect } = useWallet();
   const isPreview = usePreviewMode();
@@ -87,7 +92,7 @@ function HolderInner() {
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
   // A transfer QR opened directly (native camera app -> /holder?import=...)
-  // lands here with the payload already in the URL — prompt for the
+  // lands here with the payload already in the URL â€” prompt for the
   // passphrase immediately, and strip it from the URL so a refresh or the
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useEffect(() => {
@@ -110,14 +115,14 @@ function HolderInner() {
 
   // Warm the UltraHonk backend for whatever credential types the user still
   // needs to prove, in the background, once the wallet is actually connected
-  // (never in preview mode — there's nothing real to prove yet). Only the
+  // (never in preview mode â€” there's nothing real to prove yet). Only the
   // types actually present in `unproved` are warmed, not all seven circuits,
   // to avoid paying wasm-init cost for types the user has no credential for.
   const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
   useWarmProver(unprovedTypes, Boolean(address));
 
   // Batch selection enforces both on-chain limits (size + one per type) before
-  // anything is proved — see useBatchSelection.
+  // anything is proved â€” see useBatchSelection.
   const {
     selectedCommitments,
     selectedCreds,
@@ -141,7 +146,7 @@ function HolderInner() {
     setConfirmBulkAction(null);
   }
 
-  /** One credential card — shared by every section below. */
+  /** One credential card â€” shared by every section below. */
   function renderCred(c: Credential, selection?: BatchSelection) {
     return (
       <CredCard
@@ -166,7 +171,7 @@ function HolderInner() {
         </div>
         <div className="row" style={{ gap: "0.75rem" }}>
           {/* Selective disclosure presets (#386): a named, shareable bundle
-              of several claim types — defined and shared from its own page
+              of several claim types â€” defined and shared from its own page
               rather than crowding this one, but linked from here since the
               issue asks for the entry point to live on the holder page. */}
           <a href="/presets" className="btn btn-secondary">
@@ -214,7 +219,7 @@ function HolderInner() {
         />
       ) : (
         <div className="stack reveal" style={{ gap: "1.5rem" }}>
-          {/* ── Expiry warning banner ── */}
+          {/* -- Expiry warning banner -- */}
           {(expiringSoon.length > 0 || expired.length > 0) && (
             <div
               role="status"
@@ -253,20 +258,54 @@ function HolderInner() {
             </div>
           )}
 
-          {creds.length === 0 && !importing && <EmptyCredentialsState />}
+ fix/issue-991-staged-deploy
+          {/* -- Empty state -- */}
+          {creds.length === 0 && !importing && (
+            <div
+              className="card"
+              style={{ textAlign: "center", padding: "3.5rem 1.5rem", borderStyle: "dashed" }}
+            >
+              <IconCertificate size={30} stroke={1.3} color="var(--faint)" />
+              <h3 style={{ margin: "1rem 0 0.4rem" }}>No credentials yet</h3>
+              <p className="muted" style={{ fontSize: "0.875rem", maxWidth: 340, margin: "0 auto 1.5rem" }}>
+                Get a credential from a trusted issuer, then generate a
+                zero-knowledge proof to verify it on-chain.
+              </p>
+              <a href="/verify" className="btn btn-primary btn-sm" style={{ display: "inline-flex" }}>
+                Get a credential
+                <IconArrowRight size={14} />
+              </a>
+              <p
+                className="faint"
+                style={{ fontSize: "0.75rem", maxWidth: 380, margin: "1.25rem auto 0", lineHeight: 1.6 }}
+              >
+                Credentials are stored only in this browser&apos;s local storage â€” clearing
+                site data, switching browsers/devices, or private mode erases them.{" "}
+                <Link
+                  href="/docs#storage"
+                  style={{ color: "var(--accent)", textDecoration: "underline" }}
+                >
+                  Where your credentials live
+                </Link>
+              </p>
+            </div>
+          )}
 
-          {/* ── Expiring soon (action recommended) ── */}
+          {creds.length === 0 && !importing && <EmptyCredentialsState />}
+ main
+
+          {/* -- Expiring soon (action recommended) -- */}
           {expiringSoon.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>Expiring soon · Re-prove recommended</SectionLabel>
+              <SectionLabel>Expiring soon â€” Re-prove recommended</SectionLabel>
               {expiringSoon.map((c) => renderCred(c))}
             </div>
           )}
 
-          {/* ── Expired (action required) ── */}
+          {/* -- Expired (action required) -- */}
           {expired.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
+              <SectionLabel>Expired proofs â€” Re-prove required</SectionLabel>
               <div
                 className="between"
                 style={{
@@ -298,7 +337,7 @@ function HolderInner() {
             </div>
           )}
 
-          {/* ── Credentials to prove ── */}
+          {/* -- Credentials to prove -- */}
           {unproved.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
               <SectionLabel>Ready to prove</SectionLabel>
@@ -338,10 +377,10 @@ function HolderInner() {
             </div>
           )}
 
-          {/* ── Active proved ── */}
+          {/* -- Active proved -- */}
           {activeProved.length > 0 && (
             <div className="stack" style={{ gap: "0.6rem" }}>
-              <SectionLabel>On-chain · active proofs</SectionLabel>
+              <SectionLabel>On-chain â€” active proofs</SectionLabel>
               {activeProved.map((c) => renderCred(c))}
             </div>
           )}
@@ -391,6 +430,12 @@ function HolderInner() {
                 </button>
                 <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
               </div>
+ fix/issue-991-staged-deploy
+              <p className="faint" style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
+                Credentials live only in this browser (localStorage) â€” export a backup
+                before clearing site data or switching devices, and restore it here with{" "}
+                &ldquo;Import credential JSON&rdquo;.{" "}
+
               <p
                 className="faint"
                 style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}
@@ -398,6 +443,7 @@ function HolderInner() {
                 Credentials live only in this browser (localStorage) — export a backup before
                 clearing site data or switching devices, and restore it here with “Import credential
                 JSON”.{" "}
+ main
                 <Link
                   href="/docs#storage"
                   style={{ color: "var(--accent)", textDecoration: "underline" }}
