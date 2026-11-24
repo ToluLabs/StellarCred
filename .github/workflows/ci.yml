@@ -565,43 +565,6 @@ jobs:
             frontend/public
           retention-days: 1
 
-      # Bundle size gate (#737). Runs immediately after the build so any route
-      # or shared-chunk regression fails the frontend job with an actionable
-      # step name rather than being silently skipped (the a11y job is currently
-      # disabled). continue-on-error lets the PR still land while iterating on
-      # size budget values; remove continue-on-error once the baseline is set.
-      #
-      # size-limit 13 imports `glob` from node:fs/promises, which only exists on
-      # Node >= 22: on the job's Node 20 the CLI throws
-      # "SyntaxError: ... does not provide an export named 'glob'" before it
-      # measures a single byte, so this gate could never actually run. Give only
-      # these two steps a newer runtime and restore the CI Node version right
-      # after, so every later step still runs on the same Node as the rest of
-      # the job.
-      - name: Setup Node for bundle size check (#737)
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-
-      - name: Check bundle size budget (#737)
-        run: pnpm size
-        continue-on-error: true
-
-      - name: Report bundle size on PR (#737)
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        uses: andresz1/size-limit-action@94bc357df29c36c8f8d50ea497c3e225c3c95d1d
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          script: pnpm size --json
-          package_manager: pnpm
-          directory: frontend
-
-      - name: Restore CI Node version (#737)
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
       - name: Test frontend SDK
         run: pnpm test
 
@@ -679,6 +642,13 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Test TypeScript SDK example
+        working-directory: examples/typescript
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
       # Bundle size gate (#737). These steps run LAST, after every test and
       # every consumer of the build artifact, because size-limit-action's
       # base-branch measurement force-checkouts the base branch into the
@@ -713,12 +683,6 @@ jobs:
           script: pnpm size --json
           package_manager: pnpm
           directory: frontend
-      - name: Test TypeScript SDK example
-        working-directory: examples/typescript
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
 
   # ── Windows smoke: catch path-separator / install flakiness (#874) ────────
   # windows-latest runners are historically the flaky ones: pnpm install
