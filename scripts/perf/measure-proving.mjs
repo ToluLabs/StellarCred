@@ -34,7 +34,8 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -50,6 +51,11 @@ const CIRCUIT = argValue("--circuit", "kyc_proof");
 const BASELINE_PATH = argValue("--compare", "");
 const STAGE_RATIO = parseFloat(argValue("--stage-ratio", ""));
 const GATE_RATIO = parseFloat(argValue("--gate-ratio", ""));
+// Resource guard for the harness itself (GitHub #943): a stage that runs past
+// this is a hung prover or an unbounded input, not a slow one. Matches the hard
+// ceiling of the client guard (PROOF_RESOURCE_LIMITS.maxDeadlineMs in
+// frontend/lib/proof-guard.ts); override for a slower runner.
+const STAGE_TIMEOUT_MS = Math.max(1000, parseInt(argValue("--timeout-ms", "300000"), 10));
 
 const REPO = resolve(join(dirname(fileURLToPath(import.meta.url)), "..", ".."));
 const CIRCUITS_DIR = join(REPO, "circuits");
@@ -93,15 +99,51 @@ function run(cmd, cmdArgs, cwd) {
  * Returns { wallMs, cpuMs } where cpuMs = (user + sys) * 1000, or null if the
  * timing line could not be parsed (treated as missing run, not a failure).
  */
+// GNU time is the portable-enough way to get a child's peak RSS (used as a
+// memory-pressure indicator next to the timings). Absent → rss stays null and
+// nothing else changes; the gate remains time-based.
+const GNU_TIME = "/usr/bin/time";
+const HAS_GNU_TIME = existsSync(GNU_TIME);
+let rssSeq = 0;
+
 function timedBash(command, cwd) {
-  const res = spawnSync(
-    "bash",
-    ["-c", `TIMEFORMAT='%3R %3U %3S'; time ${command}`],
-    { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
-  );
+  const rssFile = HAS_GNU_TIME
+    ? join(tmpdir(), `measure-proving-rss-${process.pid}-${rssSeq++}.txt`)
+    : null;
+  const timedCommand = rssFile ? `${GNU_TIME} -f 'PEAK_RSS_KB=%M' -o ${rssFile} ${command}` : command;
+
+  const res = spawnSync("bash", ["-c", `TIMEFORMAT='%3R %3U %3S'; time ${timedCommand}`], {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: STAGE_TIMEOUT_MS,
+  });
+  if (res.error?.code === "ETIMEDOUT") {
+    throw new Error(
+      `${command} exceeded the ${STAGE_TIMEOUT_MS}ms stage timeout guard. An unbounded input or a hung prover looks like this — check the payload size, or raise --timeout-ms deliberately.`
+    );
+  }
   if (res.status !== 0) {
     throw new Error(`timed command failed: ${command}\nstderr: ${res.stderr?.slice(-2000)}`);
   }
+
+  let peakRssKb = null;
+  if (rssFile) {
+    try {
+      const m = readFileSync(rssFile, "utf8").match(/PEAK_RSS_KB=(\d+)/);
+      if (m) peakRssKb = parseInt(m[1], 10);
+    } catch {
+      // GNU time could not write its report (killed child, filesystem) — the
+      // timing is still valid, the memory indicator is simply missing.
+    } finally {
+      try {
+        unlinkSync(rssFile);
+      } catch {
+        // Already gone.
+      }
+    }
+  }
+
   // Take the LAST line that looks exactly like three floats — nargo/bb progress
   // output never matches this shape, and `time` prints after everything else.
   const lines = (res.stderr ?? "").split("\n").map((l) => l.trim());
@@ -110,7 +152,7 @@ function timedBash(command, cwd) {
     if (m) {
       const wall = parseFloat(m[1]) * 1000;
       const cpu = (parseFloat(m[2]) + parseFloat(m[3])) * 1000;
-      return { wallMs: Math.round(wall), cpuMs: Math.round(cpu) };
+      return { wallMs: Math.round(wall), cpuMs: Math.round(cpu), peakRssKb };
     }
   }
   return null;
@@ -237,7 +279,7 @@ const targetDir = join(CIRCUITS_DIR, "target");
 const bytecode = `target/${CIRCUIT}.json`;
 const witness = `target/${CIRCUIT}.gz`;
 
-const times = Object.fromEntries(STAGES.map((s) => [s, { wall: [], cpu: [] }]));
+const times = Object.fromEntries(STAGES.map((s) => [s, { wall: [], cpu: [], rss: [] }]));
 let failedRuns = 0;
 
 for (let i = 1; i <= RUNS; i += 1) {
@@ -253,6 +295,7 @@ for (let i = 1; i <= RUNS; i += 1) {
   }
   times.witness.wall.push(w.wallMs);
   times.witness.cpu.push(w.cpuMs);
+  if (w.peakRssKb !== null) times.witness.rss.push(w.peakRssKb);
   log(`  witness: wall ${w.wallMs}ms, cpu ${w.cpuMs}ms`);
 
   // prove — the exact invocation circuits/scripts/build.sh uses.
@@ -267,6 +310,7 @@ for (let i = 1; i <= RUNS; i += 1) {
   }
   times.prove.wall.push(p.wallMs);
   times.prove.cpu.push(p.cpuMs);
+  if (p.peakRssKb !== null) times.prove.rss.push(p.peakRssKb);
   log(`  prove:   wall ${p.wallMs}ms, cpu ${p.cpuMs}ms`);
 
   // submit — proxy (warm node:crypto), only meaningful once per run.
@@ -299,6 +343,9 @@ function stageMetric(stage) {
 
 const medians = Object.fromEntries(STAGES.map((s) => [s, stageMetric(s)]));
 const medWall = Object.fromEntries(STAGES.map((s) => [s, median(times[s].wall)]));
+// Peak RSS is reported next to the timings as a memory-pressure indicator;
+// it is null when GNU time is unavailable and never gates on its own.
+const medRss = Object.fromEntries(STAGES.map((s) => [s, median(times[s].rss)]));
 log("\n== medians across runs (gate metric = cpu) ==");
 for (const s of STAGES) {
   log(`  ${s.padEnd(8)} cpu ${medians[s] ?? "—"}ms (wall ${medWall[s] ?? "—"}ms, n=${times[s].cpu.length})`);
@@ -313,8 +360,10 @@ const report = {
   runs: RUNS,
   failedRuns,
   metric: "median cpu ms (wall also recorded)",
+  stageTimeoutMs: STAGE_TIMEOUT_MS,
   medians,
   mediansWall: medWall,
+  mediansRssKb: medRss,
   gateCounts: { totalAcirOpcodes },
   provenance: { bytecodeSha256 },
   perRun: Object.fromEntries(

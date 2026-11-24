@@ -23,7 +23,10 @@ const VALID_DESCRIPTOR: CapabilitiesDescriptor = {
   },
   contracts: {
     proof_registry: { id: PROOF_REGISTRY_ID, version: "1.1.0" },
-    issuer_registry: { id: "CISSUERDESCRIPTOR00000000000000000000000000000000000000001", version: "1.1.0" },
+    issuer_registry: {
+      id: "CISSUERDESCRIPTOR00000000000000000000000000000000000000001",
+      version: "1.1.0",
+    },
   },
   credential_types: ["kyc", "age"],
   issuers: { count: 2, credential_types: ["kyc"] },
@@ -74,7 +77,7 @@ describe("validateCapabilitiesDescriptor", () => {
   });
 
   it("rejects a missing network object", () => {
-    const { network, ...rest } = VALID_DESCRIPTOR;
+    const { network: _network, ...rest } = VALID_DESCRIPTOR;
     expect(() => validateCapabilitiesDescriptor(rest)).toThrow(/network/);
   });
 
@@ -88,9 +91,9 @@ describe("validateCapabilitiesDescriptor", () => {
   });
 
   it("rejects a non-object contracts field", () => {
-    expect(() =>
-      validateCapabilitiesDescriptor({ ...VALID_DESCRIPTOR, contracts: [] }),
-    ).toThrow(/contracts/);
+    expect(() => validateCapabilitiesDescriptor({ ...VALID_DESCRIPTOR, contracts: [] })).toThrow(
+      /contracts/,
+    );
   });
 });
 
@@ -210,9 +213,9 @@ describe("bootstrap", () => {
         contracts: {},
       }),
     );
-    await expect(
-      bootstrap({ fetchImpl: fetchMock as unknown as typeof fetch }),
-    ).rejects.toThrow(/proof_registry/);
+    await expect(bootstrap({ fetchImpl: fetchMock as unknown as typeof fetch })).rejects.toThrow(
+      /proof_registry/,
+    );
 
     const cfg = getConfig();
     expect(cfg.registryId).toBe("");
@@ -220,8 +223,8 @@ describe("bootstrap", () => {
 
   it("does not swallow descriptor fetch failures", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
-    await expect(
-      bootstrap({ fetchImpl: fetchMock as unknown as typeof fetch }),
-    ).rejects.toThrow(/offline/);
+    await expect(bootstrap({ fetchImpl: fetchMock as unknown as typeof fetch })).rejects.toThrow(
+      /offline/,
+    );
   });
 });

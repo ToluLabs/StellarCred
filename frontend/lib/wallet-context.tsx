@@ -4,16 +4,11 @@
 // navigation between pages (the layout never unmounts), and restores from
 // localStorage on a full page reload — so you connect once, not per page.
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   connect as kitConnect,
   restore as kitRestore,
+  hasLiveWalletSession,
   getLedger,
   getNetworkOk,
   WalletConnectError,
@@ -21,6 +16,8 @@ import {
 
 const STORAGE_KEY = "stellarcred:wallet-id";
 const NETWORK_POLL_MS = 4_000;
+export const WALLET_SESSION_HEARTBEAT_MS = 5_000;
+export const WALLET_SESSION_GRACE_PERIOD_MS = 60_000;
 
 interface WalletState {
   address: string;
@@ -31,6 +28,8 @@ interface WalletState {
   connecting: boolean;
   error: WalletConnectError | null;
   networkMismatch: boolean;
+  /** Timestamp of the first failed heartbeat in the current disconnect window. */
+  sessionLostAt: number | null;
   /**
    * True when a Ledger's USB session dropped after connecting (cable pulled,
    * device re-locked). The device has to be reconnected and reopened on the
@@ -51,6 +50,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<WalletConnectError | null>(null);
   const [networkMismatch, setNetworkMismatch] = useState(false);
   const [ledgerDisconnected, setLedgerDisconnected] = useState(false);
+  const [sessionLostAt, setSessionLostAt] = useState<number | null>(null);
+  const [heartbeatEpoch, setHeartbeatEpoch] = useState(0);
 
   // Restore a prior connection on mount (full reload).
   useEffect(() => {
@@ -100,7 +101,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       .then((ledger) => {
         if (cancelled) return;
         unsubscribe = ledger.onDisconnect(() => {
-          if (!cancelled) setLedgerDisconnected(true);
+          if (!cancelled) {
+            setLedgerDisconnected(true);
+            setSessionLostAt((lostAt) => lostAt ?? Date.now());
+          }
         });
       })
       .catch(() => {
@@ -115,10 +119,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // Poll the wallet's live network while connected, so a network switch made
   // after connecting is caught without requiring a reconnect.
   useEffect(() => {
-    if (!address) {
-      setNetworkMismatch(false);
-      return;
-    }
+    if (!address) return;
     let cancelled = false;
     const check = () => {
       getNetworkOk().then((ok) => {
@@ -133,6 +134,33 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, [address]);
 
+  // Some wallets do not emit a reliable disconnect event. Polling getAddress()
+  // is a lightweight active heartbeat; keep the last known address during the
+  // grace period so route-level forms remain mounted while the holder reconnects.
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    let checking = false;
+    const checkSession = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const live = await hasLiveWalletSession(address, walletId);
+        if (cancelled) return;
+        if (live) setSessionLostAt(null);
+        else setSessionLostAt((lostAt) => lostAt ?? Date.now());
+      } finally {
+        checking = false;
+      }
+    };
+    void checkSession();
+    const id = setInterval(() => void checkSession(), WALLET_SESSION_HEARTBEAT_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [address, walletId, heartbeatEpoch]);
+
   const connect = useCallback(async () => {
     setConnecting(true);
     setError(null);
@@ -141,11 +169,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setAddress(address);
       setWalletId(walletId);
       setLedgerDisconnected(false);
+      setSessionLostAt(null);
+      setHeartbeatEpoch((epoch) => epoch + 1);
       localStorage.setItem(STORAGE_KEY, walletId);
     } catch (e) {
-      const err = e instanceof WalletConnectError
-        ? e
-        : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
+      const err =
+        e instanceof WalletConnectError
+          ? e
+          : new WalletConnectError("unknown", (e as Error).message ?? "Something went wrong");
       // Surface every kind — including "dismissed". Cancellations are rendered
       // as a benign note (not a hard error) via WalletErrorInfo.benign, per
       // the per-kind error mapping requirement.
@@ -159,7 +190,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAddress("");
     setWalletId("");
     setError(null);
+    setNetworkMismatch(false);
     setLedgerDisconnected(false);
+    setSessionLostAt(null);
+    setHeartbeatEpoch((epoch) => epoch + 1);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -176,6 +210,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         connecting,
         error,
         networkMismatch,
+        sessionLostAt,
         ledgerDisconnected,
         connect,
         disconnect,

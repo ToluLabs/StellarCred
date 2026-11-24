@@ -18,8 +18,11 @@
 # exist or lacks write access is silently ignored by GitHub, so verify any
 # new slug has write access before relying on it.
 #
-# Review expectations per area are documented in CONTRIBUTING.md
-# ("Review routing") and the full checklist in docs/THREAT_MODEL.md.
+# Per-component scope, owners and review paths are documented in
+# docs/COMPONENT_OWNERSHIP.md. Review depth and the trust-model invariants are
+# in CONTRIBUTING.md ("Review routing") and docs/THREAT_MODEL.md. The ownership
+# matrix and this file are checked together by
+# .github/scripts/check-component-ownership.mjs.
 
 # ── Baseline: everything ────────────────────────────────────────────────────
 # Starting point. Every path below refines this, so nothing falls through
@@ -73,6 +76,11 @@
 /frontend/lib/persona-webhook.ts @nonchalanttee22-lgtm @Psalmuel01
 /frontend/lib/error-reporting.ts @nonchalanttee22-lgtm @Psalmuel01
 
+# The issuer package produces the signature the circuit verifies, and the
+# admin pages decide who may issue. Both are credential-handling surfaces.
+/frontend/packages/issuer/      @nonchalanttee22-lgtm @Psalmuel01
+/frontend/lib/admin-page-auth.ts @nonchalanttee22-lgtm @Psalmuel01
+
 # Next middleware runs ahead of every request and is a common place for
 # auth and header handling to drift.
 /frontend/middleware.ts         @nonchalanttee22-lgtm @Psalmuel01
@@ -82,21 +90,49 @@
 /frontend/packages/issuer-registry/   @nonchalanttee22-lgtm @Psalmuel01
 /frontend/packages/proof-registry/    @nonchalanttee22-lgtm @Psalmuel01
 
-# ── SDK ─────────────────────────────────────────────────────────────────────
+# ── SDK and client tooling ──────────────────────────────────────────────────
 # The published integrators' surface. Breaking a signature here breaks
 # downstream projects on an npm package that cannot be unpublished.
 /frontend/packages/sdk/         @nonchalanttee22-lgtm @Psalmuel01
+
+# The private root package is still in the tree (ROADMAP § 4.3 schedules a
+# decision to merge or delete it). Route it explicitly so a change here does
+# not land with less review than the published package.
+/sdk/                           @nonchalanttee22-lgtm @Psalmuel01
+
+# The CLI consumes the generated clients and the SDK, so it shares their
+# compatibility surface.
+/frontend/packages/cli/         @nonchalanttee22-lgtm @Psalmuel01
 
 # ── Indexer service ─────────────────────────────────────────────────────────
 # Independent of the on-chain verification path, so normal review depth
 # applies, but it reads chain state and republishes it to consumers.
 /services/indexer/              @nonchalanttee22-lgtm @Psalmuel01
 
+# ── v1 public-surface freeze ────────────────────────────────────────────────
+# The canonical v1 compatibility page and the release-scope checklist define
+# the frozen public surface (contract ABI, events, errors, circuit layouts,
+# SDK signatures, and version promises). Changes to these files, or to any
+# frozen surface, require sign-off from the contract, circuits, and SDK
+# maintainers. Keep this block after the broad catch-alls so it takes effect.
+/VERSION_COMPATIBILITY.md       @nonchalanttee22-lgtm @Psalmuel01
+/docs/RELEASE_CHECKLIST.md      @nonchalanttee22-lgtm @Psalmuel01
+
 # ── CI/CD, release, and supply chain ────────────────────────────────────────
 # Workflows run with repository credentials and the release workflow
 # publishes to npm. Treat a workflow diff like a signing-path diff.
 /.github/workflows/             @nonchalanttee22-lgtm @Psalmuel01
 /.github/dependabot.yml         @nonchalanttee22-lgtm @Psalmuel01
+
+# Deployment and verification scripts decide which contract IDs, VKs and
+# constructors reach a network. A mistake here bypasses the test suite.
+/scripts/deploy.sh              @nonchalanttee22-lgtm @Psalmuel01
+/scripts/deploy-mainnet.sh      @nonchalanttee22-lgtm @Psalmuel01
+/scripts/verify-deployment.sh   @nonchalanttee22-lgtm @Psalmuel01
+/scripts/verify-vks.sh          @nonchalanttee22-lgtm @Psalmuel01
+/scripts/verify-wasm.sh         @nonchalanttee22-lgtm @Psalmuel01
+/scripts/validate-deploy-env.sh @nonchalanttee22-lgtm @Psalmuel01
+/deployment/                    @nonchalanttee22-lgtm @Psalmuel01
 
 # Makefile and deny.toml are build and supply-chain policy: they decide
 # which commands run and which crates and licences are allowed.

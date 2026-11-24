@@ -11,8 +11,9 @@ body:
         - Contracts
         - Circuits
         - Frontend / UX
-        - SDK
+        - SDK / CLI
         - Issuer integrations
+        - Indexer / backend
         - Other
     validations:
       required: true
