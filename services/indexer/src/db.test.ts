@@ -190,7 +190,11 @@ function registerSuite(
       await db.enqueueWebhookEvent(event);
       await db.enqueueWebhookEvent(event);
 
-      const deliveries = await db.pendingWebhookDeliveries(1_724_000_000, 10, 8);
+      // On Postgres the conformance suite shares the database and runs in
+      // parallel, so only look at this subscription's deliveries.
+      const deliveries = (
+        await db.pendingWebhookDeliveries(1_724_000_000, 10, 8)
+      ).filter((d) => d.subscription_id === id);
       expect(deliveries).toHaveLength(1);
       expect(deliveries[0]).toMatchObject({
         subscription_id: id,
