@@ -113,6 +113,8 @@ import { isIP } from "net";
 import { StrKey } from "@stellar/stellar-sdk";
 import { MAX_WEBHOOK_DELIVERY_ATTEMPTS } from "./webhooks";
 import { createGraphQLHandler } from "./graphql";
+import { logger } from "./logging";
+import { createTraceMiddleware } from "./trace-middleware";
 import {
   buildHealthResponse,
   buildHealthzResponse,

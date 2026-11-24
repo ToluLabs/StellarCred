@@ -97,6 +97,9 @@ export function resolveDbPoolConfig(
     preparedStatements:
       (env["DB_POOL_PREPARED_STATEMENTS"] ?? "true").toLowerCase() !== "false",
   };
+}
+
+/**
  * Tuning for the shared outbound HTTP client (#761): retries with exponential
  * backoff for 429/5xx and a circuit breaker for a provider that stays down.
  */
@@ -123,6 +126,7 @@ export interface Config {
    * {@link DEFAULT_DB_POOL}).
    */
   dbPool?: DbPoolConfig;
+  /**
    * Optional comma-separated PostgreSQL read-replica connection URLs
    * (DATABASE_READ_REPLICA_URLS). When set with DB_DRIVER=postgres, read-only
    * queries are round-robin routed to replicas while writes stay on primary.
