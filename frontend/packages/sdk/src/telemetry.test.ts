@@ -234,7 +234,8 @@ describe("zero-PII guarantee on the wire", () => {
       secret_seed: STELLAR_SEED,
       apiKey: STRIPE_KEY,
       authorization: BEARER,
-      credentialClaim: { type: "kyc", fullName: "Ada Lovelace" },
+      // Deliberately not a primitive: a caller bypassing the type must still be sanitized.
+      credentialClaim: { type: "kyc", fullName: "Ada Lovelace" } as unknown as string,
       proofWitness: "0xabc123",
       email: EMAIL,
       note: `${STELLAR_ACCOUNT} signed with ${STELLAR_SEED}`,

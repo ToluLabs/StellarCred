@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
-import { createSignedSessionToken, validateSessionToken, type SessionPayload } from "../auth";
+import {
+  createSignedSessionToken,
+  validateSessionToken,
+  type SessionPayload,
+  type SessionPayloadInput,
+} from "../auth";
 import { requireSession } from "../../app/api/_middleware";
 
 const TEST_SECRET = "super-secure-test-session-secret-key-32b";
@@ -11,7 +16,7 @@ function mockRequest(headers: Record<string, string> = {}) {
 }
 
 describe("harden API auth checks and session validation (#945)", () => {
-  const basePayload: Omit<SessionPayload, "iat"> = {
+  const basePayload: SessionPayloadInput = {
     sub: "GUSER1234567890STEL",
     exp: Math.floor(Date.now() / 1000) + 3600,
     iss: "StellarCredAuth",
@@ -61,7 +66,7 @@ describe("harden API auth checks and session validation (#945)", () => {
     });
 
     it("rejects expired session tokens", () => {
-      const expiredPayload: Omit<SessionPayload, "iat"> = {
+      const expiredPayload: SessionPayloadInput = {
         ...basePayload,
         exp: Math.floor(Date.now() / 1000) - 10,
       };
@@ -134,8 +139,8 @@ describe("harden API auth checks and session validation (#945)", () => {
       const req = mockRequest({ authorization: `Bearer ${token}` });
 
       const res = requireSession(req, { secret: TEST_SECRET });
-      expect("ok" in res && res.ok).toBe(true);
-      if ("ok" in res && res.ok) {
+      expect(res instanceof Response).toBe(false);
+      if (!(res instanceof Response)) {
         expect(res.session.sub).toBe("GUSER1234567890STEL");
       }
     });

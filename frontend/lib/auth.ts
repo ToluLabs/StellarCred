@@ -122,6 +122,21 @@ export interface SessionPayload {
   [key: string]: unknown;
 }
 
+/**
+ * Input accepted by {@link createSignedSessionToken}: a session payload whose
+ * `iat` may be omitted. Spelled out instead of `Omit<SessionPayload, "iat">`
+ * because `Omit` over a type with an index signature drops the named keys.
+ */
+export interface SessionPayloadInput {
+  sub: string;
+  exp: number;
+  iat?: number;
+  iss?: string;
+  nonce?: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
 export interface SessionValidationOptions {
   secret?: string;
   now?: number;
@@ -134,7 +149,7 @@ export interface SessionValidationOptions {
  * Creates a signed session token for testing and authentication.
  */
 export function createSignedSessionToken(
-  payload: Omit<SessionPayload, "iat"> & { iat?: number },
+  payload: SessionPayloadInput,
   secret: string,
   now: number = Math.floor(Date.now() / 1000),
 ): string {
