@@ -142,6 +142,8 @@ jobs:
                 `Could not apply '${labelName}' to PR #${pr.number}: ${error.message} ` +
                   `(labelling is best-effort, not failing this check).`
               );
+fix/auto-label-permissions
+
             } catch (error) {
               core.warning(
                 `Could not apply label '${labelName}' to PR #${pr.number}: ${error.message}. Skipping.`
@@ -158,4 +160,5 @@ jobs:
               } else {
                 throw error;
               }
+ main
             }
