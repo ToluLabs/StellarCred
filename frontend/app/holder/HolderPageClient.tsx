@@ -330,65 +330,6 @@ function HolderInner() {
                   Connect a wallet to generate and submit proofs.
                 </p>
               )}
-            </>
-          )}
-
-          {importing ? (
-            <ImportPanel
-              onImport={(c) => {
-                save(c);
-                setImporting(false);
-              }}
-              onCancel={() => setImporting(false)}
-            />
-          ) : (
-            <div className="stack" style={{ gap: "0.55rem" }}>
-              <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
-                  <IconPlus size={14} />
-                  Import credential JSON
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={downloadBackup}
-                  disabled={creds.length === 0}
-                  title={
-                    creds.length === 0
-                      ? "No credentials to back up yet"
-                      : "Download a JSON backup of all credentials"
-                  }
-                >
-                  <IconDownload size={14} />
-                  Export backup
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowExportModal(true)}
-                  id="btn-export-data-action"
-                  title="Request scoped exports with secure expiring download links"
-                >
-                  <IconFileExport size={14} />
-                  Export data
-                </button>
-                <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
-              </div>
-              <p
-                className="faint"
-                style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}
-              >
-                Credentials live only in this browser (localStorage) — export a backup before
-                clearing site data or switching devices, and restore it here with “Import credential
-                JSON”.{" "}
-                <Link
-                  href="/docs#storage"
-                  style={{ color: "var(--accent)", textDecoration: "underline" }}
-                >
-                  Where your credentials live
-                </Link>
-              </p>
-              <ExportVisibilitySettings />
-            </div>
-
               {/* ── Import / export ── */}
               {importing ? (
                 <ImportPanel

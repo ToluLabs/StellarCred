@@ -47,9 +47,7 @@ import {
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
-import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import { subscribeClaims } from "./subscriptions";
-import { telemetry } from "./telemetry";
 import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import {
   createOfflineVerifier,
