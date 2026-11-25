@@ -44,7 +44,7 @@ export function useVerifyParams() {
   );
 
   const [linkError, setLinkError] = useState<VerifyError | null>(
-    parsedLink.ok ? null : parsedLink.error ?? null,
+    parsedLink.ok ? null : (parsedLink.error ?? null),
   );
 
   useEffect(() => {
@@ -67,17 +67,13 @@ export function useVerifyParams() {
   const returnUrl = searchParams.get("return_url");
   const personaInquiryId = searchParams.get("inquiry-id");
   const claimParam = searchParams.get("claim") as CredentialType | null;
-  const requiredClaim =
-    claimParam && VALID_CLAIMS.includes(claimParam) ? claimParam : null;
+  const requiredClaim = claimParam && VALID_CLAIMS.includes(claimParam) ? claimParam : null;
   const locked = !!requiredClaim;
 
   const trustedIssuersParam = searchParams.get("trusted_issuers");
   const parsedTrustedIssuers = parseTrustedIssuersParam(trustedIssuersParam);
-  const trustedIssuers = parsedTrustedIssuers.ok
-    ? parsedTrustedIssuers.issuers
-    : [];
-  const trustedIssuerGate =
-    trustedIssuers.length > 0 ? trustedIssuers : undefined;
+  const trustedIssuers = parsedTrustedIssuers.ok ? parsedTrustedIssuers.issuers : [];
+  const trustedIssuerGate = trustedIssuers.length > 0 ? trustedIssuers : undefined;
 
   const paramValidation = validateVerifyParams({
     returnUrl,
@@ -86,24 +82,19 @@ export function useVerifyParams() {
     threshold: searchParams.get("threshold"),
     restricted: searchParams.get("restricted"),
     trustedIssuers: trustedIssuersParam,
-    currentOrigin:
-      typeof window !== "undefined" ? window.location.origin : undefined,
+    currentOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
   });
 
   const minThresholdParam = searchParams.get("min_threshold") ?? undefined;
   const claimParamsFromUrl: ClaimParamsFromUrl = {
     threshold_years:
-      searchParams.get("threshold_years") ??
-      (claimParam === "age" ? minThresholdParam : undefined),
+      searchParams.get("threshold_years") ?? (claimParam === "age" ? minThresholdParam : undefined),
     threshold:
       searchParams.get("threshold") ??
-      (["funds", "income", "accreditation", "employment"].includes(
-        claimParam ?? "",
-      )
+      (["funds", "income", "accreditation", "employment"].includes(claimParam ?? "")
         ? minThresholdParam
         : undefined),
-    restricted:
-      searchParams.get("restricted")?.split(",").filter(Boolean) ?? undefined,
+    restricted: searchParams.get("restricted")?.split(",").filter(Boolean) ?? undefined,
     mode: searchParams.get("mode") ?? undefined,
   };
 
@@ -126,8 +117,7 @@ export function useVerifyParams() {
         thresholdYears: null,
         threshold: null,
         restricted: null,
-        currentOrigin:
-          typeof window !== "undefined" ? window.location.origin : undefined,
+        currentOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
       });
 
       if (result.returnUrlError) {
@@ -137,9 +127,7 @@ export function useVerifyParams() {
         setUrlError("");
         try {
           if (returnUrl.startsWith("/")) {
-            setRequestingDomain(
-              typeof window !== "undefined" ? window.location.hostname : "",
-            );
+            setRequestingDomain(typeof window !== "undefined" ? window.location.hostname : "");
           } else {
             setRequestingDomain(new URL(returnUrl).hostname);
           }

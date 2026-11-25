@@ -61,15 +61,11 @@ function isStageName(v: unknown): v is StageName {
 }
 
 function safeNum(v: unknown): number | undefined {
-  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= MAX_MS
-    ? v
-    : undefined;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= MAX_MS ? v : undefined;
 }
 
 function safeStr(v: unknown): string | undefined {
-  return typeof v === "string" && v.length > 0 && v.length <= MAX_STRING_LEN
-    ? v
-    : undefined;
+  return typeof v === "string" && v.length > 0 && v.length <= MAX_STRING_LEN ? v : undefined;
 }
 
 function freshStage(): StageAgg {
@@ -95,8 +91,7 @@ function absorb(run: RawRun): number {
   bucket.timeToFirstProofMinMs = Math.min(bucket.timeToFirstProofMinMs, ttf);
   bucket.timeToFirstProofMaxMs = Math.max(bucket.timeToFirstProofMaxMs, ttf);
   // Running average, stable against overflow.
-  bucket.timeToFirstProofAvgMs +=
-    (ttf - bucket.timeToFirstProofAvgMs) / bucket.count;
+  bucket.timeToFirstProofAvgMs += (ttf - bucket.timeToFirstProofAvgMs) / bucket.count;
   if (run.exceededBudget === true) bucket.overBudget += 1;
   if (run.warm === true) bucket.warmCount += 1;
 
@@ -133,10 +128,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "runs must be an array" }, { status: 400 });
   }
   if (runs.length > MAX_RUNS_PER_POST) {
-    return NextResponse.json(
-      { error: "too many runs in one batch" },
-      { status: 413 },
-    );
+    return NextResponse.json({ error: "too many runs in one batch" }, { status: 413 });
   }
 
   let received = 0;

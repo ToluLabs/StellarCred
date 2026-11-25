@@ -2,7 +2,7 @@
 
 /**
  * DataWipePanel — holder-controlled full local data wipe (#558).
- * 
+ *
  * A settings panel that lets holders remove all StellarCred state from this
  * browser in one action: credentials, proof cache, timeline, onboarding, and
  * preferences. Prompts for backup export before wiping, and shows a clear
@@ -74,10 +74,19 @@ export function DataWipePanel() {
             border: "1px solid var(--border)",
           }}
         >
-          <div style={{ fontSize: "0.8rem", color: "var(--faint)", marginBottom: "0.5rem", fontWeight: 600 }}>
+          <div
+            style={{
+              fontSize: "0.8rem",
+              color: "var(--faint)",
+              marginBottom: "0.5rem",
+              fontWeight: 600,
+            }}
+          >
             Current Storage
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", fontSize: "0.8rem" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "0.3rem", fontSize: "0.8rem" }}
+          >
             {summary.credentials && (
               <div className="row" style={{ gap: "0.4rem" }}>
                 <IconCheck size={14} style={{ color: "var(--accent)" }} />
@@ -93,7 +102,9 @@ export function DataWipePanel() {
             {summary.timelines > 0 && (
               <div className="row" style={{ gap: "0.4rem" }}>
                 <IconCheck size={14} style={{ color: "var(--accent)" }} />
-                <span>{summary.timelines} timeline{summary.timelines > 1 ? "s" : ""}</span>
+                <span>
+                  {summary.timelines} timeline{summary.timelines > 1 ? "s" : ""}
+                </span>
               </div>
             )}
             {summary.onboarding && (
@@ -204,7 +215,10 @@ export function DataWipePanel() {
               margin: "1rem",
             }}
           >
-            <div className="row" style={{ gap: "0.75rem", marginBottom: "1rem", alignItems: "flex-start" }}>
+            <div
+              className="row"
+              style={{ gap: "0.75rem", marginBottom: "1rem", alignItems: "flex-start" }}
+            >
               <IconAlertTriangle size={24} style={{ color: "var(--danger)", flexShrink: 0 }} />
               <div>
                 <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.5rem" }}>
@@ -222,14 +236,17 @@ export function DataWipePanel() {
                     <li>Theme preference</li>
                   </ul>
                   <p style={{ margin: "0.75rem 0 0", fontWeight: 600, color: "var(--danger)" }}>
-                    Your credentials will be backed up as a JSON file before wiping. Keep this
-                    file safe — it&apos;s your only way to restore them.
+                    Your credentials will be backed up as a JSON file before wiping. Keep this file
+                    safe — it&apos;s your only way to restore them.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="row" style={{ gap: "0.75rem", justifyContent: "flex-end", marginTop: "1.5rem" }}>
+            <div
+              className="row"
+              style={{ gap: "0.75rem", justifyContent: "flex-end", marginTop: "1.5rem" }}
+            >
               <button
                 className="btn btn-secondary"
                 onClick={() => setShowConfirm(false)}

@@ -52,5 +52,5 @@ export const PREVIEW_CREDENTIALS: Credential[] = [
     issuerPubY: [],
     issuedAt: Math.floor(Date.now() / 1000) - 86400 * 2,
     expiry: "30 days",
-  }
+  },
 ];

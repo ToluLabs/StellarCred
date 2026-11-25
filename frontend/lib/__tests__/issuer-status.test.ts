@@ -10,13 +10,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 
-const { mockGetAccount, mockSimulateTransaction, mockScValToNative } = vi.hoisted(
-  () => ({
-    mockGetAccount: vi.fn(),
-    mockSimulateTransaction: vi.fn(),
-    mockScValToNative: vi.fn((v: unknown) => v),
-  }),
-);
+const { mockGetAccount, mockSimulateTransaction, mockScValToNative } = vi.hoisted(() => ({
+  mockGetAccount: vi.fn(),
+  mockSimulateTransaction: vi.fn(),
+  mockScValToNative: vi.fn((v: unknown) => v),
+}));
 
 // ── Mock @stellar/stellar-sdk ─────────────────────────────────────────────────
 // The simulate() helper inside issuer-registry.ts dynamically imports this.
@@ -100,23 +98,23 @@ beforeEach(() => {
 
 describe("checkIssuerStatus", () => {
   it("returns 'active' when issuer is valid and key is valid", async () => {
-    queueSim(true);  // is_valid_issuer → true
-    queueSim(true);  // is_valid_issuer_key → true
+    queueSim(true); // is_valid_issuer → true
+    queueSim(true); // is_valid_issuer_key → true
 
     const status = await checkIssuerStatus(ISSUER_ID, "kyc", PUB_X, PUB_Y, SIM_ACCOUNT);
     expect(status).toBe("active");
   });
 
   it("returns 'key_retired' when issuer is valid but credential key is no longer accepted", async () => {
-    queueSim(true);   // is_valid_issuer → true
-    queueSim(false);  // is_valid_issuer_key → false
+    queueSim(true); // is_valid_issuer → true
+    queueSim(false); // is_valid_issuer_key → false
 
     const status = await checkIssuerStatus(ISSUER_ID, "kyc", PUB_X, PUB_Y, SIM_ACCOUNT);
     expect(status).toBe("key_retired");
   });
 
   it("returns 'issuer_revoked' when get_issuer shows revoked:true", async () => {
-    queueSim(false);  // is_valid_issuer → false
+    queueSim(false); // is_valid_issuer → false
     // get_issuer → OnChainIssuer with revoked: true
     queueSim({ pubkey: new Uint8Array(64), credential_types: ["kyc"], revoked: true });
 
@@ -125,7 +123,7 @@ describe("checkIssuerStatus", () => {
   });
 
   it("returns 'key_revoked' when is_valid_issuer is false but issuer is not revoked", async () => {
-    queueSim(false);  // is_valid_issuer → false (current key was emergency-revoked)
+    queueSim(false); // is_valid_issuer → false (current key was emergency-revoked)
     // get_issuer → issuer exists but revoked: false
     queueSim({ pubkey: new Uint8Array(64), credential_types: ["kyc"], revoked: false });
 
@@ -141,7 +139,7 @@ describe("checkIssuerStatus", () => {
   });
 
   it("returns 'active' when pubkey arrays are wrong length — skips key check", async () => {
-    queueSim(true);  // is_valid_issuer → true; no key check follows
+    queueSim(true); // is_valid_issuer → true; no key check follows
 
     const status = await checkIssuerStatus(ISSUER_ID, "kyc", [], [], SIM_ACCOUNT);
     expect(status).toBe("active");

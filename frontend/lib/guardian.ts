@@ -183,7 +183,11 @@ export async function recoverCredentialsFromShares(
   backup: GuardianEncryptedBackup,
   shares: GuardianShare[],
 ): Promise<Credential[]> {
-  if (!backup || (backup.version !== 1 && backup.version !== 2) || backup.type !== "guardian-backup") {
+  if (
+    !backup ||
+    (backup.version !== 1 && backup.version !== 2) ||
+    backup.type !== "guardian-backup"
+  ) {
     throw new GuardianRecoveryError("Invalid or unsupported guardian backup file format");
   }
 
@@ -207,9 +211,7 @@ export async function recoverCredentialsFromShares(
       );
     }
     if (seenIndices.has(s.guardianIndex)) {
-      throw new GuardianRecoveryError(
-        `Duplicate share detected for Guardian #${s.guardianIndex}`,
-      );
+      throw new GuardianRecoveryError(`Duplicate share detected for Guardian #${s.guardianIndex}`);
     }
     seenIndices.add(s.guardianIndex);
 
@@ -217,15 +219,11 @@ export async function recoverCredentialsFromShares(
     try {
       data = decodeB64(s.shareData);
     } catch {
-      throw new GuardianRecoveryError(
-        `Corrupted share data for Guardian #${s.guardianIndex}`,
-      );
+      throw new GuardianRecoveryError(`Corrupted share data for Guardian #${s.guardianIndex}`);
     }
 
     if (data.length !== KEY_BYTES) {
-      throw new GuardianRecoveryError(
-        `Invalid share data length for Guardian #${s.guardianIndex}`,
-      );
+      throw new GuardianRecoveryError(`Invalid share data length for Guardian #${s.guardianIndex}`);
     }
 
     rawShares.push({
@@ -312,7 +310,18 @@ export function parseGuardianShare(input: string): GuardianShare {
     if (parts.length < 9) {
       throw new GuardianRecoveryError("Malformed armored share string");
     }
-    const [_prefix, _versionStr, recoveryId, indexStr, threshStr, totalStr, createdStr, shareData, keyFingerprint, labelEnc] = parts;
+    const [
+      _prefix,
+      _versionStr,
+      recoveryId,
+      indexStr,
+      threshStr,
+      totalStr,
+      createdStr,
+      shareData,
+      keyFingerprint,
+      labelEnc,
+    ] = parts;
     const guardianIndex = parseInt(indexStr, 10);
     const threshold = parseInt(threshStr, 10);
     const totalShares = parseInt(totalStr, 10);
@@ -379,7 +388,7 @@ export function parseGuardianBackup(input: string): GuardianEncryptedBackup {
     throw new GuardianRecoveryError("Backup input must be valid JSON");
   }
 
-  let obj = (rawObj && typeof rawObj === "object") ? (rawObj as Record<string, unknown>) : null;
+  let obj = rawObj && typeof rawObj === "object" ? (rawObj as Record<string, unknown>) : null;
 
   // If a full recovery kit was provided, extract the backup component
   if (obj && obj.type === "guardian-recovery-kit" && obj.backup && typeof obj.backup === "object") {
@@ -411,7 +420,9 @@ export function parseGuardianBackup(input: string): GuardianEncryptedBackup {
     iv: obj.iv,
     ciphertext: obj.ciphertext,
     keyFingerprint: obj.keyFingerprint,
-    guardianLabels: Array.isArray(obj.guardianLabels) ? (obj.guardianLabels as string[]) : undefined,
+    guardianLabels: Array.isArray(obj.guardianLabels)
+      ? (obj.guardianLabels as string[])
+      : undefined,
     credentialCount: typeof obj.credentialCount === "number" ? obj.credentialCount : 0,
   };
 }
@@ -425,7 +436,7 @@ export function parseRecoveryKit(input: string): GuardianRecoveryKit {
     throw new GuardianRecoveryError("Recovery kit input must be valid JSON");
   }
 
-  const obj = (rawObj && typeof rawObj === "object") ? (rawObj as Record<string, unknown>) : null;
+  const obj = rawObj && typeof rawObj === "object" ? (rawObj as Record<string, unknown>) : null;
 
   if (
     !obj ||
@@ -437,14 +448,11 @@ export function parseRecoveryKit(input: string): GuardianRecoveryKit {
     throw new GuardianRecoveryError("Invalid Guardian Recovery Kit file structure");
   }
 
-  return (obj as unknown) as GuardianRecoveryKit;
+  return obj as unknown as GuardianRecoveryKit;
 }
 
 /** Downloads a GuardianEncryptedBackup file as JSON. */
-export function downloadGuardianBackup(
-  backup: GuardianEncryptedBackup,
-  filename?: string,
-): void {
+export function downloadGuardianBackup(backup: GuardianEncryptedBackup, filename?: string): void {
   const name =
     filename ||
     `stellarcred-guardian-backup-${backup.recoveryId}-${new Date().toISOString().slice(0, 10)}.json`;
@@ -462,10 +470,7 @@ export function downloadGuardianBackup(
 }
 
 /** Downloads an individual GuardianShare file as JSON. */
-export function downloadGuardianShare(
-  share: GuardianShare,
-  filename?: string,
-): void {
+export function downloadGuardianShare(share: GuardianShare, filename?: string): void {
   const safeLabel = share.guardianLabel
     ? `-${share.guardianLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
     : "";
@@ -486,10 +491,7 @@ export function downloadGuardianShare(
 }
 
 /** Downloads a full GuardianRecoveryKit file as JSON. */
-export function downloadRecoveryKit(
-  kit: GuardianRecoveryKit,
-  filename?: string,
-): void {
+export function downloadRecoveryKit(kit: GuardianRecoveryKit, filename?: string): void {
   const name =
     filename ||
     `stellarcred-recovery-kit-${kit.recoveryId}-${new Date().toISOString().slice(0, 10)}.json`;

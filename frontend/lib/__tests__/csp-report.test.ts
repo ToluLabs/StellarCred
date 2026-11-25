@@ -4,13 +4,13 @@ import { sanitizeUrl, normalizeReports, parseDirective } from "../csp-report";
 describe("lib/csp-report", () => {
   describe("sanitizeUrl", () => {
     it("strips query, hash, and credentials from http/https URLs", () => {
-      expect(
-        sanitizeUrl("https://example.com/path/to/page?query=param&token=secret#hash"),
-      ).toBe("https://example.com/path/to/page");
+      expect(sanitizeUrl("https://example.com/path/to/page?query=param&token=secret#hash")).toBe(
+        "https://example.com/path/to/page",
+      );
 
-      expect(
-        sanitizeUrl("http://user:password@example.com:8080/app?auth=123#main"),
-      ).toBe("http://example.com:8080/app");
+      expect(sanitizeUrl("http://user:password@example.com:8080/app?auth=123#main")).toBe(
+        "http://example.com:8080/app",
+      );
     });
 
     it("treats ws: and wss: like http(s):, returning origin + pathname without query or hash", () => {
@@ -33,9 +33,7 @@ describe("lib/csp-report", () => {
       expect(sanitizeUrl("data:text/html,<script>alert(1)</script>")).toBe("data");
       expect(sanitizeUrl("data:")).toBe("data");
       expect(sanitizeUrl("blob:https://example.com/d949e29a-2bf1")).toBe("blob");
-      expect(sanitizeUrl("filesystem:https://example.com/temporary/file.txt")).toBe(
-        "filesystem",
-      );
+      expect(sanitizeUrl("filesystem:https://example.com/temporary/file.txt")).toBe("filesystem");
       expect(sanitizeUrl("chrome-extension://abc/x.js")).toBe("chrome-extension");
     });
 
@@ -73,7 +71,7 @@ describe("lib/csp-report", () => {
           "blocked-uri": "https://malicious.com/tracker.js?id=123",
           "violated-directive": "script-src 'self'",
           "effective-directive": "script-src",
-          "disposition": "report",
+          disposition: "report",
           "source-file": "https://example.com/app.js?v=1",
           "line-number": 105,
           "column-number": 12,
@@ -173,7 +171,7 @@ describe("lib/csp-report", () => {
           "document-uri": "https://example.com",
           "blocked-uri": "inline",
           "effective-directive": "script-src",
-          "disposition": "report",
+          disposition: "report",
           "line-number": "NaN",
           "column-number": 12.34,
           "status-code": Infinity,
@@ -193,7 +191,7 @@ describe("lib/csp-report", () => {
           "document-uri": "https://example.com",
           "blocked-uri": "inline",
           "effective-directive": "script-src",
-          "disposition": "report",
+          disposition: "report",
           "script-sample": "secret_token_12345",
           sample: "secret_token_12345",
           "original-policy": "default-src 'self'",
@@ -229,7 +227,7 @@ describe("lib/csp-report", () => {
           "document-uri": "https://example.com",
           "blocked-uri": "inline",
           "effective-directive": "script-src 'self' 'nonce-abc'",
-          "disposition": "report",
+          disposition: "report",
         },
       };
 

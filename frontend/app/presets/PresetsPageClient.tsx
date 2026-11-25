@@ -46,9 +46,7 @@ export default function PresetsPageClient() {
       .map((t) => {
         const raw = thresholds[t];
         const n = raw ? Number(raw) : undefined;
-        return n !== undefined && Number.isFinite(n)
-          ? { type: t, minThreshold: n }
-          : { type: t };
+        return n !== undefined && Number.isFinite(n) ? { type: t, minThreshold: n } : { type: t };
       });
     if (!name.trim() || claims.length === 0) return;
     setPresets(savePreset({ name: name.trim(), claims }));
@@ -60,37 +58,25 @@ export default function PresetsPageClient() {
   }
 
   function shareUrl(preset: Preset): string {
-    const base =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : "https://stellarcred.xyz";
+    const base = typeof window !== "undefined" ? window.location.origin : "https://stellarcred.xyz";
     return buildPresetShareUrl(base, preset.name, preset.claims);
   }
 
-  const canSave =
-    name.trim().length > 0 && heldTypes.some((t) => selected[t]);
+  const canSave = name.trim().length > 0 && heldTypes.some((t) => selected[t]);
 
   return (
     <>
       <div className="between" style={{ marginBottom: "2rem" }}>
         <div>
           <span className="eyebrow">Holder</span>
-          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>
-            Selective disclosure presets
-          </h1>
+          <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Selective disclosure presets</h1>
         </div>
         <WalletButton />
       </div>
 
-      <div
-        className="grid grid-2"
-        style={{ alignItems: "start", gap: "1.5rem" }}
-      >
+      <div className="grid grid-2" style={{ alignItems: "start", gap: "1.5rem" }}>
         <div className="card">
-          <span
-            className="eyebrow"
-            style={{ marginBottom: "0.5rem", display: "block" }}
-          >
+          <span className="eyebrow" style={{ marginBottom: "0.5rem", display: "block" }}>
             New preset
           </span>
 
@@ -104,10 +90,7 @@ export default function PresetsPageClient() {
             placeholder="e.g. Investor onboarding"
           />
 
-          <label
-            className="field-label"
-            style={{ marginTop: "1.25rem" }}
-          >
+          <label className="field-label" style={{ marginTop: "1.25rem" }}>
             Claims to include
           </label>
           {heldTypes.length === 0 ? (
@@ -118,8 +101,7 @@ export default function PresetsPageClient() {
                 marginTop: "0.35rem",
               }}
             >
-              You don&apos;t have any proved credentials yet — get one on the
-              holder page first.
+              You don&apos;t have any proved credentials yet — get one on the holder page first.
             </p>
           ) : (
             <div style={{ marginTop: "0.5rem" }}>
@@ -146,10 +128,7 @@ export default function PresetsPageClient() {
                       checked={!!selected[type]}
                       onChange={() => toggle(type)}
                     />
-                    <label
-                      htmlFor={`preset-claim-${type}`}
-                      style={{ flex: 1 }}
-                    >
+                    <label htmlFor={`preset-claim-${type}`} style={{ flex: 1 }}>
                       {meta.title}
                     </label>
                     {needsThreshold && selected[type] && (
@@ -183,10 +162,7 @@ export default function PresetsPageClient() {
         </div>
 
         <div className="card" style={{ minHeight: 200 }}>
-          <span
-            className="eyebrow"
-            style={{ marginBottom: "0.75rem", display: "block" }}
-          >
+          <span className="eyebrow" style={{ marginBottom: "0.75rem", display: "block" }}>
             Your presets ({presets.length})
           </span>
           {presets.length === 0 ? (

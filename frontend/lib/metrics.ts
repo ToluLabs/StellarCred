@@ -173,7 +173,9 @@ export function renderMetrics(): string {
   lines.push("");
 
   // ── sc_issuance_requests_total ───────────────────────────────────────────
-  lines.push("# HELP sc_issuance_requests_total Total issuance API requests by credential type and outcome.");
+  lines.push(
+    "# HELP sc_issuance_requests_total Total issuance API requests by credential type and outcome.",
+  );
   lines.push("# TYPE sc_issuance_requests_total counter");
   for (const [k, v] of issuanceRequestsTotal) {
     const [type, outcome] = k.split("|");

@@ -16,7 +16,7 @@
  */
 
 import type { SqlDialect, SqlParam } from "./db-dialect";
-import { buildSchema } from "./db-schema";
+import { buildSchema, CURRENT_SCHEMA_VERSION } from "./db-schema";
 import {
   toClaimRow,
   toCount,
@@ -28,6 +28,7 @@ import {
   type CredentialEvent,
   type CredentialHistory,
   type Db,
+  type SchemaCompatibility,
   type IssuerAnalytics,
   type RecentCursor,
   type StatsRow,
@@ -96,16 +97,54 @@ export function createSharedDb(dialect: SqlDialect): Db {
     return rows.map(toClaimRow);
   };
 
-  const claimsByIssuerRows = (issuer: string): Promise<ClaimRow[]> =>
+  const claimsByIssuerRows = (issuer: string, limit?: number): Promise<ClaimRow[]> =>
     claims(
-      `SELECT * FROM claims
+      limit === undefined
+        ? `SELECT * FROM claims
        WHERE issuer = ?
-       ORDER BY id DESC`,
-      [issuer],
+       ORDER BY id DESC`
+        : `SELECT * FROM claims
+       WHERE issuer = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+      limit === undefined ? [issuer] : [issuer, limit],
     );
 
   return {
+    async getSchemaVersion(): Promise<number> {
+      try {
+        const row = await dialect.get<{ version: SqlParam }>(
+          "SELECT version FROM schema_version WHERE id = 1",
+        );
+        if (!row) return 0;
+        return Number(row.version);
+      } catch {
+        return 0;
+      }
+    },
+
+    async checkCompatibility(): Promise<SchemaCompatibility> {
+      const currentVersion = await this.getSchemaVersion();
+      if (currentVersion > CURRENT_SCHEMA_VERSION) {
+        return {
+          compatible: false,
+          currentVersion,
+          expectedVersion: CURRENT_SCHEMA_VERSION,
+          message: `Database schema version ${currentVersion} is newer than supported indexer version ${CURRENT_SCHEMA_VERSION}. Migration or startup refused to preserve last known good data.`,
+        };
+      }
+      return {
+        compatible: true,
+        currentVersion: currentVersion === 0 ? CURRENT_SCHEMA_VERSION : currentVersion,
+        expectedVersion: CURRENT_SCHEMA_VERSION,
+      };
+    },
+
     async migrate() {
+      const compat = await this.checkCompatibility();
+      if (!compat.compatible) {
+        throw new Error(compat.message ?? "Incompatible database schema version");
+      }
       // Order matters: tables first, then the legacy `claims.id` upgrade, then
       // the indexes (which reference `claims.id`).
       await dialect.exec(schema.tables);
@@ -141,7 +180,8 @@ export function createSharedDb(dialect: SqlDialect): Db {
            ledger_sequence = ${ex}.ledger_sequence,
            threshold       = ${ex}.threshold,
            revoked         = ${ex}.revoked,
-           reason_code     = ${ex}.reason_code`,
+           reason_code     = ${ex}.reason_code
+         WHERE ${ex}.ledger_sequence > claims.ledger_sequence`,
         [
           row.wallet,
           row.credential_type,
@@ -274,8 +314,8 @@ export function createSharedDb(dialect: SqlDialect): Db {
       };
     },
 
-    async claimsByIssuer(issuer) {
-      return claimsByIssuerRows(issuer);
+    async claimsByIssuer(issuer, limit) {
+      return claimsByIssuerRows(issuer, limit);
     },
 
     async credentialEvents(

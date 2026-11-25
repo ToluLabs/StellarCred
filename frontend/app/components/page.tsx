@@ -2,12 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import {
-  IconSitemap,
-  IconPalette,
-  IconTypography,
-  IconDeviceMobile,
-} from "@tabler/icons-react";
+import { IconSitemap, IconPalette, IconTypography, IconDeviceMobile } from "@tabler/icons-react";
 import { Badge } from "@/components/Badge";
 import { useToast } from "@/components/Toast";
 import { Input } from "@/components/primitives/Input";
@@ -35,23 +30,44 @@ export default function ComponentShowcasePage() {
           <Heading level={1}>Component Library</Heading>
         </div>
         <Text variant="lg" color="muted" style={{ maxWidth: 560, marginBottom: "2.5rem" }}>
-          A consistent set of UI primitives — Badge, Button, Card, Modal, Toast,
-          Input, Text, and CodeBlock. Each consumes the same design tokens so
-          spacing, color, radius, and typography stay in sync across the app.
+          A consistent set of UI primitives — Badge, Button, Card, Modal, Toast, Input, Text, and
+          CodeBlock. Each consumes the same design tokens so spacing, color, radius, and typography
+          stay in sync across the app.
         </Text>
 
         {/* Quick visual index */}
-        <div
-          className="grid grid-3"
-          style={{ gap: "1rem" }}
-        >
+        <div className="grid grid-3" style={{ gap: "1rem" }}>
           {[
-            { name: "Badge", desc: "Status chip with dot + label", icon: <IconTypography size={18} stroke={1.6} color="var(--accent)" /> },
-            { name: "Button", desc: "Primary / secondary / ghost / link", icon: <IconDeviceMobile size={18} stroke={1.6} color="var(--accent)" /> },
-            { name: "Card", desc: "Raised surface with optional hover", icon: <IconSitemap size={18} stroke={1.6} color="var(--accent)" /> },
-            { name: "Modal", desc: "Focus-trapped dialog with backdrop", icon: <IconPalette size={18} stroke={1.6} color="var(--accent)" /> },
-            { name: "Toast", desc: "Auto-dismissing notification stack", icon: <IconTypography size={18} stroke={1.6} color="var(--accent)" /> },
-            { name: "Input", desc: "Consistent form field with label", icon: <IconTypography size={18} stroke={1.6} color="var(--accent)" /> },
+            {
+              name: "Badge",
+              desc: "Status chip with dot + label",
+              icon: <IconTypography size={18} stroke={1.6} color="var(--accent)" />,
+            },
+            {
+              name: "Button",
+              desc: "Primary / secondary / ghost / link",
+              icon: <IconDeviceMobile size={18} stroke={1.6} color="var(--accent)" />,
+            },
+            {
+              name: "Card",
+              desc: "Raised surface with optional hover",
+              icon: <IconSitemap size={18} stroke={1.6} color="var(--accent)" />,
+            },
+            {
+              name: "Modal",
+              desc: "Focus-trapped dialog with backdrop",
+              icon: <IconPalette size={18} stroke={1.6} color="var(--accent)" />,
+            },
+            {
+              name: "Toast",
+              desc: "Auto-dismissing notification stack",
+              icon: <IconTypography size={18} stroke={1.6} color="var(--accent)" />,
+            },
+            {
+              name: "Input",
+              desc: "Consistent form field with label",
+              icon: <IconTypography size={18} stroke={1.6} color="var(--accent)" />,
+            },
           ].map((item) => (
             <div
               key={item.name}
@@ -98,8 +114,8 @@ export default function ComponentShowcasePage() {
           <Heading level={2}>Badge</Heading>
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
-          Used to surface status (verified / pending / denied) on credential cards
-          and elsewhere. Neutral by default; semantic variants for each state.
+          Used to surface status (verified / pending / denied) on credential cards and elsewhere.
+          Neutral by default; semantic variants for each state.
         </Text>
         <div
           className="card"
@@ -110,22 +126,22 @@ export default function ComponentShowcasePage() {
             gap: "var(--spacing-lg, 1rem)",
           }}
         >
-          <div
-            className="row"
-            style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}
-          >
+          <div className="row" style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
             <Badge variant="neutral">Neutral</Badge>
             <Badge variant="verified">Verified</Badge>
             <Badge variant="pending">Pending</Badge>
             <Badge variant="denied">Denied</Badge>
           </div>
-          <div
-            className="row"
-            style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}
-          >
-            <Badge variant="verified" dot={false}>Verified (no dot)</Badge>
-            <Badge variant="pending" dot>Pending (with dot)</Badge>
-            <Badge variant="denied" dot>Denied (with dot)</Badge>
+          <div className="row" style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
+            <Badge variant="verified" dot={false}>
+              Verified (no dot)
+            </Badge>
+            <Badge variant="pending" dot>
+              Pending (with dot)
+            </Badge>
+            <Badge variant="denied" dot>
+              Denied (with dot)
+            </Badge>
           </div>
           <div
             className="row faint"
@@ -133,7 +149,7 @@ export default function ComponentShowcasePage() {
           >
             <span>Example usage:</span>
             <CodeBlock style={{ fontSize: "var(--type-xs)" }}>
-              {"<Badge variant=\"verified\" dot={false}>Held</Badge>"}
+              {'<Badge variant="verified" dot={false}>Held</Badge>'}
             </CodeBlock>
           </div>
         </div>
@@ -160,37 +176,41 @@ export default function ComponentShowcasePage() {
             gap: "var(--spacing-lg, 1rem)",
           }}
         >
-          <div
-            className="row"
-            style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}
-          >
+          <div className="row" style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
             <Button variant="primary">Primary</Button>
             <Button variant="secondary">Secondary</Button>
             <Button variant="ghost">Ghost</Button>
             <Button variant="link">Link</Button>
           </div>
-          <div
-            className="row"
-            style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}
-          >
-            <Button variant="primary" size="sm">Small primary</Button>
-            <Button variant="secondary" size="sm">Small secondary</Button>
-            <Button variant="ghost" size="sm">Small ghost</Button>
+          <div className="row" style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
+            <Button variant="primary" size="sm">
+              Small primary
+            </Button>
+            <Button variant="secondary" size="sm">
+              Small secondary
+            </Button>
+            <Button variant="ghost" size="sm">
+              Small ghost
+            </Button>
           </div>
-          <div
-            className="row"
-            style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}
-          >
-            <Button variant="primary" size="lg">Large primary</Button>
-            <Button variant="secondary" size="lg">Large secondary</Button>
+          <div className="row" style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
+            <Button variant="primary" size="lg">
+              Large primary
+            </Button>
+            <Button variant="secondary" size="lg">
+              Large secondary
+            </Button>
           </div>
-          <div
-            className="row"
-            style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}
-          >
-            <Button variant="primary" disabled>Disabled primary</Button>
-            <Button variant="secondary" disabled>Disabled secondary</Button>
-            <Button variant="ghost" disabled>Disabled ghost</Button>
+          <div className="row" style={{ gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
+            <Button variant="primary" disabled>
+              Disabled primary
+            </Button>
+            <Button variant="secondary" disabled>
+              Disabled secondary
+            </Button>
+            <Button variant="ghost" disabled>
+              Disabled ghost
+            </Button>
           </div>
           <div
             className="row faint"
@@ -198,7 +218,7 @@ export default function ComponentShowcasePage() {
           >
             <span>Example usage:</span>
             <CodeBlock style={{ fontSize: "var(--type-xs)" }}>
-              {"<Button variant=\"primary\" size=\"sm\">Generate proof</Button>"}
+              {'<Button variant="primary" size="sm">Generate proof</Button>'}
             </CodeBlock>
           </div>
         </div>
@@ -213,39 +233,46 @@ export default function ComponentShowcasePage() {
           <Heading level={2}>Card</Heading>
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
-          Raised surface with a subtle top-edge shimmer. Optional link hover state
-          lifts the card. Used for feature cards, credential cards, and info panels.
+          Raised surface with a subtle top-edge shimmer. Optional link hover state lifts the card.
+          Used for feature cards, credential cards, and info panels.
         </Text>
-        <div
-          className="grid grid-2"
-          style={{ gap: "var(--spacing-lg, 1.25rem)" }}
-        >
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-md, 0.85rem)" }}>
+        <div className="grid grid-2" style={{ gap: "var(--spacing-lg, 1.25rem)" }}>
+          <div
+            className="card"
+            style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-md, 0.85rem)" }}
+          >
             <Text variant="sm" color="accent" fontWeight={600}>
               Basic card
             </Text>
             <Text variant="base">
-              Default card uses <code>card</code> class with standard padding and
-              border. Content is sized naturally inside.
+              Default card uses <code>card</code> class with standard padding and border. Content is
+              sized naturally inside.
             </Text>
           </div>
-          <div className="card card-link" style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-md, 0.85rem)" }}>
+          <div
+            className="card card-link"
+            style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-md, 0.85rem)" }}
+          >
             <Text variant="sm" color="accent" fontWeight={600}>
               Link card (hoverable)
             </Text>
             <Text variant="base">
-              Add <code>card-link</code> to enable the lift + border transition on
-              hover. Wrap in a link for clickable cards.
+              Add <code>card-link</code> to enable the lift + border transition on hover. Wrap in a
+              link for clickable cards.
             </Text>
           </div>
         </div>
         <div
           className="row faint"
-          style={{ gap: "var(--spacing-md, 0.75rem)", fontSize: "var(--type-sm)", marginTop: "var(--spacing-lg, 1rem)" }}
+          style={{
+            gap: "var(--spacing-md, 0.75rem)",
+            fontSize: "var(--type-sm)",
+            marginTop: "var(--spacing-lg, 1rem)",
+          }}
         >
           <span>Example usage:</span>
           <CodeBlock style={{ fontSize: "var(--type-xs)" }}>
-            {"<div className=\"card\">{content}</div>"}
+            {'<div className="card">{content}</div>'}
           </CodeBlock>
         </div>
       </section>
@@ -259,27 +286,29 @@ export default function ComponentShowcasePage() {
           <Heading level={2}>Modal</Heading>
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
-          Focus-trapped dialog with Escape-to-close and backdrop click-out. Portal
-          rendered to <code>document.body</code> to avoid SSR/hydration issues.
+          Focus-trapped dialog with Escape-to-close and backdrop click-out. Portal rendered to{" "}
+          <code>document.body</code> to avoid SSR/hydration issues.
         </Text>
-        <div
-          className="card"
-          style={{ padding: "var(--spacing-xl, 1.5rem)" }}
-        >
+        <div className="card" style={{ padding: "var(--spacing-xl, 1.5rem)" }}>
           <div style={{ display: "flex", gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
-            <Button variant="primary">
-              Open modal (demo)
-            </Button>
+            <Button variant="primary">Open modal (demo)</Button>
             <Button variant="secondary">Cancel</Button>
           </div>
           <Text variant="sm" color="faint" style={{ marginTop: "var(--spacing-md, 0.75rem)" }}>
-            The Modal component is interactive in the app. This page documents the
-            API; the dialog is not rendered here to keep the showcase static.
+            The Modal component is interactive in the app. This page documents the API; the dialog
+            is not rendered here to keep the showcase static.
           </Text>
-          <div className="row faint" style={{ gap: "var(--spacing-md, 0.75rem)", fontSize: "var(--type-sm)", marginTop: "var(--spacing-lg, 1rem)" }}>
+          <div
+            className="row faint"
+            style={{
+              gap: "var(--spacing-md, 0.75rem)",
+              fontSize: "var(--type-sm)",
+              marginTop: "var(--spacing-lg, 1rem)",
+            }}
+          >
             <span>Example usage:</span>
             <CodeBlock style={{ fontSize: "var(--type-xs)" }}>
-              {"<Modal title=\"Verify credential\" onClose={handleClose}>"}
+              {'<Modal title="Verify credential" onClose={handleClose}>'}
               {"  children"}
               {"</Modal>"}
             </CodeBlock>
@@ -296,19 +325,23 @@ export default function ComponentShowcasePage() {
           <Heading level={2}>Toast</Heading>
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
-          Auto-dismissing notification stack with info / success / error variants.
-          Positioned bottom-right on desktop, full-width on mobile.
+          Auto-dismissing notification stack with info / success / error variants. Positioned
+          bottom-right on desktop, full-width on mobile.
         </Text>
-        <div
-          className="card"
-          style={{ padding: "var(--spacing-xl, 1.5rem)" }}
-        >
+        <div className="card" style={{ padding: "var(--spacing-xl, 1.5rem)" }}>
           <ToastDemo />
-          <div className="row faint" style={{ gap: "var(--spacing-md, 0.75rem)", fontSize: "var(--type-sm)", marginTop: "var(--spacing-lg, 1rem)" }}>
+          <div
+            className="row faint"
+            style={{
+              gap: "var(--spacing-md, 0.75rem)",
+              fontSize: "var(--type-sm)",
+              marginTop: "var(--spacing-lg, 1rem)",
+            }}
+          >
             <span>Example usage:</span>
             <CodeBlock style={{ fontSize: "var(--type-xs)" }}>
               {"const toast = useToast();"}
-              {"toast.success(\"Proof generated on-chain\");"}
+              {'toast.success("Proof generated on-chain");'}
             </CodeBlock>
           </div>
         </div>
@@ -323,20 +356,32 @@ export default function ComponentShowcasePage() {
           <Heading level={2}>Input</Heading>
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
-          Form field with label, helper text, and error state. Uses the same input
-          styling as the rest of the app.
+          Form field with label, helper text, and error state. Uses the same input styling as the
+          rest of the app.
         </Text>
         <div
           className="card"
-          style={{ padding: "var(--spacing-xl, 1.5rem)", display: "flex", flexDirection: "column", gap: "var(--spacing-md, 0.85rem)" }}
+          style={{
+            padding: "var(--spacing-xl, 1.5rem)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--spacing-md, 0.85rem)",
+          }}
         >
           <Input label="Wallet address" placeholder="GA... or M... address" />
-          <Input label="Invite code" placeholder="ABC-123" helper="Enter the 6-character code from your invite email" />
+          <Input
+            label="Invite code"
+            placeholder="ABC-123"
+            helper="Enter the 6-character code from your invite email"
+          />
           <Input label="Amount (XLM)" placeholder="0.00" error="Amount must be greater than 0" />
-          <div className="row faint" style={{ gap: "var(--spacing-md, 0.75rem)", fontSize: "var(--type-sm)" }}>
+          <div
+            className="row faint"
+            style={{ gap: "var(--spacing-md, 0.75rem)", fontSize: "var(--type-sm)" }}
+          >
             <span>Example usage:</span>
             <CodeBlock style={{ fontSize: "var(--type-xs)" }}>
-              {"<Input label=\"Wallet address\" placeholder=\"GA...\" />"}
+              {'<Input label="Wallet address" placeholder="GA..." />'}
             </CodeBlock>
           </div>
         </div>
@@ -351,20 +396,29 @@ export default function ComponentShowcasePage() {
           <Heading level={2}>Text & Heading</Heading>
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
-          Polymorphic text primitive with token-driven size and color. Heading
-          component for h1-h4 with display font.
+          Polymorphic text primitive with token-driven size and color. Heading component for h1-h4
+          with display font.
         </Text>
         <div
           className="card"
-          style={{ padding: "var(--spacing-xl, 1.5rem)", display: "flex", flexDirection: "column", gap: "var(--spacing-md, 0.85rem)" }}
+          style={{
+            padding: "var(--spacing-xl, 1.5rem)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--spacing-md, 0.85rem)",
+          }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-sm, 0.5rem)" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-sm, 0.5rem)" }}
+          >
             <Heading level={1}>Heading level 1</Heading>
             <Heading level={2}>Heading level 2</Heading>
             <Heading level={3}>Heading level 3</Heading>
             <Heading level={4}>Heading level 4</Heading>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-xs, 0.35rem)" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-xs, 0.35rem)" }}
+          >
             <Text variant="hero">Hero text</Text>
             <Text variant="5xl">Large heading style</Text>
             <Text variant="xl">Extra large body</Text>
@@ -373,14 +427,18 @@ export default function ComponentShowcasePage() {
             <Text variant="sm">Small label</Text>
             <Text variant="xs">Extra small</Text>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-sm, 0.5rem)" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-sm, 0.5rem)" }}
+          >
             <Text color="muted">Muted text</Text>
             <Text color="faint">Faint text</Text>
             <Text color="accent">Accent text</Text>
             <Text color="warn">Warning text</Text>
             <Text color="danger">Danger text</Text>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-sm, 0.5rem)" }}>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-sm, 0.5rem)" }}
+          >
             <Text eyebrow>Eyebrow label</Text>
             <Text gradient>Gradient accent text</Text>
           </div>
@@ -396,13 +454,10 @@ export default function ComponentShowcasePage() {
           <Heading level={2}>CodeBlock</Heading>
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
-          Consistent inline code snippet display. Replaces the ad-hoc CodeBlock
-          built into app/page.tsx.
+          Consistent inline code snippet display. Replaces the ad-hoc CodeBlock built into
+          app/page.tsx.
         </Text>
-        <div
-          className="card"
-          style={{ padding: "var(--spacing-xl, 1.5rem)" }}
-        >
+        <div className="card" style={{ padding: "var(--spacing-xl, 1.5rem)" }}>
           <CodeBlock label="TypeScript">
             {`import { Badge } from "@/components/Badge";
 
@@ -427,13 +482,18 @@ export function CredCard({ c }) {
         </div>
         <Text variant="base" color="muted" style={{ marginBottom: "1.5rem", maxWidth: 560 }}>
           All primitives consume CSS custom properties (<code>var(--text)</code>,
-          <code>var(--accent)</code>, etc.) so the same component renders correctly
-          in both dark and light themes. The theme is controlled via
+          <code>var(--accent)</code>, etc.) so the same component renders correctly in both dark and
+          light themes. The theme is controlled via
           <code>data-theme</code> on the <code>&lt;html&gt;</code> element.
         </Text>
         <div
           className="card"
-          style={{ padding: "var(--spacing-xl, 1.5rem)", display: "flex", flexDirection: "column", gap: "var(--spacing-md, 0.85rem)" }}
+          style={{
+            padding: "var(--spacing-xl, 1.5rem)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--spacing-md, 0.85rem)",
+          }}
         >
           <div style={{ display: "flex", gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
             {["Badge", "Button", "Card", "Modal", "Toast", "Input"].map((name) => (
@@ -447,9 +507,8 @@ export function CredCard({ c }) {
             ))}
           </div>
           <Text variant="sm" color="faint">
-            Theme toggle in the header switches between dark (default) and light.
-            All token-driven values update via CSS custom properties without any
-            JavaScript re-render.
+            Theme toggle in the header switches between dark (default) and light. All token-driven
+            values update via CSS custom properties without any JavaScript re-render.
           </Text>
         </div>
       </section>
@@ -496,10 +555,18 @@ function ToastDemo() {
 
   return (
     <div style={{ display: "flex", gap: "var(--spacing-md, 0.75rem)", flexWrap: "wrap" }}>
-      <Button variant="primary" size="sm" onClick={() => toast.info("Credential exported successfully")}>
+      <Button
+        variant="primary"
+        size="sm"
+        onClick={() => toast.info("Credential exported successfully")}
+      >
         Info toast
       </Button>
-      <Button variant="secondary" size="sm" onClick={() => toast.success("Proof generated on-chain")}>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => toast.success("Proof generated on-chain")}
+      >
         Success toast
       </Button>
       <Button variant="ghost" size="sm" onClick={() => toast.error("Failed to submit proof")}>
