@@ -198,10 +198,10 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
       clearStageTimer(jobId);
       const proof = transferable(result.proof);
       const publicInputs = transferable(result.publicInputs);
-      post(
-        { event: "result", jobId, proof, publicInputs },
-        [proof.buffer as ArrayBuffer, publicInputs.buffer as ArrayBuffer],
-      );
+      post({ event: "result", jobId, proof, publicInputs }, [
+        proof.buffer as ArrayBuffer,
+        publicInputs.buffer as ArrayBuffer,
+      ]);
     } catch (err) {
       // Every failure — witness error, circuit-not-found, abort, wasm crash —
       // reaches the main thread as a structured error, never as an uncaught
@@ -225,7 +225,10 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
     }
   }
 
-  async function runDestroy(jobId: number, credentialType?: ProofJobRequest["credentialType"]): Promise<void> {
+  async function runDestroy(
+    jobId: number,
+    credentialType?: ProofJobRequest["credentialType"],
+  ): Promise<void> {
     try {
       if (credentialType) {
         await destroyBackend(credentialType);

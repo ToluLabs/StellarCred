@@ -14,6 +14,7 @@ import * as fromIndex from "./index";
 import * as fromClaims from "./claims";
 import * as fromCapabilities from "./capabilities";
 import * as fromChallenge from "./challenge";
+import * as fromPresentationToken from "./presentation-token";
 import * as fromErrors from "./errors";
 
 // ── Claim-checking functions (sourced from claims.ts) ────────────────────────
@@ -26,6 +27,8 @@ const CLAIMS_EXPORTS = [
   "getClaim",
   "getClaimRecord",
   "checkClaimStatus",
+  "getClaimOutcome",
+  "checkClaimOutcome",
   "hasClaims",
   "verifyPreset",
   "getClaims",
@@ -58,6 +61,18 @@ const CHALLENGE_EXPORTS = [
   "createWalletChallenge",
   "verifyWalletSignature",
   "verifyWalletClaim",
+] as const;
+
+// ── Presentation token functions (sourced from presentation-token.ts, #1062) ─
+
+const PRESENTATION_TOKEN_EXPORTS = [
+  "createPresentationToken",
+  "verifyPresentationToken",
+  "presentationTokenSigningMessage",
+  "PRESENTATION_TOKEN_PREFIX",
+  "PRESENTATION_TOKEN_VERSION",
+  "DEFAULT_PRESENTATION_TOKEN_TTL_SECONDS",
+  "DEFAULT_CLOCK_SKEW_SECONDS",
 ] as const;
 
 // ── Capability-descriptor functions (sourced from capabilities.ts, #639) ─────
@@ -96,6 +111,19 @@ describe("entry-point parity (issue #609 / #522)", () => {
       expect(fromIndexValue).toBeDefined();
       expect(fromChallengeValue).toBeDefined();
       expect(fromIndexValue).toBe(fromChallengeValue);
+    });
+  }
+
+  // ── presentation-token.ts exports re-exported by index.ts (issue #1062) ───
+
+  for (const name of PRESENTATION_TOKEN_EXPORTS) {
+    it(`index.ts re-exports the same ${name} reference as presentation-token.ts`, () => {
+      const fromIndexValue = (fromIndex as Record<string, unknown>)[name];
+      const fromPresentationValue = (fromPresentationToken as Record<string, unknown>)[name];
+
+      expect(fromIndexValue).toBeDefined();
+      expect(fromPresentationValue).toBeDefined();
+      expect(fromIndexValue).toBe(fromPresentationValue);
     });
   }
 
@@ -158,6 +186,13 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.createWalletChallenge).toBe(fromChallenge.createWalletChallenge);
     expect(ns.verifyWalletSignature).toBe(fromChallenge.verifyWalletSignature);
     expect(ns.verifyWalletClaim).toBe(fromChallenge.verifyWalletClaim);
+  });
+
+  it("StellarCred namespace members are the same references as presentation-token.ts exports", () => {
+    const ns = fromIndex.StellarCred;
+
+    expect(ns.createPresentationToken).toBe(fromPresentationToken.createPresentationToken);
+    expect(ns.verifyPresentationToken).toBe(fromPresentationToken.verifyPresentationToken);
   });
 
   it("StellarCred namespace members are the same references as errors.ts exports", () => {

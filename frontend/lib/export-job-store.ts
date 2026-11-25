@@ -113,10 +113,7 @@ export async function createExportJob(input: {
   chunkSize?: number;
 }): Promise<ExportJob> {
   const recordId = input.recordId;
-  const chunkSize = Math.max(
-    1,
-    Math.min(input.chunkSize ?? DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE),
-  );
+  const chunkSize = Math.max(1, Math.min(input.chunkSize ?? DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE));
   const totalRows = input.rows.length;
   const totalChunks = Math.max(1, Math.ceil(totalRows / chunkSize));
   const jobId = newId();
@@ -183,10 +180,7 @@ export async function getExportJob(jobId: string): Promise<ExportJob | null> {
   }
 }
 
-export async function getExportChunk(
-  jobId: string,
-  index: number,
-): Promise<ExportChunk | null> {
+export async function getExportChunk(jobId: string, index: number): Promise<ExportChunk | null> {
   const cacheKey = `${jobId}:${index}`;
   const cached = chunkCache.get(cacheKey);
   if (cached) return cached;
@@ -236,9 +230,7 @@ export async function recordCursorProgress(
   cursorHandleCache.set(jobId, handle);
 }
 
-export async function getCursorHandle(
-  jobId: string,
-): Promise<CursorHandle | null> {
+export async function getCursorHandle(jobId: string): Promise<CursorHandle | null> {
   const cached = cursorHandleCache.get(jobId);
   if (cached) return cached;
   const raw = await getSharedStore()

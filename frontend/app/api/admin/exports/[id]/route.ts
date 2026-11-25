@@ -5,10 +5,7 @@ import { requireAdmin } from "@/app/api/_middleware";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const denied = requireAdmin(req);
   if (denied) return denied;
 

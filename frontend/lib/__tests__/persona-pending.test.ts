@@ -68,7 +68,10 @@ describe("savePersonaPending", () => {
 
   it("drops unknown extra keys instead of persisting them", () => {
     // Simulate a caller smuggling an extra key past the type system.
-    const leakedPayload = { ...basePayload, id_number: "X1234567" } as unknown as PersonaPendingPayload;
+    const leakedPayload = {
+      ...basePayload,
+      id_number: "X1234567",
+    } as unknown as PersonaPendingPayload;
     savePersonaPending(leakedPayload);
     // id_number was passed but is not in the whitelist, so it should not appear.
     expect(JSON.stringify(storedBlob())).not.toContain("id_number");

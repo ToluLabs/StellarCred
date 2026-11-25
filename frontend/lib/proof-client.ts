@@ -21,6 +21,7 @@ import type {
   ProofWorkerEvent,
 } from "./proof-protocol";
 import { PROOF_PERF_TARGETS } from "./proof-perf";
+import { assertProofRequestWithinLimits } from "./proof-guard";
 
 export type { ProofJobRequest, ProofStage, ProofStageProgress };
 
@@ -241,7 +242,12 @@ async function proveInline(
     if (signal?.aborted) return;
     options.onProgress?.(stage);
     const info = INLINE_STAGE_INFO[stage];
-    options.onStageProgress?.({ stage, elapsedMs: 0, expectedMs: info.expectedMs, label: info.label });
+    options.onStageProgress?.({
+      stage,
+      elapsedMs: 0,
+      expectedMs: info.expectedMs,
+      label: info.label,
+    });
   };
 
   emitStageProgress("witness");
@@ -294,6 +300,18 @@ export function proveOffMainThread(
   options: ProveOptions = {},
 ): Promise<GeneratedProof> {
   if (options.signal?.aborted) return Promise.reject(abortError());
+
+  // Resource guard (issue #943): an oversized job is refused here, before the
+  // request reaches the worker or the inline engine. That is the whole point —
+  // an aggregate proof packing too many credentials, or a credential carrying
+  // an unbounded private payload, must fail in milliseconds with an actionable
+  // message instead of spending minutes of proving and then dying in wasm.
+  try {
+    assertProofRequestWithinLimits(request);
+  } catch (err) {
+    return Promise.reject(err);
+  }
+
   const active = getWorker();
   if (!active) return proveInline(request, options);
   return proveInWorker(active, request, options);

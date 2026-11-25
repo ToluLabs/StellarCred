@@ -1,17 +1,9 @@
 import { describe, it, expect } from "vitest";
-import {
-  eligibleIssuers,
-  isProtocolAccepted,
-  pickDefaultIssuer,
-} from "./issuer-choice";
+import { eligibleIssuers, isProtocolAccepted, pickDefaultIssuer } from "./issuer-choice";
 import type { RegisteredIssuer } from "./issuer-registry";
 import type { CredentialType } from "./stellar";
 
-function issuer(
-  id: string,
-  credentialTypes: CredentialType[],
-  revoked = false,
-): RegisteredIssuer {
+function issuer(id: string, credentialTypes: CredentialType[], revoked = false): RegisteredIssuer {
   return {
     id,
     name: id,

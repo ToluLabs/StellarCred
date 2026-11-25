@@ -7,12 +7,15 @@ on:
 
 # ── Security: least-privilege permissions ──────────────────────────────────
 # contents:write – push updated CHANGELOG.md back to main.
+# id-token:write – lets npm mint the OIDC token that signs the provenance
+#                  attestation for each published package (npm --provenance).
 #
 # This workflow only fires on tag pushes (v*), never on pull_request or
 # pull_request_target. Fork PRs cannot trigger it, so NPM_TOKEN is never
 # exposed to untrusted code.
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -40,22 +43,56 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      # --ignore-scripts: no dependency or workspace lifecycle script runs in a
+      # job that later holds NPM_TOKEN. The packages are built explicitly below
+      # (the frontend `postinstall` would otherwise build the issuer).
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # Extract the version from the tag (strips leading 'v')
-      - name: Set version env
-        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
-      # Ensure tag version matches package.json version
-      - name: Verify package version
+      # The SDK is not a member of the frontend workspace (it has its own
+      # lockfile), so the install above does not provide its build tooling.
+      - name: Install SDK dependencies
         working-directory: frontend/packages/sdk
+        run: pnpm install --frozen-lockfile --ignore-workspace --ignore-scripts
+
+      # Extract the version from the tag (strips leading 'v') and pick the npm
+      # dist-tag. A pre-release (vX.Y.Z-rc.1) must never take `latest`, so it is
+      # published under `next`.
+      - name: Set version env
         run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "$PKG_VERSION" != "${RELEASE_VERSION}" ]; then
-            echo "Error: Tag version (${RELEASE_VERSION}) does not match package.json version ($PKG_VERSION)"
-            exit 1
-          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "RELEASE_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          case "$VERSION" in
+            *-*) echo "NPM_TAG=next" >> "$GITHUB_ENV" ;;
+            *)   echo "NPM_TAG=latest" >> "$GITHUB_ENV" ;;
+          esac
+
+      # Fail before any side effect (changelog commit, GitHub release, publish):
+      #  - the tag, @stellarcred/sdk and @stellarcred/issuer versions must all agree
+      #  - package metadata must be publishable, incl. a repository.url that
+      #    matches this repo (npm provenance rejects a mismatch)
+      - name: Validate release packages (version alignment + metadata)
+        working-directory: .
+        run: node .github/scripts/validate-release-packages.mjs --tag "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+
+      - name: Build SDK
+        working-directory: frontend/packages/sdk
+        run: pnpm build
+
+      # `prebuild` copies the compiled commit circuits into src/ so they are
+      # inlined into dist/ — the published package is self-contained.
+      - name: Build issuer
+        working-directory: frontend/packages/issuer
+        run: pnpm build
+
+      - name: Validate package tarballs
+        working-directory: .
+        run: node .github/scripts/validate-release-packages.mjs --tag "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --packed
+
+      # Same code path as the real publish below, minus credentials and upload.
+      - name: Publish dry run
+        working-directory: .
+        run: bash .github/scripts/publish-packages.sh dry-run "$NPM_TAG"
 
       # Generate / update CHANGELOG.md at the repo root using conventional-changelog
       - name: Update CHANGELOG.md
@@ -118,14 +155,15 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ env.RELEASE_NOTES }}
+          prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
 
-      # Build and publish @stellarcred/sdk to npm
-      - name: Build SDK
-        working-directory: frontend/packages/sdk
-        run: pnpm build
-
+      # Publish @stellarcred/sdk and @stellarcred/issuer to npm, with provenance.
+      # The packages were built, validated and dry-run above; this only uploads.
+      # NPM_CONFIG_PROVENANCE makes npm attach a signed attestation linking each
+      # tarball to this repository, commit and workflow run (needs id-token:write).
       - name: Publish to npm
-        working-directory: frontend/packages/sdk
-        run: pnpm publish --no-git-checks --access public
+        working-directory: .
+        run: bash .github/scripts/publish-packages.sh publish "$NPM_TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

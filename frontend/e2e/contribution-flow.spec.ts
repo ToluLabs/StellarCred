@@ -231,6 +231,10 @@ test.describe("Contribution pipeline", () => {
     await expect(generateBtn).toBeVisible();
     await generateBtn.first().click();
 
+    // The disclosure preview (#1048) opens first; proving starts on approval.
+    await expect(page.getByRole("dialog", { name: "Review what you'll share" })).toBeVisible();
+    await page.getByRole("button", { name: "Approve & generate proof" }).click();
+
     // Prover stub resolves instantly; the submit CTA unlocks.
     await expect(page.getByRole("button", { name: "Submit to Stellar" })).toBeVisible({
       timeout: 15_000,

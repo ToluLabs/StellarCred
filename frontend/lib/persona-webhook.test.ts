@@ -44,9 +44,7 @@ describe("persona-webhook", () => {
   describe("verifyPersonaSignature", () => {
     it("accepts a valid signature with current timestamp", () => {
       const now = Math.floor(Date.now() / 1000);
-      const signature = createHmac("sha256", secret)
-        .update(`${now}.${body}`)
-        .digest("hex");
+      const signature = createHmac("sha256", secret).update(`${now}.${body}`).digest("hex");
       const header = `t=${now},v1=${signature}`;
 
       expect(verifyPersonaSignature(body, header, secret)).toBe(true);
@@ -54,9 +52,7 @@ describe("persona-webhook", () => {
 
     it("accepts valid signature among multiple v1 values (key rotation)", () => {
       const now = Math.floor(Date.now() / 1000);
-      const signature = createHmac("sha256", secret)
-        .update(`${now}.${body}`)
-        .digest("hex");
+      const signature = createHmac("sha256", secret).update(`${now}.${body}`).digest("hex");
       const header = `t=${now}, v1=0000000000000000000000000000000000000000000000000000000000000000, v1=${signature}`;
 
       expect(verifyPersonaSignature(body, header, secret)).toBe(true);
@@ -71,9 +67,7 @@ describe("persona-webhook", () => {
 
     it("rejects when rawBody was tampered with", () => {
       const now = Math.floor(Date.now() / 1000);
-      const signature = createHmac("sha256", secret)
-        .update(`${now}.${body}`)
-        .digest("hex");
+      const signature = createHmac("sha256", secret).update(`${now}.${body}`).digest("hex");
       const header = `t=${now},v1=${signature}`;
       const tamperedBody = body + " ";
 
@@ -82,9 +76,7 @@ describe("persona-webhook", () => {
 
     it("rejects when timestamp is older than tolerance (replay attack protection)", () => {
       const oldTime = Math.floor(Date.now() / 1000) - 301; // 301s ago (> 300s tolerance)
-      const signature = createHmac("sha256", secret)
-        .update(`${oldTime}.${body}`)
-        .digest("hex");
+      const signature = createHmac("sha256", secret).update(`${oldTime}.${body}`).digest("hex");
       const header = `t=${oldTime},v1=${signature}`;
 
       expect(verifyPersonaSignature(body, header, secret)).toBe(false);

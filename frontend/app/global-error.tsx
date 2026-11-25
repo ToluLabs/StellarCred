@@ -51,7 +51,15 @@ export default function GlobalError({
 
           <h1 style={{ fontSize: "2rem", margin: "0 0 0.5rem" }}>Critical error</h1>
 
-          <p style={{ fontSize: "0.9375rem", maxWidth: 400, lineHeight: 1.7, marginBottom: "2rem", color: "#888899" }}>
+          <p
+            style={{
+              fontSize: "0.9375rem",
+              maxWidth: 400,
+              lineHeight: 1.7,
+              marginBottom: "2rem",
+              color: "#888899",
+            }}
+          >
             The application encountered a fatal error. Please try reloading.
           </p>
 
