@@ -31,7 +31,10 @@ export default function NotFound() {
       </div>
 
       <h1 style={{ fontSize: "3rem", margin: "0", letterSpacing: "-0.03em" }}>404</h1>
-      <p className="muted" style={{ fontSize: "0.9375rem", maxWidth: 400, lineHeight: 1.7, margin: "0.5rem 0 2rem" }}>
+      <p
+        className="muted"
+        style={{ fontSize: "0.9375rem", maxWidth: 400, lineHeight: 1.7, margin: "0.5rem 0 2rem" }}
+      >
         This page does not exist — or the proof was never generated here.
       </p>
 

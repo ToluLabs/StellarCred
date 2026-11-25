@@ -168,7 +168,9 @@ function increment(
   storeKey: string,
   limit: number,
   windowMs: number,
-): { allowed: true; remaining: number; windowEnd: number } | { allowed: false; retryAfterMs: number } {
+):
+  | { allowed: true; remaining: number; windowEnd: number }
+  | { allowed: false; retryAfterMs: number } {
   const now = Date.now();
   evictIfNeeded(now);
   let bucket = store.get(storeKey);
@@ -204,11 +206,7 @@ export type RateLimitResult =
  * caller; this function stores it verbatim.  Keys are never logged by this
  * module.
  */
-export function checkLimit(
-  key: string,
-  limit: number,
-  windowMs: number,
-): RateLimitResult {
+export function checkLimit(key: string, limit: number, windowMs: number): RateLimitResult {
   checkMultiInstanceStoreWarning();
   const result = increment(key, limit, windowMs);
   if (!result.allowed) {
@@ -287,11 +285,7 @@ export interface RateLimitStatus {
  * reports an untouched window (`used: 0`) whose reset is one full window
  * length away.
  */
-export function getRateLimitStatus(
-  key: string,
-  limit: number,
-  windowMs: number,
-): RateLimitStatus {
+export function getRateLimitStatus(key: string, limit: number, windowMs: number): RateLimitStatus {
   const now = Date.now();
   const bucket = store.get(key);
   const expired = !bucket || now >= bucket.windowEnd;

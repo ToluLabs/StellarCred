@@ -3,12 +3,6 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import {
-  IconAlertTriangle,
-  IconDownload,
-  IconFileExport,
-  IconPlus,
-} from "@tabler/icons-react";
 import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
@@ -258,7 +252,6 @@ function HolderInner() {
               {/* ── Expiring soon (action recommended) ── */}
               {expiringSoon.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>Expiring soon — Re-prove recommended</SectionLabel>
                   <SectionLabel>Expiring soon · Re-prove recommended</SectionLabel>
                   {expiringSoon.map((c) => renderCred(c))}
                 </div>
@@ -267,7 +260,6 @@ function HolderInner() {
               {/* ── Expired (action required) ── */}
               {expired.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>Expired proofs — Re-prove required</SectionLabel>
                   <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
                   <div
                     className="between"
@@ -345,7 +337,6 @@ function HolderInner() {
               {/* ── Active proved ── */}
               {activeProved.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>On-chain — active proofs</SectionLabel>
                   <SectionLabel>On-chain · active proofs</SectionLabel>
                   {activeProved.map((c) => renderCred(c))}
                 </div>
@@ -395,7 +386,10 @@ function HolderInner() {
                       <IconFileExport size={14} />
                       Export data
                     </button>
-                    <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
+                    <GuardianRecoveryControl
+                      hasCredentials={creds.length > 0}
+                      onRestored={reload}
+                    />
                   </div>
                   <p
                     className="faint"
@@ -415,64 +409,6 @@ function HolderInner() {
                 </div>
               )}
             </>
-            </>
-          )}
-
-          {importing ? (
-            <ImportPanel
-              onImport={(c) => {
-                save(c);
-                setImporting(false);
-              }}
-              onCancel={() => setImporting(false)}
-            />
-          ) : (
-            <div className="stack" style={{ gap: "0.55rem" }}>
-              <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
-                  <IconPlus size={14} />
-                  Import credential JSON
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={downloadBackup}
-                  disabled={creds.length === 0}
-                  title={
-                    creds.length === 0
-                      ? "No credentials to back up yet"
-                      : "Download a JSON backup of all credentials"
-                  }
-                >
-                  <IconDownload size={14} />
-                  Export backup
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowExportModal(true)}
-                  id="btn-export-data-action"
-                  title="Request scoped exports with secure expiring download links"
-                >
-                  <IconFileExport size={14} />
-                  Export data
-                </button>
-                <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
-              </div>
-              <p
-                className="faint"
-                style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}
-              >
-                Credentials live only in this browser (localStorage) — export a backup before
-                clearing site data or switching devices, and restore it here with “Import credential
-                JSON”.{" "}
-                <Link
-                  href="/docs#storage"
-                  style={{ color: "var(--accent)", textDecoration: "underline" }}
-                >
-                  Where your credentials live
-                </Link>
-              </p>
-              <ExportVisibilitySettings />
-            </div>
           )}
         </div>
       )}

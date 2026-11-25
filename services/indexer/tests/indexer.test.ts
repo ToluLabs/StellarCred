@@ -61,9 +61,9 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
   } as Config;
 }
 
-function makeTmpDb(cfg: Config): Db {
+async function makeTmpDb(cfg: Config): Promise<Db> {
   const db = createSqliteDb(cfg);
-  db.migrate();
+  await db.migrate();
   return db;
 }
 
@@ -169,17 +169,17 @@ describe("DB persistence — upsertClaim", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(cfg.sqlitePath); } catch { /* */ }
   });
 
-  it("inserts a new claim and reads it back", () => {
+  it("inserts a new claim and reads it back", async () => {
     const row: ClaimInput = {
       wallet: "GHOLDER0001",
       credential_type: "kyc",
@@ -189,9 +189,10 @@ describe("DB persistence — upsertClaim", () => {
       ledger_sequence: 500,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     };
-    db.upsertClaim(row);
-    const claims = db.claimsByWallet("GHOLDER0001") as ReturnType<Db["claimsByWallet"]>;
+    await db.upsertClaim(row);
+    const claims = (await db.claimsByWallet("GHOLDER0001")) as ReturnType<Db["claimsByWallet"]>;
     expect(Array.isArray(claims)).toBe(true);
     expect((claims as object[]).length).toBe(1);
     const claim = (claims as object[])[0] as typeof row;
@@ -200,7 +201,7 @@ describe("DB persistence — upsertClaim", () => {
     expect(claim.revoked).toBe(0);
   });
 
-  it("upserts idempotently — same event ingested twice produces one row", () => {
+  it("upserts idempotently — same event ingested twice produces one row", async () => {
     const row: ClaimInput = {
       wallet: "GHOLDER0002",
       credential_type: "age",
@@ -210,14 +211,15 @@ describe("DB persistence — upsertClaim", () => {
       ledger_sequence: 600,
       threshold: 21,
       revoked: 0,
+      reason_code: "other",
     };
-    db.upsertClaim(row);
-    db.upsertClaim(row); // duplicate — must not throw or double-insert
-    const claims = db.claimsByWallet("GHOLDER0002") as object[];
+    await db.upsertClaim(row);
+    await db.upsertClaim(row); // duplicate — must not throw or double-insert
+    const claims = (await db.claimsByWallet("GHOLDER0002")) as object[];
     expect(claims.length).toBe(1);
   });
 
-  it("updates expiry on re-ingestion (ON CONFLICT DO UPDATE)", () => {
+  it("updates expiry on re-ingestion (ON CONFLICT DO UPDATE)", async () => {
     const row: ClaimInput = {
       wallet: "GHOLDER0003",
       credential_type: "income",
@@ -227,18 +229,19 @@ describe("DB persistence — upsertClaim", () => {
       ledger_sequence: 700,
       threshold: 100_000,
       revoked: 0,
+      reason_code: "other",
     };
-    db.upsertClaim(row);
+    await db.upsertClaim(row);
     // Re-ingest with updated expiry (e.g. re-proved with new TTL)
-    db.upsertClaim({ ...row, expiry: 1_900_000_000, ledger_sequence: 800 });
-    const claims = db.claimsByWallet("GHOLDER0003") as Array<{ expiry: number }>;
+    await db.upsertClaim({ ...row, expiry: 1_900_000_000, ledger_sequence: 800 });
+    const claims = (await db.claimsByWallet("GHOLDER0003")) as Array<{ expiry: number }>;
     expect(claims.length).toBe(1);
     // Should have the latest expiry
     expect(claims[0].expiry).toBe(1_900_000_000);
   });
 
-  it("stores claims for multiple wallets independently", () => {
-    db.upsertClaim({
+  it("stores claims for multiple wallets independently", async () => {
+    await db.upsertClaim({
       wallet: "GHOLDER_A",
       credential_type: "kyc",
       issuer: "GI001",
@@ -247,8 +250,9 @@ describe("DB persistence — upsertClaim", () => {
       ledger_sequence: 100,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GHOLDER_B",
       credential_type: "kyc",
       issuer: "GI001",
@@ -257,10 +261,11 @@ describe("DB persistence — upsertClaim", () => {
       ledger_sequence: 101,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
-    expect((db.claimsByWallet("GHOLDER_A") as object[]).length).toBe(1);
-    expect((db.claimsByWallet("GHOLDER_B") as object[]).length).toBe(1);
-    expect((db.claimsByWallet("GHOLDER_C") as object[]).length).toBe(0);
+    expect(((await db.claimsByWallet("GHOLDER_A")) as object[]).length).toBe(1);
+    expect(((await db.claimsByWallet("GHOLDER_B")) as object[]).length).toBe(1);
+    expect(((await db.claimsByWallet("GHOLDER_C")) as object[]).length).toBe(0);
   });
 });
 
@@ -272,18 +277,18 @@ describe("DB persistence — revokeClaim", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(cfg.sqlitePath); } catch { /* */ }
   });
 
-  it("marks a claim as revoked", () => {
-    db.upsertClaim({
+  it("marks a claim as revoked", async () => {
+    await db.upsertClaim({
       wallet: "GHOLDER_REV",
       credential_type: "funds",
       issuer: "GI001",
@@ -292,15 +297,16 @@ describe("DB persistence — revokeClaim", () => {
       ledger_sequence: 200,
       threshold: 50_000,
       revoked: 0,
+      reason_code: "other",
     });
-    db.revokeClaim("GHOLDER_REV", "funds");
-    const claims = db.claimsByWallet("GHOLDER_REV") as Array<{ revoked: number }>;
+    await db.revokeClaim("GHOLDER_REV", "funds");
+    const claims = (await db.claimsByWallet("GHOLDER_REV")) as Array<{ revoked: number }>;
     expect(claims.length).toBe(1);
     expect(claims[0].revoked).toBe(1);
   });
 
-  it("does not affect other credential types for the same wallet", () => {
-    db.upsertClaim({
+  it("does not affect other credential types for the same wallet", async () => {
+    await db.upsertClaim({
       wallet: "GHOLDER_MULTI",
       credential_type: "kyc",
       issuer: "GI001",
@@ -309,8 +315,9 @@ describe("DB persistence — revokeClaim", () => {
       ledger_sequence: 300,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     });
-    db.upsertClaim({
+    await db.upsertClaim({
       wallet: "GHOLDER_MULTI",
       credential_type: "age",
       issuer: "GI001",
@@ -319,18 +326,19 @@ describe("DB persistence — revokeClaim", () => {
       ledger_sequence: 301,
       threshold: 21,
       revoked: 0,
+      reason_code: "other",
     });
-    db.revokeClaim("GHOLDER_MULTI", "kyc");
-    const claims = db.claimsByWallet("GHOLDER_MULTI") as Array<{ credential_type: string; revoked: number }>;
+    await db.revokeClaim("GHOLDER_MULTI", "kyc");
+    const claims = (await db.claimsByWallet("GHOLDER_MULTI")) as Array<{ credential_type: string; revoked: number }>;
     const kyc = claims.find((c) => c.credential_type === "kyc");
     const age = claims.find((c) => c.credential_type === "age");
     expect(kyc?.revoked).toBe(1);
     expect(age?.revoked).toBe(0);
   });
 
-  it("is a no-op for non-existent wallet/type combinations", () => {
+  it("is a no-op for non-existent wallet/type combinations", async () => {
     // Should not throw
-    expect(() => db.revokeClaim("GNOBODY", "kyc")).not.toThrow();
+    await expect(db.revokeClaim("GNOBODY", "kyc")).resolves.not.toThrow();
   });
 });
 
@@ -342,29 +350,29 @@ describe("DB cursor durability", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(cfg.sqlitePath); } catch { /* */ }
   });
 
-  it("returns 0 when no cursor has been saved", () => {
-    expect(db.getLastLedger()).toBe(0);
+  it("returns 0 when no cursor has been saved", async () => {
+    expect((await db.getLastLedger())).toBe(0);
   });
 
-  it("persists the cursor and reads it back", () => {
-    db.setLastLedger(1234);
-    expect(db.getLastLedger()).toBe(1234);
+  it("persists the cursor and reads it back", async () => {
+    await db.setLastLedger(1234);
+    expect((await db.getLastLedger())).toBe(1234);
   });
 
-  it("overwrites the cursor on repeated writes", () => {
-    db.setLastLedger(100);
-    db.setLastLedger(200);
-    expect(db.getLastLedger()).toBe(200);
+  it("overwrites the cursor on repeated writes", async () => {
+    await db.setLastLedger(100);
+    await db.setLastLedger(200);
+    expect((await db.getLastLedger())).toBe(200);
   });
 });
 
@@ -377,15 +385,15 @@ describe("Ingester.tick() — event parsing and persistence", () => {
   let cfg: Config;
   let fetchMock: jest.SpyInstance;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig({ finalityLag: 0 });
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
     fetchMock = jest.spyOn(global, "fetch");
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     fetchMock.mockRestore();
-    db.close();
+    await db.close();
     try { fs.unlinkSync(cfg.sqlitePath); } catch { /* */ }
   });
 
@@ -416,7 +424,7 @@ describe("Ingester.tick() — event parsing and persistence", () => {
     const count = await ingester.tick();
 
     expect(count).toBe(1);
-    const claims = db.claimsByWallet(holder) as Array<{ credential_type: string; revoked: number }>;
+    const claims = (await db.claimsByWallet(holder)) as Array<{ credential_type: string; revoked: number }>;
     expect(claims.length).toBe(1);
     expect(claims[0].credential_type).toBe("kyc");
     expect(claims[0].revoked).toBe(0);
@@ -466,8 +474,8 @@ describe("Ingester.tick() — event parsing and persistence", () => {
     const count = await ingester.tick();
 
     expect(count).toBe(2);
-    expect((db.claimsByWallet(h1) as object[]).length).toBe(1);
-    expect((db.claimsByWallet(h2) as object[]).length).toBe(1);
+    expect(((await db.claimsByWallet(h1)) as object[]).length).toBe(1);
+    expect(((await db.claimsByWallet(h2)) as object[]).length).toBe(1);
   });
 
   it("persists from fixtures/indexer/verified-event.json when it exists", async () => {
@@ -476,7 +484,9 @@ describe("Ingester.tick() — event parsing and persistence", () => {
 
     const ev = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
     ev.contract_id = CONTRACT_ID; // ensure it matches our test contract
-    mockHorizon(200, [ev]);
+    // Events above the ledger head are held back as not yet final, so put
+    // the head at the fixture's own ledger.
+    mockHorizon(Number(ev.ledger), [ev]);
 
     const ingester = createIngester(cfg, db);
     const count = await ingester.tick();
@@ -492,23 +502,23 @@ describe("DB stats", () => {
   let db: Db;
   let cfg: Config;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cfg = makeConfig();
-    db = makeTmpDb(cfg);
+    db = await makeTmpDb(cfg);
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await db.close();
     try { fs.unlinkSync(cfg.sqlitePath); } catch { /* */ }
   });
 
-  it("returns empty stats when no claims exist", () => {
-    const stats = db.stats() as object[];
+  it("returns empty stats when no claims exist", async () => {
+    const stats = (await db.stats()) as object[];
     expect(Array.isArray(stats)).toBe(true);
     expect(stats.length).toBe(0);
   });
 
-  it("counts active and revoked claims per type", () => {
+  it("counts active and revoked claims per type", async () => {
     const base: Omit<ClaimInput, "wallet"> = {
       credential_type: "kyc",
       issuer: "GI001",
@@ -517,13 +527,14 @@ describe("DB stats", () => {
       ledger_sequence: 100,
       threshold: null,
       revoked: 0,
+      reason_code: "other",
     };
-    db.upsertClaim({ ...base, wallet: "GHA" });
-    db.upsertClaim({ ...base, wallet: "GHB" });
-    db.upsertClaim({ ...base, wallet: "GHC" });
-    db.revokeClaim("GHC", "kyc");
+    await db.upsertClaim({ ...base, wallet: "GHA" });
+    await db.upsertClaim({ ...base, wallet: "GHB" });
+    await db.upsertClaim({ ...base, wallet: "GHC" });
+    await db.revokeClaim("GHC", "kyc");
 
-    const stats = db.stats() as Array<{ credential_type: string; total: number; active: number; revoked: number }>;
+    const stats = (await db.stats()) as Array<{ credential_type: string; total: number; active: number; revoked: number }>;
     const kyc = stats.find((s) => s.credential_type === "kyc");
     expect(kyc).toBeDefined();
     expect(kyc!.total).toBe(3);

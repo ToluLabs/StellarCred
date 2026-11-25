@@ -11,7 +11,17 @@
  */
 
 import type { SqlParam } from "./db-dialect";
-import type { PostgresConnection } from "./db-postgres";
+import type { PostgresConnection, PostgresQueryConfig } from "./db-postgres";
+
+/** Forward a query to a connection using whichever `pg` call form it arrived in. */
+function send(
+  conn: PostgresConnection,
+  input: string | PostgresQueryConfig,
+  values?: SqlParam[],
+): Promise<{ rows: unknown[] }> {
+  if (typeof input !== "string") return conn.query(input);
+  return values ? conn.query(input, values) : conn.query(input);
+}
 
 export interface ReadReplicaRouterOptions {
   /**
@@ -74,6 +84,10 @@ const ROW_LOCKING_PATTERN =
 
 const SEQUENCE_MUTATION_PATTERN = /\b(?:nextval|setval)\s*\(/i;
 
+// The schema-version row gates migrations and startup compatibility, so it is
+// always read from primary: a lagging replica could report a stale version.
+const PRIMARY_ONLY_TABLE_PATTERN = /\bschema_version\b/i;
+
 /**
  * Return true iff `sql` is a single, pure read-only query safe to route to a
  * PostgreSQL read replica.
@@ -99,6 +113,10 @@ export function isReadOnlyQuery(sql: string): boolean {
   }
 
   if (WRITE_OR_MUTATING_PATTERN.test(withoutTrailingSemi)) {
+    return false;
+  }
+
+  if (PRIMARY_ONLY_TABLE_PATTERN.test(withoutTrailingSemi)) {
     return false;
   }
 
@@ -132,10 +150,14 @@ export function createReadReplicaRouter(
   let primaryFallbacks = 0;
 
   return {
-    async query(text: string, values?: SqlParam[]): Promise<{ rows: unknown[] }> {
+    async query(
+      input: string | PostgresQueryConfig,
+      values?: SqlParam[],
+    ): Promise<{ rows: unknown[] }> {
+      const text = typeof input === "string" ? input : input.text;
       if (replicaList.length === 0 || !isReadOnlyQuery(text)) {
         primaryQueries += 1;
-        return primary.query(text, values);
+        return send(primary, input, values);
       }
 
       const startIndex = nextReplicaIndex;
@@ -145,7 +167,7 @@ export function createReadReplicaRouter(
       for (let attempt = 0; attempt < replicaList.length; attempt += 1) {
         const replicaIndex = (startIndex + attempt) % replicaList.length;
         try {
-          const result = await replicaList[replicaIndex].query(text, values);
+          const result = await send(replicaList[replicaIndex], input, values);
           replicaQueries += 1;
           return result;
         } catch (err) {
@@ -160,7 +182,7 @@ export function createReadReplicaRouter(
       if (fallbackToPrimary) {
         primaryFallbacks += 1;
         primaryQueries += 1;
-        return primary.query(text, values);
+        return send(primary, input, values);
       }
 
       throw lastError;

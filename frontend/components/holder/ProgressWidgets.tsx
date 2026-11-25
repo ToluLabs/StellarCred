@@ -20,7 +20,15 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
         const isLast = idx === steps.length - 1;
         return (
           <div key={s.label} style={{ display: "flex", gap: "0.85rem", alignItems: "flex-start" }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 28, flexShrink: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                width: 28,
+                flexShrink: 0,
+              }}
+            >
               <div
                 style={{
                   width: 28,
@@ -29,12 +37,19 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
                   display: "grid",
                   placeItems: "center",
                   border: `1px solid ${
-                    s.status === "done" ? "var(--accent)" :
-                    s.status === "active" ? "rgba(62,207,142,0.5)" :
-                    "var(--border-strong)"
+                    s.status === "done"
+                      ? "var(--accent)"
+                      : s.status === "active"
+                        ? "rgba(62,207,142,0.5)"
+                        : "var(--border-strong)"
                   }`,
                   background: s.status === "done" ? "var(--accent)" : "transparent",
-                  color: s.status === "done" ? "var(--bg)" : s.status === "active" ? "var(--accent)" : "var(--faint)",
+                  color:
+                    s.status === "done"
+                      ? "var(--bg)"
+                      : s.status === "active"
+                        ? "var(--accent)"
+                        : "var(--faint)",
                   transition: "all 0.25s var(--ease)",
                 }}
               >
@@ -63,8 +78,21 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", paddingTop: "0.25rem" }}>
-                <span style={{ fontWeight: 600, fontSize: "0.9rem", color: s.status === "pending" ? "var(--muted)" : "var(--text)" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  paddingTop: "0.25rem",
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    color: s.status === "pending" ? "var(--muted)" : "var(--text)",
+                  }}
+                >
                   {s.label}
                 </span>
                 {s.status === "active" && (

@@ -67,6 +67,9 @@ function fakeSqlite(respond?: (sql: string) => unknown) {
     pragma() {
       return undefined;
     },
+    async backup() {
+      return undefined;
+    },
     prepare(sql) {
       return {
         run(...params: SqlParam[]) {
@@ -538,8 +541,9 @@ describe("schema", () => {
 
     const p = fakePostgres();
     await createSharedDb(createPostgresDialect(p.conn)).migrate();
-    expect(p.calls[0].sql).toContain("INSERT INTO ledger_cursor");
-    expect(p.calls[0].sql).toContain("ON CONFLICT (id) DO NOTHING");
+    // migrate() reads schema_version first, then creates the tables.
+    const seed = p.calls.find((c) => c.sql.includes("INSERT INTO ledger_cursor"));
+    expect(seed?.sql).toContain("ON CONFLICT (id) DO NOTHING");
   });
 });
 

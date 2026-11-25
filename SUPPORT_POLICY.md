@@ -5,14 +5,13 @@ procedures, and migration paths for every versioned artifact in StellarCred.
 It binds operators, protocol integrators, and SDK consumers alike.
 
 Cross-references:
-Cross-references:
 
 - [VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md) — per-release
   compatibility matrix and upgrade checklists.
 - [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) — step-by-step procedures for
   contract upgrades and data migrations.
 
-- [V1_PUBLIC_SURFACE_FREEZE.md](V1_PUBLIC_SURFACE_FREEZE.md) — canonical v1
+- [docs/V1_PUBLIC_SURFACE.md](docs/V1_PUBLIC_SURFACE.md) — canonical v1
   compatibility page and release-scope review checklist for frozen surfaces.
 ---
 
@@ -79,12 +78,12 @@ valid. The bump procedure and its CI enforcement are documented in
 The v1 public surface (contract ABI, events, errors, circuit public-input
 layouts, and SDK exports) is frozen. Changes to any frozen surface require:
 
-1. A completed entry in the release-scope review checklist published in
-   [V1_PUBLIC_SURFACE_FREEZE.md](V1_PUBLIC_SURFACE_FREEZE.md).
+1. A completed entry in the release-scope review checklist in
+   [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 2. Sign-off from the contract, circuits, and SDK maintainers, each recorded on
    the pull request that touches the frozen surface.
 3. Verification that the canonical source file listed for that surface in
-   [V1_PUBLIC_SURFACE_FREEZE.md](V1_PUBLIC_SURFACE_FREEZE.md) and its validation
+   [docs/V1_PUBLIC_SURFACE.md](docs/V1_PUBLIC_SURFACE.md) and its validation
    check still agree.
 
 Pull requests that alter a frozen surface without all three maintainer

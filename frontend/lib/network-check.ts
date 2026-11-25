@@ -5,12 +5,7 @@
 // The app and the indexer share the same rule: one network selector must
 // drive a coherent config.
 
-import {
-  NETWORK,
-  NETWORK_PASSPHRASE,
-  NETWORK_PRESETS,
-  RPC_URL,
-} from "./stellar";
+import { NETWORK, NETWORK_PASSPHRASE, NETWORK_PRESETS, RPC_URL } from "./stellar";
 
 export interface NetworkProblem {
   /** Config key at fault, e.g. "NEXT_PUBLIC_NETWORK_PASSPHRASE". */

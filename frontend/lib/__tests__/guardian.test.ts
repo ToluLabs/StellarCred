@@ -106,9 +106,9 @@ describe("lib/guardian.ts - Guardian Recovery Setup & Restoration", () => {
       threshold: 2,
     });
 
-    await expect(
-      recoverCredentialsFromShares(setup.backup, setup.shares),
-    ).rejects.toThrow(/value must be a non-empty/);
+    await expect(recoverCredentialsFromShares(setup.backup, setup.shares)).rejects.toThrow(
+      /value must be a non-empty/,
+    );
   });
 
   it("works with 3-of-5 threshold setup", async () => {
@@ -163,9 +163,9 @@ describe("lib/guardian.ts - Guardian Recovery Setup & Restoration", () => {
       threshold: 2,
     });
 
-    await expect(
-      recoverCredentialsFromShares(setup.backup, [setup.shares[0]]),
-    ).rejects.toThrow(GuardianRecoveryError);
+    await expect(recoverCredentialsFromShares(setup.backup, [setup.shares[0]])).rejects.toThrow(
+      GuardianRecoveryError,
+    );
   });
 
   it("rejects duplicate shares for the same guardian index", async () => {
@@ -235,8 +235,7 @@ describe("lib/guardian.ts - Guardian Recovery Setup & Restoration", () => {
     });
 
     // Re-write the current backup in the historical version-1 shape.
-    const legacyBackup = { ...setup.backup, version: 1 } as unknown as
-      typeof setup.backup;
+    const legacyBackup = { ...setup.backup, version: 1 } as unknown as typeof setup.backup;
     delete (legacyBackup as { kdf?: unknown }).kdf;
 
     const recovered = await recoverCredentialsFromShares(legacyBackup, [
@@ -314,9 +313,13 @@ describe("lib/guardian.ts - Parsing and Serialization", () => {
   });
 
   it("throws descriptive errors on malformed backup or share strings", () => {
-    expect(() => parseGuardianShare("invalid-json")).toThrow("Share input must be valid JSON or an SC-SHARE code");
+    expect(() => parseGuardianShare("invalid-json")).toThrow(
+      "Share input must be valid JSON or an SC-SHARE code",
+    );
     expect(() => parseGuardianShare("{}")).toThrow("Invalid Guardian Share structure");
     expect(() => parseGuardianBackup("not-json")).toThrow("Backup input must be valid JSON");
-    expect(() => parseGuardianBackup(JSON.stringify({ type: "wrong" }))).toThrow("Invalid Guardian Encrypted Backup");
+    expect(() => parseGuardianBackup(JSON.stringify({ type: "wrong" }))).toThrow(
+      "Invalid Guardian Encrypted Backup",
+    );
   });
 });
