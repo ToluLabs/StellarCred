@@ -33,6 +33,7 @@ import {
   type HorizonContractEvent,
   type HorizonEventsPage,
 } from "./ingester";
+import { injectTraceHeaders, logger } from "./logging";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -43,10 +44,15 @@ export interface BackfillOptions {
   to: LedgerBound;
   batchSize: number;
   resume: boolean;
+  force: boolean;
   checkpointPath: string;
 }
 
 export interface BackfillCheckpoint {
+  /** Network identity (e.g. testnet, mainnet, or passphrase). */
+  network: string;
+  /** Contract ID being backfilled. */
+  contractId: string;
   /** Inclusive lower bound of the run. 0 means "earliest Horizon retains". */
   from: number;
   /** Inclusive upper bound of the run (already capped at the finality ceiling). */
@@ -99,6 +105,7 @@ export const parseBackfillArgs = (argv: string[]): BackfillOptions => {
     to: "head",
     batchSize: MAX_HORIZON_LIMIT,
     resume: false,
+    force: false,
     checkpointPath: process.env.BACKFILL_CHECKPOINT ?? DEFAULT_CHECKPOINT,
   };
 
@@ -126,6 +133,9 @@ export const parseBackfillArgs = (argv: string[]): BackfillOptions => {
       }
       case "--resume":
         opts.resume = true;
+        break;
+      case "--force":
+        opts.force = true;
         break;
       case "--checkpoint":
         opts.checkpointPath = next();
@@ -176,7 +186,9 @@ export const runBackfill = async (
   deps: BackfillDeps = {}
 ): Promise<BackfillResult> => {
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const log = deps.log ?? ((m: string) => console.log(m));
+  const log =
+    deps.log ??
+    ((m: string) => logger.info("backfill_progress", { detail: m }));
   const sleep = deps.sleep ?? defaultSleep;
 
   const getJson = async (url: URL): Promise<unknown> => {
@@ -184,7 +196,9 @@ export const runBackfill = async (
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       let res: Response;
       try {
-        res = await fetchImpl(url.toString());
+        res = await fetchImpl(url.toString(), {
+          headers: injectTraceHeaders(),
+        });
       } catch (err) {
         // Network-level failure: retryable.
         lastErr = err;
@@ -214,12 +228,28 @@ export const runBackfill = async (
   };
 
   // 1. Resolve the range, or load it from the checkpoint.
+  const currentNetwork =
+    (config as { stellarNetwork?: string }).stellarNetwork ??
+    (config as { networkPassphrase?: string }).networkPassphrase ??
+    "unknown";
+  const currentContract = config.proofRegistryContractId;
+
   let cp: BackfillCheckpoint;
   const existing = readCheckpoint(opts.checkpointPath);
 
   if (opts.resume) {
     if (!existing) {
       throw new Error(`--resume given but no checkpoint found at ${opts.checkpointPath}`);
+    }
+    if (existing.network && existing.network !== currentNetwork) {
+      throw new Error(
+        `Cannot resume backfill across different networks: checkpoint was created for network "${existing.network}", but current config is "${currentNetwork}".`
+      );
+    }
+    if (existing.contractId && existing.contractId !== currentContract) {
+      throw new Error(
+        `Cannot resume backfill across different contracts: checkpoint was created for contract "${existing.contractId}", but current config is "${currentContract}".`
+      );
     }
     if (existing.done) {
       log(`[backfill] Checkpoint at ${opts.checkpointPath} is already complete (ledgers ${existing.from}..${existing.to}).`);
@@ -228,11 +258,18 @@ export const runBackfill = async (
     cp = existing;
     log(`[backfill] Resuming ${cp.from}..${cp.to} after ledger ${cp.lastLedger} (${cp.processed} events so far)`);
   } else {
-    if (existing && !existing.done) {
-      throw new Error(
-        `An unfinished backfill checkpoint exists at ${opts.checkpointPath}. ` +
-          `Run with --resume, or delete the file to start a new range.`
-      );
+    if (existing && !opts.force) {
+      if (!existing.done) {
+        throw new Error(
+          `An unfinished backfill checkpoint exists at ${opts.checkpointPath}. ` +
+            `Run with --resume to continue, or pass --force to replace/rewind the existing projection.`
+        );
+      } else {
+        throw new Error(
+          `A completed backfill checkpoint already exists at ${opts.checkpointPath} (ledgers ${existing.from}..${existing.to}). ` +
+            `Pass --force to overwrite or rewind the existing projection.`
+        );
+      }
     }
     const ceiling = (await getHead()) - config.finalityLag;
     const from: number =
@@ -241,7 +278,16 @@ export const runBackfill = async (
     if (to < from) {
       throw new Error(`Nothing to backfill: range ${from}..${to} is empty after capping at the finality ceiling ${ceiling}`);
     }
-    cp = { from, to, lastLedger: from > 0 ? from - 1 : 0, processed: 0, done: false, updatedAt: new Date().toISOString() };
+    cp = {
+      network: currentNetwork,
+      contractId: currentContract,
+      from,
+      to,
+      lastLedger: from > 0 ? from - 1 : 0,
+      processed: 0,
+      done: false,
+      updatedAt: new Date().toISOString(),
+    };
     writeCheckpoint(opts.checkpointPath, cp);
     log(`[backfill] Starting ledgers ${from > 0 ? from : "earliest"}..${to}, batch size ${opts.batchSize}`);
   }

@@ -299,7 +299,14 @@ describe("prover worker: happy path", () => {
     const { proveOffMainThread } = await loadClient();
     const aggregate = {
       kyc: { value: "1", salt: "2", sig: [1], commitment: "3", issuerPubX: [1], issuerPubY: [2] },
-      age: { date_of_birth: "4", salt: "5", sig: [2], commitment: "6", issuerPubX: [3], issuerPubY: [4] },
+      age: {
+        date_of_birth: "4",
+        salt: "5",
+        sig: [2],
+        commitment: "6",
+        issuerPubX: [3],
+        issuerPubY: [4],
+      },
     };
 
     await proveOffMainThread({ credentialType: "aggregate", aggregate });
@@ -335,9 +342,7 @@ describe("prover worker: cancellation across the boundary", () => {
       (_type, _witness, signal) =>
         new Promise<GeneratedProof>((_resolve, reject) => {
           jobSignal = signal;
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("Aborted", "AbortError")),
-          );
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
         }),
     );
     const { proveOffMainThread } = await loadClient();
@@ -409,9 +414,9 @@ describe("prover worker: failures", () => {
     computeWitness.mockRejectedValue(new Error("Witness generation failed: 500 boom"));
     const { proveOffMainThread } = await loadClient();
 
-    await expect(
-      proveOffMainThread({ credentialType: "age", credential: {} }),
-    ).rejects.toThrow("Witness generation failed: 500 boom");
+    await expect(proveOffMainThread({ credentialType: "age", credential: {} })).rejects.toThrow(
+      "Witness generation failed: 500 boom",
+    );
   });
 
   it("rebuilds a circuit-version mismatch as its real type, not a bare Error", async () => {
@@ -511,9 +516,7 @@ describe("prover worker: fallback to the main thread", () => {
     proveWithBackend.mockImplementation(
       (_type, _witness, signal) =>
         new Promise<GeneratedProof>((_resolve, reject) => {
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("Aborted", "AbortError")),
-          );
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
         }),
     );
     const { proveOffMainThread } = await loadClient();

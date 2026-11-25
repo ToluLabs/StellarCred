@@ -59,7 +59,8 @@ export function Input({
           padding: "var(--spacing-md, 0.625rem) var(--spacing-lg, 0.8rem)",
           fontFamily: "var(--font-mono), monospace",
           fontSize: "var(--type-base, 0.8125rem)",
-          transition: "border-color var(--transition-normal, 0.15s var(--ease)), box-shadow var(--transition-normal, 0.15s var(--ease))",
+          transition:
+            "border-color var(--transition-normal, 0.15s var(--ease)), box-shadow var(--transition-normal, 0.15s var(--ease))",
           appearance: "none",
         }}
         {...props}

@@ -27,7 +27,11 @@ describe("issuance queue (#850)", () => {
   });
 
   it("excludes completed events and filters by status/provider/search", () => {
-    expect(listIssuanceQueue().map((r) => r.eventId).sort()).toEqual(["a", "b"]);
+    expect(
+      listIssuanceQueue()
+        .map((r) => r.eventId)
+        .sort(),
+    ).toEqual(["a", "b"]);
     expect(listIssuanceQueue({ status: "failed" }).map((r) => r.eventId)).toEqual(["b"]);
     expect(listIssuanceQueue({ provider: "plaid" }).map((r) => r.eventId)).toEqual(["b"]);
     expect(listIssuanceQueue({ search: "A" }).map((r) => r.eventId)).toEqual(["a"]);

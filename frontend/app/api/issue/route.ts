@@ -209,11 +209,7 @@ async function executeRequest(
         }),
       );
       // Record metrics for every completed issuance request.
-      recordIssuance(
-        type || "unknown",
-        outcome === "success" ? "success" : "failure",
-        durationMs,
-      );
+      recordIssuance(type || "unknown", outcome === "success" ? "success" : "failure", durationMs);
     }
     // If no credential types were parsed yet (early rejection), record once.
     if (credentialTypes.length === 0) {

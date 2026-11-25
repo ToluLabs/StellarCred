@@ -2,12 +2,12 @@
 
 /**
  * Full local data wipe for StellarCred (#558).
- * 
+ *
  * Removes all credentials, proof cache, timeline, onboarding state, wallet
  * selection, and preferences from this browser. The holder who invokes this
  * loses access to their credentials unless they've backed them up — the
  * function prompts for export before wiping.
- * 
+ *
  * This is the single action to completely leave StellarCred without orphaning
  * storage keys. It's more surgical than clearing all site data (which would
  * also remove unrelated browser state) and less error-prone than removing
@@ -43,10 +43,10 @@ export interface WipeResult {
  */
 async function promptForBackup(): Promise<string | null> {
   if (typeof window === "undefined") return null;
-  
+
   try {
     const credentialsJson = await exportCredentials();
-    
+
     // No credentials to backup
     if (!credentialsJson || credentialsJson === "[]") {
       return null;
@@ -77,10 +77,10 @@ async function promptForBackup(): Promise<string | null> {
 
 /**
  * Wipe all StellarCred data from localStorage.
- * 
+ *
  * @param options - Configuration options
  * @returns Result indicating success, keys removed, and optional backup
- * 
+ *
  * @example
  * ```ts
  * const result = await wipeAllData();
@@ -180,7 +180,9 @@ export function getWipeSummary(): {
       credentials: localStorage.getItem(STORAGE_KEYS.CREDENTIALS) !== null,
       proofCache: localStorage.getItem(STORAGE_KEYS.PROOF_CACHE) !== null,
       timelines: getTimelineKeys().length,
-      onboarding: localStorage.getItem(STORAGE_KEYS.ONBOARDING) !== null || localStorage.getItem(STORAGE_KEYS.ONBOARDING_LEGACY) !== null,
+      onboarding:
+        localStorage.getItem(STORAGE_KEYS.ONBOARDING) !== null ||
+        localStorage.getItem(STORAGE_KEYS.ONBOARDING_LEGACY) !== null,
       wallet: localStorage.getItem(STORAGE_KEYS.WALLET_ID) !== null,
       theme: localStorage.getItem(STORAGE_KEYS.THEME) !== null,
     };

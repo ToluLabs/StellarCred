@@ -3,10 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { tmpdir } from "os";
 import path from "path";
-import {
-  auditLogBootstrap,
-  auditLogClear,
-} from "@/lib/audit-log";
+import { auditLogBootstrap, auditLogClear } from "@/lib/audit-log";
 import { MemoryStore, setSharedStoreForTesting } from "@/lib/shared-store";
 import { __resetExportStoreForTesting } from "@/lib/export-store";
 import { __resetExportJobStoreForTesting } from "@/lib/export-job-store";
@@ -23,10 +20,9 @@ function freshAuditPath(): string {
 }
 
 function makeReq(headers: Record<string, string>): NextRequest {
-  return new NextRequest(
-    "http://localhost/api/admin/exports/unknown-record-id/chunks",
-    { headers },
-  );
+  return new NextRequest("http://localhost/api/admin/exports/unknown-record-id/chunks", {
+    headers,
+  });
 }
 
 describe("GET /api/admin/exports/[id]/chunks — auth gate", () => {
@@ -59,18 +55,16 @@ describe("GET /api/admin/exports/[id]/chunks — auth gate", () => {
   });
 
   it("returns 401 for an invalid Bearer token", async () => {
-    const res = await GET(
-      makeReq({ Authorization: "Bearer wrong-key" }),
-      { params: Promise.resolve({ id: "unknown-record-id" }) },
-    );
+    const res = await GET(makeReq({ Authorization: "Bearer wrong-key" }), {
+      params: Promise.resolve({ id: "unknown-record-id" }),
+    });
     expect(res.status).toBe(401);
   });
 
   it("passes the gate and reaches the orchestrator (valid key + unknown record → 404)", async () => {
-    const res = await GET(
-      makeReq({ Authorization: "Bearer test-admin-key" }),
-      { params: Promise.resolve({ id: "unknown-record-id" }) },
-    );
+    const res = await GET(makeReq({ Authorization: "Bearer test-admin-key" }), {
+      params: Promise.resolve({ id: "unknown-record-id" }),
+    });
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toContain("export not found");

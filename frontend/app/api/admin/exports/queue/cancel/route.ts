@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/app/api/_middleware";
 import { cancelQueuedJob } from "@/lib/export-scheduler";
-import {
-  auditLogBootstrap,
-  auditLogAppend,
-  auditLogPersist,
-} from "@/lib/audit-log";
+import { auditLogBootstrap, auditLogAppend, auditLogPersist } from "@/lib/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -18,26 +14,17 @@ export async function POST(req: NextRequest) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json(
-        { error: "request body must be valid JSON" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "request body must be valid JSON" }, { status: 400 });
     }
 
     const { jobId } = body ?? {};
     if (!jobId || typeof jobId !== "string" || !jobId.trim()) {
-      return NextResponse.json(
-        { error: "jobId is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "jobId is required" }, { status: 400 });
     }
 
     const cancelled = await cancelQueuedJob(jobId.trim());
     if (!cancelled) {
-      return NextResponse.json(
-        { error: "job not found in queue" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "job not found in queue" }, { status: 404 });
     }
 
     await auditLogBootstrap();

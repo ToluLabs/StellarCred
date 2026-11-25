@@ -152,17 +152,17 @@ describe("POST /api/issue/batch", () => {
 
   it("requires an encryption key before accepting idempotent batch issuance", async () => {
     delete process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY;
-    const res = await POST(postRequest([{ holder: HOLDER_1, type: "kyc" }], {
-      "Idempotency-Key": "missing-encryption-key",
-    }));
+    const res = await POST(
+      postRequest([{ holder: HOLDER_1, type: "kyc" }], {
+        "Idempotency-Key": "missing-encryption-key",
+      }),
+    );
     expect(res.status).toBe(503);
   });
 
   it("allows a corrected retry after a failed batch", async () => {
     const key = "batch-retry-after-failure";
-    const failed = await POST(
-      postRequest([{ type: "kyc" }], { "Idempotency-Key": key }),
-    );
+    const failed = await POST(postRequest([{ type: "kyc" }], { "Idempotency-Key": key }));
     expect(failed.status).toBe(422);
 
     const retried = await POST(

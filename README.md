@@ -84,6 +84,7 @@ proof once and caches the result; every protocol afterwards reads
 ## Architecture & Overview
 
 For a detailed architectural description with diagrams, see the [Architecture Documentation](docs/ARCHITECTURE.md).
+For supported wallets, browsers, and network environments, see the [Wallet and Network Compatibility Matrix](docs/wallet-network-compatibility.md).
 For the authoritative specification of contract events, topic schemas, and indexer integration, see [docs/EVENTS.md](docs/EVENTS.md).
 
 ---
@@ -137,7 +138,7 @@ Install the SDK:
 npm install @stellarcred/sdk
 ```
 
-> Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
+> Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [API Reference](https://psalmuel01.github.io/StellarCred/) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
 >
 > **Canonical Integration Example**: Looking for a complete, runnable end-to-end integration with wallet control challenge proof and server-side route gating? See [`examples/canonical-integration`](examples/canonical-integration).
 >

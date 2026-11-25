@@ -36,9 +36,9 @@ export function RpcStatusBanner() {
       <span style={{ color: "var(--text)" }}>
         <strong>Stellar network unavailable.</strong>{" "}
         <span className="muted">
-          {issue?.message ?? "The RPC endpoint is not responding."} Credential
-          status is <strong>unknown</strong>, not unverified — nothing here is
-          a rejection, and submissions will fail until it recovers.
+          {issue?.message ?? "The RPC endpoint is not responding."} Credential status is{" "}
+          <strong>unknown</strong>, not unverified — nothing here is a rejection, and submissions
+          will fail until it recovers.
         </span>
       </span>
       <button

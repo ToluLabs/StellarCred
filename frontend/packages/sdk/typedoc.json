@@ -1,8 +1,13 @@
 {
-  "entryPoints": ["src/index.ts", "src/react.ts"],
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "@stellarcred/sdk",
+  "readme": "README.md",
+  "entryPoints": ["src/index.ts", "src/server.ts", "src/react.ts", "src/testing.ts"],
   "out": "docs/api",
   "tsconfig": "tsconfig.json",
   "excludePrivate": true,
   "excludeProtected": true,
-  "excludeInternal": true
+  "excludeInternal": true,
+  "githubPages": true,
+  "highlightLanguages": ["typescript", "javascript", "bash", "json", "vue", "svelte", "tsx"]
 }
