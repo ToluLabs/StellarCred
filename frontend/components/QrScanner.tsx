@@ -138,7 +138,7 @@ export function QrScanner({
             background: "#000",
           }}
         >
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live camera feed, not pre-recorded media */}
+          {}
           <video
             ref={videoRef}
             muted

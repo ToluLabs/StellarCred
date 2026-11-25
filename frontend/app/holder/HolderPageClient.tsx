@@ -21,9 +21,11 @@ import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
+import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
 import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
 import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
 
+// ── Components ────────────────────────────────────────────────────────────────
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
 import { CredListSkeleton } from "@/components/holder/CredListSkeleton";
 import { SectionLabel } from "@/components/holder/SectionLabel";
@@ -37,6 +39,7 @@ import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
 import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
+
 import type { PageView, BulkAction } from "./types";
 
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
@@ -67,11 +70,13 @@ function HolderInner() {
   const isPreview = usePreviewMode() && !restoring;
   const toast = useToast();
 
+  // ── Credential store ───────────────────────────────────────────────────────
   const { creds, loading, reload, save, remove, markCredentialProved, markCredentialsProved } =
     useCredentialStore();
   // Show placeholders while credentials hydrate — never the "no credentials"
   // empty state, which would then be replaced by a populated list.
   const showSkeleton = loading && !isPreview;
+
   const { downloadBackup } = useImportExport();
 
   const [view, setView] = useState<PageView>({ kind: "list" });
@@ -83,11 +88,20 @@ function HolderInner() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
+  // A transfer QR opened directly (native camera app -> /holder?import=...)
+  // lands here with the payload already in the URL — prompt for the
+  // passphrase immediately, and strip it from the URL so a refresh or the
+  // back button doesn't re-trigger the prompt or leave ciphertext in history.
+  useTransferImportParam(setImportPayload);
+
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
   const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
 
-  // Warm only unproved credential types after wallet connection; skip preview
-  // mode to avoid unnecessary WASM initialization.
+  // Warm the UltraHonk backend for whatever credential types the user still
+  // needs to prove, in the background, once the wallet is actually connected
+  // (never in preview mode — there's nothing real to prove yet). Only the
+  // types actually present in `unproved` are warmed, not all seven circuits,
+  // to avoid paying wasm-init cost for types the user has no credential for.
   const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
   useWarmProver(unprovedTypes, Boolean(address));
 
@@ -232,6 +246,7 @@ function HolderInner() {
                 </div>
               )}
 
+              {/* ── Empty state ── */}
               {creds.length === 0 && !importing && <EmptyCredentialsState />}
 
               {/* ── Expiring soon (action recommended) ── */}
@@ -293,6 +308,8 @@ function HolderInner() {
                         : undefined,
                     ),
                   )}
+                  {/* Select up to MAX_BATCH_SIZE credentials of distinct types
+                      and prove them in one transaction. */}
 
                   {/* Select up to MAX_BATCH_SIZE credentials of distinct types and
                   prove them in one transaction. */}
@@ -330,6 +347,7 @@ function HolderInner() {
                   Connect a wallet to generate and submit proofs.
                 </p>
               )}
+
               {/* ── Import / export ── */}
               {importing ? (
                 <ImportPanel

@@ -90,6 +90,25 @@ export default function DevelopersPage() {
         <Code>{`npm install @stellarcred/sdk`}</Code>
       </Section>
 
+      <Section title="API Reference">
+        <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
+          Browse the complete, always-current TypeScript API reference generated from the SDK TSDoc:{" "}
+          <a
+            href="https://psalmuel01.github.io/StellarCred/"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "var(--accent)" }}
+          >
+            SDK API Reference (TypeDoc)
+          </a>
+          .
+        </p>
+        <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "0.5rem" }}>
+          Full documentation covering all methods, signatures, types, parameters, return values,
+          error hierarchies, and React hooks.
+        </p>
+      </Section>
+
       <Section title="Checking a claim">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
           The primary call. Returns <span className="mono">true</span> if the wallet has a valid,
