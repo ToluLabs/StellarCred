@@ -20,9 +20,7 @@ vi.mock("../../proof-registry/src/index", () => ({
 vi.mock("@stellar/stellar-sdk", () => ({
   rpc: {},
   StrKey: {
-    isValidEd25519PublicKey: vi.fn(
-      (address: string) => address === WALLET,
-    ),
+    isValidEd25519PublicKey: vi.fn((address: string) => address === WALLET),
   },
 }));
 
@@ -126,17 +124,13 @@ describe("evaluateClaimRow (contract parity)", () => {
   });
 
   it("rejects an expired claim", () => {
-    expect(
-      evaluateClaimRow(row({ expiry: nowSeconds() - 1 }), opts),
-    ).toBe(false);
+    expect(evaluateClaimRow(row({ expiry: nowSeconds() - 1 }), opts)).toBe(false);
   });
 
   // The contract uses `expiry > timestamp`, so equality is NOT valid.
   it("rejects a claim expiring exactly now (strict comparison)", () => {
     const now = nowSeconds();
-    expect(evaluateClaimRow(row({ expiry: now }), { nowSeconds: now })).toBe(
-      false,
-    );
+    expect(evaluateClaimRow(row({ expiry: now }), { nowSeconds: now })).toBe(false);
   });
 
   it("treats a null threshold as 0", () => {
@@ -155,12 +149,8 @@ describe("evaluateClaimRow (contract parity)", () => {
   });
 
   it("accepts when the stored threshold meets the minimum", () => {
-    expect(
-      evaluateClaimRow(row({ threshold: 21 }), { ...opts, minThreshold: 18 }),
-    ).toBe(true);
-    expect(
-      evaluateClaimRow(row({ threshold: 17 }), { ...opts, minThreshold: 18 }),
-    ).toBe(false);
+    expect(evaluateClaimRow(row({ threshold: 21 }), { ...opts, minThreshold: 18 })).toBe(true);
+    expect(evaluateClaimRow(row({ threshold: 17 }), { ...opts, minThreshold: 18 })).toBe(false);
   });
 });
 
@@ -204,9 +194,7 @@ describe("source defaults to chain", () => {
     const fetchMock = mockIndexer([row()]);
     mockChainValid(true);
 
-    await expect(hasClaim(WALLET, "kyc", { source: "chain" })).resolves.toBe(
-      true,
-    );
+    await expect(hasClaim(WALLET, "kyc", { source: "chain" })).resolves.toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -405,8 +393,8 @@ describe('source: "indexer-verified"', () => {
       retryOptions: { retries: 0 },
     });
 
-    const driftWarnings = (console.warn as ReturnType<typeof vi.fn>).mock.calls.filter(
-      (call) => String(call[0]).includes("disagreed with the chain"),
+    const driftWarnings = (console.warn as ReturnType<typeof vi.fn>).mock.calls.filter((call) =>
+      String(call[0]).includes("disagreed with the chain"),
     );
     expect(driftWarnings).toHaveLength(1);
   });
@@ -444,9 +432,7 @@ describe("indexer misconfiguration and failure", () => {
     configure({ registryId: "C_TEST_REGISTRY" });
     const fetchMock = mockIndexer([row()]);
 
-    await expect(
-      hasClaim(WALLET, "kyc", { source: "indexer" }),
-    ).resolves.toBe(false);
+    await expect(hasClaim(WALLET, "kyc", { source: "indexer" })).resolves.toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -480,6 +466,35 @@ describe("indexer misconfiguration and failure", () => {
     ).rejects.toBeInstanceOf(IndexerError);
   });
 
+  it("keeps indexer URLs, wallet addresses, and response text out of errors", async () => {
+    const secret = `credential=private salt=secret signature=abc wallet=${WALLET} url=${INDEXER_URL}`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 503,
+        json: async () => ({ code: "indexer_unavailable", error: secret }),
+      })),
+    );
+
+    let thrown: unknown;
+    try {
+      await hasClaim(WALLET, "kyc", {
+        source: "indexer",
+        throwOnError: true,
+        retryOptions: { retries: 0 },
+      });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(IndexerError);
+    expect(thrown).toMatchObject({ status: 503, code: "indexer_unavailable" });
+    expect((thrown as Error).message).not.toContain(secret);
+    expect((thrown as Error).message).not.toContain(WALLET);
+    expect((thrown as Error).message).not.toContain(INDEXER_URL);
+  });
+
   it("throws IndexerError when the response body is malformed", async () => {
     vi.stubGlobal(
       "fetch",
@@ -497,6 +512,34 @@ describe("indexer misconfiguration and failure", () => {
         retryOptions: { retries: 0 },
       }),
     ).rejects.toBeInstanceOf(IndexerError);
+  });
+
+  it("does not expose transport exceptions or endpoint details", async () => {
+    const secret = `credential=private salt=secret signature=abc url=${INDEXER_URL}`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error(secret);
+      }),
+    );
+
+    let thrown: unknown;
+    try {
+      await hasClaim(WALLET, "kyc", {
+        source: "indexer",
+        throwOnError: true,
+        retryOptions: { retries: 0 },
+      });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(IndexerError);
+    expect(thrown).toMatchObject({ code: "indexer_network_error" });
+    expect((thrown as Error).message).not.toContain(secret);
+    expect((thrown as Error).message).not.toContain(WALLET);
+    expect((thrown as Error).message).not.toContain(INDEXER_URL);
+    expect((thrown as IndexerError).cause).toBeInstanceOf(Error);
   });
 
   it("does not cache a failed response", async () => {

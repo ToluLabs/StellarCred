@@ -20,7 +20,7 @@ was checked against open issues on 2026-10-22.
 |---|---|---|
 | Contracts | `contracts/` (`issuer_registry`, `credential_verifier`, `proof_registry`, `gated_pool`; soroban-sdk 26.0.1) | `CONTRACT_VERSION = 1_000_000` already; real UltraHonk verifier via `rs-soroban-ultrahonk` pinned to a git rev (not published). Testnet only. |
 | Circuits | `circuits/` (12 proven circuits in `circuit-versions.json`, Noir 1.0.0-beta.9 / bb 0.87.0) | All at circuit `1.0.0`, VK version 1. Constraint baseline in `circuits/AUDIT.md`. |
-| SDK | `frontend/packages/sdk` (`@stellarcred/sdk` 0.1.1) | Read-only claim client. A second, private package `sdk/` (`@sdk/core` 0.0.0) still exists at the repo root. |
+| SDK | `frontend/packages/sdk` (`@stellarcred/sdk` 0.1.1) | Canonical read-only claim client. The unused private root `sdk/` package was removed (#970); only a deprecation pointer remains. |
 | Issuer package | `frontend/packages/issuer` (`@stellarcred/issuer` 0.1.0) | Server-only issuance. Not published by `release.yml`. |
 | Generated clients | `frontend/packages/proof-registry`, `frontend/packages/issuer-registry` | Generated from contracts (`scripts/gen-bindings.sh`). |
 | App + API | `frontend/` (Next.js; holder, verify, issuer, admin, apps, developers; `app/api/issue`) | Beta. Several open security and correctness issues. |
@@ -82,7 +82,8 @@ Goal: decide what v1.0 *is* and stop the public surface from moving.
 Exit criteria:
 - [ ] v1.0 contract ABI, events, and error codes frozen and documented (NEW: contract freeze).
 - [ ] v1.0 supported circuit set and public-input layouts frozen (NEW: circuit freeze).
-- [ ] SDK public API review complete, and the fate of the root `sdk/` package decided (NEW: SDK API review).
+- [x] The duplicate root SDK package is removed; `frontend/packages/sdk` is canonical and CI-guarded (#970).
+- [ ] SDK public API review complete (NEW: SDK API review).
 - [ ] Backlog triaged: duplicates closed, milestones created, every v1.0 issue on a milestone (NEW: triage).
 - [ ] Contract fmt/clippy gate in CI (#599).
 - [ ] First pre-release tag `v1.0.0-alpha.1` cut through `release.yml` (NEW: release pipeline).
@@ -148,11 +149,12 @@ Owners are roles; replace them with a GitHub handle when someone claims the task
 | Proving benchmarks and timeout guardrails | #943 | M (3d) | Contributor | beta |
 | Verify `date_range` circuit (exists in `circuits/date_range`) against #390; close or scope the remaining work | #390 | S (0.5d) | Circuits maintainer | alpha |
 
-### 4.3 SDK and packages (`frontend/packages/*`, `sdk/`)
+### 4.3 SDK and packages (`frontend/packages/*`)
 
 | Task | Issue | Est. | Owner | Milestone |
 |---|---|---|---|---|
-| SDK v1.0 API review: public surface, naming, errors, deprecations; resolve the duplicate root `sdk/` package | NEW | M (4d) | SDK maintainer | alpha |
+| Remove the unused root `sdk/` package and guard the canonical `frontend/packages/sdk` layout | #970 (done) | S | SDK maintainer | alpha |
+| SDK v1.0 API review: public surface, naming, errors, deprecations | NEW | M (4d) | SDK maintainer | alpha |
 | Generate and publish SDK API reference from TSDoc in CI | #402 | S (2d) | Contributor | rc |
 | Bundle-size budget and tree-shaking (merge with #737) | #403, #737 | S (2d) | Contributor | beta |
 | Retry logic must not amplify load during an RPC outage | #555 | M (3d) | SDK maintainer | beta |
@@ -261,7 +263,6 @@ Release manager runs this list and pastes it, ticked, into the release PR or iss
 | Security review lead time | Slips the RC | Freeze scope and request the review at alpha exit. Hand over a frozen commit at beta. |
 | Freezing the ABI too early or too late | Breaking changes after GA, or alpha stalls | Freeze at alpha. After that, ABI changes need maintainer sign-off and a note in #741. |
 | Noisy backlog (duplicates, issues unrelated to this codebase) | Contributors work on the wrong things | Triage at alpha. Only issues on the v1.0 milestone count toward release. |
-| Two SDK packages (`sdk/` and `frontend/packages/sdk`) | Integrators import the wrong one; drift | Decide during the SDK API review. Delete or merge before beta. |
 | Proving performance in browsers (ECDSA dominates constraints, per `circuits/AUDIT.md`) | Poor holder UX on low-end devices | Benchmarks and timeouts (#943). Unsupported-browser fallback (#900). |
 | Few maintainers; many contributor tasks | Review bottleneck | Owners per component; contributor tasks sized S/M; release manager role named at alpha. |
 

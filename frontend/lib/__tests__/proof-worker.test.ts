@@ -64,12 +64,15 @@ class FakeWorker {
 
   /** Every command the main thread sent, in order. */
   commands: ProofWorkerCommand[] = [];
+  /** Every event the worker posted, in order. */
+  events: ProofWorkerEvent[] = [];
   /** Transfer lists the worker used, in order (undefined when it didn't). */
   transfers: Array<readonly Transferable[] | undefined> = [];
   terminated = false;
 
   private prover = createProverWorker({
     postMessage: (message, transfer) => {
+      this.events.push(message);
       this.transfers.push(transfer);
       const delivered = cloneMessage(message);
       // The real boundary is asynchronous; keep it that way.
@@ -299,7 +302,14 @@ describe("prover worker: happy path", () => {
     const { proveOffMainThread } = await loadClient();
     const aggregate = {
       kyc: { value: "1", salt: "2", sig: [1], commitment: "3", issuerPubX: [1], issuerPubY: [2] },
-      age: { date_of_birth: "4", salt: "5", sig: [2], commitment: "6", issuerPubX: [3], issuerPubY: [4] },
+      age: {
+        date_of_birth: "4",
+        salt: "5",
+        sig: [2],
+        commitment: "6",
+        issuerPubX: [3],
+        issuerPubY: [4],
+      },
     };
 
     await proveOffMainThread({ credentialType: "aggregate", aggregate });
@@ -335,9 +345,7 @@ describe("prover worker: cancellation across the boundary", () => {
       (_type, _witness, signal) =>
         new Promise<GeneratedProof>((_resolve, reject) => {
           jobSignal = signal;
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("Aborted", "AbortError")),
-          );
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
         }),
     );
     const { proveOffMainThread } = await loadClient();
@@ -405,13 +413,20 @@ describe("prover worker: cancellation across the boundary", () => {
 });
 
 describe("prover worker: failures", () => {
-  it("surfaces a witness failure with its original message and name", async () => {
-    computeWitness.mockRejectedValue(new Error("Witness generation failed: 500 boom"));
+  it("surfaces only a safe classified witness failure across the boundary", async () => {
+    computeWitness.mockRejectedValue(
+      new Error("Witness generation failed: credential=private salt=secret signature=abc"),
+    );
     const { proveOffMainThread } = await loadClient();
 
     await expect(
       proveOffMainThread({ credentialType: "age", credential: {} }),
-    ).rejects.toThrow("Witness generation failed: 500 boom");
+    ).rejects.toMatchObject({ name: "VerificationError", category: "unknown", code: "unknown" });
+    const event = FakeWorker.instances[0].events.find((item) => item.event === "error");
+    expect(event).toMatchObject({ category: "unknown", code: "unknown", retryable: false });
+    expect(JSON.stringify(event)).not.toContain("private");
+    expect(JSON.stringify(event)).not.toContain("secret");
+    expect(JSON.stringify(event)).not.toContain("signature");
   });
 
   it("rebuilds a circuit-version mismatch as its real type, not a bare Error", async () => {
@@ -433,22 +448,31 @@ describe("prover worker: failures", () => {
     ).rejects.toBeInstanceOf(Revived);
   });
 
-  it("surfaces a non-Error rejection without losing it", async () => {
-    computeWitness.mockRejectedValue("string failure");
+  it("normalizes a non-Error rejection without exposing it", async () => {
+    computeWitness.mockRejectedValue("string failure salt=private");
     const { proveOffMainThread } = await loadClient();
 
-    await expect(proveOffMainThread({ credentialType: "age", credential: {} })).rejects.toThrow(
-      "string failure",
-    );
+    await expect(
+      proveOffMainThread({ credentialType: "age", credential: {} }),
+    ).rejects.toMatchObject({
+      name: "VerificationError",
+      code: "unknown",
+    });
+    const event = FakeWorker.instances[0].events.find((item) => item.event === "error");
+    expect(JSON.stringify(event)).not.toContain("string failure");
+    expect(JSON.stringify(event)).not.toContain("private");
   });
 
   it("keeps the worker alive after a failed job so the next proof still works", async () => {
     computeWitness.mockRejectedValueOnce(new Error("transient"));
     const { proveOffMainThread } = await loadClient();
 
-    await expect(proveOffMainThread({ credentialType: "age", credential: {} })).rejects.toThrow(
-      "transient",
-    );
+    await expect(
+      proveOffMainThread({ credentialType: "age", credential: {} }),
+    ).rejects.toMatchObject({
+      name: "VerificationError",
+      code: "unknown",
+    });
     const result = await proveOffMainThread({ credentialType: "age", credential: {} });
 
     expect(Array.from(result.proof)).toEqual([1, 2, 3, 4]);
@@ -511,9 +535,7 @@ describe("prover worker: fallback to the main thread", () => {
     proveWithBackend.mockImplementation(
       (_type, _witness, signal) =>
         new Promise<GeneratedProof>((_resolve, reject) => {
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("Aborted", "AbortError")),
-          );
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
         }),
     );
     const { proveOffMainThread } = await loadClient();

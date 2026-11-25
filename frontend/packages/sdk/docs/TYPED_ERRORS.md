@@ -6,6 +6,25 @@ The StellarCred SDK surfaces contract panics, RPC failures, and indexer issues a
 
 Every contract error code maps to the same human message across the stack (SDK, frontend, documentation), with the contract's `ProofRegistry` error enum as the single source of truth.
 
+## Safe verification categories
+
+`classifyVerificationError` normalizes SDK errors, contract panics, API responses, worker failures, and arbitrary thrown values into a `VerificationError`. Its `message` is selected from fixed safe text; raw exceptions and response bodies remain only in `cause` for diagnostics.
+
+| Category                 | Meaning                                                                                 | Default retry behavior      |
+| ------------------------ | --------------------------------------------------------------------------------------- | --------------------------- |
+| `policy_rejection`       | The proof is absent, revoked, from an untrusted issuer, or below the required threshold | Do not retry unchanged      |
+| `expired_proof`          | A locally evaluated proof has expired                                                   | Re-issue or re-prove        |
+| `unsupported_credential` | The claim type, circuit version, or proof format is unsupported                         | Use a supported credential  |
+| `network_error`          | RPC, indexer, HTTP 429/5xx, or transport failure                                        | Retry with backoff          |
+| `invalid_input`          | Malformed address, threshold, credential, or request                                    | Correct the input           |
+| `configuration_error`    | Required deployment configuration is missing                                            | Contact the app operator    |
+| `authorization_error`    | Wallet signature, role, or challenge authorization failed                               | Reconnect or re-authorize   |
+| `unknown`                | The failure cannot be safely classified                                                 | Inspect the diagnostic code |
+
+Every normalized error carries the original stable `code`, `category`, `retryable`, optional `httpStatus`, and `cause`. `verificationErrorFromApi(status, body)` reads only structured diagnostic fields; it never displays the API's `error` text. UI and worker boundaries should display `message`, not `String(error)` or `error.message` from an unclassified exception.
+
+Claim-status APIs additionally return `errorCategory` and `errorCode`, so callers can distinguish a policy rejection from an unavailable read without parsing prose.
+
 ## Error Classes
 
 ### ContractError
@@ -21,14 +40,14 @@ try {
   if (err instanceof ContractError) {
     console.log(err.code); // 4
     console.log(err.friendlyMessage); // "Issuer not trusted..."
-    
+
     // Branch on specific error codes
     if (err.code === ContractErrorCode.IssuerNotTrusted) {
       // Show "issuer not registered" UI
     } else if (err.code === ContractErrorCode.VerificationFailed) {
       // Show "proof invalid" UI
     }
-    
+
     // Use helper methods
     if (err.isRetryable()) {
       // Show retry button (e.g., SubmissionsPaused)
@@ -87,18 +106,22 @@ All ProofRegistry error codes are exported as constants:
 import { ContractErrorCode } from "@stellarcred/sdk";
 
 // Available codes:
-ContractErrorCode.NotInitialized          // 1
-ContractErrorCode.VerificationFailed      // 2
-ContractErrorCode.NotAuthorized           // 3
-ContractErrorCode.IssuerNotTrusted        // 4
-ContractErrorCode.IssuerKeyMismatch       // 5
-ContractErrorCode.ProofNotFound           // 6
-ContractErrorCode.BatchTooLarge           // 7
-ContractErrorCode.BatchEmpty              // 8
-ContractErrorCode.DuplicateCredentialType // 9
-ContractErrorCode.AggregateLayoutInvalid  // 10
-ContractErrorCode.SubmissionsPaused       // 11
-ContractErrorCode.InvalidExpiry           // 12
+ContractErrorCode.NotInitialized; // 1
+ContractErrorCode.VerificationFailed; // 2
+ContractErrorCode.NotAuthorized; // 3
+ContractErrorCode.IssuerNotTrusted; // 4
+ContractErrorCode.IssuerKeyMismatch; // 5
+ContractErrorCode.ProofNotFound; // 6
+ContractErrorCode.BatchTooLarge; // 7
+ContractErrorCode.BatchEmpty; // 8
+ContractErrorCode.DuplicateCredentialType; // 9
+ContractErrorCode.AggregateLayoutInvalid; // 10
+ContractErrorCode.SubmissionsPaused; // 11
+ContractErrorCode.InvalidExpiry; // 12
+ContractErrorCode.RoleNotHeld; // 13
+ContractErrorCode.RoleHolderMismatch; // 14
+ContractErrorCode.NoPendingAdmin; // 15
+ContractErrorCode.NullifierAlreadyUsed; // 16
 ```
 
 ## Error Classification
@@ -130,7 +153,7 @@ Errors that the user can fix without re-issuing credentials:
 ## UI Integration Example
 
 ```typescript
-import { ContractError, ContractErrorCode } from "@stellarcred/sdk";
+import { ContractError, ContractErrorCode, classifyVerificationError } from "@stellarcred/sdk";
 
 function handleSubmitError(err: unknown) {
   if (err instanceof ContractError) {
@@ -143,7 +166,7 @@ function handleSubmitError(err: unknown) {
           action: "contact_issuer",
           retryable: false,
         };
-      
+
       case ContractErrorCode.VerificationFailed:
         return {
           title: "Proof Invalid",
@@ -151,7 +174,7 @@ function handleSubmitError(err: unknown) {
           action: "regenerate_proof",
           retryable: false,
         };
-      
+
       case ContractErrorCode.SubmissionsPaused:
         return {
           title: "Submissions Temporarily Paused",
@@ -159,7 +182,7 @@ function handleSubmitError(err: unknown) {
           action: "retry",
           retryable: true,
         };
-      
+
       case ContractErrorCode.BatchTooLarge:
         return {
           title: "Too Many Credentials",
@@ -167,7 +190,7 @@ function handleSubmitError(err: unknown) {
           action: "reduce_batch",
           retryable: true,
         };
-      
+
       default:
         return {
           title: "Transaction Failed",
@@ -177,13 +200,14 @@ function handleSubmitError(err: unknown) {
         };
     }
   }
-  
-  // Generic error handling
+
+  // Generic error handling: display only fixed safe text.
+  const normalized = classifyVerificationError(err);
   return {
     title: "Error",
-    message: String(err),
+    message: normalized.message,
     action: "unknown",
-    retryable: false,
+    retryable: normalized.retryable,
   };
 }
 ```
@@ -217,7 +241,8 @@ console.log(PROOF_REGISTRY_ERROR_MESSAGES[4]);
 
 ## Single Source of Truth
 
-The error table lives in `packages/sdk/src/errors.ts` and is imported by:
+The error table lives in `frontend/packages/sdk/src/errors.ts` and is imported by:
+
 - Frontend (`lib/contract-errors.ts`)
 - SDK (`src/errors.ts`)
 - Documentation (this file)

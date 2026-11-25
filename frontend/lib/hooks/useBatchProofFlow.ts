@@ -50,8 +50,8 @@ export function useBatchProofFlow(
   networkMismatch: boolean,
   onProved: (txHash: string, commitments: string[]) => void,
 ) {
-  const [credStates, setCredStates] = useState<CredProofState[]>(
-    () => creds.map(() => ({ status: "pending" as const })),
+  const [credStates, setCredStates] = useState<CredProofState[]>(() =>
+    creds.map(() => ({ status: "pending" as const })),
   );
   const [batchStage, setBatchStage] = useState<BatchStage>("generating");
   const [txHash, setTxHash] = useState("");
@@ -69,9 +69,15 @@ export function useBatchProofFlow(
   const abortRef = useRef<AbortController | null>(null);
   /** Set while the batch is deferred because the RPC endpoint is down. */
   const [rpcIssue, setRpcIssue] = useState<RpcIssue | null>(null);
-  useEffect(() => { credsRef.current = creds; }, [creds]);
-  useEffect(() => { holderRef.current = holder; }, [holder]);
-  useEffect(() => { onProvedRef.current = onProved; }, [onProved]);
+  useEffect(() => {
+    credsRef.current = creds;
+  }, [creds]);
+  useEffect(() => {
+    holderRef.current = holder;
+  }, [holder]);
+  useEffect(() => {
+    onProvedRef.current = onProved;
+  }, [onProved]);
 
   // User-initiated cancel: aborts whatever proof is in flight inside the
   // worker, not just this component's view of the batch.
@@ -84,108 +90,109 @@ export function useBatchProofFlow(
   // every heavy step happens inside it.
   const runGeneration = useCallback(
     (controller: AbortController) => {
-    const { signal } = controller;
-    // Read the batch from the ref so a parent re-render that rebuilds the
-    // `creds` array cannot restart (and abort) a batch already in flight.
-    const batch = credsRef.current;
+      const { signal } = controller;
+      // Read the batch from the ref so a parent re-render that rebuilds the
+      // `creds` array cannot restart (and abort) a batch already in flight.
+      const batch = credsRef.current;
 
-    // Resource guard (issue #943): the whole batch is known here, so an
-    // oversized batch — too many proofs, or too much private input across them —
-    // is refused before the first witness is requested. Without this a batch
-    // could spend N−1 proofs and then fail on the last one.
-    try {
-      assertProofBatchWithinLimits(
-        batch.map((cred) => ({
-          credentialType: cred.type,
-          credential: cred as unknown as Record<string, unknown>,
-        })),
-      );
-    } catch (e) {
-      if (!(e instanceof ProofResourceError)) throw e;
-      setBatchStage("error");
-      setBatchError({ code: null, friendly: e.friendly, raw: e.message });
-      toast.error(e.friendly);
-      return;
-    }
+      // Resource guard (issue #943): the whole batch is known here, so an
+      // oversized batch — too many proofs, or too much private input across them —
+      // is refused before the first witness is requested. Without this a batch
+      // could spend N−1 proofs and then fail on the last one.
+      try {
+        assertProofBatchWithinLimits(
+          batch.map((cred) => ({
+            credentialType: cred.type,
+            credential: cred as unknown as Record<string, unknown>,
+          })),
+        );
+      } catch (e) {
+        if (!(e instanceof ProofResourceError)) throw e;
+        setBatchStage("error");
+        setBatchError({ ...parseContractError(e), friendly: e.friendly });
+        toast.error(e.friendly);
+        return;
+      }
 
-    toast.info(`Generating ${batch.length} proofs…`);
+      toast.info(`Generating ${batch.length} proofs…`);
 
-    (async () => {
-      for (let i = 0; i < batch.length; i++) {
-        if (signal.aborted) return;
-        const cred = batch[i];
+      (async () => {
+        for (let i = 0; i < batch.length; i++) {
+          if (signal.aborted) return;
+          const cred = batch[i];
 
-        setCredStates((prev) => {
-          const next = [...prev];
-          next[i] = { status: "witness" };
-          return next;
-        });
-
-        // Elapsed timer for this credential, started when the worker reports
-        // its first proving stage and always cleared before moving on.
-        const start = Date.now();
-        let timer: ReturnType<typeof setInterval> | null = null;
-        const tick = () =>
           setCredStates((prev) => {
             const next = [...prev];
-            if (next[i].status === "proving") {
-              next[i] = { status: "proving", elapsed: Math.floor((Date.now() - start) / 1000) };
-            }
+            next[i] = { status: "witness" };
             return next;
           });
 
-        let result: { proof: Uint8Array; publicInputs: Uint8Array };
-        try {
-          result = await proveOffMainThread(
-            {
-              credentialType: cred.type,
-              credential: cred as unknown as Record<string, unknown>,
-            },
-            {
-              signal,
-              onProgress: (stage) => {
-                if (signal.aborted || stage === "witness" || timer) return;
-                timer = setInterval(tick, 1000);
-                setCredStates((prev) => {
-                  const next = [...prev];
-                  next[i] = { status: "proving", elapsed: 0 };
-                  return next;
-                });
+          // Elapsed timer for this credential, started when the worker reports
+          // its first proving stage and always cleared before moving on.
+          const start = Date.now();
+          let timer: ReturnType<typeof setInterval> | null = null;
+          const tick = () =>
+            setCredStates((prev) => {
+              const next = [...prev];
+              if (next[i].status === "proving") {
+                next[i] = { status: "proving", elapsed: Math.floor((Date.now() - start) / 1000) };
+              }
+              return next;
+            });
+
+          let result: { proof: Uint8Array; publicInputs: Uint8Array };
+          try {
+            result = await proveOffMainThread(
+              {
+                credentialType: cred.type,
+                credential: cred as unknown as Record<string, unknown>,
               },
-            },
-          );
-        } catch (e) {
+              {
+                signal,
+                onProgress: (stage) => {
+                  if (signal.aborted || stage === "witness" || timer) return;
+                  timer = setInterval(tick, 1000);
+                  setCredStates((prev) => {
+                    const next = [...prev];
+                    next[i] = { status: "proving", elapsed: 0 };
+                    return next;
+                  });
+                },
+              },
+            );
+          } catch (e) {
+            if (timer) clearInterval(timer);
+            if (signal.aborted) return;
+            // A guard rejection names the real limit; show that, not the raw
+            // "Proof request refused: …" form (issue #943).
+            const guardRefusal = e instanceof ProofResourceError ? e : null;
+            const parsed = parseContractError(e);
+            setCredStates((prev) => {
+              const next = [...prev];
+              next[i] = {
+                status: "error",
+                message: guardRefusal?.friendly ?? parsed.friendly,
+              };
+              return next;
+            });
+            setBatchStage("error");
+            setBatchError(parsed);
+            toast.error(`Proof generation failed for ${cred.title}: ${parsed.friendly}`);
+            return;
+          }
+
           if (timer) clearInterval(timer);
           if (signal.aborted) return;
-          // A guard rejection names the real limit; show that, not the raw
-          // "Proof request refused: …" form (issue #943).
-          const guardRefusal = e instanceof ProofResourceError ? e : null;
+
+          generatedProofs.current[i] = result;
           setCredStates((prev) => {
             const next = [...prev];
-            next[i] = { status: "error", message: guardRefusal?.friendly ?? (e as Error).message };
+            next[i] = { status: "ready", proof: result };
             return next;
           });
-          setBatchStage("error");
-          const parsed = guardRefusal
-            ? { code: null, friendly: guardRefusal.friendly, raw: guardRefusal.message }
-            : parseContractError((e as Error).message);
-          setBatchError(parsed);
-          toast.error(`Proof generation failed for ${cred.title}: ${parsed.friendly}`);
-          return;
+          addTimelineEvent(cred.commitment, "generated");
         }
-
-        if (timer) clearInterval(timer);
-        if (signal.aborted) return;
-
-        generatedProofs.current[i] = result;
-        setCredStates((prev) => {
-          const next = [...prev];
-          next[i] = { status: "ready", proof: result };
-          return next;
-        });
-        addTimelineEvent(cred.commitment, "generated");
-      }
-    })();
+      })();
     },
     [toast],
   );
@@ -204,9 +211,8 @@ export function useBatchProofFlow(
       if (issue) {
         setRpcIssue(issue);
         setBatchError({
-          code: null,
+          ...parseContractError({ code: "network_error" }),
           friendly: `${issue.message} Proof generation was deferred: the batch would only fail at submission.`,
-          raw: issue.message,
         });
         setBatchStage("blocked");
         return;
@@ -280,32 +286,33 @@ export function useBatchProofFlow(
     setBatchFee(null);
     toast.info(`Simulating batch of ${currentCreds.length} proofs…`);
     (async () => {
-      const preflight = await preflightSubmitProofs({ holder: currentHolder, submissions });
-      if (!preflight.ok) {
-        setBatchError(preflight.error);
-        setBatchStage("error");
-        toast.error(`Batch submission blocked — ${preflight.error.friendly}`);
-        return;
-      }
-      setBatchFee(preflight.fee);
-
-      // Stage 2 — simulation succeeded, sign and submit.
       try {
+        const preflight = await preflightSubmitProofs({ holder: currentHolder, submissions });
+        if (!preflight.ok) {
+          setBatchError(preflight.error);
+          setBatchStage("error");
+          toast.error(`Batch submission blocked — ${preflight.error.friendly}`);
+          return;
+        }
+        setBatchFee(preflight.fee);
+
         const hash = await submitProofs({ holder: currentHolder, submissions });
         setTxHash(hash);
         const commitments = currentCreds.map((c) => c.commitment);
         onProvedRef.current(hash, commitments);
         setBatchStage("confirmed");
-        currentCreds.forEach((cred) => addTimelineEvent(cred.commitment, "verified", { txHash: hash }));
+        currentCreds.forEach((cred) =>
+          addTimelineEvent(cred.commitment, "verified", { txHash: hash }),
+        );
         toast.success(`Confirmed ${currentCreds.length} proofs on-chain`, { txHash: hash });
       } catch (e) {
-        const parsed = parseContractError((e as Error).message);
+        const parsed = parseContractError(e);
         setBatchError(parsed);
         setBatchStage("error");
         toast.error(`Batch submission failed: ${parsed.friendly}`);
       }
     })();
-  }, [allReady, networkMismatch, toast]); // eslint-disable-line react-hooks/exhaustive-deps -- allReady is the trigger; refs avoid stale closures
+  }, [allReady, networkMismatch, toast]);
 
   return {
     credStates,

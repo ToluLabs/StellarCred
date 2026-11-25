@@ -13,6 +13,7 @@
 
 import type { GeneratedProof, ProverCircuit } from "./proof";
 import { CircuitVersionMismatchError } from "./circuit-versions";
+import { classifyVerificationError, VerificationError } from "../packages/sdk/src/errors";
 import type {
   ProofJobRequest,
   ProofStage,
@@ -63,13 +64,18 @@ function abortError(): DOMException {
  * pass on the main-thread fallback and silently fail on the worker path —
  * which is the path production actually takes.
  */
-function reviveError(name: string, message: string): Error {
-  if (name === "CircuitVersionMismatchError") {
-    return new CircuitVersionMismatchError(message);
+function reviveError(msg: Extract<ProofWorkerEvent, { event: "error" }>): Error {
+  if (msg.name === "CircuitVersionMismatchError" || msg.code === "circuit_version_mismatch") {
+    return new CircuitVersionMismatchError(msg.message);
   }
-  const err = new Error(message);
-  err.name = name;
-  return err;
+  if (msg.name === "AbortError") {
+    return new DOMException(msg.message, "AbortError");
+  }
+  return new VerificationError({
+    category: msg.category,
+    code: msg.code,
+    retryable: msg.retryable,
+  });
 }
 
 /** True when proving can (and will) happen in a worker. */
@@ -123,7 +129,7 @@ function onWorkerMessage(event: MessageEvent<ProofWorkerEvent>): void {
     case "error": {
       const job = jobs.get(msg.jobId);
       if (!job || job.settled) return;
-      settle(job, () => job.reject(reviveError(msg.name, msg.message)));
+      settle(job, () => job.reject(reviveError(msg)));
       return;
     }
 
@@ -188,7 +194,9 @@ function getWorker(): Worker | null {
     worker = next;
     return next;
   } catch (err) {
-    console.warn("[proof] could not start the prover worker; proving inline.", err);
+    console.warn(
+      `[proof] could not start the prover worker (${classifyVerificationError(err).code}); proving inline.`,
+    );
     workerUnavailable = true;
     return null;
   }
@@ -234,26 +242,45 @@ async function proveInline(
   request: ProofJobRequest,
   options: ProveOptions,
 ): Promise<GeneratedProof> {
-  const engine = await loadProofEngine();
-  const { signal } = options;
-  if (signal?.aborted) throw abortError();
+  try {
+    const engine = await loadProofEngine();
+    const { signal } = options;
+    if (signal?.aborted) throw abortError();
 
-  const emitStageProgress = (stage: ProofStage): void => {
-    if (signal?.aborted) return;
-    options.onProgress?.(stage);
-    const info = INLINE_STAGE_INFO[stage];
-    options.onStageProgress?.({ stage, elapsedMs: 0, expectedMs: info.expectedMs, label: info.label });
-  };
+    const emitStageProgress = (stage: ProofStage): void => {
+      if (signal?.aborted) return;
+      options.onProgress?.(stage);
+      const info = INLINE_STAGE_INFO[stage];
+      options.onStageProgress?.({
+        stage,
+        elapsedMs: 0,
+        expectedMs: info.expectedMs,
+        label: info.label,
+      });
+    };
 
-  emitStageProgress("witness");
-  const witness = request.aggregate
-    ? await engine.computeAggregateWitness(request.aggregate, signal)
-    : await engine.computeWitness(request.credentialType, request.credential ?? {}, signal);
-  if (signal?.aborted) throw abortError();
+    emitStageProgress("witness");
+    const witness = request.aggregate
+      ? await engine.computeAggregateWitness(request.aggregate, signal)
+      : await engine.computeWitness(request.credentialType, request.credential ?? {}, signal);
+    if (signal?.aborted) throw abortError();
 
-  return engine.proveWithBackend(request.credentialType, witness, signal, (stage) => {
-    if (!signal?.aborted) emitStageProgress(stage);
-  });
+    return await engine.proveWithBackend(request.credentialType, witness, signal, (stage) => {
+      if (!signal?.aborted) emitStageProgress(stage);
+    });
+  } catch (err) {
+    if (
+      (err instanceof DOMException && err.name === "AbortError") ||
+      err instanceof CircuitVersionMismatchError ||
+      err instanceof VerificationError
+    ) {
+      throw err;
+    }
+    throw classifyVerificationError(err, {
+      fallbackCategory: "unknown",
+      fallbackCode: "proof_generation_failed",
+    });
+  }
 }
 
 function proveInWorker(

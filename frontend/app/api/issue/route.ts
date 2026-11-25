@@ -26,6 +26,7 @@ import {
 import { enforceIpRateLimit, enforceWalletRateLimit } from "./handlers/rateLimit";
 import { runIssuanceFlow } from "./handlers/issuanceFlow";
 import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
+import { classifyVerificationError, verificationErrorFromApi } from "@/packages/sdk/src/errors";
 
 /**
  * POST /api/issue — thin dispatcher.
@@ -127,9 +128,21 @@ function replayIdempotencyRecord(record: IdempotencyRecord, requestId: string): 
   );
 }
 
-/** Render a validation verdict as the JSON error response callers expect. */
+/** Render a validation verdict as a typed, non-echoing error response. */
 function failureResponse(failure: ValidationFailure): NextResponse {
-  return NextResponse.json({ error: failure.error }, { status: failure.status });
+  const error = verificationErrorFromApi(failure.status, {
+    code: failure.code,
+    error: failure.error,
+  });
+  return NextResponse.json(
+    {
+      error: error.message,
+      code: error.code,
+      category: error.category,
+      retryable: error.retryable,
+    },
+    { status: failure.status },
+  );
 }
 
 async function executeRequest(
@@ -209,11 +222,7 @@ async function executeRequest(
         }),
       );
       // Record metrics for every completed issuance request.
-      recordIssuance(
-        type || "unknown",
-        outcome === "success" ? "success" : "failure",
-        durationMs,
-      );
+      recordIssuance(type || "unknown", outcome === "success" ? "success" : "failure", durationMs);
     }
     // If no credential types were parsed yet (early rejection), record once.
     if (credentialTypes.length === 0) {
@@ -253,7 +262,21 @@ async function executeRequest(
       outcome = "success";
       return sendResponse(NextResponse.json({ preview: true, credentials: previews }));
     } catch (e) {
-      return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 400 }));
+      const error = classifyVerificationError(e, {
+        fallbackCategory: "invalid_input",
+        fallbackCode: "invalid_credential",
+      });
+      return sendResponse(
+        NextResponse.json(
+          {
+            error: error.message,
+            code: error.code,
+            category: error.category,
+            retryable: error.retryable,
+          },
+          { status: error.httpStatus ?? 400 },
+        ),
+      );
     }
   }
 

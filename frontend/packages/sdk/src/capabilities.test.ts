@@ -145,7 +145,12 @@ describe("fetchCapabilities", () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
     await expect(
       fetchCapabilities({ fetchImpl: fetchMock as unknown as typeof fetch }),
-    ).rejects.toThrow(/ECONNREFUSED/);
+    ).rejects.toMatchObject({
+      name: "ConfigError",
+      category: "network_error",
+      code: "capabilities_unavailable",
+      retryable: true,
+    });
   });
 
   it("throws ConfigError on invalid JSON", async () => {
@@ -154,7 +159,11 @@ describe("fetchCapabilities", () => {
       .mockResolvedValue(new Response("<html>not json</html>", { status: 200 }));
     await expect(
       fetchCapabilities({ fetchImpl: fetchMock as unknown as typeof fetch }),
-    ).rejects.toThrow(/not valid JSON/);
+    ).rejects.toMatchObject({
+      name: "ConfigError",
+      category: "configuration_error",
+      code: "capabilities_invalid_response",
+    });
   });
 
   it("throws ConfigError on a malformed payload", async () => {
@@ -223,8 +232,12 @@ describe("bootstrap", () => {
 
   it("does not swallow descriptor fetch failures", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
-    await expect(bootstrap({ fetchImpl: fetchMock as unknown as typeof fetch })).rejects.toThrow(
-      /offline/,
-    );
+    await expect(
+      bootstrap({ fetchImpl: fetchMock as unknown as typeof fetch }),
+    ).rejects.toMatchObject({
+      name: "ConfigError",
+      category: "network_error",
+      code: "capabilities_unavailable",
+    });
   });
 });

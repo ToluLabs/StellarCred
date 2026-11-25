@@ -17,6 +17,7 @@ import type { CredentialTemplate } from "@/lib/credential-templates";
 import { CredentialPreview } from "@/components/CredentialPreview";
 import { normalizeAttributes } from "@/lib/attribute-normalizer";
 import { buildClaimLabel, type CredentialPreviewData } from "@/lib/credential-preview";
+import { verificationErrorFromApi } from "@/packages/sdk/src/errors";
 
 const TYPES = Object.entries(TYPE_META) as [CredentialType, (typeof TYPE_META)[CredentialType]][];
 
@@ -41,12 +42,13 @@ const COUNTRIES = [
 
 async function readApiError(res: Response): Promise<string> {
   const text = await res.text();
+  let body: unknown;
   try {
-    const json = JSON.parse(text) as { error?: string };
-    return json.error ?? text;
+    body = JSON.parse(text);
   } catch {
-    return text;
+    body = undefined;
   }
+  return verificationErrorFromApi(res.status, body).message;
 }
 
 export default function IssuerPageClient() {
@@ -112,7 +114,6 @@ export default function IssuerPageClient() {
     if (!availableTypes.some(([key]) => key === type)) {
       onType(availableTypes[0][0]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableTypes, type]);
 
   const meta = TYPE_META[type];

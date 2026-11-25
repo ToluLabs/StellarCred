@@ -49,7 +49,11 @@ describe("GET /api/persona/result", () => {
     const json = await res.json();
     expect(json.ready).toBe(false);
     expect(json.status).toBe("failed");
-    expect(json.error).toBe("User did not match selfie");
+    expect(json.error).toBe("Identity verification has not been completed.");
+    expect(json.category).toBe("policy_rejection");
+    expect(json.code).toBe("persona_incomplete");
+    expect(json.retryable).toBe(false);
+    expect(JSON.stringify(json)).not.toContain("User did not match selfie");
   });
 
   it("returns ready: true and credentials when inquiry result is completed", async () => {

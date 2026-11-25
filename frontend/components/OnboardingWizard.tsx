@@ -47,6 +47,7 @@ import type { Credential } from "@/lib/credential";
 import { checkIssuerStatus } from "@/lib/issuer-registry";
 import type { IssuerStatus } from "@/lib/issuer-registry";
 import { useToast } from "@/components/Toast";
+import { classifyVerificationError, verificationErrorFromApi } from "@/packages/sdk/src/errors";
 
 const ACCENT = "var(--accent)";
 
@@ -181,10 +182,12 @@ function StepRail({
                 onClick={() => reachable && onJump(i)}
                 disabled={!reachable}
                 aria-current={active ? "step" : undefined}
-                aria-label={t("nav.stepAriaLabel", {
-                  num: i + 1,
-                  label: t(`steps.${step}.railLabel`),
-                }) + (done ? ` ${t("nav.stepDone")}` : "")}
+                aria-label={
+                  t("nav.stepAriaLabel", {
+                    num: i + 1,
+                    label: t(`steps.${step}.railLabel`),
+                  }) + (done ? ` ${t("nav.stepDone")}` : "")
+                }
                 title={
                   done
                     ? t("nav.backToStep", {
@@ -427,15 +430,19 @@ function GetCredentialStep({
         return;
       }
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error ?? "Issuing failed");
+        const data = (await res.json().catch(() => null)) as unknown;
+        throw verificationErrorFromApi(res.status, data);
       }
       const { credentials } = (await res.json()) as { credentials: Credential[] };
       credentials.forEach((c) => saveCredential(c));
       onIssued();
       toast.success("Demo credential issued!");
     } catch (e) {
-      const message = (e as Error).message;
+      const error = classifyVerificationError(e, {
+        fallbackCategory: "network_error",
+        fallbackCode: "issuance_failed",
+      });
+      const message = error.message;
       setError(message);
       toast.error(`Issuance failed: ${message}`);
     } finally {
@@ -493,7 +500,7 @@ function GetCredentialStep({
         </button>
         {error && (
           <div style={{ marginTop: "1rem", textAlign: "left" }}>
-            <StatusBox severity="danger" title="Couldn&apos;t issue the credential">
+            <StatusBox severity="danger" title="Couldn't issue the credential">
               {error}
             </StatusBox>
           </div>
@@ -632,7 +639,9 @@ function TrustVerifyStep({
         </StatusBox>
       ) : (
         <p className="faint" style={{ fontSize: "0.75rem", marginBottom: "0.6rem" }}>
-          {busy ? "Checking the on-chain registry\u2026" : "The registry check hasn\u2019t run yet."}
+          {busy
+            ? "Checking the on-chain registry\u2026"
+            : "The registry check hasn\u2019t run yet."}
         </p>
       )}
 
@@ -687,18 +696,10 @@ function GenerateProofStep({
         {t("steps.generate-proof.summary")}
       </p>
       <ol style={{ paddingLeft: "1.2rem", margin: "0 0 1.1rem", display: "grid", gap: "0.5rem" }}>
-        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          {t("proofGuide.step1")}
-        </li>
-        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          {t("proofGuide.step2")}
-        </li>
-        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          {t("proofGuide.step3")}
-        </li>
-        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>
-          {t("proofGuide.step4")}
-        </li>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>{t("proofGuide.step1")}</li>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>{t("proofGuide.step2")}</li>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>{t("proofGuide.step3")}</li>
+        <li style={{ fontSize: "0.875rem", lineHeight: 1.6 }}>{t("proofGuide.step4")}</li>
       </ol>
       <div style={{ textAlign: "center", display: "grid", gap: "0.6rem" }}>
         <button
@@ -719,13 +720,7 @@ function GenerateProofStep({
   );
 }
 
-function UnlockStep({
-  trustStatus,
-  t,
-}: {
-  trustStatus: IssuerStatus | null;
-  t: OT;
-}) {
+function UnlockStep({ trustStatus, t }: { trustStatus: IssuerStatus | null; t: OT }) {
   return (
     <div style={{ textAlign: "center" }}>
       <div
@@ -872,10 +867,7 @@ export function OnboardingWizard() {
     >
       <StepRail current={stepIndex} onJump={goToStep} t={t} />
 
-      <div
-        className="row"
-        style={{ gap: "0.7rem", alignItems: "center", marginBottom: "0.5rem" }}
-      >
+      <div className="row" style={{ gap: "0.7rem", alignItems: "center", marginBottom: "0.5rem" }}>
         <div
           style={{
             width: 40,
@@ -898,9 +890,7 @@ export function OnboardingWizard() {
           >
             {t("nav.stepOf", { current: stepIndex + 1, total: ONBOARDING_STEPS.length })}
           </div>
-          <h2 style={{ fontSize: "1.2rem", lineHeight: 1.3 }}>
-            {t(`steps.${currentStep}.title`)}
-          </h2>
+          <h2 style={{ fontSize: "1.2rem", lineHeight: 1.3 }}>{t(`steps.${currentStep}.title`)}</h2>
         </div>
       </div>
 

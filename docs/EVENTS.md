@@ -27,7 +27,7 @@ All StellarCred contract events follow a deterministic, structured topic tuple c
 
 ### Payload Serialization
 
-All event data payloads are typed `#[contracttype]` structs serialized using Soroban's canonical XDR encoding. Payloads can be decoded deterministically using `@stellar/stellar-sdk`'s `scValToNative` or standard XDR deserializers.
+Structured event data payloads are typed `#[contracttype]` structs serialized using Soroban's canonical XDR encoding. The admin proposal/acceptance events intentionally carry an `Address` directly, and proposal cancellation carries the unit value `()`. Payloads can be decoded deterministically using `@stellar/stellar-sdk`'s `scValToNative` or standard XDR deserializers.
 
 ---
 
@@ -37,11 +37,16 @@ All event data payloads are typed `#[contracttype]` structs serialized using Sor
 |---|---|---|---|---|---|
 | `ProofRegistry` | `submitted` | `("proof_reg", "submitted", <credential_type>)` | `EventProofSubmitted` | `submit_proof`, `submit_proofs`, `submit_aggregate_proof` | Holder |
 | `ProofRegistry` | `revoked` | `("proof_reg", "revoked", <credential_type>)` | `EventProofRevoked` | `revoke` | Issuer |
-| `ProofRegistry` | `paused` | `("proof_reg", "paused")` | `EventPaused` | `pause` | Admin |
-| `ProofRegistry` | `unpaused` | `("proof_reg", "unpaused")` | `EventUnpaused` | `unpause` | Admin |
+| `ProofRegistry` | `paused` | `("proof_reg", "paused")` | `EventPaused` | `pause` | Pauser role |
+| `ProofRegistry` | `unpaused` | `("proof_reg", "unpaused")` | `EventUnpaused` | `unpause` | Pauser role |
 | `ProofRegistry` | `adm_prop` | `("proof_reg", "adm_prop")` | `Address` | `propose_admin` | Admin |
 | `ProofRegistry` | `adm_acc` | `("proof_reg", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
 | `ProofRegistry` | `adm_canc` | `("proof_reg", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
+| `ProofRegistry` | `self_rev` | `("proof_reg", "self_rev", <credential_type>)` | `EventHolderRevoked` | `revoke_proof`, `revoke_all` | Holder |
+| `ProofRegistry` | `nullifier` | `("proof_reg", "nullifier")` | `EventNullifierUsed` | `record_nullifier`, `submit_proof_with_nullifier` | Caller |
+| `ProofRegistry` | `dlg_grant` | `("proof_reg", "dlg_grant", <credential_type>)` | `EventVerificationGranted` | `grant_verification` | Holder |
+| `ProofRegistry` | `dlg_revok` | `("proof_reg", "dlg_revok", <credential_type>)` | `EventVerificationRevoked` | `revoke_verification` | Holder |
+| `ProofRegistry` | `upgraded` | `("proof_reg", "upgraded")` | `EventContractUpgraded` | `upgrade` | Upgrader role |
 | `IssuerRegistry` | `register` | `("iss_reg", "register")` | `EventIssuerRegistered` | `register_issuer` | Admin |
 | `IssuerRegistry` | `revoked` | `("iss_reg", "revoked")` | `EventIssuerRevoked` | `revoke_issuer` | Admin |
 | `IssuerRegistry` | `key_rot` | `("iss_reg", "key_rot")` | `EventIssuerKeyRotated` | `rotate_issuer_key` | Admin |
@@ -54,6 +59,7 @@ All event data payloads are typed `#[contracttype]` structs serialized using Sor
 | `CredentialVerifier` | `adm_prop` | `("cred_ver", "adm_prop")` | `Address` | `propose_admin` | Admin |
 | `CredentialVerifier` | `adm_acc` | `("cred_ver", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
 | `CredentialVerifier` | `adm_canc` | `("cred_ver", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
+| `CredentialVerifier` | `upgraded` | `("cred_ver", "upgraded")` | `EventContractUpgraded` | `upgrade` | Admin |
 | `GatedPool` | `deposit` | `("gate_pool", "deposit")` | `EventDeposit` | `deposit` | Caller |
 | `GatedPool` | `withdraw` | `("gate_pool", "withdraw")` | `EventWithdraw` | `withdraw` | Caller |
 
@@ -107,6 +113,7 @@ Emitted when a trusted issuer explicitly revokes a holder's cached proof for a c
       pub holder: Address,
       pub issuer: Address,
       pub revoked_at: u64,
+      pub reason: RevocationReason,
   }
   ```
   | Field | Type | Description |
@@ -114,6 +121,7 @@ Emitted when a trusted issuer explicitly revokes a holder's cached proof for a c
   | `holder` | `Address` | Stellar address of the holder whose proof was revoked. |
   | `issuer` | `Address` | Address of the registered issuer executing the revocation. |
   | `revoked_at` | `u64` | Ledger timestamp (seconds) when the revocation was executed. |
+| `reason` | `RevocationReason` | Issuer-supplied reason: `Expired = 0`, `Superseded = 1`, `Fraud = 2`, `UserRequest = 3`, or `Other = 4`. |
 - **When it fires:**
   - `revoke(issuer, holder, credential_type)`: Emitted when the registered issuer marks the proof record as revoked.
 
@@ -127,11 +135,91 @@ Emitted when a holder removes one or all of their cached proofs.
   pub struct EventHolderRevoked {
       pub holder: Address,
       pub revoked_at: u64,
+      pub reason: RevocationReason,
   }
   ```
 - **When it fires:**
   - `revoke_proof`: Emitted when the holder removes an existing proof.
   - `revoke_all`: Emitted once for each existing proof removed.
+
+---
+
+`RevocationReason` is a `#[contracttype]` enum serialized as `ScVal::U32`. Holder self-revocation records `UserRequest = 3`.
+
+---
+
+#### `proof_reg.nullifier` — Application Nullifier Recorded
+
+Emitted when a caller records a previously unused nullifier for an application context. Recording the same pair again reverts.
+
+- **Topics:** `("proof_reg", "nullifier")`
+- **Payload (`EventNullifierUsed`):**
+  ```rust
+  pub struct EventNullifierUsed {
+      pub app_context: BytesN<32>,
+      pub nullifier: BytesN<32>,
+      pub recorded_at: u64,
+  }
+  ```
+- **When it fires:**
+  - `record_nullifier`: Records the nullifier while submissions are unpaused.
+  - `submit_proof_with_nullifier`: Emitted once before the nested proof submission event.
+
+---
+
+#### `proof_reg.dlg_grant` — Delegated Verification Granted
+
+Emitted when a holder grants a verifier time-bounded delegated read access for one credential type.
+
+- **Topics:** `("proof_reg", "dlg_grant", <credential_type>)`
+- **Payload (`EventVerificationGranted`):**
+  ```rust
+  pub struct EventVerificationGranted {
+      pub holder: Address,
+      pub verifier: Address,
+      pub expiry: u64,
+  }
+  ```
+- **When it fires:**
+  - `grant_verification`: Stores or overwrites the delegation expiry after holder authorization.
+
+---
+
+#### `proof_reg.dlg_revok` — Delegated Verification Revoked
+
+Emitted when a holder removes a verifier's delegated access.
+
+- **Topics:** `("proof_reg", "dlg_revok", <credential_type>)`
+- **Payload (`EventVerificationRevoked`):**
+  ```rust
+  pub struct EventVerificationRevoked {
+      pub holder: Address,
+      pub verifier: Address,
+  }
+  ```
+- **When it fires:**
+  - `revoke_verification`: Emitted after holder authorization, including when no delegation existed.
+
+---
+
+#### `proof_reg.upgraded` — ProofRegistry Upgraded
+
+Emitted when an upgrader-role holder replaces the contract WASM. The event is published before the host function updates the bytecode, so a failed upgrade rolls the event back.
+
+- **Topics:** `("proof_reg", "upgraded")`
+- **Payload (`EventContractUpgraded`):**
+  ```rust
+  pub struct EventContractUpgraded {
+      pub admin: Address,
+      pub new_wasm_hash: BytesN<32>,
+      pub upgraded_at: u64,
+      pub from_version: u32,
+      pub to_version: u32,
+  }
+  ```
+  `admin` is the address holding the `upgrader` role. Versions use `major * 1_000_000 + minor * 1_000 + patch`.
+- **When it fires:**
+  - `upgrade`: Authorized contract bytecode replacement succeeds.
 
 ---
 
@@ -151,10 +239,10 @@ Emitted when protocol administration pauses new proof submissions.
   ```
   | Field | Type | Description |
   |---|---|---|
-  | `admin` | `Address` | Admin address that paused submissions. |
+  | `admin` | `Address` | Address holding the Pauser role that paused submissions. |
   | `paused_at` | `u64` | Ledger timestamp (seconds) when paused. |
 - **When it fires:**
-  - `pause()`: Admin pauses submissions.
+  - `pause()`: A Pauser-role holder pauses submissions.
 
 ---
 
@@ -174,10 +262,10 @@ Emitted when protocol administration resumes proof submissions.
   ```
   | Field | Type | Description |
   |---|---|---|
-  | `admin` | `Address` | Admin address that resumed submissions. |
+  | `admin` | `Address` | Address holding the Pauser role that resumed submissions. |
   | `unpaused_at` | `u64` | Ledger timestamp (seconds) when unpaused. |
 - **When it fires:**
-  - `unpause()`: Admin unpauses submissions.
+  - `unpause()`: A Pauser-role holder unpauses submissions.
 
 ---
 
@@ -230,7 +318,6 @@ transfer takes place and the pending entry is cleared.
 
 | Function | Description | Reason No Event Emitted |
 |---|---|---|
-| `upgrade` | Contract bytecode upgrade | Handled directly by Soroban's WASM deployer host function (`update_current_contract_wasm`). |
 | `bump_claim` | Storage TTL extension | Maintenance operation renewing persistent entry rent. |
 | `migrate_record` | Legacy storage shape migration | Internal migration upgrading legacy storage formats to current `ProofRecord` structure. |
 
@@ -413,11 +500,15 @@ Emitted when a verification key (VK) is registered for a circuit.
   ```rust
   pub struct EventVkSet {
       pub admin: Address,
+      pub version: u32,
+      pub contract_version: u32,
   }
   ```
   | Field | Type | Description |
   |---|---|---|
   | `admin` | `Address` | Admin address that registered the verification key. |
+| `version` | `u32` | Version assigned to the verification key. |
+| `contract_version` | `u32` | CredentialVerifier contract version that emitted the event. |
 - **When it fires:**
   - `set_vk(credential_type, version, vk)`: Admin registers a validated UltraHonk VK.
 
@@ -436,12 +527,14 @@ Emitted when deprecated VK bytes are permanently pruned from storage after the m
   pub struct EventVkPruned {
       pub admin: Address,
       pub version: u32,
+      pub contract_version: u32,
   }
   ```
   | Field | Type | Description |
   |---|---|---|
   | `admin` | `Address` | Admin address executing the pruning. |
   | `version` | `u32` | Version number of the pruned verification key. |
+| `contract_version` | `u32` | CredentialVerifier contract version that emitted the event. |
 - **When it fires:**
   - `prune_version(credential_type, version)`: Admin prunes deprecated VK bytes.
 
@@ -489,6 +582,24 @@ transfer takes place and the pending entry is cleared.
 - **Payload:** `()` — empty.
 - **When it fires:**
   - `cancel_admin_proposal()`: Root admin cancels the pending proposal.
+
+---
+
+#### `cred_ver.upgraded` — CredentialVerifier Upgraded
+
+Emitted when the admin replaces the contract WASM. The event is published before the host function updates the bytecode, so a failed upgrade rolls the event back.
+
+- **Topics:** `("cred_ver", "upgraded")`
+- **Payload (`EventContractUpgraded`):**
+  ```rust
+  pub struct EventContractUpgraded {
+      pub admin: Address,
+      pub upgraded_at: u64,
+  }
+  ```
+  `admin` is the address authorized by `require_admin`.
+- **When it fires:**
+  - `upgrade`: Authorized contract bytecode replacement succeeds.
 
 ---
 
@@ -648,5 +759,5 @@ and webhook payload schemas.
 ## Schema Stability Guarantees & Drift Prevention
 
 1. **Immutable Topic Schemas**: Topic position and symbol values are guaranteed stable across contract upgrades.
-2. **Deterministic Payload Layout**: Field names, types, and ordering in `#[contracttype]` structs are preserved.
-3. **Continuous Drift Protection**: The event-shape suites added for issue #429 — `contracts/proof_registry/src/test.rs`, `contracts/issuer_registry/src/test.rs`, and `contracts/credential_verifier/src/test.rs` — assert the exact topic tuples and serialized payload structures documented here on every `cargo test` and CI run. The assertions hardcode the shapes from this file rather than reading it from disk, so a contract-side event change fails CI while a doc-side change is caught only in review. Point new event tests at the single `docs/EVENTS.md` copy, never a second one.
+2. **Deterministic Payload Schema**: Field names and types in `#[contracttype]` structs are preserved. Serialized structs are XDR maps; consumers must address fields by name rather than rely on map iteration order.
+3. **Continuous Drift Protection**: `contracts/test_support/tests/event_conformance.rs` parses the catalog and Rust payload structs in this file at test runtime, executes representative calls against all four contracts, and compares the emitted topic tuples and decoded payload field names/types with this specification. CI runs it with `cargo test -p test_support --locked`. Missing catalog entries, undocumented emitted events, changed topic arity, renamed payload fields, and type changes fail with expected/actual diagnostics. Keep this file as the single event schema; do not duplicate it in tests.

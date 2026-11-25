@@ -16,6 +16,7 @@ import {
   ContractErrorCode,
   PROOF_REGISTRY_ERROR_MESSAGES,
   RpcError,
+  VerificationError,
 } from "./errors";
 import {
   classifyTransientFailure,
@@ -238,7 +239,8 @@ describe("submitTransaction exhausts retries and throws TransactionSubmissionErr
     expect(err).toBeInstanceOf(TransactionSubmissionError);
     expect((err as TransactionSubmissionError).code).toBe("network_error");
     expect((err as TransactionSubmissionError).retryable).toBe(true);
-    expect((err as TransactionSubmissionError).message).toContain("ECONNRESET");
+    expect((err as TransactionSubmissionError).message).not.toContain("ECONNRESET");
+    expect((err as TransactionSubmissionError).message).toMatch(/temporarily unavailable/i);
   });
 
   it("surfaces retryable=false and code='contract_error' for terminal contract panics", async () => {
@@ -357,7 +359,8 @@ describe("TransactionSubmissionError.fromRaw normalizes error shapes", () => {
     expect(err.code).toBe("rate_limited");
     expect(err.retryable).toBe(true);
     expect(err.httpStatus).toBe(429);
-    expect(err.message).toMatch(/rate-limited/i);
+    expect(err.message).toMatch(/temporarily unavailable/i);
+    expect(err.message).not.toContain("rate limited");
   });
 
   it("maps RpcError with status 500 → server_error, retryable=true", () => {
@@ -367,7 +370,8 @@ describe("TransactionSubmissionError.fromRaw normalizes error shapes", () => {
     expect(err.code).toBe("server_error");
     expect(err.retryable).toBe(true);
     expect(err.httpStatus).toBe(500);
-    expect(err.message).toContain("500");
+    expect(err.message).toMatch(/temporarily unavailable/i);
+    expect(err.message).not.toContain("internal error");
   });
 
   it("maps RpcError wrapping a ContractError → contract_error with contractCode", () => {
@@ -414,7 +418,9 @@ describe("TransactionSubmissionError.fromRaw normalizes error shapes", () => {
 
     expect(err.code).toBe("validation_error");
     expect(err.retryable).toBe(false);
-    expect(err.message).toContain("Invalid Stellar address");
+    expect(err.message).toMatch(/Stellar address is invalid/i);
+    expect(err.category).toBe("invalid_input");
+    expect(err.message).not.toContain("Invalid Stellar address");
   });
 
   it("maps a ConfigError → validation_error, retryable=false", () => {
@@ -423,6 +429,15 @@ describe("TransactionSubmissionError.fromRaw normalizes error shapes", () => {
 
     expect(err.code).toBe("validation_error");
     expect(err.retryable).toBe(false);
+    expect(err.category).toBe("configuration_error");
+  });
+
+  it("preserves authorization categories for RPC 401 and 403 responses", () => {
+    for (const status of [401, 403]) {
+      const err = TransactionSubmissionError.fromRaw(makeRpcError("raw provider detail", status));
+      expect(err).toMatchObject({ category: "authorization_error", retryable: false });
+      expect(err.message).not.toContain("raw provider detail");
+    }
   });
 
   it("maps a generic Error → network_error, retryable=true", () => {
@@ -431,7 +446,8 @@ describe("TransactionSubmissionError.fromRaw normalizes error shapes", () => {
 
     expect(err.code).toBe("network_error");
     expect(err.retryable).toBe(true);
-    expect(err.message).toContain("Connection refused");
+    expect(err.message).toMatch(/temporarily unavailable/i);
+    expect(err.message).not.toContain("Connection refused");
     expect(err.cause).toBe(raw);
   });
 
@@ -440,7 +456,11 @@ describe("TransactionSubmissionError.fromRaw normalizes error shapes", () => {
 
     expect(err.code).toBe("unknown");
     expect(err.retryable).toBe(false);
-    expect(err.message).toBe("some string error");
+    expect(err.message).toBe(
+      "The operation could not be completed. Try again or contact support with the diagnostic code.",
+    );
+    expect(err.message).not.toContain("some string error");
+    expect(err.cause).toBe("some string error");
   });
 
   it("maps null/undefined → unknown, retryable=false", () => {
@@ -548,6 +568,26 @@ describe("classifyTransientFailure correctly classifies error kinds", () => {
     const result = classifyTransientFailure(makeContractError(ContractErrorCode.SubmissionsPaused));
     expect(result).not.toBeNull();
     expect(result?.kind).toBe("server_error");
+  });
+
+  it("honors explicit retryability on normalized errors", () => {
+    expect(
+      classifyTransientFailure(
+        new VerificationError({ category: "invalid_input", code: "invalid_credential" }),
+      ),
+    ).toBeNull();
+    expect(
+      classifyTransientFailure(
+        new VerificationError({ category: "network_error", code: "rpc_unavailable" }),
+      ),
+    ).toMatchObject({ kind: "network_error", code: "rpc_unavailable" });
+  });
+
+  it("classifies a retryable paused submission error as server_error", () => {
+    const result = classifyTransientFailure(
+      TransactionSubmissionError.fromRaw(makeContractError(ContractErrorCode.SubmissionsPaused)),
+    );
+    expect(result).toMatchObject({ kind: "server_error", statusCode: 503 });
   });
 });
 

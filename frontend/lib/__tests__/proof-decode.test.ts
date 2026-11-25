@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { decodeWitnessHex } from "../proof";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { computeWitness, decodeWitnessHex } from "../proof";
+import { CircuitVersionMismatchError } from "../circuit-versions";
 
 // #803 — decodeWitnessHex replaced a per-byte `hex.slice(...)` + `parseInt`
 // loop that allocated two temporary strings per byte. For large witnesses
@@ -39,5 +40,63 @@ describe("decodeWitnessHex", () => {
   it("rejects non-hex characters instead of decoding garbage", () => {
     expect(() => decodeWitnessHex("zz")).toThrow(/invalid hex/);
     expect(() => decodeWitnessHex("0x12")).toThrow(/invalid hex/);
+  });
+});
+
+describe("computeWitness safe API failures", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the API code without displaying credential data from the response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ code: "invalid_credential", error: "salt=private signature=abc" }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+    );
+
+    const error = await computeWitness("age", { value: "1995-06-15" }).catch((err) => err);
+    expect(error).toMatchObject({ category: "invalid_input", code: "invalid_credential" });
+    expect(error.message).not.toContain("private");
+    expect(error.message).not.toContain("signature");
+  });
+
+  it("restores the typed circuit mismatch without exposing raw API text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ code: "circuit_version_mismatch", error: "credential=private" }),
+            { status: 409, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+    );
+
+    const error = await computeWitness("age", {}).catch((err) => err);
+    expect(error).toBeInstanceOf(CircuitVersionMismatchError);
+    expect(error.message).not.toContain("private");
+  });
+
+  it("classifies a failed request as a safe retryable network error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("credential=private salt=secret")),
+    );
+
+    const error = await computeWitness("age", {}).catch((err) => err);
+    expect(error).toMatchObject({
+      category: "network_error",
+      code: "witness_request_failed",
+      retryable: true,
+    });
+    expect(error.message).not.toContain("private");
   });
 });

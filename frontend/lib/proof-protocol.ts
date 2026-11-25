@@ -11,6 +11,7 @@
 // export here would pull this module (and whatever it imports) into both.
 
 import type { AggregateInput, ProverCircuit } from "./proof";
+import type { VerificationErrorCategory, VerificationErrorCode } from "../packages/sdk/src/errors";
 
 /**
  * Proving stages, in the order the worker reports them. Mirrors the steps the
@@ -73,7 +74,15 @@ export type ProofWorkerEvent =
   | { event: "stageProgress"; jobId: number; progress: ProofStageProgress }
   /** The proof finished. `proof`/`publicInputs` arrive as transferred buffers. */
   | { event: "result"; jobId: number; proof: Uint8Array; publicInputs: Uint8Array }
-  /** The job failed. `name`/`message` let the client rebuild a faithful Error. */
-  | { event: "error"; jobId: number; name: string; message: string }
+  /** The job failed. Only the safe classification crosses the worker boundary. */
+  | {
+      event: "error";
+      jobId: number;
+      name: string;
+      message: string;
+      category: VerificationErrorCategory;
+      code: VerificationErrorCode;
+      retryable: boolean;
+    }
   /** A warm/destroy command finished. */
   | { event: "done"; jobId: number };

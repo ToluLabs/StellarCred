@@ -95,11 +95,6 @@
 # downstream projects on an npm package that cannot be unpublished.
 /frontend/packages/sdk/         @nonchalanttee22-lgtm @Psalmuel01
 
-# The private root package is still in the tree (ROADMAP § 4.3 schedules a
-# decision to merge or delete it). Route it explicitly so a change here does
-# not land with less review than the published package.
-/sdk/                           @nonchalanttee22-lgtm @Psalmuel01
-
 # The CLI consumes the generated clients and the SDK, so it shares their
 # compatibility surface.
 /frontend/packages/cli/         @nonchalanttee22-lgtm @Psalmuel01

@@ -137,7 +137,6 @@ describe("verifyWalletClaim helper (#543)", () => {
       },
     ]);
 
-
     const res1 = await verifyWalletClaim({
       wallet,
       challenge,
@@ -191,6 +190,11 @@ describe("verifyWalletClaim helper (#543)", () => {
     const sig = keypair.sign(Buffer.from(challenge.message));
 
     vi.spyOn(claimsModule, "hasClaim").mockResolvedValue(false);
+    vi.spyOn(claimsModule, "checkClaimStatus").mockResolvedValue({
+      valid: false,
+      status: "not_verified",
+      record: null,
+    });
 
     const result = await verifyWalletClaim({
       wallet,
@@ -203,7 +207,64 @@ describe("verifyWalletClaim helper (#543)", () => {
     expect(result.ok).toBe(false);
     expect(result.signatureValid).toBe(true);
     expect(result.claimValid).toBe(false);
-    expect(result.error).toContain("does not possess an active on-chain 'age' credential");
+    expect(result.error).toContain("does not possess an active on-chain credential");
+    expect(result).toMatchObject({
+      errorCategory: "policy_rejection",
+      errorCode: "not_verified",
+    });
+  });
+
+  it("does not expose raw on-chain exceptions", async () => {
+    const challenge = createWalletChallenge({}, store);
+    const sig = keypair.sign(Buffer.from(challenge.message));
+    const secret = "credential=private salt=secret signature=abc witness=[1,2,3]";
+    vi.spyOn(claimsModule, "hasClaim").mockResolvedValue(true);
+    vi.spyOn(claimsModule, "getClaims").mockRejectedValue(new Error(secret));
+
+    const result = await verifyWalletClaim({
+      wallet,
+      challenge,
+      signature: sig,
+      claim: "kyc",
+      store,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      failureReason: "on_chain_error",
+      errorCategory: "network_error",
+      errorCode: "claim_read_failed",
+    });
+    expect(result.error).not.toContain(secret);
+    expect(result.error).not.toContain("private");
+  });
+
+  it("does not interpolate an unchecked claim type into errors", async () => {
+    const challenge = createWalletChallenge({}, store);
+    const sig = keypair.sign(Buffer.from(challenge.message));
+    const uncheckedClaim = "credential=private salt=secret";
+    vi.spyOn(claimsModule, "hasClaim").mockResolvedValue(false);
+    vi.spyOn(claimsModule, "checkClaimStatus").mockResolvedValue({
+      valid: false,
+      status: "unsupported",
+      record: null,
+      error: "This credential or proof format is not supported.",
+      errorCategory: "unsupported_credential",
+      errorCode: "unsupported_credential",
+    });
+
+    const result = await verifyWalletClaim({
+      wallet,
+      challenge,
+      signature: sig,
+      claim: uncheckedClaim as never,
+      store,
+    });
+
+    expect(result.errorCategory).toBe("unsupported_credential");
+    expect(result.errorCode).toBe("unsupported_credential");
+    expect(result.error).not.toContain(uncheckedClaim);
+    expect(result.error).not.toContain("private");
   });
 
   it("returns ok: true with claimDetails when signature and on-chain claim are valid", async () => {
@@ -217,7 +278,6 @@ describe("verifyWalletClaim helper (#543)", () => {
     };
     vi.spyOn(claimsModule, "hasClaim").mockResolvedValue(true);
     vi.spyOn(claimsModule, "getClaims").mockResolvedValue([mockClaim]);
-
 
     const result = await verifyWalletClaim({
       wallet,

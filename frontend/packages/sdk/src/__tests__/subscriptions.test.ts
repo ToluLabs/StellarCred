@@ -319,7 +319,11 @@ describe("subscribeClaims (#392)", () => {
     await advance(1000);
 
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: expect.stringContaining("Webhook delivery failed") }),
+      expect.objectContaining({
+        code: "webhook_http_500",
+        category: "network_error",
+        retryable: true,
+      }),
     );
     stop();
   });
@@ -343,7 +347,12 @@ describe("subscribeClaims (#392)", () => {
     await flush();
 
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0][0]).toBeInstanceOf(InvalidAddressError);
+    expect(onError.mock.calls[0][0]).toMatchObject({
+      name: "VerificationError",
+      code: "invalid_address",
+      category: "invalid_input",
+    });
+    expect(onError.mock.calls[0][0]).not.toBeInstanceOf(InvalidAddressError);
     await advance(5000);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -353,7 +362,9 @@ describe("subscribeClaims (#392)", () => {
     const fetchMock = installIndexerMock(state);
     let failing = true;
     fetchMock.mockImplementation(async (input: unknown) => {
-      if (failing) throw new Error("fetch failed");
+      if (failing) {
+        throw new Error("fetch failed https://indexer.test/private credential=secret salt=secret");
+      }
       const url = String(input);
       if (url.includes("/recent")) {
         return jsonResponse({ claims: state.recent, nextCursor: null });
@@ -372,6 +383,10 @@ describe("subscribeClaims (#392)", () => {
     });
     await flush();
     expect(onError).toHaveBeenCalled();
+    for (const [error] of onError.mock.calls) {
+      expect(error).toMatchObject({ code: "indexer_unavailable", category: "network_error" });
+      expect(error.message).not.toMatch(/indexer\.test|credential=secret|salt=secret/);
+    }
 
     failing = false;
     await advance(1000); // recovers; baseline gets seeded

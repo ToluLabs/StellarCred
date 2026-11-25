@@ -14,29 +14,19 @@ import {
   alpha2ToNumeric,
 } from "@/lib/persona-webhook";
 import type { CredentialType } from "@stellarcred/issuer";
+import { retrievePersonaInquiry } from "@/lib/persona";
+import { classifyVerificationError, VerificationError } from "@/packages/sdk/src/errors";
 
-const PERSONA_BASE = "https://withpersona.com/api/v1";
-const PERSONA_VERSION = "2023-01-05";
-
-async function retrievePersonaInquiry(inquiryId: string): Promise<{
-  status: string;
-  fields: Record<string, { value: unknown }>;
-}> {
-  const res = await fetch(`${PERSONA_BASE}/inquiries/${inquiryId}`, {
-    headers: {
-      Authorization: `Bearer ${env.PERSONA_API_KEY}`,
-      "Content-Type": "application/json",
-      "Persona-Version": PERSONA_VERSION,
+function webhookErrorResponse(error: VerificationError): NextResponse {
+  return NextResponse.json(
+    {
+      error: error.message,
+      code: error.code,
+      category: error.category,
+      retryable: error.retryable,
     },
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(`Persona: failed to retrieve inquiry — ${JSON.stringify(json)}`);
-  }
-  return {
-    status: json.data.attributes.status as string,
-    fields: (json.data.attributes.fields ?? {}) as Record<string, { value: unknown }>,
-  };
+    { status: error.httpStatus ?? 500 },
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -46,9 +36,12 @@ export async function POST(req: NextRequest) {
       stripSensitiveFields({ event: "persona_webhook_secret_missing" }),
       "PERSONA_WEBHOOK_SECRET is not configured",
     );
-    return NextResponse.json(
-      { error: "Webhook secret is not configured" },
-      { status: 401 },
+    return webhookErrorResponse(
+      new VerificationError({
+        category: "configuration_error",
+        code: "persona_webhook_not_configured",
+        httpStatus: 401,
+      }),
     );
   }
 
@@ -62,9 +55,12 @@ export async function POST(req: NextRequest) {
       stripSensitiveFields({ event: "persona_webhook_invalid_signature" }),
       "Rejected Persona webhook: invalid or missing HMAC signature",
     );
-    return NextResponse.json(
-      { error: "Invalid or missing webhook signature" },
-      { status: 401 },
+    return webhookErrorResponse(
+      new VerificationError({
+        category: "authorization_error",
+        code: "invalid_webhook_signature",
+        httpStatus: 401,
+      }),
     );
   }
 
@@ -74,7 +70,13 @@ export async function POST(req: NextRequest) {
       stripSensitiveFields({ event: "persona_webhook_malformed" }),
       "Malformed Persona webhook payload",
     );
-    return NextResponse.json({ error: "Malformed webhook payload" }, { status: 400 });
+    return webhookErrorResponse(
+      new VerificationError({
+        category: "invalid_input",
+        code: "malformed_webhook",
+        httpStatus: 400,
+      }),
+    );
   }
 
   logger.info(
@@ -98,26 +100,39 @@ export async function POST(req: NextRequest) {
 
   const existing = getInquiryResult(event.inquiryId);
   if (existing?.status === "completed") {
-    return NextResponse.json({ status: "already_processed", inquiryId: event.inquiryId }, { status: 200 });
+    return NextResponse.json(
+      { status: "already_processed", inquiryId: event.inquiryId },
+      { status: 200 },
+    );
   }
   if (!beginInquiryProcessing(event.inquiryId, event.eventId)) {
-    return NextResponse.json({ status: "already_processing", inquiryId: event.inquiryId }, { status: 200 });
+    return NextResponse.json(
+      { status: "already_processing", inquiryId: event.inquiryId },
+      { status: 200 },
+    );
   }
 
   // If status is failed or declined, record failed status in cache
   if (event.status === "declined" || event.status === "failed") {
+    const error = new VerificationError({
+      category: "policy_rejection",
+      code: event.status === "declined" ? "persona_declined" : "persona_incomplete",
+      httpStatus: 403,
+    });
     setInquiryResult(event.inquiryId, {
       status: "failed",
-      error: `Inquiry status: ${event.status}`,
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
+      retryable: error.retryable,
     });
     return NextResponse.json({ status: "recorded_failed" }, { status: 200 });
   }
 
   try {
     let dob =
-      String(
-        event.fields["birthdate"]?.value ?? event.fields["birth-date"]?.value ?? "",
-      ).trim() || undefined;
+      String(event.fields["birthdate"]?.value ?? event.fields["birth-date"]?.value ?? "").trim() ||
+      undefined;
 
     let alpha2 =
       String(
@@ -147,11 +162,15 @@ export async function POST(req: NextRequest) {
             ).trim() || undefined;
         }
       } catch (err) {
+        const error = classifyVerificationError(err, {
+          fallbackCategory: "network_error",
+          fallbackCode: "persona_unavailable",
+        });
         logger.warn(
           stripSensitiveFields({
             event: "persona_webhook_inquiry_fetch_failed",
             inquiryId: event.inquiryId,
-            error: (err as Error).message,
+            error: error.code,
           }),
         );
       }
@@ -168,9 +187,12 @@ export async function POST(req: NextRequest) {
           inquiryId: event.inquiryId,
         }),
       );
-      return NextResponse.json(
-        { error: "No holder address associated with inquiry" },
-        { status: 400 },
+      return webhookErrorResponse(
+        new VerificationError({
+          category: "invalid_input",
+          code: "persona_holder_missing",
+          httpStatus: 400,
+        }),
       );
     }
 
@@ -215,22 +237,26 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({ status: "ok", inquiryId: event.inquiryId }, { status: 200 });
-  } catch (error) {
+  } catch (e) {
+    const error = classifyVerificationError(e, {
+      fallbackCategory: "network_error",
+      fallbackCode: "issuance_failed",
+    });
     logger.error(
       stripSensitiveFields({
         event: "persona_webhook_processing_failed",
         inquiryId: event.inquiryId,
-        error: (error as Error).message,
+        error: error.code,
       }),
     );
     setInquiryResult(event.inquiryId, {
       status: "failed",
-      error: (error as Error).message,
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
+      retryable: error.retryable,
     });
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 },
-    );
+    return webhookErrorResponse(error);
   } finally {
     finishInquiryProcessing(event.inquiryId);
   }

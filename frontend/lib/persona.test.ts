@@ -49,13 +49,33 @@ describe("lib/persona", () => {
     it("throws if API returns an error", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: false,
-        json: async () => ({ error: "Template not found" }),
+        status: 400,
+        json: async () => ({ error: "Template not found credential=secret" }),
       });
       vi.stubGlobal("fetch", mockFetch);
 
       await expect(
         createPersonaInquiry("itmpl_invalid", "http://localhost:3000/verify"),
-      ).rejects.toThrow("Persona: failed to create inquiry");
+      ).rejects.toMatchObject({
+        name: "VerificationError",
+        code: "persona_create_http_400",
+        category: "invalid_input",
+      });
+    });
+
+    it("classifies transport failures without exposing provider details", async () => {
+      const cause = new Error("socket credential=secret salt=secret");
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(cause));
+
+      const error = await createPersonaInquiry("itmpl_test", "https://app.test/verify").catch(
+        (caught) => caught,
+      );
+      expect(error).toMatchObject({
+        code: "persona_unavailable",
+        category: "network_error",
+        cause,
+      });
+      expect(error.message).not.toMatch(/credential=secret|salt=secret/);
     });
   });
 
@@ -79,6 +99,26 @@ describe("lib/persona", () => {
       const result = await retrievePersonaInquiry("inq_123");
       expect(result.status).toBe("approved");
       expect(result.fields["birthdate"].value).toBe("1990-01-01");
+    });
+
+    it("rejects malformed provider responses without echoing them", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new Error("provider body credential=secret salt=secret");
+          },
+        }),
+      );
+
+      const error = await retrievePersonaInquiry("inq_123").catch((caught) => caught);
+      expect(error).toMatchObject({
+        code: "persona_invalid_response",
+        category: "configuration_error",
+      });
+      expect(error.message).not.toMatch(/credential=secret|salt=secret/);
     });
   });
 
@@ -122,7 +162,9 @@ describe("lib/persona", () => {
 
       const result = await resolvePersonaKYC("inq_123");
       expect(result.ok).toBe(false);
-      expect(result.error).toContain("declined");
+      expect(result.error).toBe("Identity verification was declined.");
+      expect(result.errorCategory).toBe("policy_rejection");
+      expect(result.errorCode).toBe("persona_declined");
     });
   });
 });

@@ -58,7 +58,7 @@ invariants are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 | # | Command | Passes with |
 |---|---|---|
-| [ ] | `cargo test --locked` | one `test result: ok. N passed; 0 failed` line per test binary, exit 0 |
+| [ ] | `cargo test --workspace --locked` | one `test result: ok. N passed; 0 failed` line per test binary, including the docs-derived event conformance test, exit 0 |
 | [ ] | `cargo build --release --target wasm32v1-none --locked` | `Finished` line, exit 0, `target/wasm32v1-none/release/*.wasm` present |
 | [ ] | `cargo clippy --workspace --all-targets -- -D warnings` | no output, exit 0 (warnings are errors) |
 | [ ] | `cargo fmt --all` | formats in place; `git diff --stat` should list only the files you edited |
@@ -75,8 +75,10 @@ Notes that save time:
   to change, which is how an uncommitted dependency edit gets caught. If you
   deliberately bumped a dependency, regenerate the lockfile and commit it in the
   same commit as the manifest.
-- `--workspace` on clippy matters. The host-only `contracts/test_support` harness
-  is not a default member, so a bare clippy/build skips it and CI does not.
+- `--workspace` on tests and clippy matters. The host-only `contracts/test_support`
+  harness is not a default member, so bare test/clippy/build commands skip it.
+  Its event conformance test deploys the contracts and compares emitted topics
+  and payload schemas with `docs/EVENTS.md`; CI runs it explicitly.
 - The suites verify **real** BN254 proofs against the committed `fixtures/` VKs,
   so they need no `nargo`, no `bb`, no wallet and no network. `mock_all_auths()`
   mocks signing only — never the verification itself.
@@ -131,6 +133,10 @@ its scripts from its own directory:
 | [ ] | `pnpm test:integration` | testnet round-trip passes; the suite skips itself when `SC_TEST_WALLET` / `STELLARCRED_REGISTRY_ID` are unset |
 | [ ] | `pnpm build` | tsup emits `dist/` cjs + esm + `.d.ts` |
 
+From the repository root, `make check-sdk-layout` verifies that
+`frontend/packages/sdk/` remains the only SDK implementation, and
+`node --test test/sdk-layout.test.js` tests that CI guard.
+
 Examples (each has its own `npm` install; both resolve `@stellarcred/sdk` from
 `frontend/packages/sdk` by `file:` path, so build the SDK first):
 
@@ -152,6 +158,7 @@ Indexer (`cd services/indexer`):
 |---|---|---|
 | [ ] | `bash scripts/check-holder-size.sh` (repo root) | `HolderPageClient.tsx: <n> lines (limit: 520)` then `OK — within limit.` — read the count it prints before you add holder code: the guard fails on the total, so anything that pushes it past 520 belongs in `lib/hooks/` and `components/holder/` instead |
 | [ ] | `node .github/scripts/check-api-reference.mjs` | `API reference in sync: N/N public entrypoints documented` — fails when a ProofRegistry entrypoint changed without `docs/PROOF_REGISTRY_API.md` (`make check-api-reference`) |
+| [ ] | `make check-sdk-layout && node --test test/sdk-layout.test.js` | `check-sdk-layout: OK` and a passing Node test summary — rejects duplicate SDK packages and source-only restoration of the retired root `sdk/` directory |
 | [ ] | `cd frontend && node scripts/check-env-sync.mjs && node scripts/validate-deploy-env.mjs --smoke-test` | `All environment variables are documented in .env.example` then `All deploy environment validation smoke tests PASSED.` — the `env-check` job: `.env.example` must stay in sync with what the code reads |
 | [ ] | `npx --yes -p @commitlint/cli -p @commitlint/config-conventional commitlint --from <base> --to HEAD --verbose` | the `commitlint` job; prefixes in [CONTRIBUTING.md § Commit messages](../CONTRIBUTING.md#commit-messages) |
 | [ ] | `make lint` | clippy (`-D warnings`) + frontend ESLint/typecheck. Use `make fmt` only on a tree you have already formatted — it is `cargo fmt --all --check`, and committed code is not clean (see § 3) |
@@ -172,6 +179,7 @@ Use this when a check is red and you cannot reproduce it locally.
 | `env-check` (`.github/workflows/env-check.yml`) | § 6 env commands |
 | `commitlint` | § 6 commitlint command |
 | `api-reference` | `make check-api-reference` |
+| `sdk-layout` | `make check-sdk-layout && node --test test/sdk-layout.test.js` |
 | `a11y` | `make test-a11y` — currently disabled in CI (`if: false`) while pre-existing violations are fixed |
 
 Workflows that run outside `ci.yml`: `first-load.yml` and

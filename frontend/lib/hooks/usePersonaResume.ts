@@ -2,12 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Credential } from "@/lib/credential";
-import {
-  loadPersonaPending,
-  clearStalePersonaPending,
-} from "@/lib/persona-pending";
+import { loadPersonaPending, clearStalePersonaPending } from "@/lib/persona-pending";
 import { getOrCreateRequestId } from "@/lib/verify-session";
 import { useToast } from "@/components/Toast";
+import { classifyVerificationError, verificationErrorFromApi } from "@/packages/sdk/src/errors";
 
 export interface UsePersonaResumeOptions {
   personaInquiryId: string | null;
@@ -28,7 +26,7 @@ export function usePersonaResume({
   onBusyChange,
   maxPollAttempts = 15,
   pollIntervalMs = 2000,
-  fetchFn = typeof fetch !== "undefined" ? fetch : (async () => ({} as Response)),
+  fetchFn = typeof fetch !== "undefined" ? fetch : async () => ({}) as Response,
 }: UsePersonaResumeOptions) {
   const [isResuming, setIsResuming] = useState(false);
   const [error, setError] = useState("");
@@ -101,21 +99,24 @@ export function usePersonaResume({
             error?: string;
           } | null;
 
-          if (
-            data?.ready &&
-            Array.isArray(data.credentials) &&
-            data.credentials.length > 0
-          ) {
+          if (data?.ready && Array.isArray(data.credentials) && data.credentials.length > 0) {
             await handleSuccess(data.credentials);
             return;
           }
           if (data?.status === "failed") {
-            throw new Error(data.error ?? "Identity verification failed");
+            throw verificationErrorFromApi(res.status, data);
           }
+        } else {
+          const data = (await res.json().catch(() => null)) as unknown;
+          throw verificationErrorFromApi(res.status, data);
         }
       } catch (e) {
         if (cancelled) return;
-        handleError((e as Error).message);
+        const error = classifyVerificationError(e, {
+          fallbackCategory: "network_error",
+          fallbackCode: "claim_read_failed",
+        });
+        handleError(error.message);
         return;
       }
 
@@ -137,12 +138,8 @@ export function usePersonaResume({
             }),
           });
           if (!res.ok) {
-            const d = (await res.json().catch(() => null)) as {
-              error?: string;
-            } | null;
-            throw new Error(
-              d?.error ?? "Issuing failed after identity verification",
-            );
+            const data = (await res.json().catch(() => null)) as unknown;
+            throw verificationErrorFromApi(res.status, data);
           }
           const { credentials } = (await res.json()) as {
             credentials: Credential[];
@@ -150,7 +147,11 @@ export function usePersonaResume({
           await handleSuccess(credentials);
         } catch (e) {
           if (cancelled) return;
-          handleError((e as Error).message);
+          const error = classifyVerificationError(e, {
+            fallbackCategory: "network_error",
+            fallbackCode: "issuance_failed",
+          });
+          handleError(error.message);
         }
       }
     };

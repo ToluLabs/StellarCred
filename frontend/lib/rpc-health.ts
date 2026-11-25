@@ -20,6 +20,11 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { RPC_URL } from "./stellar";
+import {
+  classifyVerificationError,
+  type VerificationErrorCategory,
+  type VerificationErrorCode,
+} from "../packages/sdk/src/errors";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +42,9 @@ export interface RpcIssue {
   kind: RpcIssueKind;
   /** Human-readable reason, safe to surface in the UI or a tooltip. */
   message: string;
+  category: VerificationErrorCategory;
+  code: VerificationErrorCode;
+  retryable: boolean;
 }
 
 /** App-wide RPC state. `unchecked` means nothing has been probed yet. */
@@ -100,14 +108,16 @@ const NOT_CONFIGURED_PATTERNS = [
  * decides what "unknown" means for its surface.
  */
 export function classifyRpcError(error: unknown): RpcIssue {
-  const raw =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : error == null
-          ? ""
-          : JSON.stringify(error);
+  let raw = "";
+  if (error instanceof Error) raw = error.message;
+  else if (typeof error === "string") raw = error;
+  else if (error != null) {
+    try {
+      raw = JSON.stringify(error) ?? "";
+    } catch {
+      raw = "";
+    }
+  }
   const message = raw.toLowerCase();
 
   const configured = NOT_CONFIGURED_PATTERNS.some((p) => message.includes(p));
@@ -115,6 +125,9 @@ export function classifyRpcError(error: unknown): RpcIssue {
     return {
       kind: "not-configured",
       message: "This build has no ProofRegistry configured, so no claim status can be read.",
+      category: "configuration_error",
+      code: "rpc_not_configured",
+      retryable: false,
     };
   }
 
@@ -123,12 +136,22 @@ export function classifyRpcError(error: unknown): RpcIssue {
     return {
       kind: "rpc-unreachable",
       message: `The Stellar RPC endpoint at ${hostOf(RPC_URL)} is not responding.`,
+      category: "network_error",
+      code: "rpc_unreachable",
+      retryable: true,
     };
   }
 
+  const normalized = classifyVerificationError(error, {
+    fallbackCategory: "network_error",
+    fallbackCode: "claim_read_failed",
+  });
   return {
     kind: "read-failed",
-    message: raw ? `The claim could not be read: ${truncate(raw, 140)}` : "The claim could not be read.",
+    message: normalized.message,
+    category: normalized.category,
+    code: normalized.code,
+    retryable: normalized.retryable,
   };
 }
 
@@ -165,12 +188,8 @@ function hostOf(url: string): string {
   try {
     return new URL(url).host;
   } catch {
-    return url;
+    return "the configured endpoint";
   }
-}
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -184,7 +203,10 @@ function setState(next: RpcHealthState) {
   if (
     state.status === next.status &&
     state.checkedAt === next.checkedAt &&
-    state.issue?.message === next.issue?.message
+    state.issue?.message === next.issue?.message &&
+    state.issue?.category === next.issue?.category &&
+    state.issue?.code === next.issue?.code &&
+    state.issue?.retryable === next.issue?.retryable
   ) {
     return;
   }
@@ -267,9 +289,7 @@ async function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
  * usable, or the {@link RpcIssue} that explains why it is not. Updates the
  * shared store either way, so this doubles as the app's reachability probe.
  */
-export async function probeRpcHealth(
-  opts: { timeoutMs?: number } = {},
-): Promise<RpcIssue | null> {
+export async function probeRpcHealth(opts: { timeoutMs?: number } = {}): Promise<RpcIssue | null> {
   try {
     const server = await getProbeServer();
     await withDeadline(server.getLatestLedger(), opts.timeoutMs ?? RPC_PROBE_TIMEOUT_MS);
@@ -278,7 +298,13 @@ export async function probeRpcHealth(
   } catch (e) {
     const issue =
       e instanceof RpcProbeTimeout
-        ? { kind: "rpc-unreachable" as const, message: `The Stellar RPC endpoint at ${hostOf(RPC_URL)} did not respond in time.` }
+        ? {
+            kind: "rpc-unreachable" as const,
+            message: `The Stellar RPC endpoint at ${hostOf(RPC_URL)} did not respond in time.`,
+            category: "network_error" as const,
+            code: "rpc_timeout",
+            retryable: true,
+          }
         : classifyRpcError(e);
     reportRpcIssue(issue);
     return issue;

@@ -86,6 +86,11 @@ jobs:
         # the job log.
         run: cargo test --locked
 
+      - name: Run contract event conformance tests
+        # test_support is host-only and excluded from the workspace default
+        # members, so the docs-derived event schema check runs explicitly.
+        run: cargo test -p test_support --locked
+
       - name: Verify generated contract client freshness
         # Fails if committed bindings have drifted from the built contract ABIs (#999).
         run: bash scripts/verify-client-freshness.sh

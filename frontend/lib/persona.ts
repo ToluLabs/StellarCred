@@ -4,6 +4,11 @@ if (typeof window !== "undefined") {
 }
 
 import { env } from "./env";
+import {
+  VerificationError,
+  type VerificationErrorCategory,
+  type VerificationErrorCode,
+} from "../packages/sdk/src/errors";
 
 export const PERSONA_BASE = "https://withpersona.com/api/v1";
 export const PERSONA_VERSION = "2023-01-05";
@@ -45,12 +50,47 @@ export function personaHeaders() {
   };
 }
 
+async function responseObject(res: Response, code: string): Promise<Record<string, unknown>> {
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (cause) {
+    throw new VerificationError({
+      category: res.ok ? "configuration_error" : "network_error",
+      code,
+      httpStatus: res.ok ? 502 : res.status,
+      cause,
+    });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new VerificationError({
+      category: res.ok ? "configuration_error" : "network_error",
+      code,
+      httpStatus: res.ok ? 502 : res.status,
+    });
+  }
+  return body as Record<string, unknown>;
+}
+
+async function personaFetch(input: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (cause) {
+    throw new VerificationError({
+      category: "network_error",
+      code: "persona_unavailable",
+      httpStatus: 502,
+      cause,
+    });
+  }
+}
+
 export async function createPersonaInquiry(
   templateId: string,
   redirectUri: string,
   referenceId?: string,
 ): Promise<{ url: string; id: string }> {
-  const res = await fetch(`${PERSONA_BASE}/inquiries`, {
+  const res = await personaFetch(`${PERSONA_BASE}/inquiries`, {
     method: "POST",
     headers: personaHeaders(),
     body: JSON.stringify({
@@ -63,14 +103,29 @@ export async function createPersonaInquiry(
       },
     }),
   });
-  const json = await res.json();
+  const body = await responseObject(res, "persona_invalid_response");
   if (!res.ok) {
-    throw new Error(
-      `Persona: failed to create inquiry — ${JSON.stringify(json)}`,
-    );
+    throw new VerificationError({
+      category:
+        res.status === 401 || res.status === 403
+          ? "configuration_error"
+          : res.status >= 500 || res.status === 408 || res.status === 429
+            ? "network_error"
+            : "invalid_input",
+      code: `persona_create_http_${res.status}`,
+      httpStatus: res.status,
+    });
   }
-  const id: string = json.data.id;
-  const url = `https://withpersona.com/verify?inquiry-id=${id}`;
+  const data = body.data as Record<string, unknown> | undefined;
+  const id = data?.id;
+  if (typeof id !== "string" || id.length === 0) {
+    throw new VerificationError({
+      category: "configuration_error",
+      code: "persona_invalid_response",
+      httpStatus: 502,
+    });
+  }
+  const url = `https://withpersona.com/verify?inquiry-id=${encodeURIComponent(id)}`;
   return { url, id };
 }
 
@@ -78,22 +133,57 @@ export async function retrievePersonaInquiry(inquiryId: string): Promise<{
   status: string;
   fields: Record<string, { value: unknown }>;
 }> {
-  const res = await fetch(`${PERSONA_BASE}/inquiries/${inquiryId}`, {
+  const res = await personaFetch(`${PERSONA_BASE}/inquiries/${encodeURIComponent(inquiryId)}`, {
     headers: personaHeaders(),
   });
-  const json = await res.json();
+  const body = await responseObject(res, "persona_invalid_response");
   if (!res.ok) {
-    throw new Error(
-      `Persona: failed to retrieve inquiry — ${JSON.stringify(json)}`,
-    );
+    throw new VerificationError({
+      category:
+        res.status === 401 || res.status === 403
+          ? "configuration_error"
+          : res.status >= 500 || res.status === 408 || res.status === 429
+            ? "network_error"
+            : "invalid_input",
+      code: `persona_retrieve_http_${res.status}`,
+      httpStatus: res.status,
+    });
+  }
+  const data = body.data as Record<string, unknown> | undefined;
+  const attributes = data?.attributes as Record<string, unknown> | undefined;
+  const status = attributes?.status;
+  const fields = attributes?.fields ?? {};
+  if (
+    typeof status !== "string" ||
+    status.length === 0 ||
+    !fields ||
+    typeof fields !== "object" ||
+    Array.isArray(fields)
+  ) {
+    throw new VerificationError({
+      category: "configuration_error",
+      code: "persona_invalid_response",
+      httpStatus: 502,
+    });
   }
   return {
-    status: json.data.attributes.status as string,
-    fields: (json.data.attributes.fields ?? {}) as Record<
-      string,
-      { value: unknown }
-    >,
+    status,
+    fields: fields as Record<string, { value: unknown }>,
   };
+}
+
+function personaFailure(status: string): VerificationError {
+  const category: VerificationErrorCategory =
+    status === "declined" || status === "failed" ? "policy_rejection" : "invalid_input";
+  const code: VerificationErrorCode =
+    status === "declined"
+      ? "persona_declined"
+      : status === "expired"
+        ? "persona_expired"
+        : status === "failed"
+          ? "persona_incomplete"
+          : "persona_incomplete";
+  return new VerificationError({ category, code, httpStatus: 403 });
 }
 
 /**
@@ -105,15 +195,21 @@ export async function resolvePersonaKYC(inquiryId: string): Promise<{
   dob?: string;
   countryNumeric?: string;
   error?: string;
+  errorCategory?: VerificationErrorCategory;
+  errorCode?: VerificationErrorCode;
 }> {
   const { status, fields } = await retrievePersonaInquiry(inquiryId);
   if (status !== "approved") {
-    return { ok: false, error: `Persona KYC inquiry status: ${status}` };
+    const error = personaFailure(status);
+    return {
+      ok: false,
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
+    };
   }
   const dob =
-    String(
-      fields["birthdate"]?.value ?? fields["birth-date"]?.value ?? "",
-    ).trim() || undefined;
+    String(fields["birthdate"]?.value ?? fields["birth-date"]?.value ?? "").trim() || undefined;
   const alpha2 =
     String(
       fields["selected-country-code"]?.value ??

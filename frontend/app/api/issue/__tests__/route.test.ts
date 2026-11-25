@@ -298,7 +298,13 @@ describe("validation", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/Invalid credential type/);
+    expect(body).toMatchObject({
+      error: "The request contains invalid or incomplete credential data. Review it and try again.",
+      code: 400,
+      category: "invalid_input",
+      retryable: false,
+    });
+    expect(body.error).not.toContain("not-a-real-type");
   });
 
   it("accepts the multi-claim shape (credential_types + attributes)", async () => {
@@ -627,7 +633,12 @@ describe("issuer-key mismatch", () => {
 
     expect(res.status).toBe(403);
     const body = await res.json();
-    expect(body.error).toMatch(/does not match/);
+    expect(body).toMatchObject({
+      error: expect.stringMatching(/does not match/),
+      code: "issuer_key_mismatch",
+      category: "configuration_error",
+      retryable: false,
+    });
   });
 
   it("succeeds when the registered pubkey matches the signing key", async () => {

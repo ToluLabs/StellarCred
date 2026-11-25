@@ -336,14 +336,16 @@ One command for the common set: `make test-frontend`.
 
 ### SDK
 
-Two SDKs live in this repo, and both are tested:
+**`frontend/packages/sdk` (`@stellarcred/sdk`) is the only SDK package.** Its
+source, tests, browser/server/testing entry points, and release manifest all live
+there. `make test-sdk` runs `pnpm typecheck && pnpm test:integration` there; CI
+also checks barrel exports and builds the published distribution. The integration
+suite talks to testnet and skips gracefully when credentials are absent.
 
-- **`frontend/packages/sdk` (`@stellarcred/sdk`)** — the browser package.
-  `make test-sdk` runs `pnpm typecheck && pnpm test:integration` there; CI also
-  checks the barrel exports (`pnpm test:barrel`). The integration suite talks to
-  testnet and skips gracefully when credentials are absent.
-- **`sdk/` (root, standalone)** — `pnpm test` (vitest), `pnpm typecheck`, and
-  `pnpm bundle-check` for the bundle-size guard.
+The former private root `sdk/` package was unpublished, had no consumers, and has
+been removed. [`sdk/README.md`](sdk/README.md) records the deprecation. Do not add
+another SDK implementation; `node .github/scripts/check-sdk-layout.mjs` enforces
+the single-package layout in CI.
 
 ### Indexer (Node.js, npm + jest)
 
@@ -619,7 +621,7 @@ keeps in sync with CODEOWNERS.
 | `fixtures/`, `circuits/scripts/` | The committed VKs, proofs, and public inputs the contract tests verify against | Highest — must be regenerated through the documented circuit build, never by hand. |
 | `frontend/app/api/`, `frontend/packages/issuer/`, `frontend/lib/issuer-signer.ts`, `frontend/lib/persona-webhook.ts` | Issuance, signing, and the KYC webhook. Reads `ISSUER_PRIVATE_KEY` | **High.** Check for `NEXT_PUBLIC_` leaking server-only vars, that `prehash: false` is preserved, and that webhook payloads stay redacted. |
 | `frontend/packages/issuer-registry/`, `frontend/packages/proof-registry/` | Client-facing view of the trust anchor | High, same as contracts. |
-| `frontend/packages/sdk/`, `sdk/`, `frontend/packages/cli/` | The published integrators' surface and the clients built on it | Normal, but breaking changes need a version/migration note. |
+| `frontend/packages/sdk/`, `frontend/packages/cli/` | The published integrators' surface and the clients built on it | Normal, but breaking changes need a version/migration note. |
 | `services/indexer/` | Reads chain state and republishes it to consumers | Normal, with extra attention to `auth.ts`, `cors.ts`, and `rate-limit.ts`. |
 | `.github/workflows/`, `.github/dependabot.yml`, `Makefile`, `deny.toml` | Runs with repo credentials; the release job publishes to npm | **High** — treat a workflow diff like a signing-path diff. |
 | `docs/adr/`, `SECURITY.md`, `docs/THREAT_MODEL.md`, `CONTRIBUTING.md`, `SUPPORT_POLICY.md` | Records the decisions and the review bar the rest of the routing relies on | High — reviewed alongside the CODEOWNERS rules themselves. |

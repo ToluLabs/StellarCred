@@ -25,6 +25,7 @@
 
 import type { CredentialType } from "./stellar";
 import { assertCredentialCircuitCompatible, CircuitVersionMismatchError } from "./circuit-versions";
+import { classifyVerificationError, verificationErrorFromApi } from "../packages/sdk/src/errors";
 
 /** The compiled Noir circuit artifact emitted by circuits/scripts/build.sh to
  * /public/circuits/<type>.json.
@@ -183,7 +184,11 @@ export function warmBackend(type: ProverCircuit): void {
   const pending = getBackend(type);
   if (pending !== before) {
     pending.catch((err) => {
-      console.warn(`[proof] Failed to warm prover for "${type}":`, err);
+      const error = classifyVerificationError(err, {
+        fallbackCategory: "unknown",
+        fallbackCode: "prover_warmup_failed",
+      });
+      console.warn(`[proof] Failed to warm prover for "${type}" (${String(error.code)}).`);
     });
   }
 }
@@ -245,14 +250,34 @@ function nibble(code: number): number {
   return -1;
 }
 
-/** Pull the human-readable `error` out of a JSON API body, if it is one. */
-function extractErrorMessage(body: string): string | null {
+async function postWitness(body: unknown, signal?: AbortSignal): Promise<Response> {
   try {
-    const parsed = JSON.parse(body) as { error?: unknown };
-    return typeof parsed.error === "string" && parsed.error.length > 0 ? parsed.error : null;
-  } catch {
-    return null;
+    return await fetch("/api/witness", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    throw classifyVerificationError(err, {
+      fallbackCategory: "network_error",
+      fallbackCode: "witness_request_failed",
+    });
   }
+}
+
+async function witnessResponseError(res: Response): Promise<Error> {
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    // An unreadable body still has a useful HTTP diagnostic.
+  }
+  const error = verificationErrorFromApi(res.status, body);
+  if (error.code === "circuit_version_mismatch") {
+    return new CircuitVersionMismatchError(error.message);
+  }
+  return error;
 }
 
 // Stage 1 — server computes the witness (Noir circuit execution).
@@ -272,25 +297,8 @@ export async function computeWitness(
   // main-thread fallback.
   assertCredentialCircuitCompatible(credential, type);
 
-  const res = await fetch("/api/witness", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, credential }),
-    signal,
-  });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    // The server owns the compiled circuits, so its verdict is authoritative
-    // when it disagrees with this build's registry (a deploy skewed between the
-    // two, or an older client that does not carry the check). Surface its
-    // explanation as a CircuitVersionMismatchError rather than burying it in a
-    // generic "witness generation failed" string.
-    if (/circuit_version_mismatch/.test(msg)) {
-      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
-      throw new CircuitVersionMismatchError(detail);
-    }
-    throw new Error(`Witness generation failed: ${msg}`);
-  }
+  const res = await postWitness({ type, credential }, signal);
+  if (!res.ok) throw await witnessResponseError(res);
   const { witness: hex } = (await res.json()) as { witness: string };
   return decodeWitnessHex(hex);
 }
@@ -436,20 +444,8 @@ export async function computeAggregateWitness(
     age_circuitVersion: inputs.age.circuitVersion,
   };
 
-  const res = await fetch("/api/witness", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "aggregate", credential: aggregateCredential }),
-    signal,
-  });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    if (/circuit_version_mismatch/.test(msg)) {
-      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
-      throw new CircuitVersionMismatchError(detail);
-    }
-    throw new Error(`Aggregate witness generation failed: ${msg}`);
-  }
+  const res = await postWitness({ type: "aggregate", credential: aggregateCredential }, signal);
+  if (!res.ok) throw await witnessResponseError(res);
   const { witness: hex } = (await res.json()) as { witness: string };
   return decodeWitnessHex(hex);
 }

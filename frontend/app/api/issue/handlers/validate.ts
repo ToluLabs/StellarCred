@@ -36,6 +36,7 @@ import {
 } from "@/lib/issuer-service";
 import { readJsonBody, type BodyResult } from "@/lib/request-limits";
 import { validateTenantCredentialTypes, type Tenant } from "@/lib/tenancy";
+import type { VerificationErrorCode } from "@/packages/sdk/src/errors";
 
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -90,6 +91,7 @@ export interface IssueRequest extends NormalizedIssueRequest {
 export interface ValidationFailure {
   status: 400 | 401 | 403 | 500;
   error: string;
+  code?: VerificationErrorCode;
 }
 
 export type ValidationResult =
@@ -282,6 +284,7 @@ export async function validateIssuerRegistration(
   if (!equals(registered, localKey)) {
     return {
       status: 403,
+      code: "issuer_key_mismatch",
       error:
         "ISSUER_PRIVATE_KEY does not match the selected issuer's registered public key on IssuerRegistry. Choose the issuer that matches your server key, or update ISSUER_PRIVATE_KEY.",
     };

@@ -64,10 +64,7 @@ export type SubmitFn = (params: {
   vkVersion?: number;
 }) => Promise<string>;
 
-export function useProofFlow(
-  cred: Credential | null,
-  submitFn: SubmitFn = defaultSubmitProof,
-) {
+export function useProofFlow(cred: Credential | null, submitFn: SubmitFn = defaultSubmitProof) {
   const [stage, setStage] = useState<Stage>("idle");
   const [proof, setProof] = useState<{ proof: Uint8Array; publicInputs: Uint8Array } | null>(null);
   const [txHash, setTxHash] = useState("");
@@ -99,10 +96,7 @@ export function useProofFlow(
   const startElapsedTimer = useCallback((from: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
     setElapsed(0);
-    timerRef.current = setInterval(
-      () => setElapsed(Math.floor((Date.now() - from) / 1000)),
-      1000,
-    );
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - from) / 1000)), 1000);
   }, []);
   const stopElapsedTimer = useCallback(() => {
     if (!timerRef.current) return;
@@ -195,10 +189,9 @@ export function useProofFlow(
           // point is that stalled provers fail visibly, not as a generic error.
           if (e instanceof ProofTimeoutError) {
             setError({
-              code: null,
+              ...parseContractError(e),
               friendly:
                 "Proof generation timed out. The prover took too long — this can happen on slow devices or with large circuits. Please try again.",
-              raw: e.message,
             });
             setErrorPhase("timeout");
             setStage("error");
@@ -210,7 +203,7 @@ export function useProofFlow(
           // refused it up front. Its message names the limit and what to do, so
           // surface it as-is rather than wrapping it in "proof generation failed".
           if (e instanceof ProofResourceError) {
-            setError({ code: null, friendly: e.friendly, raw: e.message });
+            setError({ ...parseContractError(e), friendly: e.friendly });
             setErrorPhase("proving");
             setStage("error");
             setStageProgress(null);
@@ -222,14 +215,14 @@ export function useProofFlow(
           // "proof generation failed" wrapper — the explanation already names both
           // versions and what the holder should do about it.
           if (e instanceof CircuitVersionMismatchError) {
-            setError({ code: null, friendly: e.message, raw: e.message });
+            setError({ ...parseContractError(e), friendly: e.message });
             setErrorPhase("proving");
             setStage("error");
             setStageProgress(null);
             toast.error("This credential can’t be proven by the current circuit.");
             return;
           }
-          const parsed = parseContractError((e as Error).message);
+          const parsed = parseContractError(e);
           setError(parsed);
           setErrorPhase("proving");
           setStage("error");
@@ -268,9 +261,8 @@ export function useProofFlow(
       if (issue) {
         setRpcIssue(issue);
         setError({
-          code: null,
+          ...parseContractError({ code: "network_error" }),
           friendly: `${issue.message} Proof generation was deferred: the proof would cost you the proving step and then fail at submission.`,
-          raw: issue.message,
         });
         setErrorPhase("network");
         setStage("blocked");
@@ -337,7 +329,7 @@ export function useProofFlow(
         setFee(preflight.fee);
         setStage("readyToSign");
       } catch (e) {
-        const parsed = parseContractError((e as Error).message);
+        const parsed = parseContractError(e);
         setError(parsed);
         setErrorPhase("preflight");
         setStage("error");
@@ -371,7 +363,7 @@ export function useProofFlow(
         toast.success(`Proof confirmed on-chain for ${cred.title}`, { txHash: hash });
         return hash;
       } catch (e) {
-        const parsed = parseContractError((e as Error).message);
+        const parsed = parseContractError(e);
         setError(parsed);
         setErrorPhase("submitting");
         setStage("error");

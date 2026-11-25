@@ -24,6 +24,7 @@ import {
   withRetry,
   type ClaimType,
 } from "./claims";
+import { classifyVerificationError, VerificationError } from "./errors";
 import type { IndexerClaimRow } from "./indexer";
 
 // ---------------------------------------------------------------------------
@@ -121,11 +122,32 @@ async function fetchIndexerJson<T>(
     typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
       ? AbortSignal.timeout(opts.timeoutMs)
       : undefined;
-  const res = await fetch(url, { headers, signal });
-  if (!res.ok) {
-    throw new Error(`Indexer request failed: HTTP ${res.status} for ${url}`);
+  let res: Response;
+  try {
+    res = await fetch(url, { headers, signal });
+  } catch (cause) {
+    throw new VerificationError({
+      category: "network_error",
+      code: "indexer_unavailable",
+      cause,
+    });
   }
-  return (await res.json()) as T;
+  if (!res.ok) {
+    throw new VerificationError({
+      category: res.status >= 500 ? "network_error" : "configuration_error",
+      code: `indexer_http_${res.status}`,
+      httpStatus: res.status,
+    });
+  }
+  try {
+    return (await res.json()) as T;
+  } catch (cause) {
+    throw new VerificationError({
+      category: "network_error",
+      code: "indexer_invalid_response",
+      cause,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +159,7 @@ function assertHttpUrl(value: string, label: string): void {
   try {
     parsed = new URL(value);
   } catch {
-    throw new ConfigError(`subscribeClaims: ${label} "${value}" is not a valid URL`);
+    throw new ConfigError(`subscribeClaims: ${label} is not a valid URL`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new ConfigError(
@@ -183,6 +205,18 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
   const watchedTypes = new Set(claimTypes);
   const watchedWallets = new Set(wallets);
   const onError = opts.onError ?? (() => {});
+
+  function reportError(error: unknown): void {
+    const normalized = classifyVerificationError(error, {
+      fallbackCategory: "network_error",
+      fallbackCode: "subscription_failed",
+    });
+    try {
+      onError(normalized);
+    } catch {
+      // A reporting callback must not stop the subscription loop.
+    }
+  }
 
   /** Last-known active state, keyed by `wallet|credential_type`. */
   const active = new Map<string, IndexerClaimRow>();
@@ -242,16 +276,30 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
     try {
       await withRetry(
         async ({ signal }) => {
-          const res = await fetch(webhook.url, { method: "POST", headers, body, signal });
+          let res: Response;
+          try {
+            res = await fetch(webhook.url, { method: "POST", headers, body, signal });
+          } catch (cause) {
+            throw new VerificationError({
+              category: "network_error",
+              code: "webhook_delivery_failed",
+              cause,
+            });
+          }
           if (!res.ok) {
-            throw new Error(`Webhook delivery failed: HTTP ${res.status} for ${webhook.url}`);
+            throw new VerificationError({
+              category: res.status >= 500 ? "network_error" : "configuration_error",
+              code: `webhook_http_${res.status}`,
+              httpStatus: res.status,
+              retryable: res.status >= 500 || res.status === 429,
+            });
           }
         },
         { retries: webhook.retries, signal: lifecycle?.signal },
       );
     } catch (err) {
       // An unsubscribe cancels pending deliveries; that is not an error to report.
-      if (!lifecycle?.signal.aborted) onError(err);
+      if (!lifecycle?.signal.aborted) reportError(err);
     }
   }
 
@@ -261,7 +309,7 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
       else opts.onLost?.(event);
       opts.onChange?.(event);
     } catch (err) {
-      onError(err);
+      reportError(err);
     }
     if (opts.webhook) void deliverWebhook(event);
   }
@@ -412,18 +460,18 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
       try {
         await pollFeed(now);
       } catch (err) {
-        onError(err);
+        reportError(err);
       }
       try {
         sweepExpiries(now);
       } catch (err) {
-        onError(err);
+        reportError(err);
       }
       if (!hasSeededBaseline || now - lastResyncAt >= Math.ceil(resyncMs / 1000)) {
         try {
           await resync(now);
         } catch (err) {
-          onError(err);
+          reportError(err);
         }
       }
     } finally {
@@ -448,7 +496,7 @@ export function subscribeClaims(opts: SubscribeClaimsOptions): Unsubscribe {
         wallets[i] = await normalizeAndValidateWallet(wallets[i]);
       }
     } catch (err) {
-      onError(err);
+      reportError(err);
       return;
     }
     watchedWallets.clear();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   IconArrowLeft,
   IconExternalLink,
@@ -33,7 +33,6 @@ export function BatchProofFlowView({
 }) {
   const { networkMismatch } = useWallet();
   const toast = useToast();
-  const [showRaw, setShowRaw] = useState(false);
   const networkMismatchRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -86,16 +85,21 @@ export function BatchProofFlowView({
           <span className="eyebrow" style={{ marginBottom: "0.5rem", display: "block" }}>
             Batch proving
           </span>
-          <h2 style={{ marginBottom: "0.25rem" }}>
-            Prove all {creds.length} credentials
-          </h2>
+          <h2 style={{ marginBottom: "0.25rem" }}>Prove all {creds.length} credentials</h2>
           <span className="faint" style={{ fontSize: "0.8rem" }}>
             Proofs are generated in your browser, then submitted in a single on-chain transaction.
           </span>
         </div>
 
         {/* Per-credential progress rows */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            marginBottom: "1.5rem",
+          }}
+        >
           {creds.map((cred, i) => {
             const cs = credStates[i] ?? { status: "pending" as const };
             return (
@@ -131,25 +135,36 @@ export function BatchProofFlowView({
           icon={<IconCloudUpload size={14} stroke={1.8} />}
           title="Submit batch to Stellar"
           subtitle={`ProofRegistry.submit_proofs · ${creds.length} credentials · single Freighter signature`}
-          state={
-            isSubmitting ? "active" :
-            isConfirmed ? "done" : "idle"
-          }
+          state={isSubmitting ? "active" : isConfirmed ? "done" : "idle"}
           last
           detail={
             isSubmitting ? (
               <div style={{ marginTop: "0.35rem" }}>
                 <AnimatedDots
-                  text={batchFee ? "Writing all proofs to ProofRegistry" : "Running preflight simulation"}
+                  text={
+                    batchFee
+                      ? "Writing all proofs to ProofRegistry"
+                      : "Running preflight simulation"
+                  }
                 />
                 {batchFee && (
-                  <span style={{ fontSize: "0.72rem", color: "var(--accent)", marginLeft: "0.5rem", fontWeight: 500 }}>
+                  <span
+                    style={{
+                      fontSize: "0.72rem",
+                      color: "var(--accent)",
+                      marginLeft: "0.5rem",
+                      fontWeight: 500,
+                    }}
+                  >
                     Estimate · {batchFee.display}
                   </span>
                 )}
               </div>
             ) : isConfirmed ? (
-              <div className="row" style={{ gap: "0.5rem", marginTop: "0.3rem", alignItems: "center" }}>
+              <div
+                className="row"
+                style={{ gap: "0.5rem", marginTop: "0.3rem", alignItems: "center" }}
+              >
                 <a
                   href={EXPLORER_TX(txHash)}
                   target="_blank"
@@ -187,16 +202,33 @@ export function BatchProofFlowView({
               background: "rgba(240,96,77,0.06)",
             }}
           >
-            <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+            <div
+              className="row"
+              style={{
+                gap: "0.5rem",
+                color: "var(--danger)",
+                fontWeight: 600,
+                fontSize: "0.875rem",
+              }}
+            >
               <IconAlertTriangle size={15} />
               Network unavailable — proving deferred
             </div>
-            <div style={{ fontSize: "0.8125rem", marginTop: "0.45rem", lineHeight: 1.65, color: "var(--text)" }}>
-              {rpcIssue?.message ?? "The Stellar RPC endpoint is not responding."}{" "}
-              Your credentials are fine; a batch of {creds.length} proofs would have
-              cost the proving step and then failed at submission.
+            <div
+              style={{
+                fontSize: "0.8125rem",
+                marginTop: "0.45rem",
+                lineHeight: 1.65,
+                color: "var(--text)",
+              }}
+            >
+              {rpcIssue?.message ?? "The Stellar RPC endpoint is not responding."} Your credentials
+              are fine; a batch of {creds.length} proofs would have cost the proving step and then
+              failed at submission.
             </div>
-            <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div
+              style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}
+            >
               <button
                 className="btn btn-primary"
                 style={{ width: "100%" }}
@@ -204,11 +236,7 @@ export function BatchProofFlowView({
               >
                 Check the network again
               </button>
-              <button
-                className="btn btn-ghost"
-                style={{ width: "100%" }}
-                onClick={proceedAnyway}
-              >
+              <button className="btn btn-ghost" style={{ width: "100%" }} onClick={proceedAnyway}>
                 Generate the proofs anyway
               </button>
             </div>
@@ -229,44 +257,28 @@ export function BatchProofFlowView({
               background: "rgba(240,96,77,0.06)",
             }}
           >
-            <div className="row" style={{ gap: "0.5rem", color: "var(--danger)", fontWeight: 600, fontSize: "0.875rem" }}>
+            <div
+              className="row"
+              style={{
+                gap: "0.5rem",
+                color: "var(--danger)",
+                fontWeight: 600,
+                fontSize: "0.875rem",
+              }}
+            >
               <IconAlertTriangle size={15} />
               {batchError.code !== null ? `Contract error #${batchError.code}` : "Batch failed"}
             </div>
-            <div style={{ fontSize: "0.8125rem", marginTop: "0.45rem", lineHeight: 1.65, color: "var(--text)" }}>
+            <div
+              style={{
+                fontSize: "0.8125rem",
+                marginTop: "0.45rem",
+                lineHeight: 1.65,
+                color: "var(--text)",
+              }}
+            >
               {batchError.friendly}
             </div>
-            {batchError.raw !== batchError.friendly && (
-              <div style={{ marginTop: "0.6rem" }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowRaw((v) => !v)}
-                  style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", color: "var(--faint)" }}
-                >
-                  {showRaw ? "Hide" : "Show"} raw error
-                </button>
-                {showRaw && (
-                  <pre
-                    className="mono"
-                    style={{
-                      marginTop: "0.5rem",
-                      fontSize: "0.68rem",
-                      color: "var(--faint)",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-all",
-                      lineHeight: 1.5,
-                      maxHeight: 180,
-                      overflowY: "auto",
-                      background: "rgba(0,0,0,0.2)",
-                      padding: "0.6rem",
-                      borderRadius: "calc(var(--radius) - 2px)",
-                    }}
-                  >
-                    {batchError.raw}
-                  </pre>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -293,7 +305,10 @@ export function BatchProofFlowView({
               <div style={{ fontWeight: 600, fontSize: "0.9375rem" }}>
                 All {creds.length} proofs verified on-chain
               </div>
-              <div className="muted" style={{ fontSize: "0.8375rem", marginTop: "0.25rem", lineHeight: 1.5 }}>
+              <div
+                className="muted"
+                style={{ fontSize: "0.8375rem", marginTop: "0.25rem", lineHeight: 1.5 }}
+              >
                 Every credential is now live on Stellar — submitted in a single transaction.
               </div>
             </div>
