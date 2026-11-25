@@ -40,11 +40,13 @@ export async function GET(req: NextRequest) {
   // than letting the request reach the upstream Plaid call.
   const oversized = checkContentLength(req);
   if (oversized) {
-    logger.warn(stripSensitiveFields({
-      event: "plaid_balance_request_rejected",
-      outcome: oversized.code,
-      requestId,
-    }));
+    logger.warn(
+      stripSensitiveFields({
+        event: "plaid_balance_request_rejected",
+        outcome: oversized.code,
+        requestId,
+      }),
+    );
     return sendResponse(bodyErrorResponse(oversized));
   }
 

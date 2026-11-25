@@ -18,8 +18,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 
 import { proveOffMainThread, type ProofStageProgress } from "../proof-client";
+import { isCryptoSupported, isWebAssemblySupported } from "../browser-compatibility";
 import { CircuitVersionMismatchError } from "../circuit-versions";
-import { withTimeout, ProofTimeoutError, DEFAULT_PROOF_TIMEOUT_MS } from "../proof-timeout";
+import { withTimeout, ProofTimeoutError } from "../proof-timeout";
+import { ProofResourceError, proofDeadlineMs } from "../proof-guard";
 import {
   submitProof as defaultSubmitProof,
   preflightSubmitProof,
@@ -63,10 +65,7 @@ export type SubmitFn = (params: {
   vkVersion?: number;
 }) => Promise<string>;
 
-export function useProofFlow(
-  cred: Credential | null,
-  submitFn: SubmitFn = defaultSubmitProof,
-) {
+export function useProofFlow(cred: Credential | null, submitFn: SubmitFn = defaultSubmitProof) {
   const [stage, setStage] = useState<Stage>("idle");
   const [proof, setProof] = useState<{ proof: Uint8Array; publicInputs: Uint8Array } | null>(null);
   const [txHash, setTxHash] = useState("");
@@ -98,10 +97,7 @@ export function useProofFlow(
   const startElapsedTimer = useCallback((from: number) => {
     if (timerRef.current) clearInterval(timerRef.current);
     setElapsed(0);
-    timerRef.current = setInterval(
-      () => setElapsed(Math.floor((Date.now() - from) / 1000)),
-      1000,
-    );
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - from) / 1000)), 1000);
   }, []);
   const stopElapsedTimer = useCallback(() => {
     if (!timerRef.current) return;
@@ -130,6 +126,33 @@ export function useProofFlow(
     (controller: AbortController) => {
       const { signal } = controller;
       if (!cred) return;
+
+      if (!isWebAssemblySupported()) {
+        const errorMsg =
+          "WebAssembly is not supported in this browser. Zero-knowledge proof generation requires WebAssembly. Please switch to a supported browser (Chrome, Firefox, Safari, Edge) or use Preview Mode.";
+        setError({
+          friendly: errorMsg,
+          code: null,
+          raw: "UnsupportedCapability: WebAssembly unavailable",
+        });
+        setErrorPhase("proving");
+        setStage("error");
+        toast.error("Browser capability missing: WebAssembly is required for proof generation.");
+        return;
+      }
+      if (!isCryptoSupported()) {
+        const errorMsg =
+          "WebCrypto is not supported in this browser. Cryptographic proof generation requires secure random number generation. Please switch to a modern browser or use HTTPS.";
+        setError({
+          friendly: errorMsg,
+          code: null,
+          raw: "UnsupportedCapability: WebCrypto unavailable",
+        });
+        setErrorPhase("proving");
+        setStage("error");
+        toast.error("Browser capability missing: WebCrypto is required for proof generation.");
+        return;
+      }
 
       setRpcIssue(null);
       // The worker's first non-witness progress message also restarts the
@@ -169,7 +192,17 @@ export function useProofFlow(
                   },
                 },
               ),
-            { signal, timeoutMs: DEFAULT_PROOF_TIMEOUT_MS },
+            // The deadline comes from the request's resource guard, not a fixed
+            // constant: an aggregate job (two credentials in one proof) is
+            // allowed longer, and every deadline is clamped to the hard ceiling
+            // in PROOF_RESOURCE_LIMITS (issue #943).
+            {
+              signal,
+              timeoutMs: proofDeadlineMs({
+                credentialType: cred.type,
+                credential: cred as unknown as Record<string, unknown>,
+              }),
+            },
           );
           if (signal.aborted) return;
 
@@ -193,6 +226,17 @@ export function useProofFlow(
             setStage("error");
             setStageProgress(null);
             toast.error("Proof timed out — please try again.");
+            return;
+          }
+          // An oversized request (#943) never reached the prover: the guard
+          // refused it up front. Its message names the limit and what to do, so
+          // surface it as-is rather than wrapping it in "proof generation failed".
+          if (e instanceof ProofResourceError) {
+            setError({ code: null, friendly: e.friendly, raw: e.message });
+            setErrorPhase("proving");
+            setStage("error");
+            setStageProgress(null);
+            toast.error(e.friendly);
             return;
           }
           // A circuit-version mismatch (#633) is not a prover failure and retrying

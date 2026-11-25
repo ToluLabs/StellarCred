@@ -209,7 +209,13 @@ describe("reportError", () => {
 
   it("does not include a stack trace in the payload", async () => {
     const err = new Error("signing error");
-    await reportError({ method: "POST", path: "/api/issue", requestId: "r4", status: 500, exception: err });
+    await reportError({
+      method: "POST",
+      path: "/api/issue",
+      requestId: "r4",
+      status: 500,
+      exception: err,
+    });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     const bodyStr = JSON.stringify(body);
     expect(bodyStr).not.toMatch(/\s+at\s+\S+\s+\(/);
@@ -220,7 +226,13 @@ describe("reportError", () => {
     const err = new Error(
       "Persona KYC failed for john.doe@example.com DOB=1990-05-20 inquiry=inq_99887766",
     );
-    await reportError({ method: "POST", path: "/api/issue", requestId: "r5", status: 500, exception: err });
+    await reportError({
+      method: "POST",
+      path: "/api/issue",
+      requestId: "r5",
+      status: 500,
+      exception: err,
+    });
     const bodyStr = fetchMock.mock.calls[0][1].body;
 
     expect(bodyStr).not.toContain("john.doe@example.com");
@@ -232,7 +244,13 @@ describe("reportError", () => {
     const err = new Error(
       "Plaid balance fetch failed: account_id=567890123456 holder=GABCDE token=access-sandbox-abc123",
     );
-    await reportError({ method: "POST", path: "/api/issue", requestId: "r6", status: 500, exception: err });
+    await reportError({
+      method: "POST",
+      path: "/api/issue",
+      requestId: "r6",
+      status: 500,
+      exception: err,
+    });
     const bodyStr = fetchMock.mock.calls[0][1].body;
 
     expect(bodyStr).not.toContain("567890123456");
@@ -242,7 +260,13 @@ describe("reportError", () => {
     const err = new Error("signing failure");
     // Simulate that a holder address ended up in scope
     Object.assign(err, { holder: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF" });
-    await reportError({ method: "POST", path: "/api/issue", requestId: "r7", status: 500, exception: err });
+    await reportError({
+      method: "POST",
+      path: "/api/issue",
+      requestId: "r7",
+      status: 500,
+      exception: err,
+    });
     const bodyStr = fetchMock.mock.calls[0][1].body;
 
     // The holder property on the error object is not in our message — verify
@@ -253,7 +277,13 @@ describe("reportError", () => {
 
   it("includes a sanitised error message (not the full original) in the payload", async () => {
     const err = new Error("Signing commitment failed — see logs");
-    await reportError({ method: "POST", path: "/api/issue", requestId: "r8", status: 500, exception: err });
+    await reportError({
+      method: "POST",
+      path: "/api/issue",
+      requestId: "r8",
+      status: 500,
+      exception: err,
+    });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.error).toContain("Signing commitment failed");
   });

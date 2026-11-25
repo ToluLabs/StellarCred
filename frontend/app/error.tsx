@@ -50,7 +50,10 @@ export default function ErrorPage({
 
       <h1 style={{ fontSize: "1.75rem", margin: "0 0 0.5rem" }}>Something went wrong</h1>
 
-      <p className="muted" style={{ fontSize: "0.9375rem", maxWidth: 400, lineHeight: 1.7, marginBottom: "2rem" }}>
+      <p
+        className="muted"
+        style={{ fontSize: "0.9375rem", maxWidth: 400, lineHeight: 1.7, marginBottom: "2rem" }}
+      >
         An unexpected error occurred. You can try again or head back to the home page.
       </p>
 

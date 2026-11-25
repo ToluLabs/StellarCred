@@ -128,7 +128,9 @@ export function classifyRpcError(error: unknown): RpcIssue {
 
   return {
     kind: "read-failed",
-    message: raw ? `The claim could not be read: ${truncate(raw, 140)}` : "The claim could not be read.",
+    message: raw
+      ? `The claim could not be read: ${truncate(raw, 140)}`
+      : "The claim could not be read.",
   };
 }
 
@@ -267,9 +269,7 @@ async function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
  * usable, or the {@link RpcIssue} that explains why it is not. Updates the
  * shared store either way, so this doubles as the app's reachability probe.
  */
-export async function probeRpcHealth(
-  opts: { timeoutMs?: number } = {},
-): Promise<RpcIssue | null> {
+export async function probeRpcHealth(opts: { timeoutMs?: number } = {}): Promise<RpcIssue | null> {
   try {
     const server = await getProbeServer();
     await withDeadline(server.getLatestLedger(), opts.timeoutMs ?? RPC_PROBE_TIMEOUT_MS);
@@ -278,7 +278,10 @@ export async function probeRpcHealth(
   } catch (e) {
     const issue =
       e instanceof RpcProbeTimeout
-        ? { kind: "rpc-unreachable" as const, message: `The Stellar RPC endpoint at ${hostOf(RPC_URL)} did not respond in time.` }
+        ? {
+            kind: "rpc-unreachable" as const,
+            message: `The Stellar RPC endpoint at ${hostOf(RPC_URL)} did not respond in time.`,
+          }
         : classifyRpcError(e);
     reportRpcIssue(issue);
     return issue;

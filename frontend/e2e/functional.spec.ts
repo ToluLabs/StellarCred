@@ -194,6 +194,10 @@ test.describe("Holder Page", () => {
     await expect(reproveButtons.first()).toBeVisible();
     await reproveButtons.first().click();
 
+    // The disclosure preview (#1048) opens first; proving starts on approval.
+    await expect(page.getByRole("dialog", { name: "Review what you'll share" })).toBeVisible();
+    await page.getByRole("button", { name: "Approve & generate proof" }).click();
+
     // Verify it entered the proving flow view
     await expect(page.getByRole("button", { name: /All credentials/i })).toBeVisible();
     await expect(page.getByText("Generate zero-knowledge proof")).toBeVisible();

@@ -4,7 +4,13 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { useSearchParams } from "next/navigation";
-import { IconLock, IconCheck, IconCircle, IconArrowRight, IconAlertCircle } from "@tabler/icons-react";
+import {
+  IconLock,
+  IconCheck,
+  IconCircle,
+  IconArrowRight,
+  IconAlertCircle,
+} from "@tabler/icons-react";
 import { WalletButton } from "@/components/WalletButton";
 import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
@@ -65,9 +71,7 @@ function VerifierInner() {
           REQUIREMENTS.map((r) => checkClaim(activeWallet, r.type, r.minThreshold)),
         );
         if (cancelled) return;
-        setReqs((rs) =>
-          rs.map((r, i) => ({ ...r, status: results[i].status as ReadStatus })),
-        );
+        setReqs((rs) => rs.map((r, i) => ({ ...r, status: results[i].status as ReadStatus })));
         const unreadable = results.find((r) => r.status === "unknown");
         setIssue(unreadable && unreadable.status === "unknown" ? unreadable.issue : null);
       } catch {
@@ -130,11 +134,13 @@ function VerifierInner() {
           lineHeight: 1.6,
         }}
       >
-        <strong style={{ color: "var(--text)" }}>Simulates a third-party protocol.</strong>{" "}
-        Any DeFi pool, DAO, or app can gate access this way - one read-only call to{" "}
-        <span className="mono" style={{ fontSize: "0.75rem" }}>ProofRegistry.is_verified</span>.
-        It never sees the credential data, the commitment, or the proof itself. Only the
-        on-chain result: verified or not.
+        <strong style={{ color: "var(--text)" }}>Simulates a third-party protocol.</strong> Any DeFi
+        pool, DAO, or app can gate access this way - one read-only call to{" "}
+        <span className="mono" style={{ fontSize: "0.75rem" }}>
+          ProofRegistry.is_verified
+        </span>
+        . It never sees the credential data, the commitment, or the proof itself. Only the on-chain
+        result: verified or not.
       </div>
 
       <ConfigBanner />
@@ -142,7 +148,14 @@ function VerifierInner() {
       <div className="grid grid-2" style={{ alignItems: "start", gap: "1.5rem" }}>
         <div className="card">
           <span className="eyebrow">Total value locked</span>
-          <div style={{ margin: "0.5rem 0 0.25rem", fontSize: "2.25rem", fontWeight: 600, letterSpacing: "-0.03em" }}>
+          <div
+            style={{
+              margin: "0.5rem 0 0.25rem",
+              fontSize: "2.25rem",
+              fontWeight: 600,
+              letterSpacing: "-0.03em",
+            }}
+          >
             $124,800
           </div>
           <span className="mono faint">USDC · stellar:testnet</span>
@@ -166,7 +179,7 @@ function VerifierInner() {
                   </span>
                 </span>
                 {r.status === "unknown" ? (
-                  <Badge variant="pending" >Unknown</Badge>
+                  <Badge variant="pending">Unknown</Badge>
                 ) : r.status === "verified" ? (
                   <Badge variant="verified">Proved</Badge>
                 ) : (
@@ -186,8 +199,7 @@ function VerifierInner() {
 
           {checked && !eligible && !undetermined && (
             <p className="faint" style={{ marginTop: "1.25rem", fontSize: "0.8125rem" }}>
-              Missing proofs? Generate and submit them on the Holder page, then
-              reconnect here.
+              Missing proofs? Generate and submit them on the Holder page, then reconnect here.
             </p>
           )}
 
@@ -221,7 +233,9 @@ function VerifierInner() {
             )}
           </div>
 
-          <label className="field-label" htmlFor="deposit-amount">Amount (USDC)</label>
+          <label className="field-label" htmlFor="deposit-amount">
+            Amount (USDC)
+          </label>
           <input id="deposit-amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
 
           <button
@@ -249,7 +263,10 @@ function VerifierInner() {
             )}
           </button>
 
-          <p className="faint" style={{ marginTop: "1.25rem", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+          <p
+            className="faint"
+            style={{ marginTop: "1.25rem", fontSize: "0.8125rem", lineHeight: 1.6 }}
+          >
             {eligible
               ? "LendFi read ProofRegistry.is_verified and found valid proofs for your address. No personal data was shared."
               : undetermined

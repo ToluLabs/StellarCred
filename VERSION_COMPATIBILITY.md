@@ -188,6 +188,7 @@ stability status of each component.
 | gated_pool | Demo | Actively developed | N/A |
 | App (StellarCred) | Beta | Monthly releases | See SUPPORT_POLICY.md |
 | SDK | Beta | Quarterly releases | See SUPPORT_POLICY.md |
+| Issuer package (`@stellarcred/issuer`) | Beta | Released with the SDK (same version) | See SUPPORT_POLICY.md |
 
 ---
 

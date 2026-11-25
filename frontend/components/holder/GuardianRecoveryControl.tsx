@@ -30,11 +30,7 @@ export function GuardianRecoveryControl({
         Guardian recovery
       </button>
       {activeTab && (
-        <GuardianRecoveryModal
-          initialTab={activeTab}
-          onClose={close}
-          onRestored={handleRestored}
-        />
+        <GuardianRecoveryModal initialTab={activeTab} onClose={close} onRestored={handleRestored} />
       )}
     </>
   );

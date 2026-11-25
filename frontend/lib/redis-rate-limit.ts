@@ -93,14 +93,15 @@ async function getRedisClient(): Promise<IoRedis | null> {
   try {
     // Dynamic import — fails gracefully if ioredis is not installed.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { default: Redis } = await (Function('return import("ioredis")')() as Promise<{ default: { new(url: string, opts?: Record<string, unknown>): IoRedis } }>);
+    const { default: Redis } = await (Function('return import("ioredis")')() as Promise<{
+      default: { new (url: string, opts?: Record<string, unknown>): IoRedis };
+    }>);
 
-    const useTls =
-      process.env["REDIS_TLS"] === "1" || redisUrl.startsWith("rediss://");
+    const useTls = process.env["REDIS_TLS"] === "1" || redisUrl.startsWith("rediss://");
 
     const client = new Redis(redisUrl, {
       lazyConnect: true,
-      maxRetriesPerRequest: 1,         // fail fast so we fall back quickly
+      maxRetriesPerRequest: 1, // fail fast so we fall back quickly
       enableReadyCheck: true,
       connectTimeout: 3_000,
       ...(useTls ? { tls: {} } : {}),
@@ -108,7 +109,10 @@ async function getRedisClient(): Promise<IoRedis | null> {
 
     client.on("error", (err: Error) => {
       // Non-fatal: log and continue using in-process fallback.
-      console.warn("[redis-rate-limit] Redis error — falling back to in-process store:", err.message);
+      console.warn(
+        "[redis-rate-limit] Redis error — falling back to in-process store:",
+        err.message,
+      );
     });
 
     await client.connect();
@@ -169,8 +173,7 @@ async function redisCheck(
 
     // Read the window end for callers that want to surface the reset time.
     const pttl = await redis.pttl(prefixed);
-    const windowEnd =
-      pttl > 0 ? Date.now() + pttl : Date.now() + windowMs;
+    const windowEnd = pttl > 0 ? Date.now() + pttl : Date.now() + windowMs;
 
     return {
       throttled: false,

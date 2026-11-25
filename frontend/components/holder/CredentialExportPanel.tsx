@@ -115,16 +115,18 @@ export function CredentialExportPanel() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <IconHistory size={18} color="var(--accent)" aria-hidden="true" />
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
-            Credential history &amp; export
-          </h3>
+          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Credential history &amp; export</h3>
         </div>
         <button
           className="btn btn-ghost btn-sm"
           onClick={handleExport}
           disabled={exporting || creds.length === 0}
           aria-label="Export credential history as JSON"
-          title={creds.length === 0 ? "No credentials to export" : "Download a portable JSON of your credential history"}
+          title={
+            creds.length === 0
+              ? "No credentials to export"
+              : "Download a portable JSON of your credential history"
+          }
         >
           <IconDownload size={14} aria-hidden="true" />
           {exporting ? "Exporting…" : exported ? "Exported ✓" : "Export history"}
@@ -140,7 +142,13 @@ export function CredentialExportPanel() {
           marginBottom: "1rem",
         }}
       >
-        <div style={{ padding: "0.6rem 0.8rem", border: "1px solid var(--border)", borderRadius: "8px" }}>
+        <div
+          style={{
+            padding: "0.6rem 0.8rem",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+          }}
+        >
           <div className="faint" style={{ fontSize: "0.7rem", marginBottom: "0.2rem" }}>
             Total credentials
           </div>
@@ -148,27 +156,54 @@ export function CredentialExportPanel() {
             {creds.length}
           </div>
         </div>
-        <div style={{ padding: "0.6rem 0.8rem", border: "1px solid var(--border)", borderRadius: "8px" }}>
+        <div
+          style={{
+            padding: "0.6rem 0.8rem",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+          }}
+        >
           <div className="faint" style={{ fontSize: "0.7rem", marginBottom: "0.2rem" }}>
             Active proofs
           </div>
-          <div className="mono" style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--accent)" }}>
+          <div
+            className="mono"
+            style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--accent)" }}
+          >
             {byStatus["proved"] ?? 0}
           </div>
         </div>
-        <div style={{ padding: "0.6rem 0.8rem", border: "1px solid var(--border)", borderRadius: "8px" }}>
+        <div
+          style={{
+            padding: "0.6rem 0.8rem",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+          }}
+        >
           <div className="faint" style={{ fontSize: "0.7rem", marginBottom: "0.2rem" }}>
             Unproved
           </div>
-          <div className="mono" style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--muted)" }}>
+          <div
+            className="mono"
+            style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--muted)" }}
+          >
             {byStatus["unproved"] ?? 0}
           </div>
         </div>
-        <div style={{ padding: "0.6rem 0.8rem", border: "1px solid var(--border)", borderRadius: "8px" }}>
+        <div
+          style={{
+            padding: "0.6rem 0.8rem",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+          }}
+        >
           <div className="faint" style={{ fontSize: "0.7rem", marginBottom: "0.2rem" }}>
             Expired
           </div>
-          <div className="mono" style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--danger)" }}>
+          <div
+            className="mono"
+            style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--danger)" }}
+          >
             {byStatus["expired"] ?? 0}
           </div>
         </div>
@@ -177,7 +212,15 @@ export function CredentialExportPanel() {
       {/* ── By type ── */}
       {Object.keys(byType).length > 0 && (
         <div style={{ marginBottom: "0.75rem" }}>
-          <div className="faint" style={{ fontSize: "0.72rem", marginBottom: "0.3rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <div
+            className="faint"
+            style={{
+              fontSize: "0.72rem",
+              marginBottom: "0.3rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
             By type
           </div>
           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
@@ -203,12 +246,24 @@ export function CredentialExportPanel() {
       {/* ── Issuers ── */}
       {issuerList.length > 0 && (
         <div style={{ marginBottom: "0.75rem" }}>
-          <div className="faint" style={{ fontSize: "0.72rem", marginBottom: "0.3rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <div
+            className="faint"
+            style={{
+              fontSize: "0.72rem",
+              marginBottom: "0.3rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
             Issuers ({issuerList.length})
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
             {issuerList.slice(0, 5).map((issuer) => (
-              <span key={issuer} className="mono" style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
+              <span
+                key={issuer}
+                className="mono"
+                style={{ fontSize: "0.72rem", color: "var(--muted)" }}
+              >
                 {issuer.length > 40 ? `${issuer.slice(0, 8)}…${issuer.slice(-8)}` : issuer}
               </span>
             ))}
@@ -224,10 +279,26 @@ export function CredentialExportPanel() {
       {/* ── Submission history ── */}
       {history.length > 0 && (
         <div style={{ marginBottom: "0.75rem" }}>
-          <div className="faint" style={{ fontSize: "0.72rem", marginBottom: "0.4rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <div
+            className="faint"
+            style={{
+              fontSize: "0.72rem",
+              marginBottom: "0.4rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
             Submission history ({history.length})
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", maxHeight: 180, overflowY: "auto" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.3rem",
+              maxHeight: 180,
+              overflowY: "auto",
+            }}
+          >
             {history.slice(0, 10).map((rec, i) => (
               <div
                 key={i}
@@ -250,7 +321,14 @@ export function CredentialExportPanel() {
                 </span>
                 <span
                   className="mono faint"
-                  style={{ fontSize: "0.68rem", marginLeft: "auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}
+                  style={{
+                    fontSize: "0.68rem",
+                    marginLeft: "auto",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: 120,
+                  }}
                   title={rec.txHash}
                 >
                   {rec.txHash.slice(0, 10)}…
@@ -283,14 +361,10 @@ export function CredentialExportPanel() {
           style={{ color: "var(--accent)", flexShrink: 0, marginTop: "0.1rem" }}
           aria-hidden="true"
         />
-        <p
-          className="faint"
-          style={{ fontSize: "0.72rem", lineHeight: 1.5, margin: 0 }}
-        >
-          The export contains only public metadata — commitment hashes, issuer
-          addresses, and proof status. No private attribute values or signatures
-          are included. Safe to share with protocols for review. Delete when no
-          longer needed.
+        <p className="faint" style={{ fontSize: "0.72rem", lineHeight: 1.5, margin: 0 }}>
+          The export contains only public metadata — commitment hashes, issuer addresses, and proof
+          status. No private attribute values or signatures are included. Safe to share with
+          protocols for review. Delete when no longer needed.
         </p>
       </div>
 

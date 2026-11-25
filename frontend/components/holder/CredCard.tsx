@@ -1,15 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import {
-  IconExternalLink,
-  IconTrash,
-  IconHistory,
-  IconInfoCircle,
-} from "@tabler/icons-react";
+import { useId, useState } from "react";
+import { IconExternalLink, IconTrash, IconHistory, IconInfoCircle } from "@tabler/icons-react";
 import { Badge } from "@/components/Badge";
+import { IssuerAvatar } from "@/components/IssuerAvatar";
 import { Timeline } from "@/components/Timeline";
 import { truncateHash } from "@/lib/format";
+import { pubkeyHexFromParts } from "@/lib/issuer-avatar";
 import { EXPLORER_TX } from "@/lib/stellar";
 import { proofSubmissionConfigured } from "@/lib/config";
 import { useProofTimeline } from "@/lib/useProofTimeline";
@@ -23,6 +20,7 @@ import {
   formatExpiryDate,
 } from "@/lib/proof-helpers";
 import type { Credential } from "@/lib/credential";
+import { CredTimelineSkeleton } from "@/components/holder/CredListSkeleton";
 
 export interface BatchSelection {
   checked: boolean;
@@ -50,27 +48,47 @@ export function CredCard({
   selection?: BatchSelection;
 }) {
   const status = proofStatus(c);
-  const { events } = useProofTimeline(c);
+  const { events, loading: historyLoading } = useProofTimeline(c);
   const [showHistory, setShowHistory] = useState(false);
+  const uid = useId();
+  const titleId = `${uid}-title`;
+  const historyId = `${uid}-history`;
 
   return (
-    <div className="card cred-card">
+    <article className="card cred-card" aria-labelledby={titleId}>
       <div className="cred-card__top">
         {/* left: credential info */}
         <div className="cred-card__info">
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-            <span className="cred-card__title">{c.title}</span>
-            <span className="mono faint" style={{ fontSize: "0.7rem" }}>{c.claim}</span>
+            <h3 id={titleId} className="cred-card__title">
+              {c.title}
+            </h3>
+            <span className="mono faint" style={{ fontSize: "0.7rem" }}>
+              {c.claim}
+            </span>
           </div>
           <div className="cred-card__meta">
             <div>
-              {c.issuer} &middot; <span>{truncateHash(c.commitment)}</span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  verticalAlign: "middle",
+                }}
+              >
+                <IssuerAvatar
+                  publicKey={pubkeyHexFromParts(c.issuerPubX, c.issuerPubY)}
+                  name={c.issuer}
+                  size={22}
+                />
+                {c.issuer}
+              </span>{" "}
+              &middot; <span>{truncateHash(c.commitment)}</span>
               {status === "proved" && (
                 <>
                   {" "}
-                  <span className="cred-card__expires">
-                    expires in {daysRemaining(c)}d
-                  </span>
+                  <span className="cred-card__expires">expires in {daysRemaining(c)}d</span>
                   {c.provedTxHash && (
                     <>
                       {" "}
@@ -79,15 +97,20 @@ export function CredCard({
                         target="_blank"
                         rel="noreferrer"
                         className="cred-card__tx-link"
+                        aria-label={`View proof transaction ${c.provedTxHash.slice(0, 6)} on Stellar Expert (opens in a new tab)`}
                       >
-                        {c.provedTxHash.slice(0, 6)}&hellip;<IconExternalLink size={10} />
+                        {c.provedTxHash.slice(0, 6)}&hellip;
+                        <IconExternalLink size={10} aria-hidden="true" />
                       </a>
                     </>
                   )}
                 </>
               )}
               {status === "expired" && (
-                <> <span className="cred-card__expired">expired</span></>
+                <>
+                  {" "}
+                  <span className="cred-card__expired">expired</span>
+                </>
               )}
             </div>
             <div className="cred-card__expiry">
@@ -112,30 +135,43 @@ export function CredCard({
               title={selection.blockedReason ?? undefined}
               onChange={selection.onToggle}
               aria-label={`Select ${c.title} for batch`}
-              style={{ cursor: selection.blockedReason && !selection.checked ? "not-allowed" : "pointer" }}
+              style={{
+                cursor: selection.blockedReason && !selection.checked ? "not-allowed" : "pointer",
+              }}
             />
           )}
           {isPreview && <Badge variant="pending">Preview</Badge>}
-          <Badge variant="verified" dot={false}>Held</Badge>
+          <Badge variant="verified" dot={false}>
+            Held
+          </Badge>
           {status === "proved" && !isExpiringSoon(c) && (
-            <Badge variant="verified" dot={false}>On-chain</Badge>
+            <Badge variant="verified" dot={false}>
+              On-chain
+            </Badge>
           )}
           {status === "proved" && isExpiringSoon(c) && (
-            <Badge variant="pending" dot={true}>Expiring in {daysRemaining(c)}d</Badge>
+            <Badge variant="pending" dot={true}>
+              Expiring in {daysRemaining(c)}d
+            </Badge>
           )}
           {status === "expired" && (
-            <Badge variant="denied" dot={true}>Proof Expired</Badge>
+            <Badge variant="denied" dot={true}>
+              Proof Expired
+            </Badge>
           )}
           {onInspect && (
             <button
+              type="button"
               className="btn btn-ghost btn-sm"
               title="View details"
+              aria-label={`View details for ${c.title}`}
               onClick={onInspect}
             >
-              <IconInfoCircle size={13} />
+              <IconInfoCircle size={13} aria-hidden="true" />
             </button>
           )}
           <button
+            type="button"
             className={`btn btn-sm ${status === "proved" ? "btn-secondary" : "btn-primary"}`}
             disabled={!address || credIsExpired(c) || !proofSubmissionConfigured()}
             title={
@@ -149,30 +185,38 @@ export function CredCard({
             }
             onClick={onProve}
           >
-            {status === "proved" ? "Re-prove" :
-             status === "expired" ? "Re-prove" :
-                                    "Generate proof"}
+            {status === "proved"
+              ? "Re-prove"
+              : status === "expired"
+                ? "Re-prove"
+                : "Generate proof"}
           </button>
           <button
+            type="button"
             className="btn btn-ghost btn-sm"
             title="History"
+            aria-label={`${showHistory ? "Hide" : "Show"} proof history for ${c.title}`}
+            aria-expanded={showHistory}
+            aria-controls={historyId}
             onClick={() => setShowHistory(!showHistory)}
           >
-            <IconHistory size={13} />
+            <IconHistory size={13} aria-hidden="true" />
           </button>
           <button
+            type="button"
             className="btn btn-ghost btn-sm"
             title="Remove"
+            aria-label={`Remove ${c.title}`}
             onClick={onRemove}
           >
-            <IconTrash size={13} />
+            <IconTrash size={13} aria-hidden="true" />
           </button>
         </div>
       </div>
 
-      {showHistory && (
-        <Timeline events={events} />
-      )}
-    </div>
+      <div id={historyId} hidden={!showHistory}>
+        {showHistory && (historyLoading ? <CredTimelineSkeleton /> : <Timeline events={events} />)}
+      </div>
+    </article>
   );
 }

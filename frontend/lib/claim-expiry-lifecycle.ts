@@ -58,3 +58,33 @@ export function getLifecycleUiStatus(
       return "unproved";
   }
 }
+
+/**
+ * Maps the raw on-chain ProofRegistry is_verified response tuple (valid, verified_at, expiry)
+ * into a definitive ClaimLifecycleState (#1006).
+ *
+ * Contract semantics:
+ * - Active Valid:   (true, verified_at > 0, expiry > now)
+ * - Active Expired: (false, verified_at > 0, expiry <= now)
+ * - Archived / None:(false, 0, 0)
+ */
+export function evaluateContractClaimResponse(
+  tuple: [boolean, number, number],
+  nowSec: number = Math.floor(Date.now() / 1000),
+  isArchived: boolean = false,
+): ClaimLifecycleState {
+  const [valid, verifiedAt, expiry] = tuple;
+  if (!verifiedAt || verifiedAt === 0) {
+    return isArchived ? "storage_archived" : "never_proved";
+  }
+  if (isArchived) {
+    return "storage_archived";
+  }
+  if (!valid && expiry > 0 && nowSec >= expiry) {
+    return "active_expired";
+  }
+  if (valid) {
+    return "active_valid";
+  }
+  return "never_proved";
+}
