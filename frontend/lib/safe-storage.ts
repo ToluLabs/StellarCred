@@ -1,6 +1,6 @@
 /**
  * Safe localStorage access helper.
- * 
+ *
  * Handles private mode / blocked storage scenarios by catching errors
  * and providing safe no-op fallbacks. This is used to guard storage
  * operations that might fail in restricted browser environments.
@@ -12,7 +12,7 @@
 export function safeGetItem(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(key);
+    return globalThis.localStorage.getItem(key);
   } catch {
     // private mode / blocked storage
     return null;
@@ -25,7 +25,7 @@ export function safeGetItem(key: string): string | null {
 export function safeSetItem(key: string, value: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(key, value);
+    globalThis.localStorage.setItem(key, value);
   } catch {
     // private mode / blocked storage — silently fail
   }
@@ -37,7 +37,7 @@ export function safeSetItem(key: string, value: string): void {
 export function safeRemoveItem(key: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(key);
+    globalThis.localStorage.removeItem(key);
   } catch {
     // private mode / blocked storage — silently fail
   }
@@ -51,8 +51,8 @@ export function isStorageAvailable(): boolean {
   if (typeof window === "undefined") return false;
   try {
     const testKey = "__storage_test__";
-    window.localStorage.setItem(testKey, "test");
-    window.localStorage.removeItem(testKey);
+    globalThis.localStorage.setItem(testKey, "test");
+    globalThis.localStorage.removeItem(testKey);
     return true;
   } catch {
     return false;

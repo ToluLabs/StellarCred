@@ -71,8 +71,7 @@ export interface SealedPassphraseEnvelope extends SealedEnvelope {
 
 /** Metadata annotating a seal made with an already-held CryptoKey. */
 export type KeyWrapMeta =
-  | { kdf: "RAW" }
-  | { kdf: "PBKDF2-SHA256"; salt: Uint8Array; iterations?: number };
+  { kdf: "RAW" } | { kdf: "PBKDF2-SHA256"; salt: Uint8Array; iterations?: number };
 
 export class DecryptionError extends Error {
   constructor(message = "Wrong passphrase, or the code is corrupted.") {
@@ -190,14 +189,22 @@ export function resolveEnvelopeIterations(env: CredentialEnvelope): number {
 
 async function gcmEncrypt(key: CryptoKey, iv: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, data as BufferSource),
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv as BufferSource },
+      key,
+      data as BufferSource,
+    ),
   );
 }
 
 async function gcmDecrypt(key: CryptoKey, iv: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
   try {
     return new Uint8Array(
-      await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, data as BufferSource),
+      await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv as BufferSource },
+        key,
+        data as BufferSource,
+      ),
     );
   } catch {
     // AES-GCM authentication failure — wrong key and a tampered payload are
@@ -265,12 +272,18 @@ export async function openWithPassphrase(
   passphrase: string,
 ): Promise<string> {
   if (env.kdf === "RAW") {
-    throw new DecryptionError("This envelope is key-wrapped and cannot be opened with a passphrase.");
+    throw new DecryptionError(
+      "This envelope is key-wrapped and cannot be opened with a passphrase.",
+    );
   }
   if (typeof env.salt !== "string") {
     throw new DecryptionError("Malformed credential envelope: missing KDF salt.");
   }
-  const key = await derivePassphraseKey(passphrase, decodeB64(env.salt), resolveEnvelopeIterations(env));
+  const key = await derivePassphraseKey(
+    passphrase,
+    decodeB64(env.salt),
+    resolveEnvelopeIterations(env),
+  );
   return openWithKey(env, key);
 }
 
@@ -281,7 +294,10 @@ export async function openWithPassphrase(
  * compact enough to embed in a QR code / query param. Same scheme as
  * `sealWithPassphrase`, different serialization.
  */
-export async function encryptWithPassphrase(plaintext: string, passphrase: string): Promise<string> {
+export async function encryptWithPassphrase(
+  plaintext: string,
+  passphrase: string,
+): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const key = await derivePassphraseKey(passphrase, salt);

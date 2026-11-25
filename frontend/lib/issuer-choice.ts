@@ -15,9 +15,7 @@ export function eligibleIssuers(
   type: CredentialType | null | undefined,
 ): RegisteredIssuer[] {
   if (!type) return [];
-  return issuers.filter(
-    (issuer) => !issuer.revoked && issuer.credentialTypes.includes(type),
-  );
+  return issuers.filter((issuer) => !issuer.revoked && issuer.credentialTypes.includes(type));
 }
 
 /**
@@ -44,8 +42,6 @@ export function pickDefaultIssuer(
   eligible: RegisteredIssuer[],
   trustedIssuers: string[] | undefined,
 ): string {
-  const accepted = eligible.find((issuer) =>
-    isProtocolAccepted(issuer.id, trustedIssuers),
-  );
+  const accepted = eligible.find((issuer) => isProtocolAccepted(issuer.id, trustedIssuers));
   return (accepted ?? eligible[0])?.id ?? "";
 }

@@ -57,22 +57,13 @@ export function OnboardingNudge() {
         flexWrap: "wrap",
       }}
     >
-      <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>
-        {t("message")}
-      </span>
+      <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>{t("message")}</span>
       <div className="row" style={{ gap: "0.5rem" }}>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={() => resumeAt(4)}
-        >
+        <button className="btn btn-primary btn-sm" onClick={() => resumeAt(4)}>
           {t("continueSetup")}
           <IconArrowRight size={13} />
         </button>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={handleDismiss}
-          aria-label={t("dismiss")}
-        >
+        <button className="btn btn-ghost btn-sm" onClick={handleDismiss} aria-label={t("dismiss")}>
           <IconX size={13} />
         </button>
       </div>

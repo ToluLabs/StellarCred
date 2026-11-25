@@ -49,7 +49,7 @@ describe("POST /api/csp-report", () => {
         "document-uri": "https://example.com/holder?token=secret123#view",
         "blocked-uri": "https://evil.com/leak.js?track=456",
         "effective-directive": "script-src",
-        "disposition": "enforce",
+        disposition: "enforce",
         "source-file": "https://example.com/bundle.js?v=99",
         "line-number": 12,
         "column-number": 34,
@@ -165,7 +165,7 @@ describe("POST /api/csp-report", () => {
         "document-uri": "https://example.com",
         "blocked-uri": "inline",
         "effective-directive": "script-src",
-        "disposition": "report",
+        disposition: "report",
       },
     });
 
@@ -197,7 +197,7 @@ describe("POST /api/csp-report", () => {
         "blocked-uri": "https://evil-analytics.org/collect?user_id=12345",
         "source-file": "https://example.com/app.js?debug=true",
         "effective-directive": "script-src",
-        "disposition": "report",
+        disposition: "report",
         "script-sample": "const password = 'mySuperSecretPassword';",
         sample: "const creditCard = '1234-5678-9012-3456';",
         "original-policy": "default-src 'self'; script-src 'self'",
