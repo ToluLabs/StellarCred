@@ -199,6 +199,13 @@ jobs:
         with:
           version: 9
 
+      # TypeDoc follows the SDK's linked registry clients into sibling package
+      # sources. Install the parent graph so those sources can resolve their
+      # Stellar SDK dependency and the React entry point can resolve React.
+      - name: Install frontend dependency graph
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Install SDK dependencies
         working-directory: frontend/packages/sdk
         run: pnpm install --frozen-lockfile --ignore-workspace
