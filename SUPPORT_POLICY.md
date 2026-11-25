@@ -25,9 +25,10 @@ Cross-references:
 6. [Proof Record Schema Versions](#proof-record-schema-versions)
 7. [Contract Versions](#contract-versions)
 8. [SDK Versions](#sdk-versions)
-9. [Backup Envelope Versions](#backup-envelope-versions)
-10. [Breaking vs Non-Breaking Changes](#breaking-vs-non-breaking-changes)
-11. [Notices and Communication](#notices-and-communication)
+9. [Issuer Package Versions](#issuer-package-versions)
+10. [Backup Envelope Versions](#backup-envelope-versions)
+11. [Breaking vs Non-Breaking Changes](#breaking-vs-non-breaking-changes)
+12. [Notices and Communication](#notices-and-communication)
 
 ---
 
@@ -44,6 +45,7 @@ governs:
 | Proof record schema | `ProofRegistry` on-chain | `PROOF_RECORD_SCHEMA_VERSION = 1` |
 | Contract ABI | each Soroban contract | `CONTRACT_VERSION = 1_000_000` (1.0.0) |
 | SDK (`@stellarcred/sdk`) | npm / `frontend/packages/sdk` | 0.1.1 |
+| Issuer package (`@stellarcred/issuer`) | npm / `frontend/packages/issuer` | 0.1.1 (released in lockstep with the SDK) |
 | Backup envelope | browser `localStorage` / export JSON | 2 (version 1 legacy) |
 
 ---
@@ -123,6 +125,13 @@ Encoding: `(major × 1 000 000) + (minor × 1 000) + patch` (e.g. `1_002_003`
 The npm package version follows [Semantic Versioning 2.0](https://semver.org).
 The current version is `0.1.1`.
 
+### Issuer package (`@stellarcred/issuer`)
+
+The server-side issuance module. Its npm version follows
+[Semantic Versioning 2.0](https://semver.org) and is released in lockstep with
+the SDK: every release publishes both packages at the same version. The current
+version is `0.1.1`. See [Issuer Package Versions](#issuer-package-versions).
+
 ### Backup Envelope
 
 Local credential backups use a `version` field in their JSON payload.
@@ -145,6 +154,8 @@ functional** after a successor version is available.
 | Contract MINOR / PATCH version | No minimum (backward compatible) |
 | SDK MAJOR version | **6 months** |
 | SDK MINOR / PATCH version | No minimum (backward compatible) |
+| Issuer package MAJOR version | **6 months** |
+| Issuer package MINOR / PATCH version | No minimum (backward compatible from 1.0.0) |
 | Backup envelope version | Indefinite read support; write support at operator discretion |
 
 "Fully functional" means:
@@ -157,6 +168,8 @@ functional** after a successor version is available.
   deployment or rollback path maintained).
 - **SDK MAJOR**: the old SDK package still resolves against deployed contracts
   and type definitions are accurate.
+- **Issuer package MAJOR**: the old package still installs from npm and the
+  credentials it issues still prove against the deployed contracts and VKs.
 - **Backup envelope**: files created under any supported envelope version can be
   decrypted and imported.
 
@@ -208,6 +221,9 @@ table above).
 - **Contract MAJOR**: old contract ID is no longer officially supported; operators
   still running against it receive no patch or security updates.
 - **SDK MAJOR**: old npm tag unpublished or marked `deprecated` on the registry.
+- **Issuer package MAJOR**: old version marked `deprecated` on the registry (never
+  unpublished — integrators install it by exact version). It receives no further
+  patch or security updates.
 
 ---
 
@@ -403,6 +419,91 @@ node -e "console.log(require('@stellarcred/sdk/package.json').version)"
 
 ---
 
+## Issuer Package Versions
+
+`@stellarcred/issuer` is the server-only issuance module: it turns a verified
+attribute into a committed, signed credential (value, salt, Poseidon2
+commitment, secp256k1 signature). It holds no state and never sees the holder's
+wallet; the issuer's private key is supplied by the integrator and must stay on
+the server (see the package [README](frontend/packages/issuer/README.md)).
+
+### Release model
+
+- **Lockstep with the SDK.** One `vX.Y.Z` tag publishes `@stellarcred/sdk` and
+  `@stellarcred/issuer` at the same version. A release that changes only one of
+  them still bumps both; the other's changelog says "no changes". The release
+  workflow refuses to run if the tag and the two `package.json` versions differ.
+- **Pre-releases** (`vX.Y.Z-rc.N`) are published under the `next` npm dist-tag,
+  never `latest`. They carry **no support window** — pin them exactly, and do not
+  run them against mainnet.
+- **Provenance.** Every release is published from the `release.yml` workflow with
+  [npm provenance](https://docs.npmjs.com/generating-provenance-statements): a
+  signed attestation tying the tarball to this repository, the tagged commit and
+  the workflow run. Verify what you installed with `npm audit signatures`, or
+  check for the "Provenance" badge on the package's npm page. A version of
+  `@stellarcred/issuer` without provenance was **not** published by this project's
+  pipeline; do not run it with an issuer key.
+- **Before 1.0.0** (`0.x`), a MINOR release may contain breaking changes. They are
+  always listed under a `BREAKING` heading in the release notes and in
+  [`CHANGELOG.md`](frontend/packages/issuer/CHANGELOG.md), and a PATCH release never
+  breaks. From 1.0.0 the table below applies in full.
+
+### Compatibility promise
+
+| Surface | Issuer PATCH | Issuer MINOR | Issuer MAJOR |
+|---|---|---|---|
+| `new IssuerClient(...)`, `issue()`, `publicKey()` signatures | ✓ Unaffected | ✓ Unaffected (from 1.0.0) | ✗ May break |
+| Shape of the returned `Credential` | ✓ Unaffected | ✓ Additive only (from 1.0.0) | ✗ May change |
+| Commitment and signature scheme (Poseidon2 over `[value, salt]`, secp256k1, `prehash: false`) — i.e. credentials stay provable against the deployed circuits and VKs | ✓ Unaffected | ✓ Unaffected | ✗ Only together with a circuit or VK version change, announced under the [VK deprecation procedure](#vk-versions-and-the-pruning-rule) |
+| Server-only guarantee (node-only `exports`, `window` guard, no logging, no persistence) | ✓ Never weakened | ✓ Never weakened | ✓ Never weakened |
+| Supported Node.js (`engines.node`) | ✓ Unaffected | ✓ May drop a Node version that is end-of-life | ✗ May raise |
+
+Credentials that were **already issued** are not affected by upgrading or
+downgrading the package: whether a credential is accepted is decided on-chain by
+the registered issuer key and the VK version, not by which package version
+produced it. Upgrading the package never changes the public key derived from your
+private key.
+
+### Support window
+
+| Issuer version | Support duration |
+|---|---|
+| Current MINOR (0.1.x) | Until superseded + 6 months |
+| Previous MAJOR | 6 months after new MAJOR published |
+| Pre-release (`-rc.N`, `next` tag) | None |
+
+"Supported" means correctness and security fixes are released for that line, and
+that the old version keeps installing from npm and keeps issuing credentials that
+prove against the deployed contracts. Report a vulnerability through
+[SECURITY.md](SECURITY.md), not a public issue. API removals follow the
+[Deprecation Procedure](#deprecation-procedure): announced first, deprecated with a
+warning, removed no earlier than the next MAJOR.
+
+### Checking your issuer version
+
+```bash
+npm list @stellarcred/issuer
+npm audit signatures        # verifies registry signatures and provenance attestations
+```
+
+### What to do before upgrading
+
+1. Read the release notes and
+   [`CHANGELOG.md`](frontend/packages/issuer/CHANGELOG.md) for every version
+   between yours and the target; look for `BREAKING` and `[DEPRECATED]`.
+2. Check [VERSION_COMPATIBILITY.md](VERSION_COMPATIBILITY.md) for the contract and
+   circuit versions the target release expects.
+3. Pin an exact version in production (`npm install --save-exact
+   @stellarcred/issuer@<version>`), at least while the package is `0.x`.
+4. Upgrade `@stellarcred/sdk` to the same version in the same change; the two are
+   tested together at each release.
+5. In staging, issue one credential of each type you use, prove a claim against
+   it, and confirm `issuer.publicKey()` is unchanged.
+6. Roll out. To roll back, reinstall the previous exact version; no data migration
+   is involved.
+
+---
+
 ## Backup Envelope Versions
 
 Credential backup files (JSON exported from the Holder page) carry a `version`
@@ -433,6 +534,9 @@ MAJOR version bump and the full deprecation procedure:
 - Retiring a VK version before the 90-day safety delay has elapsed.
 - Publishing an SDK release that removes exported symbols or narrows accepted
   types.
+- Publishing an issuer release that removes exported symbols, narrows accepted
+  parameters, changes the shape of `Credential`, or changes the commitment or
+  signature scheme.
 
 The following are **never breaking** and may be shipped as MINOR or PATCH:
 
@@ -441,6 +545,8 @@ The following are **never breaking** and may be shipped as MINOR or PATCH:
   migration is mandatory before the 6-month window).
 - Registering an additional VK version for a credential type.
 - Adding new SDK exports that do not remove or rename existing ones.
+- Adding new issuer exports or optional parameters that do not change the
+  behaviour of existing calls.
 - Updating documentation, comments, or internal constants with no ABI effect.
 
 ---
