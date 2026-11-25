@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import {
   createExportJob,
   listUserExportJobs,
@@ -6,15 +6,15 @@ import {
   isScopeAllowed,
   type ExportScope,
   type ExportFormat,
-} from '@/lib/export-jobs';
+} from "@/lib/export-jobs";
 
 function getUserContext(req: NextRequest) {
-  const addressHeader = req.headers.get('x-user-address');
-  const authHeader = req.headers.get('authorization');
-  const roleHeader = req.headers.get('x-user-role');
+  const addressHeader = req.headers.get("x-user-address");
+  const authHeader = req.headers.get("authorization");
+  const roleHeader = req.headers.get("x-user-role");
 
-  const userAddress = addressHeader || 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2';
-  const isAdmin = roleHeader === 'admin' || authHeader?.toLowerCase().includes('admin');
+  const userAddress = addressHeader || "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2";
+  const isAdmin = roleHeader === "admin" || authHeader?.toLowerCase().includes("admin");
 
   return { userAddress, isAdmin };
 }
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       userAddress,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to fetch export jobs';
+    const msg = error instanceof Error ? error.message : "Failed to fetch export jobs";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
@@ -41,23 +41,24 @@ export async function POST(req: NextRequest) {
     const { userAddress, isAdmin } = getUserContext(req);
 
     const body = await req.json().catch(() => ({}));
-    const { scope, format = 'json', tenantId = 'default' } = body as {
+    const {
+      scope,
+      format = "json",
+      tenantId = "default",
+    } = body as {
       scope?: string;
       format?: string;
       tenantId?: string;
     };
 
     if (!scope) {
-      return NextResponse.json(
-        { error: 'Missing required field: "scope"' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required field: "scope"' }, { status: 400 });
     }
 
-    if (!['json', 'csv'].includes(format)) {
+    if (!["json", "csv"].includes(format)) {
       return NextResponse.json(
         { error: 'Invalid format. Allowed formats are "json" and "csv"' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
           error: `Forbidden: You do not have permission to export scope "${scope}".`,
           allowedScopes: getAllowedScopes(isAdmin),
         },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ job }, { status: 201 });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to create export job';
+    const msg = error instanceof Error ? error.message : "Failed to create export job";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

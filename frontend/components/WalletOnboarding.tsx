@@ -31,12 +31,7 @@ import {
   IconPlugConnected,
 } from "@tabler/icons-react";
 import { useWallet } from "@/lib/wallet-context";
-import {
-  KNOWN_WALLETS,
-  isWalletInstalled,
-  appNetworkName,
-  walletNetworkName,
-} from "@/lib/wallet";
+import { KNOWN_WALLETS, isWalletInstalled, appNetworkName, walletNetworkName } from "@/lib/wallet";
 
 export function WalletOnboarding() {
   const { address, connect, connecting, networkMismatch } = useWallet();
@@ -85,13 +80,8 @@ export function WalletOnboarding() {
             aria-hidden="true"
           />
           <div>
-            <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.3rem" }}>
-              Network mismatch
-            </h3>
-            <p
-              className="muted"
-              style={{ fontSize: "0.85rem", lineHeight: 1.6, margin: 0 }}
-            >
+            <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.3rem" }}>Network mismatch</h3>
+            <p className="muted" style={{ fontSize: "0.85rem", lineHeight: 1.6, margin: 0 }}>
               Your wallet is set to{" "}
               <span className="mono" style={{ fontWeight: 600 }}>
                 {walletNetwork ?? "a different network"}
@@ -107,8 +97,7 @@ export function WalletOnboarding() {
               className="faint"
               style={{ fontSize: "0.75rem", lineHeight: 1.5, marginTop: "0.6rem", marginBottom: 0 }}
             >
-              The warning clears automatically once the switch is detected — no
-              need to reconnect.
+              The warning clears automatically once the switch is detected — no need to reconnect.
             </p>
           </div>
         </div>
@@ -133,15 +122,13 @@ export function WalletOnboarding() {
           style={{ marginBottom: "0.5rem" }}
           aria-hidden="true"
         />
-        <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.35rem" }}>
-          Connect your wallet
-        </h3>
+        <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.35rem" }}>Connect your wallet</h3>
         <p
           className="muted"
           style={{ fontSize: "0.85rem", lineHeight: 1.6, margin: "0 auto 1rem", maxWidth: 380 }}
         >
-          A Stellar wallet was detected. Connect it to manage your credentials
-          and generate zero-knowledge proofs.
+          A Stellar wallet was detected. Connect it to manage your credentials and generate
+          zero-knowledge proofs.
         </p>
         <button
           className="btn btn-primary"
@@ -173,15 +160,13 @@ export function WalletOnboarding() {
           style={{ marginBottom: "0.4rem" }}
           aria-hidden="true"
         />
-        <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.3rem" }}>
-          Get a Stellar wallet
-        </h3>
+        <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.3rem" }}>Get a Stellar wallet</h3>
         <p
           className="muted"
           style={{ fontSize: "0.85rem", lineHeight: 1.6, maxWidth: 400, margin: "0 auto" }}
         >
-          A Stellar wallet stores your keys and signs transactions. Install one
-          of the wallets below, then connect it to start using StellarCred.
+          A Stellar wallet stores your keys and signs transactions. Install one of the wallets
+          below, then connect it to start using StellarCred.
         </p>
       </div>
 
@@ -235,7 +220,13 @@ export function WalletOnboarding() {
 
       <p
         className="faint"
-        style={{ fontSize: "0.72rem", lineHeight: 1.5, marginTop: "1rem", textAlign: "center", marginBottom: 0 }}
+        style={{
+          fontSize: "0.72rem",
+          lineHeight: 1.5,
+          marginTop: "1rem",
+          textAlign: "center",
+          marginBottom: 0,
+        }}
       >
         Prefer a web wallet?{" "}
         <a

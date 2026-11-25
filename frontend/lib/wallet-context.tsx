@@ -75,6 +75,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setAddress(restoredAddress);
           setWalletId(saved);
         }
+        if (cancelled) return;
+        setAddress(restoredAddress);
+        setWalletId(saved);
       })
       .catch(() => {
         invalidateWalletSessionCache({ reason: "disconnect" });

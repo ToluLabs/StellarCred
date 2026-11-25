@@ -77,9 +77,9 @@ const STEPS = [
 ];
 
 const STATS = [
-  { value: "4",        label: "Credential types" },
+  { value: "4", label: "Credential types" },
   { value: "UltraHonk", label: "ZK proof system" },
-  { value: "~10s",    label: "Proof generation" },
+  { value: "~10s", label: "Proof generation" },
   { value: "30 days", label: "Proof validity" },
 ];
 
@@ -87,10 +87,7 @@ export default function Home() {
   return (
     <>
       {/* ── Hero ─────────────────────────────────────────────────────── */}
-      <section
-        className="reveal"
-        style={{ paddingTop: "3rem" }}
-      >
+      <section className="reveal" style={{ paddingTop: "3rem" }}>
         {/* eyebrow chip */}
         <div style={{ marginBottom: "2rem" }}>
           <span
@@ -111,21 +108,17 @@ export default function Home() {
           </span>
         </div>
 
-        <div
-          className="grid grid-2"
-          style={{ alignItems: "center", gap: "4rem" }}
-        >
+        <div className="grid grid-2" style={{ alignItems: "center", gap: "4rem" }}>
           {/* left: copy */}
           <div>
             <h1 style={{ marginBottom: "1.25rem" }}>
-              Prove anything.{" "}
-              <span className="gradient-text">Reveal&nbsp;nothing.</span>
+              Prove anything. <span className="gradient-text">Reveal&nbsp;nothing.</span>
             </h1>
 
             <p className="lead" style={{ maxWidth: 480, marginBottom: "2rem" }}>
-              Hold a credential from a trusted issuer, generate an UltraHonk
-              zero-knowledge proof locally, and verify your claim on Stellar —
-              without the underlying data ever touching the chain.
+              Hold a credential from a trusted issuer, generate an UltraHonk zero-knowledge proof
+              locally, and verify your claim on Stellar — without the underlying data ever touching
+              the chain.
             </p>
 
             <div className="row" style={{ gap: "0.65rem", flexWrap: "wrap" }}>
@@ -146,9 +139,9 @@ export default function Home() {
               type="Identity Credential"
               holder="GA7X…K3NP"
               fields={[
-                { label: "KYC status",   value: "verified" },
-                { label: "Age",          value: null },
-                { label: "Country",      value: null },
+                { label: "KYC status", value: "verified" },
+                { label: "Age", value: null },
+                { label: "Country", value: null },
                 { label: "Income range", value: null },
               ]}
               proofHash="0x4a3f8b2c00d9e1"
@@ -174,7 +167,9 @@ export default function Home() {
       {/* ── How it works ─────────────────────────────────────────────── */}
       <section style={{ marginTop: "8rem" }}>
         <div style={{ marginBottom: "2.5rem" }}>
-          <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>Protocol</p>
+          <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>
+            Protocol
+          </p>
           <h2>How StellarCred works</h2>
         </div>
 
@@ -214,11 +209,13 @@ export default function Home() {
       {/* ── Verified once. Trusted everywhere. ───────────────────────── */}
       <section style={{ marginTop: "8rem" }}>
         <div style={{ marginBottom: "2rem" }}>
-          <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>Infrastructure</p>
+          <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>
+            Infrastructure
+          </p>
           <h2>Verified once. Trusted everywhere.</h2>
           <p className="lead" style={{ fontSize: "1rem", marginTop: "0.5rem" }}>
-            Any protocol on Stellar can verify your credentials in one contract
-            call. No API. No backend. No re-verification.
+            Any protocol on Stellar can verify your credentials in one contract call. No API. No
+            backend. No re-verification.
           </p>
         </div>
 
@@ -227,10 +224,7 @@ import { StellarCred } from "@stellarcred/sdk";
 
 const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
 
-        <div
-          className="row"
-          style={{ gap: "0.6rem", flexWrap: "wrap", marginTop: "1.75rem" }}
-        >
+        <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap", marginTop: "1.75rem" }}>
           {ECOSYSTEM.map((name) => (
             <span
               key={name}
@@ -252,7 +246,9 @@ const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
       {/* ── Two ways to get verified ─────────────────────────────────── */}
       <section style={{ marginTop: "8rem" }}>
         <div style={{ marginBottom: "2.5rem" }}>
-          <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>Flows</p>
+          <p className="eyebrow" style={{ marginBottom: "0.75rem" }}>
+            Flows
+          </p>
           <h2>Two ways to get verified</h2>
         </div>
 
@@ -275,11 +271,14 @@ const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
             <div>
               <h3 style={{ marginBottom: "0.5rem" }}>Verify directly</h3>
               <p className="muted" style={{ fontSize: "0.9rem", lineHeight: 1.65 }}>
-                Visit StellarCred before using any app. Your credentials work
-                everywhere, instantly.
+                Visit StellarCred before using any app. Your credentials work everywhere, instantly.
               </p>
             </div>
-            <Link href="/verify" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }}>
+            <Link
+              href="/verify"
+              className="btn btn-primary btn-sm"
+              style={{ alignSelf: "flex-start" }}
+            >
               Get verified
               <IconArrowRight size={14} />
             </Link>
@@ -303,8 +302,8 @@ const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
             <div>
               <h3 style={{ marginBottom: "0.5rem" }}>Verify through an app</h3>
               <p className="muted" style={{ fontSize: "0.9rem", lineHeight: 1.65 }}>
-                Apps that integrate StellarCred show a &ldquo;Verify&rdquo; button.
-                Complete verification and return automatically.
+                Apps that integrate StellarCred show a &ldquo;Verify&rdquo; button. Complete
+                verification and return automatically.
               </p>
             </div>
             <div
@@ -336,14 +335,20 @@ const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
         </div>
 
         <div className="grid grid-3" style={{ gap: "1.25rem" }}>
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+          <div
+            className="card"
+            style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}
+          >
             <p className="feature-num">01</p>
             <h3 style={{ fontSize: "1rem" }}>Require a claim</h3>
             <CodeBlock>{`stellarcred.hasClaim(
   wallet, 'kyc'
 )`}</CodeBlock>
           </div>
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+          <div
+            className="card"
+            style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}
+          >
             <p className="feature-num">02</p>
             <h3 style={{ fontSize: "1rem" }}>Redirect if needed</h3>
             <CodeBlock>{`StellarCred.buildVerifyUrl({
@@ -351,7 +356,10 @@ const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
   claim: 'kyc'
 })`}</CodeBlock>
           </div>
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+          <div
+            className="card"
+            style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}
+          >
             <p className="feature-num">03</p>
             <h3 style={{ fontSize: "1rem" }}>User returns verified</h3>
             <p className="muted" style={{ fontSize: "0.875rem", lineHeight: 1.65 }}>
@@ -374,7 +382,8 @@ const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
           style={{
             padding: "3rem",
             borderRadius: "var(--radius-xl)",
-            background: "linear-gradient(135deg, rgba(62,207,142,0.06) 0%, rgba(62,207,142,0.02) 100%)",
+            background:
+              "linear-gradient(135deg, rgba(62,207,142,0.06) 0%, rgba(62,207,142,0.02) 100%)",
             border: "1px solid rgba(62,207,142,0.15)",
             textAlign: "center",
           }}
@@ -384,10 +393,13 @@ const canDeposit = await StellarCred.hasClaim(wallet, "kyc");`}</CodeBlock>
             className="muted"
             style={{ marginBottom: "2rem", maxWidth: 440, margin: "0 auto 2rem" }}
           >
-            Connect a Stellar wallet on testnet, get a credential, generate
-            your first on-chain ZK proof in under a minute.
+            Connect a Stellar wallet on testnet, get a credential, generate your first on-chain ZK
+            proof in under a minute.
           </p>
-          <div className="row" style={{ justifyContent: "center", gap: "0.65rem", flexWrap: "wrap" }}>
+          <div
+            className="row"
+            style={{ justifyContent: "center", gap: "0.65rem", flexWrap: "wrap" }}
+          >
             <Link href="/verify" className="btn btn-primary btn-lg">
               Get started
               <IconArrowRight size={16} />

@@ -25,7 +25,9 @@ describe("storage-keys", () => {
       expect(STORAGE_KEYS.ONBOARDING_LEGACY).toBe("stellarcred_onboarding_seen");
       expect(STORAGE_KEYS.WALLET_ID).toBe("stellarcred:wallet-id");
       expect(STORAGE_KEYS.THEME).toBe("theme");
-      expect(STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED).toBe("stellarcred:onboarding-nudge-dismissed");
+      expect(STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED).toBe(
+        "stellarcred:onboarding-nudge-dismissed",
+      );
     });
   });
 
@@ -66,7 +68,7 @@ describe("storage-keys", () => {
       localStorage.setItem(STORAGE_KEYS.THEME, "light");
 
       const allKeys = getAllStorageKeys();
-      
+
       // Should include all static keys
       expect(allKeys).toContain(STORAGE_KEYS.CREDENTIALS);
       expect(allKeys).toContain(STORAGE_KEYS.EXPORT_VISIBILITY);
@@ -76,7 +78,7 @@ describe("storage-keys", () => {
       expect(allKeys).toContain(STORAGE_KEYS.WALLET_ID);
       expect(allKeys).toContain(STORAGE_KEYS.THEME);
       expect(allKeys).toContain(STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED);
-      
+
       // Should include dynamic timeline keys
       expect(allKeys).toContain("proofTimeline:c1");
       expect(allKeys).toContain("proofTimeline:c2");
@@ -85,7 +87,7 @@ describe("storage-keys", () => {
     it("includes keys even when they don't exist in storage", () => {
       // getAllStorageKeys returns the enumerated keys, not just what's in storage
       const allKeys = getAllStorageKeys();
-      
+
       expect(allKeys).toContain(STORAGE_KEYS.CREDENTIALS);
       expect(allKeys).toContain(STORAGE_KEYS.EXPORT_VISIBILITY);
       expect(allKeys).toContain(STORAGE_KEYS.PROOF_CACHE);

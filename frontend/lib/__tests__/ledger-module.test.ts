@@ -104,10 +104,10 @@ const signer = Keypair.random();
 const optionsAddress = Keypair.random().publicKey();
 
 function buildTx(passphrase = TEST_NET): Transaction {
-  return new TransactionBuilder(
-    new Account(Keypair.random().publicKey(), "1"),
-    { fee: "100", networkPassphrase: passphrase },
-  )
+  return new TransactionBuilder(new Account(Keypair.random().publicKey(), "1"), {
+    fee: "100",
+    networkPassphrase: passphrase,
+  })
     .addOperation(
       Operation.payment({
         destination: Keypair.random().publicKey(),
@@ -137,11 +137,9 @@ describe("LedgerModule typed signing (#753)", () => {
     strGetPublicKey.mockResolvedValue({
       rawPublicKey: Buffer.from(signer.rawPublicKey()),
     });
-    strSignTransaction.mockImplementation(
-      async (_path: string, base: Buffer) => ({
-        signature: Buffer.from(signer.sign(base)),
-      }),
-    );
+    strSignTransaction.mockImplementation(async (_path: string, base: Buffer) => ({
+      signature: Buffer.from(signer.sign(base)),
+    }));
   });
 
   it("registers with the wallet-kit hw id", () => {
@@ -299,8 +297,12 @@ describe("LedgerModule connection recovery (#1040)", () => {
   it("classifies each transport failure with its own actionable message", async () => {
     expect(classifyLedgerError(new Error("0x5515: locked"))).toBe("locked");
     expect(classifyLedgerError(new Error("0x6e00: instruction not supported"))).toBe("app-closed");
-    expect(classifyLedgerError(new Error("0x6985: condition of use not satisfied"))).toBe("rejected");
-    expect(classifyLedgerError(new Error("DisconnectedDeviceDuringOperation"))).toBe("disconnected");
+    expect(classifyLedgerError(new Error("0x6985: condition of use not satisfied"))).toBe(
+      "rejected",
+    );
+    expect(classifyLedgerError(new Error("DisconnectedDeviceDuringOperation"))).toBe(
+      "disconnected",
+    );
     expect(classifyLedgerError(new Error("No Ledger device found"))).toBe("unavailable");
     expect(classifyLedgerError(new Error("WebUSB not supported"))).toBe("unsupported");
 

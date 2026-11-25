@@ -29,7 +29,6 @@ async function sdk(): Promise<SDK> {
   return sdkPromise;
 }
 
-
 let server: InstanceType<SDK["rpc"]["Server"]> | null = null;
 async function getServer() {
   if (!server) {
@@ -197,10 +196,7 @@ export async function buildSignedBatchInnerXdr(params: {
  * Send a signed XDR to the sponsor relay, which wraps it in a fee-bump
  * and submits to the network.
  */
-async function submitViaRelay(
-  signedXdr: string,
-  holder: string,
-): Promise<SponsorResult> {
+async function submitViaRelay(signedXdr: string, holder: string): Promise<SponsorResult> {
   const res = await fetch("/api/sponsor", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

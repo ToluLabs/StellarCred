@@ -61,9 +61,7 @@ export function QrScanner({
 
     async function start() {
       if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-        setError(
-          "Camera access requires a secure (HTTPS) context. Use the paste option below."
-        );
+        setError("Camera access requires a secure (HTTPS) context. Use the paste option below.");
         return;
       }
       try {
@@ -109,7 +107,9 @@ export function QrScanner({
     <Modal title={title} onClose={onClose}>
       {error ? (
         <div style={{ textAlign: "center" }}>
-          <p style={{ color: "var(--danger)", fontSize: "0.875rem", marginBottom: "1rem" }}>{error}</p>
+          <p style={{ color: "var(--danger)", fontSize: "0.875rem", marginBottom: "1rem" }}>
+            {error}
+          </p>
           <button
             type="button"
             onClick={() => {
@@ -139,7 +139,12 @@ export function QrScanner({
           }}
         >
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live camera feed, not pre-recorded media */}
-          <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         </div>
       )}
       <canvas ref={canvasRef} style={{ display: "none" }} />

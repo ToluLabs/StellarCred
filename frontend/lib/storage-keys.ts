@@ -1,11 +1,11 @@
 /**
  * Central enumeration of all StellarCred localStorage keys.
- * 
+ *
  * Every feature that persists state should be listed here so that:
  * 1. The data wipe flow (#558) can remove everything without orphaning keys
  * 2. New storage features are caught at review time
  * 3. Cross-tab sync and migration logic can discover all keys in one place
- * 
+ *
  * Rules:
  * - Add new storage keys here when adding features that persist to localStorage
  * - Update the JSDoc when keys are deprecated or change semantics
@@ -25,9 +25,9 @@ export const STORAGE_KEYS = {
   /** Local proof cache for performance optimization (lib/proof-cache.ts) */
   PROOF_CACHE: "stellarcred:proof-cache",
 
-  /** 
+  /**
    * Proof timeline events per credential (lib/useProofTimeline.ts).
-   * Actual keys are `proofTimeline:{commitment}` — use {@link getTimelineKeys} 
+   * Actual keys are `proofTimeline:{commitment}` — use {@link getTimelineKeys}
    * to enumerate them dynamically.
    */
   PROOF_TIMELINE_PREFIX: "proofTimeline:",
