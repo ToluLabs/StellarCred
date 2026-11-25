@@ -98,15 +98,13 @@ describe("loadEnv", () => {
   });
 
   it("rejects PLAID_ACCESS_TOKENS without credentials", () => {
-    expect(() =>
-      loadEnv({ PLAID_ACCESS_TOKENS: "access-sandbox-x,access-sandbox-y" }),
-    ).toThrow(EnvValidationError);
+    expect(() => loadEnv({ PLAID_ACCESS_TOKENS: "access-sandbox-x,access-sandbox-y" })).toThrow(
+      EnvValidationError,
+    );
   });
 
   it("rejects a NEXT_PUBLIC_-prefixed server secret before running schema validation", () => {
-    expect(() => loadEnv({ NEXT_PUBLIC_ISSUER_PRIVATE_KEY: "leaked" })).toThrow(
-      EnvValidationError,
-    );
+    expect(() => loadEnv({ NEXT_PUBLIC_ISSUER_PRIVATE_KEY: "leaked" })).toThrow(EnvValidationError);
     expect(() => loadEnv({ NEXT_PUBLIC_PLAID_SECRET: "leaked" })).toThrow(EnvValidationError);
     expect(() => loadEnv({ NEXT_PUBLIC_PLAID_ACCESS_TOKENS: "leaked" })).toThrow(
       EnvValidationError,

@@ -242,7 +242,12 @@ async function proveInline(
     if (signal?.aborted) return;
     options.onProgress?.(stage);
     const info = INLINE_STAGE_INFO[stage];
-    options.onStageProgress?.({ stage, elapsedMs: 0, expectedMs: info.expectedMs, label: info.label });
+    options.onStageProgress?.({
+      stage,
+      elapsedMs: 0,
+      expectedMs: info.expectedMs,
+      label: info.label,
+    });
   };
 
   emitStageProgress("witness");

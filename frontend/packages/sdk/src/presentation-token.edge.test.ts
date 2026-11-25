@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Buffer } from "buffer";
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Keypair } from "@stellar/stellar-sdk";
 
@@ -17,7 +18,9 @@ import { createPresentationToken, verifyPresentationToken } from "./presentation
  */
 
 const MODULE_SOURCE = readFileSync(
-  fileURLToPath(new URL("./presentation-token.ts", import.meta.url)),
+  // Resolve from the string form: under jsdom the global URL is not the
+  // Node URL class, which fileURLToPath rejects.
+  join(dirname(fileURLToPath(import.meta.url)), "presentation-token.ts"),
   "utf8",
 )
   .replace(/\/\*[\s\S]*?\*\//g, "")

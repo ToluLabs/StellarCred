@@ -50,9 +50,7 @@ describe("buildClaimLabel", () => {
   });
 
   it("employment uses custom threshold from claimParams", () => {
-    expect(buildClaimLabel("employment", { threshold: "5" })).toBe(
-      "employed, seniority ≥ 5 yrs",
-    );
+    expect(buildClaimLabel("employment", { threshold: "5" })).toBe("employed, seniority ≥ 5 yrs");
   });
 
   it("jurisdiction returns denylist label by default (mode undefined)", () => {

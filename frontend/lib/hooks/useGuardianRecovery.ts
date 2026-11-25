@@ -10,9 +10,7 @@ export type GuardianRecoveryTab = "setup" | "recover";
  * Recovery itself remains in the modal and lib/guardian; this hook only
  * coordinates opening, closing, and notifying the credential store owner.
  */
-export function useGuardianRecovery(
-  onRestored?: (credentials: Credential[]) => void,
-) {
+export function useGuardianRecovery(onRestored?: (credentials: Credential[]) => void) {
   const [activeTab, setActiveTab] = useState<GuardianRecoveryTab | null>(null);
 
   const open = useCallback((tab: GuardianRecoveryTab) => {

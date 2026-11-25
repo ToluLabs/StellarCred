@@ -50,6 +50,7 @@ import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from 
 import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import { subscribeClaims } from "./subscriptions";
 import { telemetry } from "./telemetry";
+import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import {
   createOfflineVerifier,
   verifyOfflinePresentation,
@@ -75,6 +76,7 @@ import {
   CredentialValidationError,
 } from "./validateCredential";
 import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
+import { telemetry } from "./telemetry";
 
 export const StellarCred = {
   configure,

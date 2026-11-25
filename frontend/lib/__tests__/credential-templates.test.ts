@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  CREDENTIAL_TEMPLATES,
-  getTemplatesByType,
-  getTemplateById,
-} from "../credential-templates";
+import { CREDENTIAL_TEMPLATES, getTemplatesByType, getTemplateById } from "../credential-templates";
 import { TYPE_META } from "../credential";
 
 describe("Credential Templates Gallery (#411)", () => {

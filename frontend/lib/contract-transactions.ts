@@ -20,11 +20,7 @@
 import { Buffer } from "buffer";
 import { RPC_URL, NETWORK_PASSPHRASE, CONTRACTS } from "./stellar";
 import { signTx } from "./wallet";
-import {
-  PROOF_REGISTRY_ERRORS,
-  type PreflightResult,
-  evaluateSimulation,
-} from "./contract-errors";
+import { PROOF_REGISTRY_ERRORS, type PreflightResult, evaluateSimulation } from "./contract-errors";
 import { classifyRpcError, reportRpcHealthy, reportRpcIssue } from "./rpc-health";
 
 type SDK = typeof import("@stellar/stellar-sdk");
@@ -222,9 +218,7 @@ async function sendAndConfirm(
   prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
 
   const signedXdr = await signTx(prepared.toXDR(), holder);
-  const sent = await srv.sendTransaction(
-    TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE),
-  );
+  const sent = await srv.sendTransaction(TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE));
 
   if (sent.status === "ERROR") {
     const errHex =
@@ -512,9 +506,7 @@ export async function submitProofs(params: {
   prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
 
   const signedXdr = await signTx(prepared.toXDR(), holder);
-  const sent = await srv.sendTransaction(
-    TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE),
-  );
+  const sent = await srv.sendTransaction(TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE));
 
   if (sent.status === "ERROR") {
     const errHex =
@@ -579,9 +571,7 @@ export async function submitAggregateProof(params: {
     holder,
     (contract) => {
       const { Address, nativeToScVal, xdr } = sdkSync();
-      const issuerScVec = xdr.ScVal.scvVec(
-        issuerIds.map((id) => Address.fromString(id).toScVal()),
-      );
+      const issuerScVec = xdr.ScVal.scvVec(issuerIds.map((id) => Address.fromString(id).toScVal()));
       const typeScVec = xdr.ScVal.scvVec(
         credentialTypes.map((t) => nativeToScVal(t, { type: "symbol" })),
       );
