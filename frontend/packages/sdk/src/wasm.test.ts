@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -30,12 +32,47 @@ import * as sdkIndex from "./index";
  *       i32.add))
  */
 const ADD_WASM_BYTES = new Uint8Array([
-  0x00, 0x61, 0x73, 0x6d, // \0asm
-  0x01, 0x00, 0x00, 0x00, // version 1
-  0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f, // type section: (i32, i32) -> i32
-  0x03, 0x02, 0x01, 0x00, // function section: func 0 has type 0
-  0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00, // export section: "add" -> func 0
-  0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b, // code section
+  0x00,
+  0x61,
+  0x73,
+  0x6d, // \0asm
+  0x01,
+  0x00,
+  0x00,
+  0x00, // version 1
+  0x01,
+  0x07,
+  0x01,
+  0x60,
+  0x02,
+  0x7f,
+  0x7f,
+  0x01,
+  0x7f, // type section: (i32, i32) -> i32
+  0x03,
+  0x02,
+  0x01,
+  0x00, // function section: func 0 has type 0
+  0x07,
+  0x07,
+  0x01,
+  0x03,
+  0x61,
+  0x64,
+  0x64,
+  0x00,
+  0x00, // export section: "add" -> func 0
+  0x0a,
+  0x09,
+  0x01,
+  0x07,
+  0x00,
+  0x20,
+  0x00,
+  0x20,
+  0x01,
+  0x6a,
+  0x0b, // code section
 ]);
 
 const ADD_WASM_BASE64 = Buffer.from(ADD_WASM_BYTES).toString("base64");
@@ -60,16 +97,12 @@ describe("Universal WASM runtime detection", () => {
     expect(detectWasmRuntime({ EdgeRuntime: "edge-runtime" })).toBe("edge");
     expect(detectWasmRuntime({ Deno: { version: {} } })).toBe("edge");
     expect(detectWasmRuntime({ WebSocketPair: function () {} })).toBe("edge");
-    expect(
-      detectWasmRuntime({ navigator: { userAgent: "Cloudflare-Workers" } }),
-    ).toBe("edge");
+    expect(detectWasmRuntime({ navigator: { userAgent: "Cloudflare-Workers" } })).toBe("edge");
   });
 
   it("detects Browser and WebWorker runtimes", () => {
     expect(detectWasmRuntime({ window: {}, document: {} })).toBe("browser");
-    expect(detectWasmRuntime({ self: {}, importScripts: () => {} })).toBe(
-      "browser",
-    );
+    expect(detectWasmRuntime({ self: {}, importScripts: () => {} })).toBe("browser");
   });
 
   it("returns unknown when no runtime markers exist", () => {
@@ -92,9 +125,7 @@ describe("Universal WASM loader (initWasm / compileWasm)", () => {
 
   it("validates WASM magic header and decodes base64 isomorphically", () => {
     expect(hasWasmMagicHeader(ADD_WASM_BYTES)).toBe(true);
-    expect(hasWasmMagicHeader(new Uint8Array([0x01, 0x02, 0x03, 0x04]))).toBe(
-      false,
-    );
+    expect(hasWasmMagicHeader(new Uint8Array([0x01, 0x02, 0x03, 0x04]))).toBe(false);
     expect(hasWasmMagicHeader(new Uint8Array([0x00, 0x61]))).toBe(false);
 
     const decoded = decodeBase64ToBytes(ADD_WASM_BASE64);
@@ -184,16 +215,12 @@ describe("Universal WASM loader (initWasm / compileWasm)", () => {
     const mod = await nodeWasm.compileWasmFromFile(wasmPath);
     expect(mod).toBeInstanceOf(WebAssembly.Module);
 
-    const res = await nodeWasm.initWasmFromFile<AddExports>(
-      pathToFileURL(wasmPath),
-    );
+    const res = await nodeWasm.initWasmFromFile<AddExports>(pathToFileURL(wasmPath));
     expect(res.exports.add(100, 23)).toBe(123);
   });
 
   it("throws typed WasmLoadError for invalid bytes, HTTP errors, and missing files", async () => {
-    await expect(
-      initWasm(new Uint8Array([0xde, 0xad, 0xbe, 0xef])),
-    ).rejects.toMatchObject({
+    await expect(initWasm(new Uint8Array([0xde, 0xad, 0xbe, 0xef]))).rejects.toMatchObject({
       name: "WasmLoadError",
       code: "INVALID_SOURCE",
     });
@@ -207,9 +234,7 @@ describe("Universal WASM loader (initWasm / compileWasm)", () => {
       code: "FETCH_FAILED",
     });
 
-    await expect(
-      initWasm(join(tempDir, "does-not-exist.wasm")),
-    ).rejects.toMatchObject({
+    await expect(initWasm(join(tempDir, "does-not-exist.wasm"))).rejects.toMatchObject({
       name: "WasmLoadError",
       code: "FS_READ_FAILED",
     });
@@ -298,10 +323,7 @@ describe("Universal WASM package conditional exports", () => {
   });
 
   it("keeps browser WASM entry free of static node:* imports", async () => {
-    const browserEntrySource = await readFile(
-      resolve(__dirname, "./wasm/browser.ts"),
-      "utf8",
-    );
+    const browserEntrySource = await readFile(resolve(__dirname, "./wasm/browser.ts"), "utf8");
     expect(browserEntrySource).not.toMatch(/from\s+["']node:/);
   });
 });
