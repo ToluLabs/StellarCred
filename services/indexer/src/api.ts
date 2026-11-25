@@ -121,6 +121,7 @@ import {
   buildLivenessResponse,
   buildReadinessResponse,
   checkDatabase,
+  HealthThresholds,
 } from "./health";
 
 const MAX_LIMIT = 100;
@@ -325,7 +326,30 @@ export function buildApp(
     asyncHandler(async (_req, res) => {
       // Shape and status semantics live in health.ts (docs/HEALTHCHECKS.md).
       const lastLedger = await db.getLastLedger();
-      res.json(buildHealthResponse(lastLedger, ingester.getHealth()));
+      const thresholds: HealthThresholds = {
+        maxLedgerLag: config?.maxLedgerLag,
+        warnLedgerLag: config?.warnLedgerLag,
+      };
+      res.json(buildHealthResponse(lastLedger, ingester.getHealth(), { thresholds }));
+    })
+  );
+
+  // Dedicated readiness probe for load balancers and orchestrators (#1001).
+  // Returns HTTP 200 when ready, HTTP 503 when degraded to error / stalled.
+  app.get(
+    "/ready",
+    asyncHandler(async (_req, res) => {
+      const lastLedger = await db.getLastLedger();
+      const thresholds: HealthThresholds = {
+        maxLedgerLag: config?.maxLedgerLag,
+        warnLedgerLag: config?.warnLedgerLag,
+      };
+      const health = buildHealthResponse(lastLedger, ingester.getHealth(), { thresholds });
+      if (!health.ready) {
+        res.status(503).json(health);
+        return;
+      }
+      res.status(200).json(health);
     })
   );
 
