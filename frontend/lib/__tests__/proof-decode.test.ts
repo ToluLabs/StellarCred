@@ -85,6 +85,30 @@ describe("computeWitness safe API failures", () => {
     expect(error.message).not.toContain("private");
   });
 
+  it.each(["KYC", "Age"])(
+    "reconstructs a safe aggregate %s circuit mismatch from the response",
+    async (label) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              code: "circuit_version_mismatch",
+              error: `This ${label} credential was issued against circuit version 0.9.0; credential=private`,
+            }),
+            { status: 409, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      );
+
+      const error = await computeWitness("aggregate", {}).catch((err) => err);
+      expect(error).toBeInstanceOf(CircuitVersionMismatchError);
+      expect(error.message).toContain(label);
+      expect(error.message).toContain("0.9.0");
+      expect(error.message).not.toContain("private");
+    },
+  );
+
   it("classifies a failed request as a safe retryable network error", async () => {
     vi.stubGlobal(
       "fetch",

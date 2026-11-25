@@ -136,7 +136,7 @@ function failureResponse(failure: ValidationFailure): NextResponse {
   });
   return NextResponse.json(
     {
-      error: error.message,
+      error: failure.code === undefined ? error.message : failure.error,
       code: error.code,
       category: error.category,
       retryable: error.retryable,

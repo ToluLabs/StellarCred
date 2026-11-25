@@ -46,6 +46,12 @@ const CODE_MESSAGES: Record<string, string> = {
   invalid_transaction:
     "The transaction could not be built from the supplied credential data. Review it and try again.",
   wallet_authorization: "Wallet authorisation failed. Reconnect the correct wallet and try again.",
+  tenant_issuer_mismatch:
+    "Unauthorized issuerId for tenant. Use the issuer configured for this tenant.",
+  tenant_credential_not_allowed: "Tenant is not authorized to issue this credential type.",
+  invalid_webhook_signature: "The Persona webhook signature is missing or invalid.",
+  persona_webhook_not_configured:
+    "Persona webhook verification is not configured. Contact the app operator.",
   unsupported_credential:
     "This credential or proof format is not supported. Re-issue or import a supported credential.",
   proof_not_found: "No on-chain proof was found for this wallet and credential type.",
@@ -193,6 +199,10 @@ const API_ERROR_CATEGORIES: Record<string, VerificationErrorCategory> = {
   invalid_issuer: "invalid_input",
   issuer_key_mismatch: "configuration_error",
   authorization_error: "authorization_error",
+  tenant_issuer_mismatch: "authorization_error",
+  tenant_credential_not_allowed: "authorization_error",
+  invalid_webhook_signature: "authorization_error",
+  persona_webhook_not_configured: "configuration_error",
 };
 
 const ERROR_NAME_CATEGORIES: Record<string, VerificationErrorCategory> = {

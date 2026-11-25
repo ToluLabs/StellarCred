@@ -24,7 +24,11 @@
 // to the worker path — only the thread differs.
 
 import type { CredentialType } from "./stellar";
-import { assertCredentialCircuitCompatible, CircuitVersionMismatchError } from "./circuit-versions";
+import {
+  assertCredentialCircuitCompatible,
+  CircuitVersionMismatchError,
+  circuitVersionMismatchMessage,
+} from "./circuit-versions";
 import { classifyVerificationError, verificationErrorFromApi } from "../packages/sdk/src/errors";
 
 /** The compiled Noir circuit artifact emitted by circuits/scripts/build.sh to
@@ -266,16 +270,32 @@ async function postWitness(body: unknown, signal?: AbortSignal): Promise<Respons
   }
 }
 
-async function witnessResponseError(res: Response): Promise<Error> {
+async function witnessResponseError(res: Response, type: ProverCircuit): Promise<Error> {
+  const text = await res.text();
   let body: unknown = null;
   try {
-    body = await res.json();
+    body = JSON.parse(text);
   } catch {
     // An unreadable body still has a useful HTTP diagnostic.
   }
   const error = verificationErrorFromApi(res.status, body);
   if (error.code === "circuit_version_mismatch") {
-    return new CircuitVersionMismatchError(error.message);
+    const responseMessage =
+      body !== null && typeof body === "object" && "error" in body && typeof body.error === "string"
+        ? body.error
+        : "";
+    const recordedVersion = responseMessage.match(
+      /issued against circuit version (\d+\.\d+\.\d+)/,
+    )?.[1];
+    let mismatchType: string = type;
+    if (type === "aggregate") {
+      if (responseMessage.includes("KYC")) mismatchType = "kyc";
+      else if (responseMessage.includes("Age")) mismatchType = "age";
+    }
+    const message = recordedVersion
+      ? circuitVersionMismatchMessage(mismatchType, recordedVersion)
+      : null;
+    return new CircuitVersionMismatchError(message ?? error.message);
   }
   return error;
 }
@@ -298,7 +318,7 @@ export async function computeWitness(
   assertCredentialCircuitCompatible(credential, type);
 
   const res = await postWitness({ type, credential }, signal);
-  if (!res.ok) throw await witnessResponseError(res);
+  if (!res.ok) throw await witnessResponseError(res, type);
   const { witness: hex } = (await res.json()) as { witness: string };
   return decodeWitnessHex(hex);
 }
@@ -445,7 +465,7 @@ export async function computeAggregateWitness(
   };
 
   const res = await postWitness({ type: "aggregate", credential: aggregateCredential }, signal);
-  if (!res.ok) throw await witnessResponseError(res);
+  if (!res.ok) throw await witnessResponseError(res, "aggregate");
   const { witness: hex } = (await res.json()) as { witness: string };
   return decodeWitnessHex(hex);
 }

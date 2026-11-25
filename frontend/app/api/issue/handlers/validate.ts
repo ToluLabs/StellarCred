@@ -223,6 +223,7 @@ export function validateIssueRequest(
       ok: false,
       failure: {
         status: 403,
+        code: "tenant_issuer_mismatch",
         error: `Unauthorized issuerId for tenant '${tenant.id}'. Configured issuerId is '${tenant.config.issuerId}'.`,
       },
     };
@@ -235,6 +236,7 @@ export function validateIssueRequest(
         ok: false,
         failure: {
           status: 403,
+          code: "tenant_credential_not_allowed",
           error: `Tenant '${tenant.id}' is not authorized to issue credential type '${typeCheck.disallowedType}'.`,
         },
       };

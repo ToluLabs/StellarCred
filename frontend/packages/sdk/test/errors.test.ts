@@ -320,6 +320,39 @@ describe("safe verification error taxonomy", () => {
     ).toMatchObject({ category: "network_error", code: 503, retryable: true });
   });
 
+  it("maps tenant and webhook diagnostics to specific safe messages", () => {
+    expect(
+      verificationErrorFromApi(403, {
+        code: "tenant_issuer_mismatch",
+        error: "credential=private",
+      }),
+    ).toMatchObject({
+      category: "authorization_error",
+      code: "tenant_issuer_mismatch",
+      message: "Unauthorized issuerId for tenant. Use the issuer configured for this tenant.",
+    });
+    expect(
+      verificationErrorFromApi(403, {
+        code: "tenant_credential_not_allowed",
+        error: "credential=private",
+      }),
+    ).toMatchObject({
+      category: "authorization_error",
+      code: "tenant_credential_not_allowed",
+      message: "Tenant is not authorized to issue this credential type.",
+    });
+    expect(
+      verificationErrorFromApi(401, {
+        code: "invalid_webhook_signature",
+        error: "signature=private",
+      }),
+    ).toMatchObject({
+      category: "authorization_error",
+      code: "invalid_webhook_signature",
+      message: "The Persona webhook signature is missing or invalid.",
+    });
+  });
+
   it("classifies raw transport failures without exposing their messages", () => {
     const timeout = classifyVerificationError(
       new Error("RPC timeout or network connection reset; credential=private"),
