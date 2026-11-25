@@ -10,10 +10,18 @@ function mockStorage() {
   let store: Record<string, string> = {};
   const ls = {
     getItem: vi.fn((k: string) => store[k] ?? null),
-    setItem: vi.fn((k: string, v: string) => { store[k] = v; }),
-    removeItem: vi.fn((k: string) => { delete store[k]; }),
-    clear: vi.fn(() => { store = {}; }),
-    get _store() { return store; },
+    setItem: vi.fn((k: string, v: string) => {
+      store[k] = v;
+    }),
+    removeItem: vi.fn((k: string) => {
+      delete store[k];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
+    get _store() {
+      return store;
+    },
   };
   return ls;
 }
@@ -38,7 +46,10 @@ afterEach(() => {
 describe("useOnboarding — resumeAt", () => {
   it("jumps to the requested step, clears dismissed and completed", () => {
     // Seed: user dismissed at step 2, completed=false
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 2, dismissed: true, completed: false }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 2, dismissed: true, completed: false }),
+    );
 
     const { result } = renderHook(() => useOnboarding());
 
@@ -106,19 +117,28 @@ describe("useOnboarding — core navigation", () => {
   });
 
   it("does not show for a dismissed user", () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 0, dismissed: true, completed: false }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 0, dismissed: true, completed: false }),
+    );
     const { result } = renderHook(() => useOnboarding());
     expect(result.current.isVisible).toBe(false);
   });
 
   it("does not show for a completed user", () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 5, dismissed: false, completed: true }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 5, dismissed: false, completed: true }),
+    );
     const { result } = renderHook(() => useOnboarding());
     expect(result.current.isVisible).toBe(false);
   });
 
   it("nextStep advances and marks completed at the end", () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 4, dismissed: false, completed: false }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 4, dismissed: false, completed: false }),
+    );
     const { result } = renderHook(() => useOnboarding());
 
     act(() => result.current.nextStep());

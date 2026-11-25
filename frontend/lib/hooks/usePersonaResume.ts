@@ -2,10 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Credential } from "@/lib/credential";
-import {
-  loadPersonaPending,
-  clearStalePersonaPending,
-} from "@/lib/persona-pending";
+import { loadPersonaPending, clearStalePersonaPending } from "@/lib/persona-pending";
 import { getOrCreateRequestId } from "@/lib/verify-session";
 import { useToast } from "@/components/Toast";
 
@@ -28,7 +25,7 @@ export function usePersonaResume({
   onBusyChange,
   maxPollAttempts = 15,
   pollIntervalMs = 2000,
-  fetchFn = typeof fetch !== "undefined" ? fetch : (async () => ({} as Response)),
+  fetchFn = typeof fetch !== "undefined" ? fetch : async () => ({}) as Response,
 }: UsePersonaResumeOptions) {
   const [isResuming, setIsResuming] = useState(false);
   const [error, setError] = useState("");
@@ -101,11 +98,7 @@ export function usePersonaResume({
             error?: string;
           } | null;
 
-          if (
-            data?.ready &&
-            Array.isArray(data.credentials) &&
-            data.credentials.length > 0
-          ) {
+          if (data?.ready && Array.isArray(data.credentials) && data.credentials.length > 0) {
             await handleSuccess(data.credentials);
             return;
           }
@@ -140,9 +133,7 @@ export function usePersonaResume({
             const d = (await res.json().catch(() => null)) as {
               error?: string;
             } | null;
-            throw new Error(
-              d?.error ?? "Issuing failed after identity verification",
-            );
+            throw new Error(d?.error ?? "Issuing failed after identity verification");
           }
           const { credentials } = (await res.json()) as {
             credentials: Credential[];

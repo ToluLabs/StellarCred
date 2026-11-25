@@ -116,7 +116,12 @@ describe("verifyAuditChain", () => {
   it("detects a rewritten hash (adversary covers their tracks on one entry)", () => {
     const tampered = { ...chain[2], commitment: "0xtampered" };
     tampered.hash = hashAuditEntry(
-      { timestamp: tampered.timestamp, requestId: tampered.requestId, issuer: tampered.issuer, commitment: tampered.commitment },
+      {
+        timestamp: tampered.timestamp,
+        requestId: tampered.requestId,
+        issuer: tampered.issuer,
+        commitment: tampered.commitment,
+      },
       tampered.prevHash,
     );
     chain[2] = tampered;
@@ -222,11 +227,29 @@ describe("serialization (JSON-lines)", () => {
 
 describe("PII protection", () => {
   it("assertPiiFreeEntry accepts only the allowlisted fields", () => {
-    expect(() => assertPiiFreeEntry({ index: 0, timestamp: 1, requestId: "r", issuer: "i", commitment: "c", prevHash: "p", hash: "h" })).not.toThrow();
+    expect(() =>
+      assertPiiFreeEntry({
+        index: 0,
+        timestamp: 1,
+        requestId: "r",
+        issuer: "i",
+        commitment: "c",
+        prevHash: "p",
+        hash: "h",
+      }),
+    ).not.toThrow();
   });
 
   it("assertPiiFreeEntry rejects identity fields", () => {
-    for (const key of ["first_name", "last_name", "id_number", "walletAddress", "holder", "value", "salt"]) {
+    for (const key of [
+      "first_name",
+      "last_name",
+      "id_number",
+      "walletAddress",
+      "holder",
+      "value",
+      "salt",
+    ]) {
       expect(() => assertPiiFreeEntry({ index: 0, [key]: "secret" })).toThrow(
         new RegExp(`disallowed field "${key}"`),
       );
@@ -249,7 +272,9 @@ describe("PII protection", () => {
     const [goodLine] = auditLogToJSONLines(chain).trim().split("\n");
     const line = JSON.parse(goodLine);
     delete line.commitment;
-    expect(() => parseAuditLogLines(JSON.stringify(line) + "\n")).toThrow(/missing or mistyped field/);
+    expect(() => parseAuditLogLines(JSON.stringify(line) + "\n")).toThrow(
+      /missing or mistyped field/,
+    );
   });
 
   it("entries produced by append contain no identity fields", () => {

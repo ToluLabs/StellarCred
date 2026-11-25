@@ -232,8 +232,9 @@ expect to be green. Jobs listed as conditional are not gates on fork PRs.
 | `ci.yml`                 | SDK integration tests (testnet)                        | PR, conditional on repo variables | SDK integration suite                           |
 | `ci.yml`                 | Accessibility (axe-core)                               | PR                                | Playwright + axe against the built app          |
 | `ci.yml`                 | Coverage gate                                          | PR                                | merged frontend + indexer coverage thresholds   |
+| `ci.yml`                 | Environment variable check                             | PR                                | `.env.example` sync & deploy env smoke checks   |
 | `contracts-ci.yml`       | Soroban contract build & test                          | PR                                | independent contract build/test job             |
-| `lint.yml`               | Frontend ESLint, Indexer ESLint, Page-client size cap  | PR                                | per-workspace lint and page-shell caps          |     | `env-check.yml` | `env-check` | PR  | env example/template consistency |
+| `lint.yml`               | Frontend ESLint, Indexer ESLint, Page-client size cap  | PR                                | per-workspace lint and page-shell caps          |
 | `dependency-review.yml`  | Dependency review (advisories & licenses)              | PR                                | dependency policy                               |
 | `first-load.yml`         | Lighthouse budgets + proving-asset critical-path check | PR on `frontend/**`               | first-load budget                               |
 | `proving-perf.yml`       | Proving performance regression gate                    | PR on `circuits/**`, perf paths   | proving performance                             |

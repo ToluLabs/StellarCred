@@ -59,7 +59,7 @@ export interface ContractError {
 
 /**
  * Normalises a raw contract error string into a {@link ContractError}.
- * 
+ *
  * This is a frontend-specific wrapper that maintains backward compatibility
  * with existing UI code. For new code, prefer importing ContractError from
  * the SDK (@stellarcred/sdk) which provides typed error codes and helper
@@ -110,9 +110,7 @@ export const STROOPS_PER_XLM = 1e7;
 export function formatFeeXlm(stroops: number): string {
   if (!Number.isFinite(stroops) || stroops <= 0) return "0 XLM";
   const xlm = stroops / STROOPS_PER_XLM;
-  const cleaned = xlm
-    .toFixed(7)
-    .replace(/\.?0+$/, ""); // strip trailing zeros (and the dot) for display
+  const cleaned = xlm.toFixed(7).replace(/\.?0+$/, ""); // strip trailing zeros (and the dot) for display
   return `${cleaned || "0"} XLM`;
 }
 
@@ -123,9 +121,7 @@ export interface FeeEstimate {
   display: string;
 }
 
-export type PreflightResult =
-  | { ok: true; fee: FeeEstimate }
-  | { ok: false; error: ContractError };
+export type PreflightResult = { ok: true; fee: FeeEstimate } | { ok: false; error: ContractError };
 
 /**
  * Normalize the raw Soroban error string so {@link parseContractError} can map

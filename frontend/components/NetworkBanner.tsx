@@ -11,7 +11,8 @@ export function NetworkBanner() {
   const { address, networkMismatch } = useWallet();
   if (!address || !networkMismatch) return null;
 
-  const want = NETWORK === "mainnet" ? "Mainnet" : NETWORK === "futurenet" ? "Futurenet" : "Testnet";
+  const want =
+    NETWORK === "mainnet" ? "Mainnet" : NETWORK === "futurenet" ? "Futurenet" : "Testnet";
 
   return (
     <div
@@ -27,7 +28,11 @@ export function NetworkBanner() {
         justifyContent: "center",
       }}
     >
-      <IconAlertTriangle size={16} style={{ color: "var(--warn)", flexShrink: 0 }} aria-hidden="true" />
+      <IconAlertTriangle
+        size={16}
+        style={{ color: "var(--warn)", flexShrink: 0 }}
+        aria-hidden="true"
+      />
       <span style={{ color: "var(--text)" }}>
         Wrong network detected. Switch your wallet to <strong>{want}</strong> to continue.
       </span>

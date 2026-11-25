@@ -774,6 +774,11 @@ function randomNonce(): string | undefined {
 
 function decodeSignatureInput(signature: unknown): Uint8Array {
   if (signature instanceof Uint8Array) return signature;
+  // A Buffer/Uint8Array from another realm (an iframe, a worker, a test DOM)
+  // fails `instanceof`; accept any byte view.
+  if (ArrayBuffer.isView(signature) && !(signature instanceof DataView)) {
+    return new Uint8Array(signature.buffer, signature.byteOffset, signature.byteLength);
+  }
   if (typeof signature !== "string") {
     throw new TypeError(
       "sign(message) must return a hex, base64, base64url, or Uint8Array signature.",

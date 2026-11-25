@@ -113,22 +113,31 @@ describe("Shared Store (#523)", () => {
 
       const val = await store.get("my-key");
       expect(val).toBe("mock-value");
-      expect(fetchMock).toHaveBeenCalledWith("https://mock-upstash.com", expect.objectContaining({
-        headers: {
-          Authorization: "Bearer mock-token",
-          "Content-Type": "application/json",
-        },
-      }));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://mock-upstash.com",
+        expect.objectContaining({
+          headers: {
+            Authorization: "Bearer mock-token",
+            "Content-Type": "application/json",
+          },
+        }),
+      );
 
       await store.set("my-key", "my-val", 60);
-      expect(fetchMock).toHaveBeenCalledWith("https://mock-upstash.com", expect.objectContaining({
-        body: JSON.stringify(["SET", "my-key", "my-val", "EX", 60]),
-      }));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://mock-upstash.com",
+        expect.objectContaining({
+          body: JSON.stringify(["SET", "my-key", "my-val", "EX", 60]),
+        }),
+      );
 
       await store.del("my-key");
-      expect(fetchMock).toHaveBeenCalledWith("https://mock-upstash.com", expect.objectContaining({
-        body: JSON.stringify(["DEL", "my-key"]),
-      }));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://mock-upstash.com",
+        expect.objectContaining({
+          body: JSON.stringify(["DEL", "my-key"]),
+        }),
+      );
     });
 
     it("executes incr via pipeline", async () => {
@@ -136,10 +145,7 @@ describe("Shared Store (#523)", () => {
         if (url.endsWith("/pipeline")) {
           return {
             ok: true,
-            json: async () => [
-              { result: 4 },
-              { result: 45000 },
-            ],
+            json: async () => [{ result: 4 }, { result: 45000 }],
           };
         }
         return { ok: true, json: async () => ({ result: "OK" }) };
@@ -155,7 +161,10 @@ describe("Shared Store (#523)", () => {
       const res = await store.incr("rl:key", 60);
       expect(res.count).toBe(4);
       expect(res.ttlRemainingMs).toBe(45000);
-      expect(fetchMock).toHaveBeenCalledWith("https://mock-upstash.com/pipeline", expect.anything());
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://mock-upstash.com/pipeline",
+        expect.anything(),
+      );
     });
   });
 
@@ -193,7 +202,9 @@ describe("Shared Store (#523)", () => {
 
       checkMultiInstanceStoreWarning();
       expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(warnSpy.mock.calls[0][0]).toContain("WARNING: Running in a multi-instance or serverless environment");
+      expect(warnSpy.mock.calls[0][0]).toContain(
+        "WARNING: Running in a multi-instance or serverless environment",
+      );
 
       // Warns at most once
       checkMultiInstanceStoreWarning();

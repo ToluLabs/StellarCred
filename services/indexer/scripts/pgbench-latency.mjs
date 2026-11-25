@@ -195,7 +195,7 @@ function runPgbench(args) {
 
 function selfTest() {
   const { evaluateLatencyGate } = loadDist();
-  const baseline = { version: 1, averageLatencyMs: 10 };
+  const baseline = { version: 2, averageLatencyMs: 10 };
   const cases = [
     [8, true],
     [24, true],

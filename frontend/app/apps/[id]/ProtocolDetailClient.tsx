@@ -25,10 +25,9 @@ import { useProtocolAccessCheck } from "@/lib/use-protocol-access";
 
 // Lazy-load QrCodeModal (pulls in the qrcode lib) — only rendered when the
 // user clicks the QR icon. Keeps qrcode out of the initial /apps/[id] bundle.
-const QrCodeModal = dynamic(
-  () => import("@/components/QrCodeModal").then((m) => m.QrCodeModal),
-  { ssr: false },
-);
+const QrCodeModal = dynamic(() => import("@/components/QrCodeModal").then((m) => m.QrCodeModal), {
+  ssr: false,
+});
 
 function ProtocolDetailBody({
   protocol,
@@ -152,10 +151,10 @@ function ProtocolDetailBody({
             style={{ flexShrink: 0, marginTop: "0.1rem" }}
           />
           <span>
-            <strong style={{ color: "#f5b942" }}>Illustrative demo.</strong>{" "}
-            {protocol.name} is not a real deployed protocol. It exists to show how
-            StellarCred credential gating works end-to-end — the access check and
-            the ZK proofs are real, the app behind the gate is not.
+            <strong style={{ color: "#f5b942" }}>Illustrative demo.</strong> {protocol.name} is not
+            a real deployed protocol. It exists to show how StellarCred credential gating works
+            end-to-end — the access check and the ZK proofs are real, the app behind the gate is
+            not.
           </span>
         </div>
       )}
@@ -209,9 +208,7 @@ function ProtocolDetailBody({
                     style={{
                       fontSize: "0.875rem",
                       color:
-                        !checking && !unresolved && statuses[i]
-                          ? "var(--text)"
-                          : "var(--muted)",
+                        !checking && !unresolved && statuses[i] ? "var(--text)" : "var(--muted)",
                     }}
                   >
                     {r.label}
@@ -244,18 +241,14 @@ function ProtocolDetailBody({
 
           {issue && (
             <p className="faint" style={{ fontSize: "0.8rem", marginBottom: "0.75rem" }}>
-              Access could not be determined: {issue.message} This is a network
-              problem, not a failed check.
+              Access could not be determined: {issue.message} This is a network problem, not a
+              failed check.
             </p>
           )}
 
           {state === "denied" && !isPreview && (
             <div className="row" style={{ gap: "0.5rem" }}>
-              <Link
-                href={protocol.verifyUrl}
-                className="btn btn-secondary"
-                style={{ flex: 1 }}
-              >
+              <Link href={protocol.verifyUrl} className="btn btn-secondary" style={{ flex: 1 }}>
                 Get verified
                 <IconArrowRight size={14} />
               </Link>
@@ -343,7 +336,10 @@ function ProtocolDetailBody({
             )}
           </button>
 
-          <p className="faint" style={{ marginTop: "1.25rem", fontSize: "0.8125rem", lineHeight: 1.6 }}>
+          <p
+            className="faint"
+            style={{ marginTop: "1.25rem", fontSize: "0.8125rem", lineHeight: 1.6 }}
+          >
             {eligible
               ? `${protocol.name} read ProofRegistry.check_claim and found valid proofs for your address. No personal data was shared.`
               : `${protocol.name} only reads ProofRegistry.check_claim for your address — it never sees the credential data behind your proofs.`}

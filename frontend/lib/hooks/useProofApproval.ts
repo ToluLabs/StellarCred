@@ -14,8 +14,7 @@ import { useCallback, useState } from "react";
 import { type Credential } from "../credential";
 
 export type ProofRequest =
-  | { kind: "single"; cred: Credential }
-  | { kind: "batch"; creds: Credential[] };
+  { kind: "single"; cred: Credential } | { kind: "batch"; creds: Credential[] };
 
 export function useProofApproval(start: (request: ProofRequest) => void) {
   const [pending, setPending] = useState<ProofRequest | null>(null);
