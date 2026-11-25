@@ -1582,6 +1582,9 @@ switch (status) {
 - **Dynamic On-Demand Module Loading**:
   - Heavy RPC modules and Soroban contract bindings (`@stellar/stellar-sdk` and `proof-registry`) are loaded on-demand via dynamic `import()` only when on-chain contract queries (`hasClaim`, `getClaim`) are executed.
   - Offline helpers like `buildVerifyUrl()`, `buildBadgeUrl()`, `buildBadgeEmbedCode()`, `CLAIM_TYPES`, `TimeoutError`, and `createClaimGate()` execute with zero network overhead and without loading heavy Soroban dependencies.
+Route-protection middleware for Express and Fastify is documented in ../../../docs/SDK_ROUTE_MIDDLEWARE.md and available from @stellarcred/sdk/express and @stellarcred/sdk/fastify.
+
+
 
 ### Real-time events (EventStream)
 
