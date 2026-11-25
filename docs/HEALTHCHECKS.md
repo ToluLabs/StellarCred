@@ -8,7 +8,8 @@ responding before routing traffic or marking a rollout healthy.
 | --- | --- | --- |
 | Frontend (Next.js) | `GET /api/health` | Liveness: process is up and serving requests |
 | Frontend (Next.js) | `GET /api/ready` | Readiness: signer, contracts, RPC and Persona config are usable |
-| Indexer worker | `GET /health` | Liveness + ingestion health (ledger lag, fetch errors) |
+| Indexer worker | `GET /health` | Liveness + ingestion health diagnostics (ledger lag, fetch errors) |
+| Indexer worker | `GET /ready` | Readiness: HTTP 200 when ready, HTTP 503 when stalled or lag threshold exceeded |
 
 All endpoints are unauthenticated, return JSON, and are safe to poll.
 
@@ -52,7 +53,7 @@ Always HTTP `200` while the process responds. Any non-200 or timeout means the
 app is down. For dependency readiness use `GET /api/ready`, which returns `503`
 with per-dependency details when it is not ready.
 
-## Indexer `GET /health`
+## Indexer `GET /health` and `GET /ready`
 
 ```json
 {
@@ -65,6 +66,8 @@ with per-dependency details when it is not ready.
   "lastLedger": 123456,
   "headLedger": 123460,
   "lag": 4,
+  "maxLedgerLag": 120,
+  "warnLedgerLag": 30,
   "lastSuccessLedger": 123456,
   "lastError": null,
   "lastErrorTime": null,
@@ -76,14 +79,23 @@ with per-dependency details when it is not ready.
 
 | `status` | Condition | `ready` |
 | --- | --- | --- |
-| `ok` | `consecutiveErrors === 0` | `true` |
-| `degraded` | 1–2 consecutive fetch failures | `true` |
-| `error` | 3+ consecutive fetch failures (ingester likely stalled, data may be stale) | `false` |
+| `ok` | `consecutiveErrors === 0` and `lag < warnLedgerLag` | `true` |
+| `degraded` | 1–2 consecutive fetch failures, or `warnLedgerLag <= lag < maxLedgerLag` | `true` |
+| `error` | 3+ consecutive fetch failures, or `lag >= maxLedgerLag` (ingester stalled or falling behind) | `false` |
 
 `lag` is `headLedger - lastSuccessLedger`, or `-1` when the head ledger is not
-yet known. The endpoint returns HTTP `200` whenever the process and database
-respond (a database failure returns `500`); check the `ready` / `status` fields
-to detect a stalled ingester.
+yet known (startup). Lag thresholds are configurable per deployment via:
+- `MAX_LEDGER_LAG` (or `INDEXER_MAX_LEDGER_LAG`): default 120 ledgers (≈10 minutes).
+- `WARN_LEDGER_LAG` (or `INDEXER_WARN_LEDGER_LAG`): default 30 ledgers (≈2.5 minutes).
+
+### Probing endpoints:
+- `GET /health`: Returns HTTP `200` whenever the process and database respond (a database
+  failure returns `500`); check `ready` and `status` to detect backlog or stalls.
+- `GET /ready`: Designed for Kubernetes readiness probes and load-balancer pools. Returns
+  HTTP `200` when `ready: true`, and HTTP `503 Service Unavailable` when `ready: false`
+  (status `"error"` due to consecutive fetch failures or excessive lag).
+- **Security & Privacy**: Health and readiness payloads contain only bounded service metadata,
+  ledger counters, and error statistics. No credential, wallet, or proof data is ever exposed.
 
 ## Deployment integration
 
