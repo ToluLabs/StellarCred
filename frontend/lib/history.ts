@@ -29,4 +29,3 @@ export function getSubmissions(): SubmissionRecord[] {
     return [];
   }
 }
-

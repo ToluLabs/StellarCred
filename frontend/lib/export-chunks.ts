@@ -29,10 +29,7 @@ import {
 import { getExportRecord } from "./export-store";
 import { createCursor, verifyCursor } from "./export-cursor";
 import { checkExportThrottle } from "./export-throttle";
-import {
-  acquireConcurrencySlot,
-  releaseConcurrencySlot,
-} from "./export-concurrency";
+import { acquireConcurrencySlot, releaseConcurrencySlot } from "./export-concurrency";
 import { enqueueExportJob, cancelQueuedJob } from "./export-scheduler";
 
 export interface ServeChunkResult {
@@ -159,10 +156,7 @@ export async function serveExportChunk(params: {
     const job = await createExportJob({
       recordId,
       rows: buildExportRows(record),
-      chunkSize: Math.max(
-        1,
-        Math.min(limit ?? DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE),
-      ),
+      chunkSize: Math.max(1, Math.min(limit ?? DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE)),
     });
 
     // Enqueue for admin observability — best-effort (errors must not fail the request).
@@ -173,9 +167,7 @@ export async function serveExportChunk(params: {
       cost: 1,
       enqueuedAt: Date.now(),
     }).catch((e: unknown) =>
-      console.warn(
-        `[export-chunks] enqueueExportJob failed: ${(e as Error).message}`,
-      ),
+      console.warn(`[export-chunks] enqueueExportJob failed: ${(e as Error).message}`),
     );
 
     return await serveChunkBody(job, 0, true);
@@ -184,16 +176,12 @@ export async function serveExportChunk(params: {
     await cancelQueuedJob(
       // resolvedJob may not be set if createExportJob threw; fall back to a
       // no-op cancel. cancelQueuedJob(unknown-id) returns false and is safe.
-      await getJobForRecord(recordId).catch(() => null) ?? recordId,
+      (await getJobForRecord(recordId).catch(() => null)) ?? recordId,
     ).catch((e: unknown) =>
-      console.warn(
-        `[export-chunks] cancelQueuedJob failed: ${(e as Error).message}`,
-      ),
+      console.warn(`[export-chunks] cancelQueuedJob failed: ${(e as Error).message}`),
     );
     await releaseConcurrencySlot().catch((e: unknown) =>
-      console.warn(
-        `[export-chunks] releaseConcurrencySlot failed: ${(e as Error).message}`,
-      ),
+      console.warn(`[export-chunks] releaseConcurrencySlot failed: ${(e as Error).message}`),
     );
   }
 }
@@ -230,11 +218,8 @@ async function serveChunkBody(
   //     failure is swallowed + console.warn-logged and never turns a
   //     successfully-fetched chunk into a 500. The signed token (not the
   //     handle) drives resume. ---
-  await recordCursorProgress(job.jobId, index, done ? "completed" : "active").catch(
-    (e) =>
-      console.warn(
-        `cursor progress write failed for job ${job.jobId}: ${(e as Error).message}`,
-      ),
+  await recordCursorProgress(job.jobId, index, done ? "completed" : "active").catch((e) =>
+    console.warn(`cursor progress write failed for job ${job.jobId}: ${(e as Error).message}`),
   );
 
   // --- audit append + persist: only on start and/or done; `appended` gates

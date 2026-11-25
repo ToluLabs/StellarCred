@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  IconCheck,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { IconCheck, IconLoader2 } from "@tabler/icons-react";
 
 type StepState = "idle" | "active" | "done";
 
@@ -25,7 +22,15 @@ export function ProofStep({
   return (
     <div style={{ display: "flex", gap: "0.85rem", alignItems: "flex-start" }}>
       {/* left: connector */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 28, flexShrink: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          width: 28,
+          flexShrink: 0,
+        }}
+      >
         <div
           style={{
             width: 28,
@@ -35,19 +40,26 @@ export function ProofStep({
             placeItems: "center",
             flexShrink: 0,
             border: `1px solid ${
-              state === "done" ? "var(--accent)" :
-              state === "active" ? "rgba(62,207,142,0.5)" :
-              "var(--border-strong)"
+              state === "done"
+                ? "var(--accent)"
+                : state === "active"
+                  ? "rgba(62,207,142,0.5)"
+                  : "var(--border-strong)"
             }`,
             background: state === "done" ? "var(--accent)" : "transparent",
-            color: state === "done" ? "var(--bg)" : state === "active" ? "var(--accent)" : "var(--faint)",
+            color:
+              state === "done"
+                ? "var(--bg)"
+                : state === "active"
+                  ? "var(--accent)"
+                  : "var(--faint)",
             transition: "all 0.35s var(--ease)",
           }}
         >
           {state === "done" ? (
-            <IconCheck size={13} stroke={3} />
+            <IconCheck size={13} stroke={3} aria-hidden="true" />
           ) : state === "active" ? (
-            <IconLoader2 size={13} className="spin" />
+            <IconLoader2 size={13} className="spin" aria-hidden="true" />
           ) : (
             icon
           )}

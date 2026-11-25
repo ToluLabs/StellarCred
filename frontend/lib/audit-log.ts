@@ -37,10 +37,7 @@ export interface AuditLogEntry extends AuditLogFields {
   adminAction?: string;
 }
 
-export function canonicalEntryFields(
-  fields: AuditLogFields,
-  prevHash: string,
-): string {
+export function canonicalEntryFields(fields: AuditLogFields, prevHash: string): string {
   return JSON.stringify([
     fields.timestamp,
     fields.requestId,
@@ -50,23 +47,15 @@ export function canonicalEntryFields(
   ]);
 }
 
-export function hashAuditEntry(
-  fields: AuditLogFields,
-  prevHash: string,
-): string {
-  return createHash("sha256")
-    .update(canonicalEntryFields(fields, prevHash))
-    .digest("hex");
+export function hashAuditEntry(fields: AuditLogFields, prevHash: string): string {
+  return createHash("sha256").update(canonicalEntryFields(fields, prevHash)).digest("hex");
 }
 
 export function expectedPrevHash(chain: AuditLogEntry[]): string {
   return chain.length === 0 ? GENESIS_PREV_HASH : chain[chain.length - 1].hash;
 }
 
-export function appendAuditEntry(
-  chain: AuditLogEntry[],
-  fields: AuditLogFields,
-): AuditLogEntry {
+export function appendAuditEntry(chain: AuditLogEntry[], fields: AuditLogFields): AuditLogEntry {
   const prevHash = expectedPrevHash(chain);
   const entry: AuditLogEntry = {
     ...fields,
@@ -197,10 +186,7 @@ let bootstrapPromise: Promise<void> | null = null;
 let activeSink: AuditSink = getActiveSink();
 
 export function auditLogFilePath(): string {
-  return (
-    process.env.AUDIT_LOG_PATH ??
-    path.join(process.cwd(), ".data", "audit-log.jsonl")
-  );
+  return process.env.AUDIT_LOG_PATH ?? path.join(process.cwd(), ".data", "audit-log.jsonl");
 }
 
 export async function auditLogBootstrap(filePath?: string): Promise<void> {
@@ -208,7 +194,7 @@ export async function auditLogBootstrap(filePath?: string): Promise<void> {
     activeSink = new FileAuditSink(filePath);
   }
   if (bootstrapPromise) return bootstrapPromise;
-  
+
   bootstrapPromise = (async () => {
     await activeSink.validateStartup();
     try {
@@ -292,9 +278,7 @@ export function parseAuditLogLines(text: string): AuditLogEntry[] {
   return entries;
 }
 
-export async function readAuditLogFile(
-  filePath?: string,
-): Promise<AuditLogEntry[]> {
+export async function readAuditLogFile(filePath?: string): Promise<AuditLogEntry[]> {
   const sink = filePath ? new FileAuditSink(filePath) : activeSink;
   return sink.read();
 }

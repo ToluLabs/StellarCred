@@ -1942,7 +1942,7 @@ export interface ClaimReadResult {
 }
 
 /** Backwards-friendly aliases for the result type. */
-export type ClaimOutcomeResult = ClaimReadResult;
+/** Backwards-friendly alias for the detailed read result type. */
 export type ClaimReadOutcomeResult = ClaimReadResult;
 
 async function performClaimRead(
@@ -2124,6 +2124,22 @@ async function performClaimRead(
     };
   }
 }
+
+export async function readClaim(
+  wallet: string,
+  claimType: string,
+  opts?: ClaimOptions,
+): Promise<ClaimReadResult> {
+  return performClaimRead(wallet, claimType, opts);
+}
+
+// Aliases for the detailed read API (issue #979).
+export const readClaimOutcome = readClaim;
+export const getClaimReadOutcome = readClaim;
+export const getClaimReadResult = readClaim;
+export const readClaimResult = readClaim;
+export const getClaimStatusOutcome = readClaim;
+export const readClaimStatus = readClaim;
 
 /**
  * Reads a wallet's credential claim and returns a granular, typed outcome

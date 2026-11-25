@@ -57,11 +57,7 @@ function persist(next: Preset[]): Preset[] {
  * Create or update a preset. Passing an existing `id` overwrites that
  * preset in place (used for editing); omitting it creates a new one.
  */
-export function savePreset(input: {
-  id?: string;
-  name: string;
-  claims: PresetClaim[];
-}): Preset[] {
+export function savePreset(input: { id?: string; name: string; claims: PresetClaim[] }): Preset[] {
   const all = loadPresets();
   const id = input.id ?? crypto.randomUUID();
   const existing = all.find((p) => p.id === id);

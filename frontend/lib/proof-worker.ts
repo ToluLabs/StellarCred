@@ -203,7 +203,6 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
         proof.buffer as ArrayBuffer,
         publicInputs.buffer as ArrayBuffer,
       ]);
-      witness = new Uint8Array(0);
     } catch (err) {
       // Every failure — witness error, circuit-not-found, abort, wasm crash —
       // reaches the main thread as a structured error, never as an uncaught

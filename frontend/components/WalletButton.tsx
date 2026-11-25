@@ -43,6 +43,7 @@ export function WalletButton() {
       </div>
     );
   }
+
   return (
     <div
       style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem" }}

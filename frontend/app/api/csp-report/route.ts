@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
 import { readJsonBody, bodyErrorResponse } from "@/lib/request-limits";
-import {
-  checkLimit,
-  extractIp,
-  tooManyRequestsResponse,
-  LIMITS,
-} from "@/lib/rate-limit";
+import { checkLimit, extractIp, tooManyRequestsResponse, LIMITS } from "@/lib/rate-limit";
 import { normalizeReports } from "@/lib/csp-report";
 
 export const runtime = "nodejs";
@@ -22,11 +17,7 @@ export async function POST(req: NextRequest) {
 
   // Rate-limit by IP first
   const ip = extractIp(req);
-  const ipResult = checkLimit(
-    `csp-report:ip:${ip}`,
-    LIMITS.cspReportPerIp(),
-    LIMITS.windowMs(),
-  );
+  const ipResult = checkLimit(`csp-report:ip:${ip}`, LIMITS.cspReportPerIp(), LIMITS.windowMs());
 
   if (ipResult.throttled) {
     logger.warn(

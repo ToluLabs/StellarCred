@@ -543,3 +543,21 @@ export function planBackfill(
 
   return { artifact, report };
 }
+
+/** Serialize an artifact deterministically (stable key order, 2-space JSON). */
+export function serializeArtifact(artifact: ExportArtifactV1): string {
+  return `${JSON.stringify(artifact, null, 2)}\n`;
+}
+
+/** True when `value` has the structural shape of a schema v1 artifact. */
+export function isExportArtifact(value: unknown): value is ExportArtifactV1 {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const artifact = value as Record<string, unknown>;
+  return (
+    artifact["schemaVersion"] === EXPORT_SCHEMA_VERSION &&
+    typeof artifact["generation"] === "object" &&
+    artifact["generation"] !== null &&
+    Array.isArray(artifact["entries"]) &&
+    artifact["count"] === artifact["entries"].length
+  );
+}

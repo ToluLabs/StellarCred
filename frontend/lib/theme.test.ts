@@ -52,8 +52,14 @@ function installDomStubs(systemDark: boolean) {
 
 describe("theme helpers", async () => {
   // Dynamic import after stubs so module code can see window when called
-  const { getStoredTheme, getSystemTheme, resolveTheme, setExplicitTheme, applyTheme, THEME_BOOT_SCRIPT } =
-    await import("./theme.ts");
+  const {
+    getStoredTheme,
+    getSystemTheme,
+    resolveTheme,
+    setExplicitTheme,
+    applyTheme,
+    THEME_BOOT_SCRIPT,
+  } = await import("./theme.ts");
 
   beforeEach(() => {
     store.clear();
@@ -93,20 +99,14 @@ describe("theme helpers", async () => {
     installDomStubs(false);
     setExplicitTheme("dark");
     assert.equal(store.get("theme"), "dark");
-    assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
-      "dark",
-    );
+    assert.equal((globalThis as any).document.documentElement.getAttribute("data-theme"), "dark");
   });
 
   it("applyTheme sets data-theme without writing storage", () => {
     installDomStubs(true);
     applyTheme("light");
     assert.equal(store.has("theme"), false);
-    assert.equal(
-      (globalThis as any).document.documentElement.getAttribute("data-theme"),
-      "light",
-    );
+    assert.equal((globalThis as any).document.documentElement.getAttribute("data-theme"), "light");
   });
 
   it("boot script prefers stored theme then OS", () => {

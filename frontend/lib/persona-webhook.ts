@@ -1,6 +1,8 @@
 // Server-side only — never shipped to the browser.
 if (typeof window !== "undefined") {
-  throw new Error("lib/persona-webhook.ts is server-only and must not be imported from client code.");
+  throw new Error(
+    "lib/persona-webhook.ts is server-only and must not be imported from client code.",
+  );
 }
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -110,9 +112,7 @@ export function registerPendingInquiry(
   // claimParams for 15 minutes (issue #627).
   pendingInquiries.set(inquiryId, {
     ...data,
-    ...(data.claimParams
-      ? { claimParams: stripPiiKeys(data.claimParams) }
-      : {}),
+    ...(data.claimParams ? { claimParams: stripPiiKeys(data.claimParams) } : {}),
     inquiryId,
     createdAt: Date.now(),
   });
@@ -212,9 +212,7 @@ export function verifyPersonaSignature(
   }
 
   const payloadToSign = `${timestampStr}.${rawBody}`;
-  const expectedSignatureHex = createHmac("sha256", secret)
-    .update(payloadToSign)
-    .digest("hex");
+  const expectedSignatureHex = createHmac("sha256", secret).update(payloadToSign).digest("hex");
 
   const expectedBuf = Buffer.from(expectedSignatureHex, "hex");
 

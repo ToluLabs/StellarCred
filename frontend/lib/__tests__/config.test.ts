@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import {
-  CONTRACTS,
-} from "../stellar";
+import { CONTRACTS } from "../stellar";
 import {
   CONTRACT_ENV_VARS,
   missingContractEnvVars,
@@ -14,9 +12,7 @@ import {
 
 describe("contract config checks", () => {
   it("maps every CONTRACTS entry to its env-var name (no drift possible)", () => {
-    expect(Object.keys(CONTRACT_ENV_VARS).sort()).toEqual(
-      Object.keys(CONTRACTS).sort(),
-    );
+    expect(Object.keys(CONTRACT_ENV_VARS).sort()).toEqual(Object.keys(CONTRACTS).sort());
     for (const name of Object.values(CONTRACT_ENV_VARS)) {
       expect(name).toMatch(/^NEXT_PUBLIC_/);
     }

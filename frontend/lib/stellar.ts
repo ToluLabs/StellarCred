@@ -14,6 +14,7 @@ interface NetworkPreset {
   rpcUrl: string;
   networkPassphrase: string;
   explorerNetwork: string;
+  /** Optional lifecycle metadata rendered by NetworkSelector. */
   deprecated?: boolean;
   unavailable?: boolean;
   warningMessage?: string;
