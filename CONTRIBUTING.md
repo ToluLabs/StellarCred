@@ -407,6 +407,7 @@ The `CI` workflow contains these jobs — **all must pass before merge**:
 | SDK integration tests (testnet) | `frontend/packages/sdk` integration suite |
 | Accessibility (axe-core) | Playwright + axe against the built app |
 | Coverage gate | merges frontend + indexer coverage and enforces thresholds (`.github/scripts/check-coverage.mjs`) |
+| Component ownership check | verifies `docs/COMPONENT_OWNERSHIP.md` paths, owners, and CODEOWNERS rules agree (`.github/scripts/check-component-ownership.mjs`) |
 
 Two jobs are environment-dependent and may not run on your PR: the SDK
 integration job only starts when the repository variables it needs
@@ -603,6 +604,12 @@ If you are proposing a change that touches any of the areas above, reference the
 
 Reviews are routed automatically by [`.github/CODEOWNERS`](.github/CODEOWNERS). Opening a PR requests review from the maintainers of every area the diff touches, so a change to `contracts/` never lands with the same scrutiny as a README typo.
 
+The per-component scope, owner, and required review path matrix is
+[docs/COMPONENT_OWNERSHIP.md](docs/COMPONENT_OWNERSHIP.md). This section is the
+review-depth summary; the matrix is what
+[`.github/scripts/check-component-ownership.mjs`](.github/scripts/check-component-ownership.mjs)
+keeps in sync with CODEOWNERS.
+
 **Note the rule order.** When several patterns match the same file, the *last* matching rule wins. CODEOWNERS is written general-to-specific — broad catch-alls first, narrow overrides after. If you add a rule, put it *below* the broad rule it is meant to refine, or it will be silently overridden.
 
 | Area | What it decides | Review depth |
@@ -610,9 +617,9 @@ Reviews are routed automatically by [`.github/CODEOWNERS`](.github/CODEOWNERS). 
 | `contracts/`, `circuits/` | The trust anchor: which issuers are trusted, and what a proof can assert | **Highest.** Reasoned review against [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and the relevant ADR, not just the diff. |
 | `Cargo.toml`, `Cargo.lock` | Pins `soroban-sdk` and the git-sourced UltraHonk verifier at exact revisions | Highest — a version bump can change verifier behaviour or invalidate existing proofs. |
 | `fixtures/`, `circuits/scripts/` | The committed VKs, proofs, and public inputs the contract tests verify against | Highest — must be regenerated through the documented circuit build, never by hand. |
-| `frontend/app/api/`, `frontend/lib/issuer-signer.ts`, `frontend/lib/persona-webhook.ts` | Issuance, signing, and the KYC webhook. Reads `ISSUER_PRIVATE_KEY` | **High.** Check for `NEXT_PUBLIC_` leaking server-only vars, that `prehash: false` is preserved, and that webhook payloads stay redacted. |
+| `frontend/app/api/`, `frontend/packages/issuer/`, `frontend/lib/issuer-signer.ts`, `frontend/lib/persona-webhook.ts` | Issuance, signing, and the KYC webhook. Reads `ISSUER_PRIVATE_KEY` | **High.** Check for `NEXT_PUBLIC_` leaking server-only vars, that `prehash: false` is preserved, and that webhook payloads stay redacted. |
 | `frontend/packages/issuer-registry/`, `frontend/packages/proof-registry/` | Client-facing view of the trust anchor | High, same as contracts. |
-| `frontend/packages/sdk/` | The published integrators' surface | Normal, but breaking changes need a version/migration note. |
+| `frontend/packages/sdk/`, `sdk/`, `frontend/packages/cli/` | The published integrators' surface and the clients built on it | Normal, but breaking changes need a version/migration note. |
 | `services/indexer/` | Reads chain state and republishes it to consumers | Normal, with extra attention to `auth.ts`, `cors.ts`, and `rate-limit.ts`. |
 | `.github/workflows/`, `.github/dependabot.yml`, `Makefile`, `deny.toml` | Runs with repo credentials; the release job publishes to npm | **High** — treat a workflow diff like a signing-path diff. |
 | `docs/adr/`, `SECURITY.md`, `docs/THREAT_MODEL.md`, `CONTRIBUTING.md`, `SUPPORT_POLICY.md` | Records the decisions and the review bar the rest of the routing relies on | High — reviewed alongside the CODEOWNERS rules themselves. |
@@ -730,28 +737,49 @@ To prevent breaking changes and supply chain regressions, strict threshold rules
 
 Releases are tag-driven. The GitHub Actions release workflow fires on any tag matching `v*` and:
 
-1. Regenerates `CHANGELOG.md` from the full conventional commit history.
-2. Commits the updated changelog back to `main`.
-3. Creates a GitHub Release with the changelog section for that version as the body.
-4. Builds and publishes `@stellarcred/sdk` to npm.
+1. Checks that the tag, `@stellarcred/sdk` and `@stellarcred/issuer` all carry the **same version**, and that each package's metadata is publishable (see [Package checks](#package-checks)). Nothing below runs if this fails.
+2. Builds both packages, inspects the tarballs, and does a `pnpm publish --dry-run` of each.
+3. Regenerates `CHANGELOG.md` from the full conventional commit history.
+4. Commits the updated changelog back to `main`.
+5. Creates a GitHub Release with the changelog section for that version as the body.
+6. Publishes `@stellarcred/sdk` and `@stellarcred/issuer` to npm **with provenance**.
+
+The two packages are released in lockstep: one tag, one version. The support and upgrade policy for each is in [SUPPORT_POLICY.md](SUPPORT_POLICY.md#sdk-versions) (SDK) and [SUPPORT_POLICY.md](SUPPORT_POLICY.md#issuer-package-versions) (issuer).
 
 ### Cutting a release
 
 ```bash
-# Bump the version in frontend/packages/sdk/package.json, then:
-git add frontend/packages/sdk/package.json
+# Bump "version" to the SAME value in both packages, then:
+#   frontend/packages/sdk/package.json
+#   frontend/packages/issuer/package.json
+git add frontend/packages/sdk/package.json frontend/packages/issuer/package.json
 git commit -m "chore: release v<version>"
 git tag v<version>
 git push origin main --tags
 ```
 
-The workflow handles everything else.
+The workflow handles everything else. A pre-release tag (`v1.0.0-rc.1`) is published under the `next` npm dist-tag and marked as a pre-release on GitHub; only a plain `vX.Y.Z` tag moves `latest`.
 
-### Required secret
+### Package checks
+
+The same checks run on every pull request that touches either package, the release workflow, or the release scripts (`.github/workflows/package-release-check.yml`), so a problem shows up on the PR rather than on the tag:
+
+```bash
+# from the repo root, after building both packages
+node .github/scripts/validate-release-packages.mjs --repo ToluLabs/StellarCred --packed
+bash .github/scripts/publish-packages.sh dry-run latest
+node --test .github/scripts/validate-release-packages.test.mjs
+```
+
+They verify version alignment, `repository.url` / `repository.directory`, `publishConfig.access`, the `files` allow-list and entry points, and that each tarball contains its build output and no sources, tests, env files or key material. A version that is already on npm is skipped by the dry run, because npm refuses to dry-run a published version.
+
+### Required secret and permissions
 
 The repository must have an `NPM_TOKEN` secret set under **Settings → Secrets and variables → Actions**.
-Generate the token at [npmjs.com](https://www.npmjs.com) with **Automation** type and **Read and write** scope for the `@stellarcred` scope (or the package name).
+Generate the token at [npmjs.com](https://www.npmjs.com) with **Automation** type and **Read and write** scope for the `@stellarcred` scope (or both package names, `@stellarcred/sdk` and `@stellarcred/issuer`).
 Never commit the token value.
+
+Provenance needs no extra secret: the release job has `id-token: write`, and npm signs the attestation with the workflow's OIDC identity. It only works for a package whose `repository.url` is this repository, which the checks above enforce.
 
 ## License
 

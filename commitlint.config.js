@@ -3,6 +3,8 @@ module.exports = {
   rules: {
     'body-max-line-length': [0],
     'body-leading-blank': [0],
+    'footer-max-line-length': [0],
+    'footer-leading-blank': [0],
   },
   ignores: [
     // #611 backfill PR's first commit was pushed with a sentence-case subject

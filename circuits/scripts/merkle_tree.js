@@ -315,6 +315,8 @@ function main() {
   }
 }
 
-main();
+// Only run the CLI when executed directly, so other scripts can require the
+// tree helpers without triggering the usage banner and process.exit().
+if (require.main === module) main();
 
 module.exports = { buildTree, merklePathForIndex, verifyPath, leafHash, nodeHash, poseidon2Hash, DEPTH, ZERO };

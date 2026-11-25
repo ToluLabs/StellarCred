@@ -5,20 +5,16 @@ import { revalidatePath } from "next/cache";
 import { ADMIN_COOKIE, isAdminPageAuthorized } from "@/lib/admin-page-auth";
 import { verifyApiKey } from "@/lib/auth";
 import { auditLogAppend, auditLogBootstrap, auditLogPersist } from "@/lib/audit-log";
-import {
-  resolveIssuance,
-  retryIssuance,
-  type IssuanceQueueRecord,
-} from "@/lib/issuance-queue";
+import { resolveIssuance, retryIssuance, type IssuanceQueueRecord } from "@/lib/issuance-queue";
 
 export type IssuanceActionResult =
-  | { success: true; record: IssuanceQueueRecord }
-  | { success: false; error: string };
+  { success: true; record: IssuanceQueueRecord } | { success: false; error: string };
 
 export async function loginAction(formData: FormData): Promise<void> {
   const key = String(formData.get("key") ?? "");
   if (!verifyApiKey(key, process.env.ADMIN_API_KEY)) return;
-  (await cookies()).set(ADMIN_COOKIE, key, {
+  const cookieStore = await cookies();
+  cookieStore.set(ADMIN_COOKIE, key, {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",

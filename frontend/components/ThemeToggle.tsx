@@ -55,8 +55,7 @@ export function ThemeToggle() {
     setActiveTheme(next);
   };
 
-  const ariaLabel =
-    activeTheme === "light" ? t("theme.dark") : t("theme.light");
+  const ariaLabel = activeTheme === "light" ? t("theme.dark") : t("theme.light");
 
   return (
     <button

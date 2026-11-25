@@ -36,7 +36,9 @@ export function TransferImportModal({
         Enter the passphrase used to encrypt this transfer code.
       </p>
 
-      <label htmlFor="import-passphrase" className="field-label">Passphrase</label>
+      <label htmlFor="import-passphrase" className="field-label">
+        Passphrase
+      </label>
       <input
         id="import-passphrase"
         type="password"
@@ -46,7 +48,14 @@ export function TransferImportModal({
         autoFocus
       />
 
-      {error && <p role="alert" style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.6rem" }}>{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.6rem" }}
+        >
+          {error}
+        </p>
+      )}
 
       <button
         className="btn btn-primary"

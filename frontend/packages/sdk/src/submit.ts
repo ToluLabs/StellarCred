@@ -13,10 +13,7 @@
 //   // On failure: throws TransactionSubmissionError with code + message + retryable
 
 import { withRetry, classifyTransientFailure, type RetryOptions } from "./claims";
-import {
-  TransactionSubmissionError,
-  type TransactionSubmissionErrorCode,
-} from "./errors";
+import { TransactionSubmissionError, type TransactionSubmissionErrorCode } from "./errors";
 
 export { TransactionSubmissionError };
 export type { TransactionSubmissionErrorCode };
@@ -40,7 +37,7 @@ export interface SubmitTransactionOptions {
    *
    * @param attempt - 1-based attempt number (attempt 1 is the first retry).
    * @param error   - The error that triggered this retry.
-   * @param delayMs - Approximate delay in milliseconds before this retry.
+   * @param delayMs - Exact delay in milliseconds before this retry.
    */
   onRetry?: (attempt: number, error: TransactionSubmissionError, delayMs: number) => void;
 }
@@ -101,35 +98,25 @@ export async function submitTransaction<T>(
   operation: () => Promise<T>,
   opts?: SubmitTransactionOptions,
 ): Promise<T> {
-  // Track attempt count for onRetry callbacks.
-  let attempt = 0;
-
-  // Wrap the raw operation so we can intercept each failure, call onRetry if
-  // configured, and re-throw.  withRetry sees the re-thrown raw error and
-  // applies its own retry/backoff logic unchanged.
-  const wrappedOperation = async (): Promise<T> => {
-    try {
-      return await operation();
-    } catch (raw) {
-      attempt++;
-
-      if (opts?.onRetry) {
-        // Classify to determine if this is a transient failure worth reporting.
-        const transient = classifyTransientFailure(raw);
-        if (transient) {
-          const normalized = TransactionSubmissionError.fromRaw(raw);
-          // Estimate the delay that withRetry will use for the *next* attempt.
-          // We pass 0 here if we can't compute it — it is purely informational.
-          opts.onRetry(attempt, normalized, 0);
-        }
+  // withRetry decides whether and when to retry; its onRetry hook reports the
+  // exact delay before each retry (#1056), so the callback no longer has to
+  // estimate it, and it only fires when a retry will actually happen.
+  const retryOptions: RetryOptions = {
+    ...opts?.retryOptions,
+    onRetry: (info) => {
+      try {
+        opts?.retryOptions?.onRetry?.(info);
+      } catch {
+        // A failing caller hook must not suppress the onRetry callback below.
       }
-
-      throw raw; // re-throw so withRetry can decide whether to retry.
-    }
+      if (opts?.onRetry && classifyTransientFailure(info.error)) {
+        opts.onRetry(info.attempt, TransactionSubmissionError.fromRaw(info.error), info.delayMs);
+      }
+    },
   };
 
   try {
-    return await withRetry(wrappedOperation, opts?.retryOptions);
+    return await withRetry(() => operation(), retryOptions);
   } catch (raw) {
     // All retries exhausted or non-retryable error — normalize and throw.
     throw TransactionSubmissionError.fromRaw(raw);

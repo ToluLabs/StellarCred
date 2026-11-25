@@ -12,6 +12,7 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 import { QrCodeModal } from "../QrCodeModal";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 import CopyButton from "../CopyButton";
 import { Badge } from "../Badge";
 import type { Credential } from "@/lib/credential";
@@ -75,6 +76,10 @@ export function GuardianRecoveryModal({
 
   const backupFileInputRef = useRef<HTMLInputElement>(null);
   const shareFileInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // The QR sub-view renders its own <Modal> (with its own trap) in place of
+  // this dialog, so pause this trap while it is up.
+  useFocusTrap(dialogRef, { onEscape: onClose, active: activeQrShare === null });
 
   // Update guardian labels array length when totalShares changes
   const handleTotalSharesChange = (n: number) => {
@@ -163,9 +168,7 @@ export function GuardianRecoveryModal({
       setCollectedShares([...collectedShares, share]);
       setShareInputText("");
     } catch (err) {
-      setRecoveryError(
-        err instanceof Error ? err.message : "Invalid guardian share format",
-      );
+      setRecoveryError(err instanceof Error ? err.message : "Invalid guardian share format");
     }
   };
 
@@ -236,13 +239,17 @@ export function GuardianRecoveryModal({
           background: "rgba(0,0,0,0.65)",
           backdropFilter: "blur(6px)",
         }}
+        aria-hidden="true"
         onClick={onClose}
       />
 
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Guardian Secret Sharing Recovery"
+        aria-labelledby="guardian-recovery-title"
+        aria-describedby="guardian-recovery-desc"
+        tabIndex={-1}
         className="card"
         style={{
           position: "relative",
@@ -270,14 +277,21 @@ export function GuardianRecoveryModal({
               <IconShieldLock size={18} />
             </div>
             <div>
-              <h2 style={{ fontSize: "1.15rem", fontWeight: 600 }}>Guardian Secret Sharing</h2>
-              <p className="faint" style={{ fontSize: "0.75rem" }}>
+              <h2 id="guardian-recovery-title" style={{ fontSize: "1.15rem", fontWeight: 600 }}>
+                Guardian Secret Sharing
+              </h2>
+              <p id="guardian-recovery-desc" className="faint" style={{ fontSize: "0.75rem" }}>
                 Client-side threshold key recovery
               </p>
             </div>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ padding: "0.3rem" }}>
-            ✕
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={onClose}
+            aria-label="Close guardian recovery dialog"
+            style={{ padding: "0.3rem" }}
+          >
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 
@@ -388,7 +402,11 @@ export function GuardianRecoveryModal({
                     <label className="field-label">Guardian Labels</label>
                     <div className="stack" style={{ gap: "0.5rem" }}>
                       {Array.from({ length: totalShares }).map((_, i) => (
-                        <div key={i} className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                        <div
+                          key={i}
+                          className="row"
+                          style={{ gap: "0.5rem", alignItems: "center" }}
+                        >
                           <span
                             className="mono faint"
                             style={{ fontSize: "0.75rem", width: 80, flexShrink: 0 }}
@@ -438,10 +456,15 @@ export function GuardianRecoveryModal({
                 >
                   <div className="between" style={{ alignItems: "center" }}>
                     <div>
-                      <span style={{ fontWeight: 600, color: "var(--accent)", fontSize: "0.875rem" }}>
+                      <span
+                        style={{ fontWeight: 600, color: "var(--accent)", fontSize: "0.875rem" }}
+                      >
                         Recovery Setup Generated
                       </span>
-                      <div className="mono faint" style={{ fontSize: "0.75rem", marginTop: "0.2rem" }}>
+                      <div
+                        className="mono faint"
+                        style={{ fontSize: "0.75rem", marginTop: "0.2rem" }}
+                      >
                         Recovery ID: {setupResult.backup.recoveryId} · Threshold:{" "}
                         {setupResult.backup.threshold} of {setupResult.backup.totalShares}
                       </div>
@@ -491,7 +514,8 @@ export function GuardianRecoveryModal({
                     2. Distribute Guardian Shares
                   </span>
                   <p className="faint" style={{ fontSize: "0.75rem", marginBottom: "0.75rem" }}>
-                    Send each share to the respective guardian. Key shares contain NO credential data.
+                    Send each share to the respective guardian. Key shares contain NO credential
+                    data.
                   </p>
 
                   <div className="stack" style={{ gap: "0.5rem" }}>
@@ -524,9 +548,7 @@ export function GuardianRecoveryModal({
                             >
                               <IconDownload size={13} />
                             </button>
-                            <CopyButton
-                              value={formatShareArmored(share)}
-                            />
+                            <CopyButton value={formatShareArmored(share)} />
                             <button
                               className="btn btn-ghost btn-sm"
                               title="View QR Code"
@@ -722,7 +744,10 @@ export function GuardianRecoveryModal({
                       background: "rgba(255, 255, 255, 0.01)",
                     }}
                   >
-                    <div className="between" style={{ alignItems: "center", marginBottom: "0.5rem" }}>
+                    <div
+                      className="between"
+                      style={{ alignItems: "center", marginBottom: "0.5rem" }}
+                    >
                       <span style={{ fontSize: "0.8125rem", fontWeight: 600 }}>
                         Collected Shares: {collectedShares.length}
                         {parsedBackup ? ` / ${parsedBackup.threshold} required` : ""}
@@ -739,8 +764,12 @@ export function GuardianRecoveryModal({
                     </div>
 
                     {collectedShares.length === 0 ? (
-                      <p className="faint" style={{ fontSize: "0.75rem", textAlign: "center", padding: "0.5rem 0" }}>
-                        No guardian shares added yet. Paste a share code or upload a share file above.
+                      <p
+                        className="faint"
+                        style={{ fontSize: "0.75rem", textAlign: "center", padding: "0.5rem 0" }}
+                      >
+                        No guardian shares added yet. Paste a share code or upload a share file
+                        above.
                       </p>
                     ) : (
                       <div className="stack" style={{ gap: "0.4rem" }}>
@@ -796,9 +825,7 @@ export function GuardianRecoveryModal({
                   className="btn btn-primary"
                   onClick={handleDecrypt}
                   disabled={
-                    isDecrypting ||
-                    !parsedBackup ||
-                    collectedShares.length < parsedBackup.threshold
+                    isDecrypting || !parsedBackup || collectedShares.length < parsedBackup.threshold
                   }
                   style={{ width: "100%" }}
                 >
@@ -839,12 +866,17 @@ export function GuardianRecoveryModal({
                       <div className="between" style={{ alignItems: "center" }}>
                         <div>
                           <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-                            <span style={{ fontWeight: 600, fontSize: "0.8125rem" }}>{c.title}</span>
+                            <span style={{ fontWeight: 600, fontSize: "0.8125rem" }}>
+                              {c.title}
+                            </span>
                             <span className="mono faint" style={{ fontSize: "0.7rem" }}>
                               {c.claim}
                             </span>
                           </div>
-                          <div className="mono faint" style={{ fontSize: "0.7rem", marginTop: "0.1rem" }}>
+                          <div
+                            className="mono faint"
+                            style={{ fontSize: "0.7rem", marginTop: "0.1rem" }}
+                          >
                             {c.issuer} · {truncateHash(c.commitment)}
                           </div>
                         </div>
@@ -862,7 +894,10 @@ export function GuardianRecoveryModal({
                     Restore Action
                   </label>
                   <div className="stack" style={{ gap: "0.4rem" }}>
-                    <label className="row" style={{ gap: "0.5rem", alignItems: "center", cursor: "pointer" }}>
+                    <label
+                      className="row"
+                      style={{ gap: "0.5rem", alignItems: "center", cursor: "pointer" }}
+                    >
                       <input
                         type="radio"
                         name="restoreMode"
@@ -871,7 +906,10 @@ export function GuardianRecoveryModal({
                       />
                       <span>Merge with existing local credentials (recommended)</span>
                     </label>
-                    <label className="row" style={{ gap: "0.5rem", alignItems: "center", cursor: "pointer" }}>
+                    <label
+                      className="row"
+                      style={{ gap: "0.5rem", alignItems: "center", cursor: "pointer" }}
+                    >
                       <input
                         type="radio"
                         name="restoreMode"

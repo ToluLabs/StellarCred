@@ -77,7 +77,7 @@ export function sanitizeWebhookPayload(obj: unknown): Record<string, unknown> {
 export function verifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null | undefined,
-  secret: string
+  secret: string,
 ): boolean {
   if (!signatureHeader || !secret || typeof rawBody !== "string") {
     return false;
@@ -165,8 +165,8 @@ export function parseAndNormalizeCallback(rawInput: unknown): NormalizedIssuance
       rawStatus === "completed" || rawStatus === "approved" || rawStatus === "success"
         ? "completed"
         : rawStatus === "failed" || rawStatus === "rejected" || rawStatus === "declined"
-        ? "failed"
-        : "pending";
+          ? "failed"
+          : "pending";
 
     return {
       eventId: parsed.eventId,
@@ -194,17 +194,15 @@ export function parseAndNormalizeCallback(rawInput: unknown): NormalizedIssuance
       statusStr.includes("approved") || statusStr.includes("completed")
         ? "completed"
         : statusStr.includes("declined") || statusStr.includes("failed")
-        ? "failed"
-        : "pending";
+          ? "failed"
+          : "pending";
 
     // Extract wallet address and credential type from fields if present
     const fields = (attrs.fields ?? {}) as Record<string, { value?: unknown }>;
-    const walletAddress = typeof fields.wallet_address?.value === "string"
-      ? fields.wallet_address.value
-      : undefined;
-    const credentialType = typeof fields.credential_type?.value === "string"
-      ? fields.credential_type.value
-      : "kyc";
+    const walletAddress =
+      typeof fields.wallet_address?.value === "string" ? fields.wallet_address.value : undefined;
+    const credentialType =
+      typeof fields.credential_type?.value === "string" ? fields.credential_type.value : "kyc";
 
     return {
       eventId: (parsed.id as string) ?? `evt_${inquiryId}_${Date.now()}`,
@@ -227,8 +225,8 @@ export function parseAndNormalizeCallback(rawInput: unknown): NormalizedIssuance
       rawStatus === "completed" || rawStatus === "approved" || rawStatus === "success"
         ? "completed"
         : rawStatus === "failed" || rawStatus === "rejected"
-        ? "failed"
-        : "pending";
+          ? "failed"
+          : "pending";
 
     return {
       eventId,
