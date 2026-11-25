@@ -17,6 +17,7 @@
 // security decision. See the SDK README for setup and trust-model details.
 
 export * from "./claims";
+export * from "./rpc-failover"; // Automatic RPC failover across Soroban & Horizon nodes (#1058)
 export * from "./issuers";
 export * from "./capabilities";
 export * from "./challenge";

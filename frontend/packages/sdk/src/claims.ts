@@ -28,6 +28,17 @@ import {
   sleep,
   type JitterOption,
 } from "./backoff";
+import {
+  RpcFailoverPool,
+  fetchWithFailover,
+  normalizeEndpointUrls,
+  parseEndpointListEnv,
+  type HorizonFetchOptions,
+  type RpcEndpointHealth,
+  type RpcFailoverAttemptMeta,
+  type RpcFailoverExecuteOptions,
+  type RpcFailoverOptions,
+} from "./rpc-failover";
 
 export { IndexerError };
 export { computeBackoffDelay } from "./backoff";
@@ -161,18 +172,21 @@ export type StellarNetwork = "testnet" | "mainnet" | "futurenet";
 
 export const NETWORK_PRESETS: Record<
   StellarNetwork,
-  { rpcUrl: string; networkPassphrase: string }
+  { rpcUrl: string; horizonUrl: string; networkPassphrase: string }
 > = {
   testnet: {
     rpcUrl: "https://soroban-testnet.stellar.org",
+    horizonUrl: "https://horizon-testnet.stellar.org",
     networkPassphrase: "Test SDF Network ; September 2015",
   },
   mainnet: {
     rpcUrl: "https://soroban.stellar.org",
+    horizonUrl: "https://horizon.stellar.org",
     networkPassphrase: "Public Global Stellar Network ; September 2015",
   },
   futurenet: {
     rpcUrl: "https://soroban-futurenet.stellar.org",
+    horizonUrl: "https://horizon-futurenet.stellar.org",
     networkPassphrase: "Test SDF Future Network ; October 2022",
   },
 };
@@ -263,6 +277,22 @@ export type ClaimSource = "chain" | "indexer" | "indexer-verified";
 export interface SDKConfig {
   registryId?: string;
   rpcUrl?: string;
+  /**
+   * Prioritized list of Soroban RPC endpoints for automatic failover (#1058).
+   * The first entry is the primary endpoint; on timeout, HTTP 5xx, HTTP 429,
+   * or network error the SDK automatically fails over to the next healthy node.
+   * When provided, `rpcUrl` is kept in sync with `rpcUrls[0]`.
+   */
+  rpcUrls?: readonly string[];
+  /** Primary Horizon node URL (defaults to the active network preset). */
+  horizonUrl?: string;
+  /**
+   * Prioritized list of Horizon node endpoints for automatic failover (#1058).
+   * When provided, `horizonUrl` is kept in sync with `horizonUrls[0]`.
+   */
+  horizonUrls?: readonly string[];
+  /** Tuning and hooks for automatic RPC / Horizon failover (#1058). */
+  failover?: RpcFailoverOptions;
   networkPassphrase?: string;
   baseUrl?: string;
   requestTimeoutMs?: number;
@@ -327,9 +357,44 @@ export interface SDKConfig {
   claimCacheMaxEntries?: number;
 }
 
+function resolveDefaultEndpoints(
+  listEnvKey: string,
+  listNextPublicKey: string,
+  singleEnvKey: string,
+  singleNextPublicKey: string,
+  presetUrl: string,
+): { primary: string; urls: string[] } {
+  const fromList = parseEndpointListEnv(env(listEnvKey, listNextPublicKey));
+  if (fromList.length > 0) {
+    return { primary: fromList[0], urls: fromList };
+  }
+  const single = env(singleEnvKey, singleNextPublicKey) || presetUrl;
+  return { primary: single, urls: single ? [single] : [] };
+}
+
+const _defaultRpc = resolveDefaultEndpoints(
+  "STELLARCRED_RPC_URLS",
+  "NEXT_PUBLIC_RPC_URLS",
+  "STELLARCRED_RPC_URL",
+  "NEXT_PUBLIC_RPC_URL",
+  _preset.rpcUrl,
+);
+
+const _defaultHorizon = resolveDefaultEndpoints(
+  "STELLARCRED_HORIZON_URLS",
+  "NEXT_PUBLIC_HORIZON_URLS",
+  "STELLARCRED_HORIZON_URL",
+  "NEXT_PUBLIC_HORIZON_URL",
+  _preset.horizonUrl,
+);
+
 const DEFAULT_CONFIG: Required<SDKConfig> = {
   registryId: env("STELLARCRED_REGISTRY_ID", "NEXT_PUBLIC_PROOF_REGISTRY_ID"),
-  rpcUrl: env("STELLARCRED_RPC_URL", "NEXT_PUBLIC_RPC_URL") || _preset.rpcUrl,
+  rpcUrl: _defaultRpc.primary,
+  rpcUrls: _defaultRpc.urls,
+  horizonUrl: _defaultHorizon.primary,
+  horizonUrls: _defaultHorizon.urls,
+  failover: {},
   networkPassphrase:
     env("STELLARCRED_NETWORK_PASSPHRASE", "NEXT_PUBLIC_NETWORK_PASSPHRASE") ||
     _preset.networkPassphrase,
@@ -399,29 +464,138 @@ function assertValidRetryConfig(opts: Omit<RetryOptions, "signal" | "onRetry">):
   }
 }
 
-let _config: Required<SDKConfig> = { ...DEFAULT_CONFIG };
+function assertValidFailoverConfig(opts: SDKConfig): {
+  nextRpcUrls?: string[];
+  nextHorizonUrls?: string[];
+} {
+  let nextRpcUrls: string[] | undefined;
+  let nextHorizonUrls: string[] | undefined;
+
+  if (opts.rpcUrls !== undefined) {
+    if (!Array.isArray(opts.rpcUrls) || opts.rpcUrls.length === 0) {
+      throw new ConfigError("rpcUrls must be a non-empty array of HTTP(S) endpoint URLs");
+    }
+    const combined = opts.rpcUrl ? [opts.rpcUrl, ...opts.rpcUrls] : [...opts.rpcUrls];
+    try {
+      nextRpcUrls = normalizeEndpointUrls(combined, "rpcUrls");
+    } catch (err) {
+      throw new ConfigError(err instanceof Error ? err.message : String(err));
+    }
+  } else if (opts.rpcUrl !== undefined) {
+    if (opts.rpcUrl === "") {
+      nextRpcUrls = [];
+    } else {
+      try {
+        nextRpcUrls = normalizeEndpointUrls([opts.rpcUrl], "rpcUrl");
+      } catch (err) {
+        throw new ConfigError(err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+
+  if (opts.horizonUrls !== undefined) {
+    if (!Array.isArray(opts.horizonUrls) || opts.horizonUrls.length === 0) {
+      throw new ConfigError("horizonUrls must be a non-empty array of HTTP(S) endpoint URLs");
+    }
+    const combined = opts.horizonUrl ? [opts.horizonUrl, ...opts.horizonUrls] : [...opts.horizonUrls];
+    try {
+      nextHorizonUrls = normalizeEndpointUrls(combined, "horizonUrls");
+    } catch (err) {
+      throw new ConfigError(err instanceof Error ? err.message : String(err));
+    }
+  } else if (opts.horizonUrl !== undefined) {
+    if (opts.horizonUrl === "") {
+      nextHorizonUrls = [];
+    } else {
+      try {
+        nextHorizonUrls = normalizeEndpointUrls([opts.horizonUrl], "horizonUrl");
+      } catch (err) {
+        throw new ConfigError(err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+
+  if (opts.failover !== undefined) {
+    const { cooldownMs, failureThreshold } = opts.failover;
+    if (cooldownMs !== undefined && !(Number.isFinite(cooldownMs) && cooldownMs >= 0)) {
+      throw new ConfigError(
+        `failover.cooldownMs must be a non-negative number of milliseconds, got ${cooldownMs}`,
+      );
+    }
+    if (
+      failureThreshold !== undefined &&
+      !(Number.isInteger(failureThreshold) && failureThreshold >= 1)
+    ) {
+      throw new ConfigError(
+        `failover.failureThreshold must be a positive integer, got ${failureThreshold}`,
+      );
+    }
+  }
+
+  return { nextRpcUrls, nextHorizonUrls };
+}
+
+let _config: Required<SDKConfig> = {
+  ...DEFAULT_CONFIG,
+  rpcUrls: [...DEFAULT_CONFIG.rpcUrls],
+  horizonUrls: [...DEFAULT_CONFIG.horizonUrls],
+  failover: { ...DEFAULT_CONFIG.failover },
+};
 const _claimCache = new ClaimCache();
+
+let _sorobanPool: RpcFailoverPool | null = null;
+let _horizonPool: RpcFailoverPool | null = null;
+
+function getSorobanPool(): RpcFailoverPool | null {
+  if (_config.rpcUrls.length === 0) return null;
+  if (!_sorobanPool) {
+    _sorobanPool = new RpcFailoverPool(_config.rpcUrls, "soroban", _config.failover);
+  }
+  return _sorobanPool;
+}
+
+function getHorizonPool(): RpcFailoverPool | null {
+  if (_config.horizonUrls.length === 0) return null;
+  if (!_horizonPool) {
+    _horizonPool = new RpcFailoverPool(_config.horizonUrls, "horizon", _config.failover);
+  }
+  return _horizonPool;
+}
 
 /**
  * Override SDK defaults at runtime. Call this once at app startup before any
- * `hasClaim` / `getClaims` calls. Each key is optional â€” omitted keys keep
+ * `hasClaim` / `getClaims` calls. Each key is optional — omitted keys keep
  * their env-var-derived or default values.
  */
 export function configure(opts: SDKConfig): void {
   warnOnClientServerBoundaryViolation({
     registryId: opts.registryId,
-    rpcUrl: opts.rpcUrl,
+    rpcUrl: opts.rpcUrl ?? opts.rpcUrls?.[0],
   });
   warnOnIndexerKeyInBrowser(opts.indexerApiKey);
   assertValidClaimCacheConfig(opts);
   assertValidRetryConfig(opts);
-  _config = { ..._config, ...opts };
+  const { nextRpcUrls, nextHorizonUrls } = assertValidFailoverConfig(opts);
+
+  const mergedFailover =
+    opts.failover !== undefined ? { ..._config.failover, ...opts.failover } : _config.failover;
+
+  _config = {
+    ..._config,
+    ...opts,
+    rpcUrls: nextRpcUrls ?? _config.rpcUrls,
+    rpcUrl: nextRpcUrls !== undefined ? (nextRpcUrls[0] ?? "") : _config.rpcUrl,
+    horizonUrls: nextHorizonUrls ?? _config.horizonUrls,
+    horizonUrl: nextHorizonUrls !== undefined ? (nextHorizonUrls[0] ?? "") : _config.horizonUrl,
+    failover: mergedFailover,
+  };
   // Cached answers may have come from another registry, RPC or network.
   _claimCache.clear();
-  // The cached client is bound to the old config â€” drop it so the next read
-  // rebuilds against the new one.
-  _client = null;
-  _clientKey = "";
+  // Cached clients and failover pools are bound to the old config — drop them
+  // so the next read rebuilds against the new endpoints / options.
+  _clients.clear();
+  _sorobanPool = null;
+  _horizonPool = null;
   // Cached rows may have come from the previous indexerUrl/apiKey.
   clearIndexerCache();
 }
@@ -430,21 +604,95 @@ export function configure(opts: SDKConfig): void {
  * Read the current runtime configuration (read-only snapshot).
  */
 export function getConfig(): Readonly<Required<SDKConfig>> {
-  return { ..._config };
+  return {
+    ..._config,
+    rpcUrls: [..._config.rpcUrls],
+    horizonUrls: [..._config.horizonUrls],
+    failover: { ..._config.failover },
+  };
 }
 
 /**
  * Reset config back to initial env defaults.
  */
 export function resetConfig(): void {
-  _config = { ...DEFAULT_CONFIG };
-  _client = null;
-  _clientKey = "";
+  _config = {
+    ...DEFAULT_CONFIG,
+    rpcUrls: [...DEFAULT_CONFIG.rpcUrls],
+    horizonUrls: [...DEFAULT_CONFIG.horizonUrls],
+    failover: { ...DEFAULT_CONFIG.failover },
+  };
+  _clients.clear();
+  _sorobanPool = null;
+  _horizonPool = null;
   _warnedMissingRegistryId = false;
   _warnedBoundaryViolation = false;
   _warnedIndexerKeyInBrowser = false;
   clearIndexerCache();
   _claimCache.clear();
+}
+
+/**
+ * Execute a Soroban RPC operation against the configured prioritized `rpcUrls`
+ * with automatic failover on timeout, HTTP 5xx, HTTP 429, or network errors (#1058).
+ */
+export async function executeWithRpcFailover<T>(
+  operation: (rpcUrl: string, meta: RpcFailoverAttemptMeta) => Promise<T>,
+  opts?: RpcFailoverExecuteOptions,
+): Promise<T> {
+  const pool = getSorobanPool();
+  if (!pool) {
+    throw new ConfigError("StellarCred is not configured: missing rpcUrl / rpcUrls");
+  }
+  return pool.execute(operation, opts);
+}
+
+/**
+ * Execute a Horizon operation against the configured prioritized `horizonUrls`
+ * with automatic failover on timeout, HTTP 5xx, HTTP 429, or network errors (#1058).
+ */
+export async function executeWithHorizonFailover<T>(
+  operation: (horizonUrl: string, meta: RpcFailoverAttemptMeta) => Promise<T>,
+  opts?: RpcFailoverExecuteOptions,
+): Promise<T> {
+  const pool = getHorizonPool();
+  if (!pool) {
+    throw new ConfigError("StellarCred is not configured: missing horizonUrl / horizonUrls");
+  }
+  return pool.execute(operation, opts);
+}
+
+/**
+ * Perform an HTTP request against the configured prioritized Horizon nodes
+ * with automatic failover on timeout, HTTP 5xx, HTTP 429, or network errors (#1058).
+ */
+export async function fetchHorizon(path: string, opts?: HorizonFetchOptions): Promise<Response> {
+  const pool = getHorizonPool();
+  if (!pool) {
+    throw new ConfigError("StellarCred is not configured: missing horizonUrl / horizonUrls");
+  }
+  return fetchWithFailover(pool, path, {
+    timeoutMs: _config.requestTimeoutMs,
+    ...opts,
+  });
+}
+
+/** Inspect health and cooldown state of every configured Soroban RPC endpoint. */
+export function getRpcHealth(): RpcEndpointHealth[] {
+  const pool = getSorobanPool();
+  return pool ? pool.getHealthSnapshot() : [];
+}
+
+/** Inspect health and cooldown state of every configured Horizon endpoint. */
+export function getHorizonHealth(): RpcEndpointHealth[] {
+  const pool = getHorizonPool();
+  return pool ? pool.getHealthSnapshot() : [];
+}
+
+/** Reset health and cooldown state for both Soroban RPC and Horizon failover pools. */
+export function resetRpcHealth(): void {
+  _sorobanPool?.resetHealth();
+  _horizonPool?.resetHealth();
 }
 
 /**
@@ -732,12 +980,12 @@ export function validateThreshold(minThreshold: number | undefined): void {
   }
 }
 
-let _client: Promise<ProofRegistryClient> | null = null;
-let _clientKey = "";
+const _clients = new Map<string, Promise<ProofRegistryClient>>();
 
 export function resetClientForTesting(): void {
-  _client = null;
-  _clientKey = "";
+  _clients.clear();
+  _sorobanPool = null;
+  _horizonPool = null;
   _sdk = null;
 }
 
@@ -820,10 +1068,13 @@ export function __setProofRegistryClientForTesting(client: ProofRegistryReader |
   slot.generation += 1;
 }
 
-async function getClient(throwOnError = false): Promise<ProofRegistryClient | null> {
+async function getClientForUrl(
+  rpcUrl: string,
+  throwOnError = false,
+): Promise<ProofRegistryClient | null> {
   const override = registryOverride();
   if (override) return override as unknown as ProofRegistryClient;
-  const { registryId, rpcUrl, networkPassphrase } = _config;
+  const { registryId, networkPassphrase } = _config;
   if (!registryId) {
     if (throwOnError) {
       throw new ConfigError("StellarCred is not configured: missing registryId");
@@ -832,10 +1083,10 @@ async function getClient(throwOnError = false): Promise<ProofRegistryClient | nu
   }
 
   const key = `${registryId}|${rpcUrl}|${networkPassphrase}`;
-  if (_client && _clientKey === key) return _client;
+  const cached = _clients.get(key);
+  if (cached) return cached;
 
-  _clientKey = key;
-  _client = Promise.all([getSdk(), import("../../proof-registry/src/index")]).then(
+  const pending = Promise.all([getSdk(), import("../../proof-registry/src/index")]).then(
     ([, { Client }]) =>
       new Client({
         networkPassphrase,
@@ -845,12 +1096,87 @@ async function getClient(throwOnError = false): Promise<ProofRegistryClient | nu
       }),
   );
 
-  _client.catch(() => {
+  _clients.set(key, pending);
+  pending.catch(() => {
     _sdk = null;
-    _client = null;
-    _clientKey = "";
+    if (_clients.get(key) === pending) {
+      _clients.delete(key);
+    }
   });
-  return _client;
+  return pending;
+}
+
+async function getClient(throwOnError = false): Promise<ProofRegistryClient | null> {
+  const override = registryOverride();
+  if (override) return override as unknown as ProofRegistryClient;
+  const pool = getSorobanPool();
+  const activeUrl = pool ? pool.getActiveUrl() : _config.rpcUrl;
+  if (!activeUrl) {
+    if (throwOnError) {
+      throw new ConfigError("StellarCred is not configured: missing rpcUrl / rpcUrls");
+    }
+    return null;
+  }
+  return getClientForUrl(activeUrl, throwOnError);
+}
+
+/**
+ * Execute a ProofRegistry chain read with automatic failover across all
+ * configured `rpcUrls` (#1058), per-endpoint timeouts, and retry backoff.
+ * Returns `{ configured: false }` when `registryId` or `rpcUrls` is missing
+ * and `throwOnError` is false.
+ */
+async function executeChainRead<T>(
+  operation: (client: ProofRegistryClient) => Promise<T>,
+  opts: {
+    throwOnError: boolean;
+    requestTimeoutMs: number;
+    retryOptions?: RetryOptions;
+  },
+): Promise<{ configured: true; value: T } | { configured: false }> {
+  const override = registryOverride();
+  if (override) {
+    const value = await withRetry(
+      () =>
+        withRequestTimeout(
+          () => operation(override as unknown as ProofRegistryClient),
+          opts.requestTimeoutMs,
+        ),
+      opts.retryOptions,
+    );
+    return { configured: true, value };
+  }
+
+  if (!_config.registryId) {
+    if (opts.throwOnError) {
+      throw new ConfigError("StellarCred is not configured: missing registryId");
+    }
+    return { configured: false };
+  }
+
+  const pool = getSorobanPool();
+  if (!pool) {
+    if (opts.throwOnError) {
+      throw new ConfigError("StellarCred is not configured: missing rpcUrl / rpcUrls");
+    }
+    return { configured: false };
+  }
+
+  const value = await withRetry(
+    ({ signal }) =>
+      pool.execute(
+        async (rpcUrl) => {
+          const client = await getClientForUrl(rpcUrl, opts.throwOnError);
+          if (!client) {
+            throw new ConfigError("StellarCred is not configured: missing registryId");
+          }
+          return withRequestTimeout(() => operation(client), opts.requestTimeoutMs);
+        },
+        { signal },
+      ),
+    opts.retryOptions,
+  );
+  return { configured: true, value };
 }
 
 async function fanOut<T, R>(
@@ -1351,23 +1677,18 @@ async function readIsVerifiedFromChain(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<{ valid: boolean; verifiedAt: number; expiry: number } | null> {
-  const client = await getClient(throwOnError);
-  if (!client) return null;
-
   try {
-    const { result } = await withRequestTimeout(
-      () =>
-        withRetry(
-          () =>
-            client.is_verified({
-              holder: wallet,
-              credential_type: claimType,
-              trusted_issuers: trustedIssuers,
-            }),
-          retryOptions,
-        ),
-      requestTimeoutMs,
+    const outcome = await executeChainRead(
+      (client) =>
+        client.is_verified({
+          holder: wallet,
+          credential_type: claimType,
+          trusted_issuers: trustedIssuers,
+        }),
+      { throwOnError, requestTimeoutMs, retryOptions },
     );
+    if (!outcome.configured) return null;
+    const { result } = outcome.value;
     if (!result) return null;
     const [valid, verifiedAt, expiry] = result;
     return { valid, verifiedAt: Number(verifiedAt), expiry: Number(expiry) };
@@ -1391,25 +1712,20 @@ async function readCheckClaimFromChain(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<boolean | null> {
-  const client = await getClient(throwOnError);
-  // null = unconfigured or failed (fail-soft), as opposed to a definitive `false`.
-  if (!client) return null;
-
   try {
-    const { result } = await withRequestTimeout(
-      () =>
-        withRetry(
-          () =>
-            client.check_claim({
-              holder: wallet,
-              credential_type: claimType,
-              min_threshold: BigInt(minThreshold),
-              trusted_issuers: trustedIssuers,
-            }),
-          retryOptions,
-        ),
-      requestTimeoutMs,
+    const outcome = await executeChainRead(
+      (client) =>
+        client.check_claim({
+          holder: wallet,
+          credential_type: claimType,
+          min_threshold: BigInt(minThreshold),
+          trusted_issuers: trustedIssuers,
+        }),
+      { throwOnError, requestTimeoutMs, retryOptions },
     );
+    // null = unconfigured or failed (fail-soft), as opposed to a definitive `false`.
+    if (!outcome.configured) return null;
+    const { result } = outcome.value;
     return typeof result === "boolean" ? result : null;
   } catch (err) {
     if (throwOnError) {
@@ -1435,32 +1751,20 @@ async function readRecordWithStatus(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<RecordFetchOutcome> {
-  let client: ProofRegistryClient | null;
   try {
-    client = await getClient(throwOnError);
-  } catch (err) {
-    if (throwOnError) throw err;
-    return { record: null, unavailable: true, error: err };
-  }
-  if (!client) {
-    const err = new ConfigError("StellarCred is not configured: missing registryId");
-    if (throwOnError) throw err;
-    return { record: null, unavailable: true, error: err };
-  }
-
-  try {
-    const { result } = await withRequestTimeout(
-      () =>
-        withRetry(
-          () =>
-            client!.get_record({
-              holder: wallet,
-              credential_type: claimType,
-            }),
-          retryOptions,
-        ),
-      requestTimeoutMs,
+    const outcome = await executeChainRead(
+      (client) =>
+        client.get_record({
+          holder: wallet,
+          credential_type: claimType,
+        }),
+      { throwOnError, requestTimeoutMs, retryOptions },
     );
+    if (!outcome.configured) {
+      const err = new ConfigError("StellarCred is not configured: missing registryId");
+      return { record: null, unavailable: true, error: err };
+    }
+    const { result } = outcome.value;
     if (!result) return { record: null, unavailable: false };
     const reasonMap: Record<number, string> = {
       0: "expired",
@@ -2539,35 +2843,37 @@ export async function isNullifierUsed(
   opts?: { requestTimeoutMs?: number; throwOnError?: boolean },
 ): Promise<boolean> {
   const throwOnError = opts?.throwOnError === true;
-  const client = (await getClient(throwOnError)) as any;
-  if (!client) {
-    return false;
-  }
-  if (typeof client.is_nullifier_used !== "function") {
-    return false;
-  }
   try {
-    // The generated ProofRegistry bindings (packages/proof-registry) predate the
-    // nullifier entrypoints (#395): the contract exposes `is_nullifier_used`, but
-    // the generated client (and its spec) does not declare it yet. Call it through
-    // the shape the contract actually implements so the SDK stays typed; once the
-    // bindings are regenerated this narrows to the generated method.
-    const { result } = await withRequestTimeout(
-      () =>
-        (
-          client as unknown as {
-            is_nullifier_used(args: {
-              app_context: string;
-              nullifier: string;
-            }): Promise<{ result: boolean }>;
-          }
-        ).is_nullifier_used({
+    const outcome = await executeChainRead(
+      async (client) => {
+        // The generated ProofRegistry bindings (packages/proof-registry) predate the
+        // nullifier entrypoints (#395): the contract exposes `is_nullifier_used`, but
+        // the generated client (and its spec) does not declare it yet. Call it through
+        // the shape the contract actually implements so the SDK stays typed; once the
+        // bindings are regenerated this narrows to the generated method.
+        const typedClient = client as unknown as {
+          is_nullifier_used?: (args: {
+            app_context: string;
+            nullifier: string;
+          }) => Promise<{ result: boolean }>;
+        };
+        if (typeof typedClient.is_nullifier_used !== "function") {
+          return { result: false };
+        }
+        return typedClient.is_nullifier_used({
           app_context: appContext,
           nullifier,
-        }),
-      opts?.requestTimeoutMs ?? _config.requestTimeoutMs,
+        });
+      },
+      {
+        throwOnError,
+        requestTimeoutMs: opts?.requestTimeoutMs ?? _config.requestTimeoutMs,
+      },
     );
-    return result ?? false;
+    if (!outcome.configured) {
+      return false;
+    }
+    return outcome.value.result ?? false;
   } catch (err) {
     if (throwOnError) {
       if (err instanceof ConfigError) throw err;

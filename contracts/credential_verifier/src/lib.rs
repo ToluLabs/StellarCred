@@ -26,6 +26,10 @@
 //! transfer. A pending proposal can be overwritten by another `propose_admin`
 //! or cleared with `cancel_admin_proposal`.
 
+extern crate alloc;
+
+pub mod scalar_mul;
+
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
     Bytes, BytesN, Env, Map, Symbol,
@@ -420,10 +424,7 @@ impl CredentialVerifier {
             .get(&DataKey::Vk(credential_type, version))
             .unwrap_or_else(|| panic_with_error!(&env, Error::VkNotSet));
 
-        match UltraHonkVerifier::new(&env, &vk) {
-            Ok(verifier) => verifier.verify(&env, &proof, &public_inputs).is_ok(),
-            Err(_) => false,
-        }
+        scalar_mul::verify_ultrahonk_optimized(&env, &vk, &proof, &public_inputs).is_ok()
     }
 
     /// Assign `address` as the holder of `role`, replacing any previous holder.

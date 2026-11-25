@@ -7,7 +7,13 @@
 // needed. Writes (register / revoke / rotate) are admin-only and live outside
 // the SDK.
 
-import { ConfigError, getConfig, InvalidIssuerError, withRetry } from "./claims";
+import {
+  ConfigError,
+  executeWithRpcFailover,
+  getConfig,
+  InvalidIssuerError,
+  withRetry,
+} from "./claims";
 import { RpcError } from "./errors";
 
 /**
@@ -80,9 +86,8 @@ async function simulate<T>(
 ): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
   const id = registryId(opts.throwOnError);
   if (!id) return { ok: false, error: "issuerRegistryId is not configured" };
-  const { rpcUrl, networkPassphrase, requestTimeoutMs } = getConfig();
+  const { networkPassphrase, requestTimeoutMs } = getConfig();
   const { rpc, Account, Contract, TransactionBuilder, BASE_FEE, scValToNative } = await sdk();
-  const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") });
   const tx = new TransactionBuilder(new Account(SIMULATION_ACCOUNT, "0"), {
     fee: BASE_FEE,
     networkPassphrase,
@@ -93,22 +98,28 @@ async function simulate<T>(
     .build();
 
   const timeoutMs = opts.requestTimeoutMs ?? requestTimeoutMs;
-  const sim = await withRetry(async () => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([
-        server.simulateTransaction(tx),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new RpcError(`RPC read timed out after ${timeoutMs}ms`)),
-            timeoutMs,
-          );
-        }),
-      ]);
-    } finally {
-      clearTimeout(timer);
-    }
-  });
+  const sim = await withRetry(({ signal }) =>
+    executeWithRpcFailover(
+      async (rpcUrl) => {
+        const server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith("http://") });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            server.simulateTransaction(tx),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new RpcError(`RPC read timed out after ${timeoutMs}ms`)),
+                timeoutMs,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      { signal },
+    ),
+  );
   if (rpc.Api.isSimulationError(sim)) return { ok: false, error: sim.error };
   if (!sim.result) return { ok: false, error: "simulation returned no result" };
   return { ok: true, value: scValToNative(sim.result.retval) as T };
