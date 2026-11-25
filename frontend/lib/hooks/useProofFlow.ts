@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Credential } from "../credential";
 
 import { proveOffMainThread, type ProofStageProgress } from "../proof-client";
+import { isCryptoSupported, isWebAssemblySupported } from "../browser-compatibility";
 import { CircuitVersionMismatchError } from "../circuit-versions";
 import { withTimeout, ProofTimeoutError } from "../proof-timeout";
 import { ProofResourceError, proofDeadlineMs } from "../proof-guard";
@@ -125,6 +126,39 @@ export function useProofFlow(cred: Credential | null, submitFn: SubmitFn = defau
     (controller: AbortController) => {
       const { signal } = controller;
       if (!cred) return;
+
+      if (!isWebAssemblySupported()) {
+        const errorMsg =
+          "WebAssembly is not supported in this browser. Zero-knowledge proof generation requires WebAssembly. Please switch to a supported browser (Chrome, Firefox, Safari, Edge) or use Preview Mode.";
+        setError({
+          ...parseContractError({
+            category: "configuration_error",
+            code: "wasm_unavailable",
+            retryable: false,
+          }),
+          friendly: errorMsg,
+        });
+        setErrorPhase("proving");
+        setStage("error");
+        toast.error("Browser capability missing: WebAssembly is required for proof generation.");
+        return;
+      }
+      if (!isCryptoSupported()) {
+        const errorMsg =
+          "WebCrypto is not supported in this browser. Cryptographic proof generation requires secure random number generation. Please switch to a modern browser or use HTTPS.";
+        setError({
+          ...parseContractError({
+            category: "configuration_error",
+            code: "webcrypto_unavailable",
+            retryable: false,
+          }),
+          friendly: errorMsg,
+        });
+        setErrorPhase("proving");
+        setStage("error");
+        toast.error("Browser capability missing: WebCrypto is required for proof generation.");
+        return;
+      }
 
       setRpcIssue(null);
       // The worker's first non-witness progress message also restarts the

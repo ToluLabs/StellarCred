@@ -13,8 +13,30 @@ This package signs credentials with a private key. It must **never** run in a br
 ## Install
 
 ```bash
-npm install @stellarcred/issuer
+npm install --save-exact @stellarcred/issuer
 ```
+
+Requires Node.js 18 or later. Pin an exact version in production — the package is `0.x`, where a MINOR release may contain breaking changes (see below).
+
+### Verify what you installed
+
+Every release is published from this repository's release workflow with [npm provenance](https://docs.npmjs.com/generating-provenance-statements), a signed attestation tying the tarball to the source commit and workflow run that built it. This package signs credentials with your issuer key, so check it before you run it:
+
+```bash
+npm audit signatures
+```
+
+The package's npm page also shows a "Provenance" badge. A version **without** provenance was not published by this project's pipeline — do not run it with an issuer key.
+
+## Versioning, support and upgrades
+
+- `@stellarcred/issuer` is released **in lockstep with [`@stellarcred/sdk`](../sdk)**: one tag, the same version number for both. Upgrade them together.
+- It follows [Semantic Versioning](https://semver.org). Before 1.0.0, breaking changes may arrive in a MINOR release and are always listed under `BREAKING` in the [changelog](./CHANGELOG.md); PATCH releases never break.
+- Pre-releases (`-rc.N`) are published under the `next` dist-tag and are **not supported**. `latest` only ever points at a stable release.
+- The current MINOR is supported until it is superseded, plus 6 months; a previous MAJOR is supported for 6 months after the next MAJOR is published.
+- Credentials you have already issued are unaffected by upgrading or downgrading: the on-chain issuer key and VK version decide whether a credential is accepted, not the package version that produced it.
+
+The full policy — compatibility promise, support windows, deprecation procedure and a pre-upgrade checklist — is in [SUPPORT_POLICY.md](https://github.com/ToluLabs/StellarCred/blob/main/SUPPORT_POLICY.md#issuer-package-versions). Report vulnerabilities through [SECURITY.md](https://github.com/ToluLabs/StellarCred/blob/main/SECURITY.md), not a public issue.
 
 ## Quick start
 
@@ -42,14 +64,14 @@ Each call to `issue()` produces one independent credential — its own preimage,
 
 ## Credential types and attributes
 
-| `type` | required `attribute` field | claim proved |
-|---|---|---|
-| `kyc` | — (none) | identity verified |
-| `age` | `date_of_birth` (ISO date string) | age ≥ threshold |
-| `income` | `income` (numeric string) | income > threshold |
-| `jurisdiction` | `country_code` (numeric string) | country not restricted |
-| `funds` | `balance` (numeric string) | balance > threshold |
-| `accreditation` | `net_worth` (numeric string) | net worth ≥ threshold |
+| `type`          | required `attribute` field        | claim proved           |
+| --------------- | --------------------------------- | ---------------------- |
+| `kyc`           | — (none)                          | identity verified      |
+| `age`           | `date_of_birth` (ISO date string) | age ≥ threshold        |
+| `income`        | `income` (numeric string)         | income > threshold     |
+| `jurisdiction`  | `country_code` (numeric string)   | country not restricted |
+| `funds`         | `balance` (numeric string)        | balance > threshold    |
+| `accreditation` | `net_worth` (numeric string)      | net worth ≥ threshold  |
 
 `claimParams` (optional) controls the human-readable `claim` label and the threshold a downstream verifier checks against — e.g. `{ threshold_years: "21" }` for `age`, `{ threshold: "250000" }` for `income`/`funds`.
 
@@ -61,15 +83,15 @@ Each call to `issue()` produces one independent credential — its own preimage,
 
 ### `issuer.issue(params): Promise<Credential>`
 
-| param | type | notes |
-|---|---|---|
-| `type` | `CredentialType` | one of the six types above |
-| `holder` | `string` | the holder's Stellar wallet address |
-| `issuerId` | `string` | your issuer identifier |
-| `issuerName` | `string` | human-readable issuer name, stored in the credential |
-| `expiry` | `string \| number` | a duration string (`"90 days"`) or an absolute unix timestamp |
-| `attribute` | `Record<string, string>` | type-specific fields, see table above |
-| `claimParams` | `object` (optional) | thresholds / restricted list for the claim label |
+| param         | type                     | notes                                                         |
+| ------------- | ------------------------ | ------------------------------------------------------------- |
+| `type`        | `CredentialType`         | one of the six types above                                    |
+| `holder`      | `string`                 | the holder's Stellar wallet address                           |
+| `issuerId`    | `string`                 | your issuer identifier                                        |
+| `issuerName`  | `string`                 | human-readable issuer name, stored in the credential          |
+| `expiry`      | `string \| number`       | a duration string (`"90 days"`) or an absolute unix timestamp |
+| `attribute`   | `Record<string, string>` | type-specific fields, see table above                         |
+| `claimParams` | `object` (optional)      | thresholds / restricted list for the claim label              |
 
 Returns a `Credential`:
 
@@ -81,10 +103,10 @@ interface Credential {
   issuer: string;
   issuerId: string;
   holder: string;
-  value: string;        // circuit preimage
-  salt: string;         // 31-byte random field element
-  commitment: string;   // Poseidon2([value, salt], 2)
-  sig: number[];        // secp256k1 signature over the raw commitment (prehash: false)
+  value: string; // circuit preimage
+  salt: string; // 31-byte random field element
+  commitment: string; // Poseidon2([value, salt], 2)
+  sig: number[]; // secp256k1 signature over the raw commitment (prehash: false)
   issuerPubX: number[]; // 32 bytes
   issuerPubY: number[]; // 32 bytes
   issuedAt: number;

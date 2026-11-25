@@ -16,12 +16,9 @@ export async function POST(req: NextRequest) {
   if (!secret) {
     logger.error(
       stripSensitiveFields({ event: "issuance_webhook_secret_missing" }),
-      "ISSUANCE_WEBHOOK_SECRET is not configured on server"
+      "ISSUANCE_WEBHOOK_SECRET is not configured on server",
     );
-    return NextResponse.json(
-      { error: "Webhook secret is not configured" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Webhook secret is not configured" }, { status: 500 });
   }
 
   const signatureHeader =
@@ -35,24 +32,18 @@ export async function POST(req: NextRequest) {
   if (!verifyWebhookSignature(rawBody, signatureHeader, secret)) {
     logger.warn(
       stripSensitiveFields({ event: "issuance_webhook_invalid_signature" }),
-      "Rejected issuance webhook: invalid or missing HMAC signature"
+      "Rejected issuance webhook: invalid or missing HMAC signature",
     );
-    return NextResponse.json(
-      { error: "Invalid or missing webhook signature" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Invalid or missing webhook signature" }, { status: 401 });
   }
 
   const normalized = parseAndNormalizeCallback(rawBody);
   if (!normalized) {
     logger.warn(
       stripSensitiveFields({ event: "issuance_webhook_malformed" }),
-      "Rejected issuance webhook: malformed payload"
+      "Rejected issuance webhook: malformed payload",
     );
-    return NextResponse.json(
-      { error: "Malformed webhook payload" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Malformed webhook payload" }, { status: 400 });
   }
 
   // Record callback for state reconciliation
@@ -66,7 +57,7 @@ export async function POST(req: NextRequest) {
       status: normalized.status,
       credentialType: normalized.credentialType,
     }),
-    `Successfully processed issuance webhook callback: ${normalized.eventId}`
+    `Successfully processed issuance webhook callback: ${normalized.eventId}`,
   );
 
   return NextResponse.json(
@@ -76,7 +67,7 @@ export async function POST(req: NextRequest) {
       status: normalized.status,
       timestamp: normalized.timestamp,
     },
-    { status: 200 }
+    { status: 200 },
   );
 }
 

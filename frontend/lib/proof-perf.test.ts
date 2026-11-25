@@ -96,9 +96,9 @@ describe("ProofRunTracker", () => {
   it("records an errored run with the failing stage attributed", async () => {
     const perf = createProofRun("income");
     await timed(perf, "witness", 100);
-    await expect(
-      perf.measure("prove", () => Promise.reject(new Error("boom"))),
-    ).rejects.toThrow("boom");
+    await expect(perf.measure("prove", () => Promise.reject(new Error("boom")))).rejects.toThrow(
+      "boom",
+    );
     perf.failAt("prove");
     const run = perf.finishProof({ status: "errored", errorStage: "prove" });
     expect(run.status).toBe("errored");

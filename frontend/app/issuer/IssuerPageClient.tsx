@@ -17,7 +17,11 @@ import type { CredentialTemplate } from "@/lib/credential-templates";
 import { CredentialPreview } from "@/components/CredentialPreview";
 import { normalizeAttributes } from "@/lib/attribute-normalizer";
 import { buildClaimLabel, type CredentialPreviewData } from "@/lib/credential-preview";
-import { verificationErrorFromApi } from "@/packages/sdk/src/errors";
+import {
+  classifyVerificationError,
+  verificationErrorFromApi,
+  type VerificationError,
+} from "@/packages/sdk/src/errors";
 
 const TYPES = Object.entries(TYPE_META) as [CredentialType, (typeof TYPE_META)[CredentialType]][];
 
@@ -40,7 +44,7 @@ const COUNTRIES = [
   { code: "364", name: "Iran (restricted)" },
 ];
 
-async function readApiError(res: Response): Promise<string> {
+async function readApiError(res: Response): Promise<VerificationError> {
   const text = await res.text();
   let body: unknown;
   try {
@@ -48,7 +52,7 @@ async function readApiError(res: Response): Promise<string> {
   } catch {
     body = undefined;
   }
-  return verificationErrorFromApi(res.status, body).message;
+  return verificationErrorFromApi(res.status, body);
 }
 
 export default function IssuerPageClient() {
@@ -86,7 +90,7 @@ export default function IssuerPageClient() {
       setIssuersError("");
       try {
         const res = await fetch("/api/issuers");
-        if (!res.ok) throw new Error(await readApiError(res));
+        if (!res.ok) throw await readApiError(res);
         const { issuers: loaded } = (await res.json()) as { issuers: RegisteredIssuer[] };
         if (cancelled) return;
         setIssuers(loaded);
@@ -98,7 +102,14 @@ export default function IssuerPageClient() {
           setSelectedIssuerId(preferred);
         }
       } catch (e) {
-        if (!cancelled) setIssuersError((e as Error).message);
+        if (!cancelled) {
+          setIssuersError(
+            classifyVerificationError(e, {
+              fallbackCategory: "network_error",
+              fallbackCode: "issuer_read_failed",
+            }).message,
+          );
+        }
       } finally {
         if (!cancelled) setIssuersLoading(false);
       }
@@ -173,14 +184,19 @@ export default function IssuerPageClient() {
           attributes,
         }),
       });
-      if (!res.ok) throw new Error(await readApiError(res));
+      if (!res.ok) throw await readApiError(res);
       const { credentials } = (await res.json()) as { credentials: Credential[] };
       const cred = credentials[0];
       await saveCredential(cred);
       setIssued(JSON.stringify(cred, null, 2));
       setPreview(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError(
+        classifyVerificationError(e, {
+          fallbackCategory: "network_error",
+          fallbackCode: "issuance_failed",
+        }).message,
+      );
       setPreview(null);
     } finally {
       setBusy(false);

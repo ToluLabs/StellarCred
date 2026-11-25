@@ -112,13 +112,9 @@ function ProtocolCard({
                   fontWeight: 600,
                   textTransform: "uppercase",
                   letterSpacing: "0.04em",
-                  background: isClaimMet
-                    ? "rgba(62,207,142,0.15)"
-                    : "rgba(255,255,255,0.05)",
+                  background: isClaimMet ? "rgba(62,207,142,0.15)" : "rgba(255,255,255,0.05)",
                   color: isClaimMet ? "var(--accent)" : "var(--faint)",
-                  border: `1px solid ${
-                    isClaimMet ? "rgba(62,207,142,0.35)" : "var(--border)"
-                  }`,
+                  border: `1px solid ${isClaimMet ? "rgba(62,207,142,0.35)" : "var(--border)"}`,
                   opacity: checking ? 0.55 : 1,
                 }}
               >
@@ -131,7 +127,10 @@ function ProtocolCard({
       <p className="mono faint" style={{ fontSize: "0.72rem", marginBottom: "0.75rem" }}>
         {protocol.tagline}
       </p>
-      <p className="muted" style={{ fontSize: "0.8125rem", lineHeight: 1.65, marginBottom: "1.25rem" }}>
+      <p
+        className="muted"
+        style={{ fontSize: "0.8125rem", lineHeight: 1.65, marginBottom: "1.25rem" }}
+      >
         {protocol.description}
       </p>
       <div
@@ -172,10 +171,7 @@ function ProtocolCard({
               <span
                 style={{
                   fontSize: "0.875rem",
-                  color:
-                    !checking && !unresolved && statuses[i]
-                      ? "var(--text)"
-                      : "var(--muted)",
+                  color: !checking && !unresolved && statuses[i] ? "var(--text)" : "var(--muted)",
                 }}
               >
                 {r.label}
@@ -227,9 +223,7 @@ function ProtocolCard({
                 <span className="row" style={{ gap: "0.4rem" }}>
                   <Badge variant="pending">Cannot verify</Badge>
                   <span className="faint" style={{ fontSize: "0.72rem" }}>
-                    {state === "unknown"
-                      ? "Network unreachable — not a rejection"
-                      : "RPC error"}
+                    {state === "unknown" ? "Network unreachable — not a rejection" : "RPC error"}
                   </span>
                 </span>
                 {issue && (
@@ -281,33 +275,46 @@ function AppsInner() {
   useEffect(() => {
     fetch("/api/apps")
       .then((r) => r.json())
-      .then((data: { apps?: Array<{ id: number; app_name: string; description: string; required_claims: string; verify_url: string }> }) => {
-        if (!data.apps || data.apps.length === 0) return;
-        const converted: Protocol[] = data.apps.map((app) => {
-          const claims: string[] = JSON.parse(app.required_claims || "[]");
-          return {
-            id: `community-${app.id}`,
-            name: app.app_name,
-            tagline: "Community integration",
-            description: app.description,
-            stat: { label: "Credential types", value: String(claims.length), sub: claims.join(", ") },
-            requirements: claims.map((c: string) => ({ label: CLAIM_LABELS[c] || c, type: c })),
-            verifyUrl: `/verify?return_url=/apps/community-${app.id}&claim=${claims[0] || "kyc"}`,
-            actionLabel: "Get started",
-            inputLabel: "Action",
-            inputDefault: "",
-            icon: <IconCircle size={18} stroke={1.6} />,
-          };
-        });
-        setCommunityApps(converted);
-      })
-      .catch(() => { /* ignore */ });
+      .then(
+        (data: {
+          apps?: Array<{
+            id: number;
+            app_name: string;
+            description: string;
+            required_claims: string;
+            verify_url: string;
+          }>;
+        }) => {
+          if (!data.apps || data.apps.length === 0) return;
+          const converted: Protocol[] = data.apps.map((app) => {
+            const claims: string[] = JSON.parse(app.required_claims || "[]");
+            return {
+              id: `community-${app.id}`,
+              name: app.app_name,
+              tagline: "Community integration",
+              description: app.description,
+              stat: {
+                label: "Credential types",
+                value: String(claims.length),
+                sub: claims.join(", "),
+              },
+              requirements: claims.map((c: string) => ({ label: CLAIM_LABELS[c] || c, type: c })),
+              verifyUrl: `/verify?return_url=/apps/community-${app.id}&claim=${claims[0] || "kyc"}`,
+              actionLabel: "Get started",
+              inputLabel: "Action",
+              inputDefault: "",
+              icon: <IconCircle size={18} stroke={1.6} />,
+            };
+          });
+          setCommunityApps(converted);
+        },
+      )
+      .catch(() => {
+        /* ignore */
+      });
   }, []);
 
-  const allProtocols = useMemo(
-    () => [...communityApps, ...PROTOCOLS],
-    [communityApps]
-  );
+  const allProtocols = useMemo(() => [...communityApps, ...PROTOCOLS], [communityApps]);
 
   const toggleClaim = (claim: string) => {
     setSelectedClaims((prev) => {
@@ -326,8 +333,7 @@ function AppsInner() {
         p.description.toLowerCase().includes(search.toLowerCase()) ||
         p.tagline.toLowerCase().includes(search.toLowerCase());
       const matchesClaims =
-        selectedClaims.size === 0 ||
-        p.requirements.some((r) => selectedClaims.has(r.type));
+        selectedClaims.size === 0 || p.requirements.some((r) => selectedClaims.has(r.type));
       return matchesSearch && matchesClaims;
     });
   }, [search, selectedClaims, allProtocols]);
@@ -364,8 +370,8 @@ function AppsInner() {
           lineHeight: 1.6,
         }}
       >
-        <strong style={{ color: "var(--text)" }}>Any protocol, any claim.</strong>{" "}
-        Each app below gates access on a different credential type — one read-only call to{" "}
+        <strong style={{ color: "var(--text)" }}>Any protocol, any claim.</strong> Each app below
+        gates access on a different credential type — one read-only call to{" "}
         <span className="mono" style={{ fontSize: "0.75rem" }}>
           ProofRegistry.is_verified
         </span>

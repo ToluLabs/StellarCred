@@ -22,15 +22,8 @@ import {
   __resetExportStoreForTesting,
 } from "./export-store";
 import { verifyCursor } from "./export-cursor";
-import {
-  MemoryStore,
-  setSharedStoreForTesting,
-  type KeyValueStore,
-} from "./shared-store";
-import {
-  checkExportThrottle,
-  __resetExportThrottleForTesting,
-} from "./export-throttle";
+import { MemoryStore, setSharedStoreForTesting, type KeyValueStore } from "./shared-store";
+import { checkExportThrottle, __resetExportThrottleForTesting } from "./export-throttle";
 import {
   acquireConcurrencySlot,
   getActiveConcurrency,
@@ -111,10 +104,7 @@ class FlakyStore implements KeyValueStore {
     return this.inner.del(key);
   }
 
-  async incr(
-    key: string,
-    ttlSeconds?: number,
-  ): Promise<{ count: number; ttlRemainingMs: number }> {
+  async incr(key: string, ttlSeconds?: number): Promise<{ count: number; ttlRemainingMs: number }> {
     return this.inner.incr(key, ttlSeconds);
   }
 
@@ -209,9 +199,7 @@ describe("export-chunks — serveExportChunk", () => {
     }
     expect(calls).toBe(3);
     expect(collected).toHaveLength(250);
-    expect(collected.map((r) => r.field)).toEqual(
-      makeRows(250).map((r) => r.field),
-    );
+    expect(collected.map((r) => r.field)).toEqual(makeRows(250).map((r) => r.field));
   });
 
   it("partial download: no-cursor returns chunk 0 + nextCursor (done false when >1 chunk)", async () => {
@@ -273,7 +261,9 @@ describe("export-chunks — serveExportChunk", () => {
     expect(calls).toBe(2); // chunks 1 and 2
     expect(collected).toHaveLength(150);
     expect(collected.map((r) => r.field)).toEqual(
-      makeRows(250).slice(100).map((r) => r.field),
+      makeRows(250)
+        .slice(100)
+        .map((r) => r.field),
     );
   });
 
@@ -331,7 +321,7 @@ describe("export-chunks — serveExportChunk", () => {
   it("rejects an out-of-range cursor with 400", async () => {
     const { record, job } = await setupMultiChunkJob(10, 100); // 1 chunk
     // Craft a cursor for index 5 (out of range) signed with the real secret.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { createCursor } = await import("./export-cursor");
     const bad = createCursor(job.jobId, 5);
     const res = await serveExportChunk({
@@ -345,7 +335,7 @@ describe("export-chunks — serveExportChunk", () => {
 
   it("returns 404 for a cursor whose job is gone (valid sig but unknown job)", async () => {
     const { record, job } = await setupMultiChunkJob(10, 100);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { createCursor } = await import("./export-cursor");
     const cursor = createCursor(job.jobId, 0);
     // Wipe the job from the shared store + caches.
@@ -418,7 +408,7 @@ describe("export-chunks — serveExportChunk", () => {
       limit: null,
     });
     const firstCursor = (first.body as { nextCursor: string }).nextCursor;
-    let entries = auditLogEntries();
+    const entries = auditLogEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].adminAction).toBe("export:chunk");
     expect(entries[0].issuer).toBe("admin");

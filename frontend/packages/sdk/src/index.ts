@@ -1,147 +1,20 @@
 // @stellarcred/sdk — see README.md for setup, security guarantees, and configuration.
 export * from "./claims";
-export * from "./issuers"; // IssuerRegistry reads
+export * from "./issuers";
 export * from "./capabilities";
 export * from "./challenge";
+export * from "./presentation-token";
 export * from "./subscriptions";
-export * from "./errors"; // Typed error taxonomy (#404)
-export * from "./telemetry"; // Opt-in, zero-PII telemetry (#1064)
-export * from "./validateCredential"; // Credential JSON validation (#27)
+export * from "./errors";
+export * from "./telemetry";
+export * from "./validateCredential";
 export * from "./buildVerifyUrl";
-export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
+export * from "./offline";
+export { submitTransaction } from "./submit";
 export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
-import {
-  configure,
-  healthCheck,
-  isConfigured,
-  hasClaim,
-  getClaim,
-  getClaimRecord,
-  checkClaimStatus,
-  getClaimOutcome,
-  checkClaimOutcome,
-  hasClaims,
-  getClaims,
-  verifyPreset,
-  buildVerifyUrl,
-  buildBadgeUrl,
-  buildBadgeEmbedCode,
-  parseReturnParams,
-  watchClaim,
-  withRetry,
-  normalizeRpcError,
-  classifyTransientFailure,
-  CLAIM_TYPES,
-  deriveNullifier,
-  isNullifierUsed,
-  verifyUniquePersonhood,
-  invalidateClaimCache,
-  clearClaimCache,
-  TimeoutError,
-  ConfigError,
-  InvalidAddressError,
-} from "./claims";
-import {
-  RpcError,
-  IndexerError,
-  ContractError,
-  ContractErrorCode,
-  parseContractError,
-  TransactionSubmissionError,
-  VerificationError,
-  classifyVerificationError,
-  verificationErrorFromApi,
-  safeVerificationMessage,
-} from "./errors";
-import { submitTransaction } from "./submit";
-import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
-import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
-import { subscribeClaims } from "./subscriptions";
-// Version helpers — Issue #841
 export * from "./version";
-import {
-  getCredentialCircuitVersion,
-  isCompatibleCredential,
-  getCredentialVersionStatus,
-  getDeploymentCircuitVersion,
-  KNOWN_CIRCUIT_VERSIONS,
-} from "./version";
-import {
-  validateCredential,
-  parseCredentialJson,
-  assertValidCredential,
-  CredentialValidationError,
-} from "./validateCredential";
-import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
-import { telemetry } from "./telemetry";
-export const StellarCred = {
-  configure,
-  bootstrap,
-  fetchCapabilities,
-  validateCapabilitiesDescriptor,
-  healthCheck,
-  isConfigured,
-  hasClaim,
-  getClaim,
-  getClaimRecord,
-  checkClaimStatus,
-  getClaimOutcome,
-  checkClaimOutcome,
-  hasClaims,
-  getClaims,
-  verifyPreset,
-  buildVerifyUrl,
-  buildBadgeUrl,
-  buildBadgeEmbedCode,
-  parseReturnParams,
-  watchClaim,
-  /** Drop cached claim reads for a wallet (see `configure({ claimCache })`). */
-  invalidate: invalidateClaimCache,
-  invalidateClaimCache,
-  clearClaimCache,
-  withRetry,
-  normalizeRpcError,
-  classifyTransientFailure,
-  submitTransaction,
-  validateCredential,
-  parseCredentialJson,
-  assertValidCredential,
-  subscribeClaims,
-  listIssuers,
-  listIssuerIds,
-  getIssuer,
-  isValidIssuer,
-  createWalletChallenge,
-  verifyWalletSignature,
-  verifyWalletClaim,
-  CLAIM_TYPES,
-  deriveNullifier,
-  isNullifierUsed,
-  verifyUniquePersonhood,
-  TimeoutError,
-  ConfigError,
-  InvalidAddressError,
-  RpcError,
-  // Version helpers (#841)
-  getCredentialCircuitVersion,
-  isCompatibleCredential,
-  getCredentialVersionStatus,
-  getDeploymentCircuitVersion,
-  KNOWN_CIRCUIT_VERSIONS,
-  IndexerError,
-  ContractError,
-  ContractErrorCode,
-  TransactionSubmissionError,
-  VerificationError,
-  classifyVerificationError,
-  verificationErrorFromApi,
-  safeVerificationMessage,
-  CredentialValidationError,
-  parseContractError,
-  telemetry, // Opt-in, zero-PII telemetry (#1064)
-};
-export default StellarCred;
+export { StellarCred, default } from "./namespace";

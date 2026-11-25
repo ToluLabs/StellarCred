@@ -293,7 +293,8 @@ export function ProofFlowView({
                 }}
                 disabled
               >
-                <IconLoader2 size={15} className="spin" /> Running preflight simulation…
+                <IconLoader2 size={15} className="spin" aria-hidden="true" /> Running preflight
+                simulation…
               </button>
             ) : stage === "readyToSign" ? (
               <button

@@ -320,6 +320,20 @@ describe("safe verification error taxonomy", () => {
     ).toMatchObject({ category: "network_error", code: 503, retryable: true });
   });
 
+  it("classifies raw transport failures without exposing their messages", () => {
+    const timeout = classifyVerificationError(
+      new Error("RPC timeout or network connection reset; credential=private"),
+    );
+    expect(timeout).toMatchObject({
+      category: "network_error",
+      code: "rpc_timeout",
+      retryable: true,
+    });
+    expect(timeout.message).toBe("The Stellar network did not respond in time. Try again.");
+    expect(timeout.message).not.toContain("private");
+    expect(timeout.message).not.toContain("connection reset");
+  });
+
   it("preserves retryability for structured numeric contract codes", () => {
     expect(verificationErrorFromApi(502, { code: 11 })).toMatchObject({
       category: "policy_rejection",

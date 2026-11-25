@@ -51,9 +51,8 @@ describe("export-cursor", () => {
   it("rejects a tampered signature", () => {
     const token = createCursor("job-1", 3);
     const [payload, sig] = token.split(".");
-    const tamperedSig = sig.length > 0
-      ? (sig.charAt(0) === "a" ? "b" : "a") + sig.slice(1)
-      : "0" + sig;
+    const tamperedSig =
+      sig.length > 0 ? (sig.charAt(0) === "a" ? "b" : "a") + sig.slice(1) : "0" + sig;
     expect(verifyCursor(`${payload}.${tamperedSig}`).ok).toBe(false);
   });
 
@@ -110,9 +109,7 @@ describe("export-cursor", () => {
       const sig = (() => {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { createHmac } = require("crypto");
-        return createHmac("sha256", process.env.ADMIN_API_KEY!)
-          .update(payloadJson)
-          .digest("hex");
+        return createHmac("sha256", process.env.ADMIN_API_KEY!).update(payloadJson).digest("hex");
       })();
       expect(verifyCursor(`${payload}.${sig}`).ok).toBe(false);
     }

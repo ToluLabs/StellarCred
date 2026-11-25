@@ -1,7 +1,14 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { IconWallet, IconChevronDown, IconAlertTriangle, IconInfoCircle, IconRefresh, IconNetwork } from "@tabler/icons-react";
+import {
+  IconWallet,
+  IconChevronDown,
+  IconAlertTriangle,
+  IconInfoCircle,
+  IconRefresh,
+  IconNetwork,
+} from "@tabler/icons-react";
 import { useWallet } from "@/lib/wallet-context";
 import { getWalletErrorInfo, getWalletReportUrl } from "@/lib/wallet";
 import { NETWORK } from "@/lib/stellar";
@@ -9,7 +16,17 @@ import { truncateAddress } from "@/lib/format";
 import CopyButton from "@/components/CopyButton";
 
 export function WalletButton() {
-  const { address, restoring, connecting, error, connect, disconnect } = useWallet();
+  const {
+    address,
+    restoring,
+    connecting,
+    error,
+    networkMismatch,
+    ledgerDisconnected,
+    connect,
+    disconnect,
+  } = useWallet();
+  const t = useTranslations();
 
   // A saved connection is still being restored. Render a placeholder with the
   // same footprint as the button instead of "Connect wallet", which would
@@ -26,13 +43,11 @@ export function WalletButton() {
       </div>
     );
   }
-  const { address, connecting, error, networkMismatch, connect, disconnect } = useWallet();
-  const { address, connecting, error, networkMismatch, ledgerDisconnected, connect, disconnect } =
-    useWallet();
-  const t = useTranslations();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem" }}>
+    <div
+      style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem" }}
+    >
       {address ? (
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <button
@@ -73,9 +88,17 @@ export function WalletButton() {
             aria-hidden="true"
           />
           <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <span className="mono" style={{ color: "var(--warn)", fontSize: "0.7rem", textAlign: "right", lineHeight: 1.4 }}>
-              Ledger disconnected — reconnect it and open the Stellar app to keep signing. Nothing was
-              submitted.
+            <span
+              className="mono"
+              style={{
+                color: "var(--warn)",
+                fontSize: "0.7rem",
+                textAlign: "right",
+                lineHeight: 1.4,
+              }}
+            >
+              Ledger disconnected — reconnect it and open the Stellar app to keep signing. Nothing
+              was submitted.
             </span>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
@@ -93,75 +116,106 @@ export function WalletButton() {
 
       {address && networkMismatch && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: "0.4rem", maxWidth: 300 }}>
-          <IconNetwork size={13} style={{ color: "var(--warn)", flexShrink: 0, marginTop: "0.15rem" }} aria-hidden="true" />
+          <IconNetwork
+            size={13}
+            style={{ color: "var(--warn)", flexShrink: 0, marginTop: "0.15rem" }}
+            aria-hidden="true"
+          />
           <span
             className="mono"
-            style={{ color: "var(--warn)", fontSize: "0.7rem", textAlign: "right", lineHeight: 1.4 }}
+            style={{
+              color: "var(--warn)",
+              fontSize: "0.7rem",
+              textAlign: "right",
+              lineHeight: 1.4,
+            }}
           >
             Network mismatch — switch your wallet to {NETWORK} to continue
           </span>
         </div>
       )}
 
-      {error && (() => {
-        const info = getWalletErrorInfo(error);
-        const Icon = info.benign ? IconInfoCircle : IconAlertTriangle;
-        const color = info.benign ? "var(--muted)" : "var(--danger)";
-        return (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.4rem", maxWidth: 300 }}>
-            <Icon size={13} style={{ color, flexShrink: 0, marginTop: "0.15rem" }} />
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-              <span
-                className="mono"
-                style={{ color, fontSize: "0.7rem", fontWeight: 600, textAlign: "right", lineHeight: 1.4 }}
-              >
-                {info.title}
-              </span>
-              <span
-                className="mono"
-                style={{ color, fontSize: "0.7rem", textAlign: "right", lineHeight: 1.4, opacity: info.benign ? 0.85 : 0.9 }}
-              >
-                {info.message}
-              </span>
-              <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end", marginTop: "0.1rem" }}>
-                {info.action === "install" && error.installUrl ? (
-                  <a
-                    href={error.installUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-ghost btn-sm"
-                    style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem" }}
-                  >
-                    {t("wallet.install", { walletName: error.walletName ?? "wallet" })}
-                  </a>
-                ) : (
-                  <>
-                    {info.action === "retry-report" && (
-                      <a
-                        href={getWalletReportUrl()}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn btn-ghost btn-sm"
-                        style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem" }}
-                      >
-                        {t("wallet.report")}
-                      </a>
-                    )}
-                    <button
-                      onClick={connect}
+      {error &&
+        (() => {
+          const info = getWalletErrorInfo(error);
+          const Icon = info.benign ? IconInfoCircle : IconAlertTriangle;
+          const color = info.benign ? "var(--muted)" : "var(--danger)";
+          return (
+            <div
+              style={{ display: "flex", alignItems: "flex-start", gap: "0.4rem", maxWidth: 300 }}
+            >
+              <Icon size={13} style={{ color, flexShrink: 0, marginTop: "0.15rem" }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                <span
+                  className="mono"
+                  style={{
+                    color,
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    textAlign: "right",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {info.title}
+                </span>
+                <span
+                  className="mono"
+                  style={{
+                    color,
+                    fontSize: "0.7rem",
+                    textAlign: "right",
+                    lineHeight: 1.4,
+                    opacity: info.benign ? 0.85 : 0.9,
+                  }}
+                >
+                  {info.message}
+                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.35rem",
+                    justifyContent: "flex-end",
+                    marginTop: "0.1rem",
+                  }}
+                >
+                  {info.action === "install" && error.installUrl ? (
+                    <a
+                      href={error.installUrl}
+                      target="_blank"
+                      rel="noreferrer"
                       className="btn btn-ghost btn-sm"
-                      style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem", flexShrink: 0 }}
+                      style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem" }}
                     >
-                      <IconRefresh size={12} />
-                      {t("wallet.retry")}
-                    </button>
-                  </>
-                )}
+                      {t("wallet.install", { walletName: error.walletName ?? "wallet" })}
+                    </a>
+                  ) : (
+                    <>
+                      {info.action === "retry-report" && (
+                        <a
+                          href={getWalletReportUrl()}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem" }}
+                        >
+                          {t("wallet.report")}
+                        </a>
+                      )}
+                      <button
+                        onClick={connect}
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: "0.7rem", padding: "0.2rem 0.5rem", flexShrink: 0 }}
+                      >
+                        <IconRefresh size={12} />
+                        {t("wallet.retry")}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }

@@ -877,6 +877,28 @@ export function classifyVerificationError(
         cause: raw,
       });
     }
+
+    const lowerMessage = message.toLowerCase();
+    if (/\b(?:timeout|timed out|time out)\b/.test(lowerMessage)) {
+      return new VerificationError({
+        category: "network_error",
+        code: explicitCode ?? "rpc_timeout",
+        retryable: true,
+        cause: raw,
+      });
+    }
+    if (
+      /\b(?:fetch failed|failed to fetch|network error|network request failed|network connection (?:reset|dropped|closed)|econn(?:refused|reset|aborted)|enotfound|etimedout|socket hang up)\b/.test(
+        lowerMessage,
+      )
+    ) {
+      return new VerificationError({
+        category: "network_error",
+        code: explicitCode ?? "network_error",
+        retryable: true,
+        cause: raw,
+      });
+    }
   }
 
   if (status === 408 || status === 429 || (status !== undefined && status >= 500)) {

@@ -217,12 +217,8 @@ async function startFlow(opts: FlowOptions): Promise<Flow> {
   const { POST } = await import("../route");
   const { logger } = await import("@/lib/logger");
   const { idempotencyGet } = await import("@/lib/idempotency");
-  const { getPendingInquiry, getInquiryResult } = await import(
-    "@/lib/persona-webhook"
-  );
-  const { savePersonaPending, PERSONA_PENDING_KEY } = await import(
-    "@/lib/persona-pending"
-  );
+  const { getPendingInquiry, getInquiryResult } = await import("@/lib/persona-webhook");
+  const { savePersonaPending, PERSONA_PENDING_KEY } = await import("@/lib/persona-pending");
   const { IssuerClient } = await import("@stellarcred/issuer");
 
   // Every id the flow was asked to cache under, so the sink reader can dump
@@ -232,14 +228,7 @@ async function startFlow(opts: FlowOptions): Promise<Flow> {
   // Capture every level, not just the ones this route happens to use today:
   // the point of the gate is to fail when a *new* logging path appears.
   const logged: string[] = [];
-  for (const level of [
-    "trace",
-    "debug",
-    "info",
-    "warn",
-    "error",
-    "fatal",
-  ] as const) {
+  for (const level of ["trace", "debug", "info", "warn", "error", "fatal"] as const) {
     vi.spyOn(logger, level).mockImplementation((...args: unknown[]) => {
       logged.push(args.map(safeStringify).join(" "));
     });
@@ -294,15 +283,12 @@ async function startFlow(opts: FlowOptions): Promise<Flow> {
         "log stream": logged.join("\n"),
         "audit log file": safeReadFile(opts.auditLogPath),
         "error report sink": errorReportBodies.join("\n"),
-        "idempotency cache": JSON.stringify(
-          cacheKeys.map((key) => [key, idempotencyGet(key)]),
-        ),
+        "idempotency cache": JSON.stringify(cacheKeys.map((key) => [key, idempotencyGet(key)])),
         "persona pending context (server)": JSON.stringify({
           pending: getPendingInquiry(INQUIRY_ID),
           result: getInquiryResult(INQUIRY_ID),
         }),
-        [`persona pending context (client, ${PERSONA_PENDING_KEY})`]:
-          sessionStorageDump(),
+        [`persona pending context (client, ${PERSONA_PENDING_KEY})`]: sessionStorageDump(),
       };
     },
   };
@@ -335,10 +321,7 @@ async function flushAsync(): Promise<void> {
 let auditCounter = 0;
 function tempAuditPath(): string {
   auditCounter += 1;
-  return path.join(
-    os.tmpdir(),
-    `stellarcred-identity-leak-${Date.now()}-${auditCounter}.jsonl`,
-  );
+  return path.join(os.tmpdir(), `stellarcred-identity-leak-${Date.now()}-${auditCounter}.jsonl`);
 }
 
 /**
@@ -349,16 +332,10 @@ function tempAuditPath(): string {
 function expectNoIdentityLeak(sinks: Record<string, string>): void {
   for (const [name, text] of Object.entries(sinks)) {
     for (const value of SENTINEL_VALUES) {
-      expect(
-        text,
-        `${name} must not contain the sentinel value "${value}"`,
-      ).not.toContain(value);
+      expect(text, `${name} must not contain the sentinel value "${value}"`).not.toContain(value);
     }
     for (const field of IDENTITY_FIELD_NAMES) {
-      expect(
-        text,
-        `${name} must not mention the identity field "${field}"`,
-      ).not.toContain(field);
+      expect(text, `${name} must not mention the identity field "${field}"`).not.toContain(field);
     }
   }
 }

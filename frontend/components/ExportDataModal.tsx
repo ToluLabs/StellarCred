@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   IconX,
   IconDownload,
@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import type { ExportJob, ExportScope, ExportFormat, ScopeDefinition } from "@/lib/export-jobs";
 import { EXPORT_SCOPES } from "@/lib/export-jobs";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
 interface ExportDataModalProps {
   isOpen: boolean;
@@ -46,7 +47,11 @@ export interface ExportBundle {
 
 export type BundleValidationResult =
   | { ok: true }
-  | { ok: false; reason: "malformed" | "checksum_mismatch" | "unsupported_version" | "scope_mismatch"; message: string };
+  | {
+      ok: false;
+      reason: "malformed" | "checksum_mismatch" | "unsupported_version" | "scope_mismatch";
+      message: string;
+    };
 
 /** Deterministic JSON serialization (sorted object keys) for stable hashing. */
 function canonicalize(value: unknown): string {
@@ -115,7 +120,8 @@ export async function validateImportBundle(
     return {
       ok: false,
       reason: "unsupported_version",
-      message: "This export was created by an unsupported version of the app. Re-export it from a current build.",
+      message:
+        "This export was created by an unsupported version of the app. Re-export it from a current build.",
     };
   }
   if (expectedScope && integrity.scope !== expectedScope) {
@@ -130,7 +136,8 @@ export async function validateImportBundle(
     return {
       ok: false,
       reason: "checksum_mismatch",
-      message: "The export file appears to be corrupted or has been modified. Import was cancelled. Download a fresh export and try again.",
+      message:
+        "The export file appears to be corrupted or has been modified. Import was cancelled. Download a fresh export and try again.",
     };
   }
   return { ok: true };
@@ -152,6 +159,8 @@ export function ExportDataModal({
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [timeRemainingMap, setTimeRemainingMap] = useState<Record<string, number>>({});
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { onEscape: onClose, active: isOpen });
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -260,9 +269,6 @@ export function ExportDataModal({
     <div
       className="modal-backdrop"
       onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="export-modal-title"
       style={{
         position: "fixed",
         inset: 0,
@@ -276,6 +282,11 @@ export function ExportDataModal({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-modal-title"
+        tabIndex={-1}
         className="card"
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -465,8 +476,8 @@ export function ExportDataModal({
                         backgroundColor: isSelected
                           ? "rgba(62, 207, 142, 0.06)"
                           : isPermitted
-                          ? "var(--card-subtle, rgba(255,255,255,0.02))"
-                          : "rgba(0,0,0,0.2)",
+                            ? "var(--card-subtle, rgba(255,255,255,0.02))"
+                            : "rgba(0,0,0,0.2)",
                         opacity: isPermitted ? 1 : 0.5,
                         cursor: isPermitted ? "pointer" : "not-allowed",
                         transition: "border-color 0.15s, background-color 0.15s",
@@ -481,13 +492,471 @@ export function ExportDataModal({
                         checked={isSelected}
                         disabled={!isPermitted}
                         onChange={() => isPermitted && setSelectedScope(scopeDef.id)}
+                        style={{ marginTop: "0.2rem" }}
                       />
+                      <div style={{ flex: 1 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            marginBottom: "0.2rem",
+                          }}
+                        >
+                          <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>
+                            {scopeDef.label}
+                          </span>
+                          {scopeDef.requiresAdmin && (
+                            <span
+                              style={{
+                                fontSize: "0.675rem",
+                                padding: "0.1rem 0.4rem",
+                                borderRadius: "4px",
+                                backgroundColor: "rgba(234, 179, 8, 0.15)",
+                                color: "var(--warn, #eab308)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.2rem",
+                              }}
+                            >
+                              <IconLock size={10} />
+                              Admin Only
+                            </span>
+                          )}
+                          {!isPermitted && (
+                            <span
+                              style={{
+                                fontSize: "0.675rem",
+                                color: "var(--danger, #ef4444)",
+                              }}
+                            >
+                              (Unauthorized)
+                            </span>
+                          )}
+                        </div>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: "0.75rem",
+                            color: "var(--faint, #888)",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {scopeDef.description}
+                        </p>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             </div>
+
+            {/* Format Selection */}
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.825rem",
+                  fontWeight: 600,
+                  marginBottom: "0.5rem",
+                  color: "var(--text)",
+                }}
+              >
+                Select Format
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div
+                  onClick={() => setSelectedFormat("json")}
+                  id="format-option-json"
+                  style={{
+                    padding: "0.85rem",
+                    borderRadius: "8px",
+                    border: `1px solid ${
+                      selectedFormat === "json" ? "var(--accent, #3ecf8e)" : "var(--border)"
+                    }`,
+                    backgroundColor:
+                      selectedFormat === "json"
+                        ? "rgba(62, 207, 142, 0.06)"
+                        : "var(--card-subtle, rgba(255,255,255,0.02))",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.6rem",
+                  }}
+                >
+                  <IconFileText size={20} style={{ color: "var(--accent, #3ecf8e)" }} />
+                  <div>
+                    <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>JSON</div>
+                    <div style={{ fontSize: "0.725rem", color: "var(--faint, #888)" }}>
+                      Schema v1 (machine-readable)
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setSelectedFormat("csv")}
+                  id="format-option-csv"
+                  style={{
+                    padding: "0.85rem",
+                    borderRadius: "8px",
+                    border: `1px solid ${
+                      selectedFormat === "csv" ? "var(--accent, #3ecf8e)" : "var(--border)"
+                    }`,
+                    backgroundColor:
+                      selectedFormat === "csv"
+                        ? "rgba(62, 207, 142, 0.06)"
+                        : "var(--card-subtle, rgba(255,255,255,0.02))",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.6rem",
+                  }}
+                >
+                  <IconFileSpreadsheet size={20} style={{ color: "var(--accent, #3ecf8e)" }} />
+                  <div>
+                    <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>CSV</div>
+                    <div style={{ fontSize: "0.725rem", color: "var(--faint, #888)" }}>
+                      Spreadsheet compatible
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Security Notice */}
+            <div
+              style={{
+                padding: "0.75rem 0.9rem",
+                borderRadius: "8px",
+                backgroundColor: "rgba(255,255,255,0.03)",
+                border: "1px solid var(--border)",
+                fontSize: "0.75rem",
+                color: "var(--faint, #888)",
+                display: "flex",
+                gap: "0.5rem",
+                lineHeight: 1.5,
+              }}
+            >
+              <IconShield size={16} style={{ color: "var(--accent, #3ecf8e)", flexShrink: 0 }} />
+              <span>
+                Download links are cryptographically signed and expire after 5 minutes. Exports
+                contain sensitive cryptographic commitments; store backups securely.
+              </span>
+            </div>
+
+            {/* Submit Action */}
+            <div
+              className="row"
+              style={{ justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onClose}
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={submitting}
+                id="btn-submit-export"
+                style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}
+              >
+                {submitting ? (
+                  <>
+                    <IconLoader2 size={16} className="spin" aria-hidden="true" />
+                    Requesting...
+                  </>
+                ) : (
+                  <>
+                    <IconFileExport size={16} />
+                    Request Export
+                  </>
+                )}
+              </button>
+            </div>
           </form>
+        )}
+
+        {/* Tab 2: Export History & Monitoring */}
+        {activeTab === "monitor" && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              overflowY: "auto",
+              flex: 1,
+            }}
+          >
+            <div className="between" style={{ alignItems: "center" }}>
+              <span style={{ fontSize: "0.825rem", color: "var(--faint, #888)" }}>
+                Export jobs are processed asynchronously and available for download upon completion.
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => fetchJobs()}
+                disabled={loadingJobs}
+                title="Refresh jobs"
+                style={{ padding: "0.3rem 0.5rem", fontSize: "0.75rem" }}
+              >
+                <IconRefresh size={14} className={loadingJobs ? "spin" : ""} />
+                Refresh
+              </button>
+            </div>
+
+            {loadingJobs && jobs.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "2.5rem 0", color: "var(--faint)" }}>
+                <IconLoader2
+                  size={24}
+                  className="spin"
+                  style={{ margin: "0 auto 0.5rem" }}
+                  aria-hidden="true"
+                />
+                <p style={{ fontSize: "0.85rem", margin: 0 }}>Loading export status...</p>
+              </div>
+            ) : jobs.length === 0 ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "3rem 1.5rem",
+                  border: "1px dashed var(--border)",
+                  borderRadius: "8px",
+                  color: "var(--faint)",
+                }}
+              >
+                <IconFileExport size={28} style={{ opacity: 0.5, marginBottom: "0.5rem" }} />
+                <h4 style={{ fontSize: "0.95rem", margin: "0 0 0.3rem", color: "var(--text)" }}>
+                  No exports requested yet
+                </h4>
+                <p style={{ fontSize: "0.8rem", margin: "0 0 1rem" }}>
+                  Select your required scope and format from the Request tab to generate an archive.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setActiveTab("request")}
+                >
+                  Create First Export
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {jobs.map((job) => {
+                  const remainingSec = timeRemainingMap[job.id] ?? 0;
+                  const isExpired = job.expiresAt ? remainingSec <= 0 : false;
+
+                  return (
+                    <div
+                      key={job.id}
+                      id={`export-job-${job.id}`}
+                      style={{
+                        padding: "0.9rem 1rem",
+                        borderRadius: "8px",
+                        backgroundColor: "rgba(255,255,255,0.02)",
+                        border: "1px solid var(--border)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.6rem",
+                      }}
+                    >
+                      <div className="between" style={{ alignItems: "center" }}>
+                        <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                          <span
+                            style={{
+                              fontSize: "0.85rem",
+                              fontWeight: 600,
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {job.scope.replace("_", " ")}
+                          </span>
+                          <span
+                            className="mono"
+                            style={{
+                              fontSize: "0.7rem",
+                              padding: "0.1rem 0.35rem",
+                              borderRadius: "4px",
+                              backgroundColor: "rgba(255,255,255,0.08)",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {job.format}
+                          </span>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div>
+                          {job.status === "pending" && (
+                            <span
+                              style={{
+                                fontSize: "0.75rem",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "99px",
+                                backgroundColor: "rgba(234, 179, 8, 0.15)",
+                                color: "var(--warn, #eab308)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              <IconClock size={12} />
+                              Pending
+                            </span>
+                          )}
+                          {job.status === "processing" && (
+                            <span
+                              style={{
+                                fontSize: "0.75rem",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "99px",
+                                backgroundColor: "rgba(59, 130, 246, 0.15)",
+                                color: "#3b82f6",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              <IconLoader2 size={12} className="spin" aria-hidden="true" />
+                              Processing {job.progress}%
+                            </span>
+                          )}
+                          {job.status === "ready" && !isExpired && (
+                            <span
+                              style={{
+                                fontSize: "0.75rem",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "99px",
+                                backgroundColor: "rgba(62, 207, 142, 0.15)",
+                                color: "var(--accent, #3ecf8e)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              <IconCheck size={12} />
+                              Ready
+                            </span>
+                          )}
+                          {job.status === "ready" && isExpired && (
+                            <span
+                              style={{
+                                fontSize: "0.75rem",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "99px",
+                                backgroundColor: "rgba(255, 255, 255, 0.1)",
+                                color: "var(--faint, #888)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              <IconClock size={12} />
+                              Link Expired
+                            </span>
+                          )}
+                          {job.status === "failed" && (
+                            <span
+                              style={{
+                                fontSize: "0.75rem",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "99px",
+                                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                                color: "var(--danger, #ef4444)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              <IconAlertTriangle size={12} />
+                              Failed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Job Metadata & Download Row */}
+                      <div
+                        className="between"
+                        style={{ alignItems: "center", fontSize: "0.75rem" }}
+                      >
+                        <span style={{ color: "var(--faint, #888)" }}>
+                          Requested: {new Date(job.createdAt).toLocaleTimeString()} · Job ID:{" "}
+                          <span className="mono">{job.id.slice(0, 10)}</span>
+                        </span>
+
+                        {job.status === "ready" && !isExpired && job.downloadUrl && (
+                          <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
+                            <span
+                              style={{
+                                fontSize: "0.7rem",
+                                color: "var(--warn, #eab308)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.25rem",
+                              }}
+                            >
+                              <IconClock size={12} />
+                              {formatCountdown(remainingSec)}
+                            </span>
+                            <a
+                              href={job.downloadUrl}
+                              download
+                              className="btn btn-primary btn-sm"
+                              id={`btn-download-${job.id}`}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                                textDecoration: "none",
+                                padding: "0.25rem 0.65rem",
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              <IconDownload size={13} />
+                              Download
+                            </a>
+                          </div>
+                        )}
+
+                        {job.status === "ready" && isExpired && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setSelectedScope(job.scope);
+                              setSelectedFormat(job.format);
+                              setActiveTab("request");
+                            }}
+                            style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                          >
+                            Re-request
+                          </button>
+                        )}
+                      </div>
+
+                      {job.error && (
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "var(--danger, #ef4444)",
+                            backgroundColor: "rgba(239, 68, 68, 0.08)",
+                            padding: "0.4rem 0.6rem",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          Error: {job.error}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

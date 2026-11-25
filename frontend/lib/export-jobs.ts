@@ -1,10 +1,10 @@
-import { getSharedStore } from './shared-store';
-import { generateSecureDownloadUrl } from './security/secureDownload';
-import { EXPORT_SCHEMA_VERSION, type ExportArtifactV1 } from './export-schema';
+import { getSharedStore } from "./shared-store";
+import { generateSecureDownloadUrl } from "./security/secureDownload";
+import { EXPORT_SCHEMA_VERSION, type ExportArtifactV1 } from "./export-schema";
 
-export type ExportScope = 'credentials' | 'proofs' | 'activity' | 'full' | 'admin_audit';
-export type ExportFormat = 'json' | 'csv';
-export type ExportStatus = 'pending' | 'processing' | 'ready' | 'failed';
+export type ExportScope = "credentials" | "proofs" | "activity" | "full" | "admin_audit";
+export type ExportFormat = "json" | "csv";
+export type ExportStatus = "pending" | "processing" | "ready" | "failed";
 
 export interface ExportJob {
   id: string;
@@ -33,33 +33,33 @@ export interface ScopeDefinition {
 
 export const EXPORT_SCOPES: ScopeDefinition[] = [
   {
-    id: 'credentials',
-    label: 'Credentials',
-    description: 'Verified credentials, claims, issuer identifiers, and commitments.',
+    id: "credentials",
+    label: "Credentials",
+    description: "Verified credentials, claims, issuer identifiers, and commitments.",
     requiresAdmin: false,
   },
   {
-    id: 'proofs',
-    label: 'Proof History',
-    description: 'Zero-knowledge proof verification records and submission hashes.',
+    id: "proofs",
+    label: "Proof History",
+    description: "Zero-knowledge proof verification records and submission hashes.",
     requiresAdmin: false,
   },
   {
-    id: 'activity',
-    label: 'Activity & Audit',
-    description: 'Timeline audit events, timestamps, and on-chain verification logs.',
+    id: "activity",
+    label: "Activity & Audit",
+    description: "Timeline audit events, timestamps, and on-chain verification logs.",
     requiresAdmin: false,
   },
   {
-    id: 'full',
-    label: 'Complete Archive',
-    description: 'All your StellarCred data: credentials, proofs, timeline events, and settings.',
+    id: "full",
+    label: "Complete Archive",
+    description: "All your StellarCred data: credentials, proofs, timeline events, and settings.",
     requiresAdmin: false,
   },
   {
-    id: 'admin_audit',
-    label: 'Admin Audit Log',
-    description: 'System-wide governance, operator actions, and tenant audit trails.',
+    id: "admin_audit",
+    label: "Admin Audit Log",
+    description: "System-wide governance, operator actions, and tenant audit trails.",
     requiresAdmin: true,
   },
 ];
@@ -76,9 +76,12 @@ export function isScopeAllowed(scope: string, isAdmin: boolean = false): boolean
 // In-memory fallback if shared store fails
 const memoryJobIndex = new Map<string, string[]>();
 const memoryJobMap = new Map<string, ExportJob>();
-const memoryArtifactMap = new Map<string, { content: string; format: ExportFormat; expiresAt: number }>();
+const memoryArtifactMap = new Map<
+  string,
+  { content: string; format: ExportFormat; expiresAt: number }
+>();
 
-function generateId(prefix = 'exp'): string {
+function generateId(prefix = "exp"): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
@@ -89,13 +92,15 @@ export async function createExportJob(params: {
   format: ExportFormat;
   isAdmin?: boolean;
 }): Promise<ExportJob> {
-  const { userAddress, tenantId = 'default', scope, format, isAdmin = false } = params;
+  const { userAddress, tenantId = "default", scope, format, isAdmin = false } = params;
 
   if (!isScopeAllowed(scope, isAdmin)) {
-    throw new Error(`Unauthorized scope: "${scope}". User does not have permission for this scope.`);
+    throw new Error(
+      `Unauthorized scope: "${scope}". User does not have permission for this scope.`,
+    );
   }
 
-  const id = generateId('job');
+  const id = generateId("job");
   const now = Date.now();
 
   const job: ExportJob = {
@@ -104,7 +109,7 @@ export async function createExportJob(params: {
     userAddress,
     scope,
     format,
-    status: 'pending',
+    status: "pending",
     progress: 0,
     createdAt: now,
     updatedAt: now,
@@ -166,7 +171,7 @@ export async function listUserExportJobs(userAddress: string): Promise<ExportJob
     const job = await getExportJob(id);
     if (job) {
       // Check if download link is expired
-      if (job.status === 'ready' && job.expiresAt && Date.now() > job.expiresAt) {
+      if (job.status === "ready" && job.expiresAt && Date.now() > job.expiresAt) {
         // Leave status as ready, but download links will be invalidated
       }
       jobs.push(job);
@@ -191,7 +196,7 @@ export async function saveExportArtifact(
   jobId: string,
   content: string,
   format: ExportFormat,
-  expiresAt: number
+  expiresAt: number,
 ): Promise<void> {
   const ttlSeconds = Math.max(60, Math.ceil((expiresAt - Date.now()) / 1000));
   const store = getSharedStore();
@@ -204,14 +209,14 @@ export async function saveExportArtifact(
 }
 
 export async function getExportArtifact(
-  jobId: string
+  jobId: string,
 ): Promise<{ content: string; format: ExportFormat } | null> {
   const store = getSharedStore();
   try {
     const content = await store.get(`export:artifact:${jobId}`);
     if (content) {
       const job = await getExportJob(jobId);
-      return { content, format: job?.format || 'json' };
+      return { content, format: job?.format || "json" };
     }
   } catch {
     // ignore
@@ -238,7 +243,7 @@ async function processExportJob(id: string): Promise<void> {
   if (!job) return;
 
   // Step 1: Processing
-  job.status = 'processing';
+  job.status = "processing";
   job.progress = 30;
   await updateExportJob(job);
 
@@ -252,31 +257,31 @@ async function processExportJob(id: string): Promise<void> {
 
   // Generate payload
   const generatedAt = new Date().toISOString();
-  let content = '';
+  let content = "";
 
-  if (job.format === 'json') {
+  if (job.format === "json") {
     const artifact: ExportArtifactV1 = {
       schemaVersion: EXPORT_SCHEMA_VERSION,
       generation: {
         generatedAt,
-        generator: 'stellarcred-dashboard-exporter@0.1.0',
+        generator: "stellarcred-dashboard-exporter@0.1.0",
       },
       count: 2,
       entries: [
         {
-          claimType: job.scope === 'proofs' ? 'membership' : 'age_above_18',
+          claimType: job.scope === "proofs" ? "membership" : "age_above_18",
           verifiedAt: Math.floor(Date.now() / 1000) - 86400,
           expiry: Math.floor(Date.now() / 1000) + 86400 * 30,
-          txHash: '0x3a4f6d8920194827102938475620192837465102938475610293847561029384',
-          issuer: 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2',
+          txHash: "0x3a4f6d8920194827102938475620192837465102938475610293847561029384",
+          issuer: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2",
           source: `export:${job.scope}`,
         },
         {
-          claimType: 'stellar_account_verified',
+          claimType: "stellar_account_verified",
           verifiedAt: Math.floor(Date.now() / 1000) - 43200,
           expiry: 0,
-          txHash: '0x8b2e1c9482910482719284756102938475610293847561029384756102938475',
-          issuer: 'GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVGAS',
+          txHash: "0x8b2e1c9482910482719284756102938475610293847561029384756102938475",
+          issuer: "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVGAS",
           source: `export:${job.scope}`,
         },
       ],
@@ -285,25 +290,25 @@ async function processExportJob(id: string): Promise<void> {
   } else {
     // CSV format
     const rows = [
-      ['claim_type', 'verified_at', 'expiry', 'tx_hash', 'issuer', 'scope'],
+      ["claim_type", "verified_at", "expiry", "tx_hash", "issuer", "scope"],
       [
-        'age_above_18',
+        "age_above_18",
         new Date(Date.now() - 86400000).toISOString(),
         new Date(Date.now() + 86400000 * 30).toISOString(),
-        '0x3a4f6d8920194827102938475620192837465102938475610293847561029384',
-        'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2',
+        "0x3a4f6d8920194827102938475620192837465102938475610293847561029384",
+        "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBHF2",
         job.scope,
       ],
       [
-        'stellar_account_verified',
+        "stellar_account_verified",
         new Date(Date.now() - 43200000).toISOString(),
-        '',
-        '0x8b2e1c9482910482719284756102938475610293847561029384756102938475',
-        'GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVGAS',
+        "",
+        "0x8b2e1c9482910482719284756102938475610293847561029384756102938475",
+        "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVGAS",
         job.scope,
       ],
     ];
-    content = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
+    content = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
   }
 
   // Generate expiring secure download token (valid for 300 seconds = 5 minutes)
@@ -311,20 +316,20 @@ async function processExportJob(id: string): Promise<void> {
     job.id,
     job.tenantId,
     300,
-    '',
+    "",
     job.scope,
-    job.userAddress
+    job.userAddress,
   );
 
   await saveExportArtifact(job.id, content, job.format, expiresAt);
 
-  job.status = 'ready';
+  job.status = "ready";
   job.progress = 100;
   job.completedAt = Date.now();
   job.expiresAt = expiresAt;
   job.downloadUrl = url;
   job.downloadToken = token;
-  job.fileSize = Buffer.byteLength(content, 'utf8');
+  job.fileSize = Buffer.byteLength(content, "utf8");
 
   await updateExportJob(job);
 }
