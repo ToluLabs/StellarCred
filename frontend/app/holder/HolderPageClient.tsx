@@ -23,6 +23,7 @@ import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
 import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
+import { useAccountPortfolio } from "@/lib/hooks/holder/useAccountPortfolio";
 import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
 
 // ── Components ────────────────────────────────────────────────────────────────
@@ -40,14 +41,6 @@ import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel
 import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
 import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
-import {
-  getPortfolioAccounts,
-  recordConnectedAccount,
-  getActivePortfolioAccount,
-  setActivePortfolioAccount,
-  filterCredentialsByAccount,
-  type PortfolioAccount,
-} from "@/lib/account-portfolio";
 
 import type { PageView, BulkAction } from "./types";
 
@@ -103,30 +96,9 @@ function HolderInner() {
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useTransferImportParam(setImportPayload);
 
-  // Multi-account portfolio segregation
-  const [portfolioAccounts, setPortfolioAccounts] = useState<PortfolioAccount[]>(() =>
-    getPortfolioAccounts(),
-  );
-  const [activeAccountFilter, setActiveAccountFilter] = useState<string | null>(() =>
-    getActivePortfolioAccount(),
-  );
-
-  // Update known accounts when connected address changes
-  useState(() => {
-    if (address) {
-      const updated = recordConnectedAccount(address);
-      setPortfolioAccounts(updated);
-    }
-  });
-
-  const handleSelectPortfolioAccount = (selectedAddr: string | null) => {
-    setActiveAccountFilter(selectedAddr);
-    setActivePortfolioAccount(selectedAddr);
-  };
-
   const rawCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  // Segregate credentials by active account portfolio (without clearing session data)
-  const displayCreds = filterCredentialsByAccount(rawCreds, activeAccountFilter);
+  const { portfolioAccounts, activeAccountFilter, displayCreds, handleSelectPortfolioAccount } =
+    useAccountPortfolio(address, rawCreds);
   const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
 
   // Warm the UltraHonk backend for whatever credential types the user still
@@ -456,9 +428,7 @@ function HolderInner() {
 
       {detailCred && (
         <CredentialDetailModal
-          // ClaimParams is an interface, so it isn't assignable to the modal's
-          // Record<string, unknown> prop without a cast.
-          credential={detailCred as any}
+          credential={detailCred}
           onClose={() => setDetailCred(null)}
           onTransfer={(c) => {
             setDetailCred(null);
