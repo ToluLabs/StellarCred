@@ -44,7 +44,11 @@ export function NetworkSelector() {
         <IconWorld size={16} />
         <span style={{ textTransform: "capitalize" }}>{currentNetwork}</span>
         {activePreset?.deprecated && (
-          <IconAlertTriangle size={14} style={{ color: "var(--warn)" }} title="Deprecated network" />
+          <IconAlertTriangle
+            size={14}
+            style={{ color: "var(--warn)" }}
+            title="Deprecated network"
+          />
         )}
         <IconChevronDown size={14} />
       </button>
@@ -84,17 +88,35 @@ export function NetworkSelector() {
                   gap: "0.25rem",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                >
                   <span style={{ fontWeight: isSelected ? 600 : 400, textTransform: "capitalize" }}>
                     {net}
                   </span>
                   {preset.deprecated && (
-                    <span style={{ fontSize: "0.7rem", color: "var(--warn)", background: "rgba(227, 179, 65, 0.1)", padding: "0.1rem 0.3rem", borderRadius: "4px" }}>
+                    <span
+                      style={{
+                        fontSize: "0.7rem",
+                        color: "var(--warn)",
+                        background: "rgba(227, 179, 65, 0.1)",
+                        padding: "0.1rem 0.3rem",
+                        borderRadius: "4px",
+                      }}
+                    >
                       Deprecated
                     </span>
                   )}
                   {preset.unavailable && (
-                    <span style={{ fontSize: "0.7rem", color: "var(--danger)", background: "rgba(240, 96, 77, 0.1)", padding: "0.1rem 0.3rem", borderRadius: "4px" }}>
+                    <span
+                      style={{
+                        fontSize: "0.7rem",
+                        color: "var(--danger)",
+                        background: "rgba(240, 96, 77, 0.1)",
+                        padding: "0.1rem 0.3rem",
+                        borderRadius: "4px",
+                      }}
+                    >
                       Unavailable
                     </span>
                   )}

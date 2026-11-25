@@ -14,6 +14,10 @@ interface NetworkPreset {
   rpcUrl: string;
   networkPassphrase: string;
   explorerNetwork: string;
+  /** Optional lifecycle metadata rendered by NetworkSelector. */
+  deprecated?: boolean;
+  unavailable?: boolean;
+  warningMessage?: string;
 }
 
 // Literal strings, NOT `Networks.TESTNET` from @stellar/stellar-sdk: importing
@@ -50,8 +54,7 @@ export const NETWORK: StellarNetwork = parseNetwork(rawNetwork) ?? "testnet";
 
 const preset = NETWORK_PRESETS[NETWORK];
 
-export const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL ?? preset.rpcUrl;
+export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? preset.rpcUrl;
 export const NETWORK_PASSPHRASE =
   process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE ?? preset.networkPassphrase;
 
@@ -83,8 +86,7 @@ export const EXPLORER_TX = (hash: string) =>
 // relay wraps the holder's signed transaction in a fee-bump paid by this
 // account. The holder still authorises the proof; the sponsor only covers
 // the network fee.
-export const SPONSOR_ACCOUNT_ID =
-  process.env.NEXT_PUBLIC_SPONSOR_ACCOUNT_ID ?? "";
+export const SPONSOR_ACCOUNT_ID = process.env.NEXT_PUBLIC_SPONSOR_ACCOUNT_ID ?? "";
 
 // Server-only: the sponsor's secret key.  Never prefixed NEXT_PUBLIC_.
 // Read at runtime by app/api/sponsor/route.ts.

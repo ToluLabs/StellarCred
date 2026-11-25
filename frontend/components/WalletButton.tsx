@@ -16,11 +16,20 @@ import { truncateAddress } from "@/lib/format";
 import CopyButton from "@/components/CopyButton";
 
 export function WalletButton() {
-  const { address, connecting, error, networkMismatch, connect, disconnect, hydrated } =
-    useWallet();
+  const {
+    address,
+    restoring,
+    connecting,
+    error,
+    networkMismatch,
+    ledgerDisconnected,
+    connect,
+    disconnect,
+    hydrated,
+  } = useWallet();
   const t = useTranslations();
 
-  if (!hydrated) {
+  if (!hydrated || (restoring && !address)) {
     return (
       <div
         style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem" }}
@@ -77,9 +86,17 @@ export function WalletButton() {
             aria-hidden="true"
           />
           <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <span className="mono" style={{ color: "var(--warn)", fontSize: "0.7rem", textAlign: "right", lineHeight: 1.4 }}>
-              Ledger disconnected — reconnect it and open the Stellar app to keep signing. Nothing was
-              submitted.
+            <span
+              className="mono"
+              style={{
+                color: "var(--warn)",
+                fontSize: "0.7rem",
+                textAlign: "right",
+                lineHeight: 1.4,
+              }}
+            >
+              Ledger disconnected — reconnect it and open the Stellar app to keep signing. Nothing
+              was submitted.
             </span>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button

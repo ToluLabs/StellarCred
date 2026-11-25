@@ -64,7 +64,7 @@ describe("parseLegacyCsv", () => {
 
   it("honours quoted commas and escaped double-quotes", () => {
     const csv =
-      'claim_type,verified_at,expiry,tx_hash,issuer\n' +
+      "claim_type,verified_at,expiry,tx_hash,issuer\n" +
       'kyc,1700000000,0,"tx,with-comma","issuer ""G"""\n';
     const parsed = parseLegacyCsv(csv);
     expect(parsed.entries[0].txHash).toBe("tx,with-comma");
@@ -74,7 +74,7 @@ describe("parseLegacyCsv", () => {
   it("reads a headerless file positionally", () => {
     const parsed = parseLegacyCsv("kyc,1700000000,0,tx,G\n");
     expect(parsed.entries[0]).toEqual(
-      entry({ verifiedAt: 1_700_000_000, expiry: 0, txHash: "tx", issuer: "G" })
+      entry({ verifiedAt: 1_700_000_000, expiry: 0, txHash: "tx", issuer: "G" }),
     );
   });
 
@@ -133,7 +133,7 @@ describe("planBackfill", () => {
   it("skips invalid entries and reports their 1-based index", () => {
     const { artifact, report } = planBackfill(
       [entry(), entry({ verifiedAt: -1 }), entry({ claimType: "" })],
-      { generator: "g", sourceFormat: "legacy-csv", now: FIXED_NOW }
+      { generator: "g", sourceFormat: "legacy-csv", now: FIXED_NOW },
     );
     expect(report.inputCount).toBe(3);
     expect(report.outputCount).toBe(1);

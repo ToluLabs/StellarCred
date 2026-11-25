@@ -8,10 +8,7 @@
  * @module export-metrics
  */
 
-import {
-  getActiveConcurrency,
-  getMaxConcurrentJobs,
-} from "./export-concurrency";
+import { getActiveConcurrency, getMaxConcurrentJobs } from "./export-concurrency";
 import { listQueuedJobs, type QueueEntry } from "./export-scheduler";
 import { getExportThrottleStatus, type ThrottleStatus } from "./export-throttle";
 
@@ -55,10 +52,7 @@ export interface ExportMetrics {
  * @param issuer - Optional DID / issuer address to include throttle info for.
  */
 export async function getExportMetrics(issuer?: string): Promise<ExportMetrics> {
-  const [activeJobs, queuedJobs] = await Promise.all([
-    getActiveConcurrency(),
-    listQueuedJobs(),
-  ]);
+  const [activeJobs, queuedJobs] = await Promise.all([getActiveConcurrency(), listQueuedJobs()]);
 
   const maxConcurrent = getMaxConcurrentJobs();
 

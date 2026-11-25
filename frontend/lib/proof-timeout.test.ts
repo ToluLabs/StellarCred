@@ -5,11 +5,7 @@
 // pulling the proving engine into the holder route chunk.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  withTimeout,
-  ProofTimeoutError,
-  DEFAULT_PROOF_TIMEOUT_MS,
-} from "./proof-timeout";
+import { withTimeout, ProofTimeoutError, DEFAULT_PROOF_TIMEOUT_MS } from "./proof-timeout";
 
 describe("withTimeout / ProofTimeoutError", () => {
   beforeEach(() => {
@@ -33,9 +29,7 @@ describe("withTimeout / ProofTimeoutError", () => {
     const fn = vi.fn().mockImplementation(
       (signal: AbortSignal) =>
         new Promise<never>((_, reject) => {
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("Aborted", "AbortError")),
-          );
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
         }),
     );
 
@@ -50,9 +44,7 @@ describe("withTimeout / ProofTimeoutError", () => {
     const fn = vi.fn().mockImplementation(
       (signal: AbortSignal) =>
         new Promise<never>((_, reject) => {
-          signal.addEventListener("abort", () =>
-            reject(new DOMException("Aborted", "AbortError")),
-          );
+          signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
         }),
     );
 
@@ -82,9 +74,7 @@ describe("withTimeout / ProofTimeoutError", () => {
     controller.abort();
 
     const fn = vi.fn();
-    await expect(
-      withTimeout(() => fn(), { signal: controller.signal }),
-    ).rejects.toThrow(/Aborted/);
+    await expect(withTimeout(() => fn(), { signal: controller.signal })).rejects.toThrow(/Aborted/);
     expect(fn).not.toHaveBeenCalled();
   });
 

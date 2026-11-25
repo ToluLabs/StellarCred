@@ -73,8 +73,9 @@ function redactRecord(
     else if (typeof item === "number" || typeof item === "boolean") result[key] = item;
     else if (Array.isArray(item) && key === "stages") {
       result[key] = item
-        .filter((stage): stage is Record<string, unknown> =>
-          typeof stage === "object" && stage !== null && !Array.isArray(stage),
+        .filter(
+          (stage): stage is Record<string, unknown> =>
+            typeof stage === "object" && stage !== null && !Array.isArray(stage),
         )
         .map((stage) => redactRecord(stage, STAGE_KEYS));
     }
@@ -89,8 +90,9 @@ export function redactOutboundEvent(event: OutboundEvent): OutboundEvent {
     const record = payload as Record<string, unknown>;
     const runs = Array.isArray(record.runs)
       ? record.runs
-          .filter((run): run is Record<string, unknown> =>
-            typeof run === "object" && run !== null && !Array.isArray(run),
+          .filter(
+            (run): run is Record<string, unknown> =>
+              typeof run === "object" && run !== null && !Array.isArray(run),
           )
           .map((run) => redactRecord(run, TELEMETRY_KEYS))
       : [];

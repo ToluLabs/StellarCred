@@ -26,11 +26,7 @@
  * @module export-throttle
  */
 
-import {
-  checkLimitAsync,
-  getRateLimitStatus,
-  rateLimitClear,
-} from "./rate-limit";
+import { checkLimitAsync, getRateLimitStatus, rateLimitClear } from "./rate-limit";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -107,9 +103,7 @@ export async function checkExportThrottle(issuer: string): Promise<{
  * This is safe to call from metrics / dashboards where incrementing would
  * consume quota. Uses the in-process `getRateLimitStatus` view.
  */
-export async function getExportThrottleStatus(
-  issuer: string,
-): Promise<ThrottleStatus> {
+export async function getExportThrottleStatus(issuer: string): Promise<ThrottleStatus> {
   const { limit, windowMs } = getExportRateLimit();
   // getRateLimitStatus uses the raw key (no rl: prefix) because the in-process
   // store holds keys as written by increment(), which does NOT prepend rl:.

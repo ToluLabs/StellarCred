@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  parseTrustedIssuersParam,
-  parseVerifyParams,
-  validateVerifyParams,
-} from "./verifyParams";
+import { parseTrustedIssuersParam, parseVerifyParams, validateVerifyParams } from "./verifyParams";
 
 const GOOD_ISSUER = `G${"A".repeat(55)}`;
 const OTHER_ISSUER = `G${"B".repeat(55)}`;
@@ -123,9 +119,7 @@ describe("parseTrustedIssuersParam", () => {
   });
 
   it("accepts a comma-separated list of account addresses, deduped", () => {
-    const r = parseTrustedIssuersParam(
-      `${GOOD_ISSUER},${OTHER_ISSUER},${GOOD_ISSUER}`,
-    );
+    const r = parseTrustedIssuersParam(`${GOOD_ISSUER},${OTHER_ISSUER},${GOOD_ISSUER}`);
     expect(r).toEqual({ ok: true, issuers: [GOOD_ISSUER, OTHER_ISSUER] });
   });
 

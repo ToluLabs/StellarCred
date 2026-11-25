@@ -27,7 +27,6 @@ interface WalletState {
   /** Kit id of the connected wallet ("ledger" for a hardware wallet). */
   walletId: string;
   connecting: boolean;
-  restoring: boolean;
   hydrated: boolean;
   error: WalletConnectError | null;
   networkMismatch: boolean;
@@ -50,7 +49,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [restoring, setRestoring] = useState(true);
   const [walletId, setWalletId] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const [restoring, setRestoring] = useState(true);
   const hydrated = useHydrated();
   const [error, setError] = useState<WalletConnectError | null>(null);
   const [networkMismatch, setNetworkMismatch] = useState(false);
@@ -74,9 +72,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     kitRestore(saved)
-      .then((restored) => {
-        if (!cancelled) setAddress(restored);
       .then((restoredAddress) => {
+        if (!cancelled) {
+          setAddress(restoredAddress);
+          setWalletId(saved);
+        }
+        if (cancelled) return;
         setAddress(restoredAddress);
         setWalletId(saved);
       })
@@ -212,11 +213,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     <WalletContext.Provider
       value={{
         address,
-        connecting,
+        walletId,
         restoring,
         hydrated,
+        connecting,
         error,
         networkMismatch,
+        sessionLostAt,
+        ledgerDisconnected,
         connect,
         disconnect,
       }}

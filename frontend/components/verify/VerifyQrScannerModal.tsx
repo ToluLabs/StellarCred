@@ -12,28 +12,25 @@ import { useToast } from "@/components/Toast";
 // jsqr is a ~60 kB camera-decoding library — only needed when the user
 // actively opens the QR scanner. Load it lazily so it stays out of the
 // initial verify-page bundle.
-const QrScanner = dynamic(
-  () => import("@/components/QrScanner").then((m) => m.QrScanner),
-  {
-    ssr: false,
-    loading: () => (
-      <div
-        style={{
-          width: "100%",
-          aspectRatio: "1",
-          display: "grid",
-          placeItems: "center",
-          borderRadius: "var(--radius)",
-          background: "var(--surface)",
-          color: "var(--muted)",
-          fontSize: "0.875rem",
-        }}
-      >
-        Loading camera…
-      </div>
-    ),
-  },
-);
+const QrScanner = dynamic(() => import("@/components/QrScanner").then((m) => m.QrScanner), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        width: "100%",
+        aspectRatio: "1",
+        display: "grid",
+        placeItems: "center",
+        borderRadius: "var(--radius)",
+        background: "var(--surface)",
+        color: "var(--muted)",
+        fontSize: "0.875rem",
+      }}
+    >
+      Loading camera…
+    </div>
+  ),
+});
 
 export interface VerifyQrScannerModalProps {
   locked: boolean;
@@ -114,10 +111,7 @@ export function VerifyQrScannerModal({ locked }: VerifyQrScannerModalProps) {
   return (
     <>
       <div style={{ textAlign: "right", marginBottom: "0.75rem" }}>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setScanning(true)}
-        >
+        <button className="btn btn-ghost btn-sm" onClick={() => setScanning(true)}>
           <IconQrcode size={14} />
           Scan QR
         </button>
