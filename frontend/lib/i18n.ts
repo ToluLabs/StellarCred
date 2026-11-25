@@ -2,7 +2,7 @@
  * i18n utilities for StellarCred
  */
 
-import { Locale } from '@/i18n.config';
+import { Locale } from "@/i18n.config";
 
 /**
  * Format a number according to locale
@@ -10,7 +10,7 @@ import { Locale } from '@/i18n.config';
 export function formatNumber(
   value: number,
   locale: string,
-  options?: Intl.NumberFormatOptions
+  options?: Intl.NumberFormatOptions,
 ): string {
   return new Intl.NumberFormat(locale, options).format(value);
 }
@@ -22,16 +22,15 @@ export function formatNumber(
 export function formatDate(
   dateOrTimestamp: Date | number,
   locale: string,
-  options?: Intl.DateTimeFormatOptions
+  options?: Intl.DateTimeFormatOptions,
 ): string {
-  const date = typeof dateOrTimestamp === 'number' 
-    ? new Date(dateOrTimestamp * 1000)
-    : dateOrTimestamp;
-  
+  const date =
+    typeof dateOrTimestamp === "number" ? new Date(dateOrTimestamp * 1000) : dateOrTimestamp;
+
   const defaultOptions: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   };
 
   return new Intl.DateTimeFormat(locale, options || defaultOptions).format(date);
@@ -44,18 +43,17 @@ export function formatDate(
 export function formatDateTime(
   dateOrTimestamp: Date | number,
   locale: string,
-  options?: Intl.DateTimeFormatOptions
+  options?: Intl.DateTimeFormatOptions,
 ): string {
-  const date = typeof dateOrTimestamp === 'number' 
-    ? new Date(dateOrTimestamp * 1000)
-    : dateOrTimestamp;
-  
+  const date =
+    typeof dateOrTimestamp === "number" ? new Date(dateOrTimestamp * 1000) : dateOrTimestamp;
+
   const defaultOptions: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   };
 
   return new Intl.DateTimeFormat(locale, options || defaultOptions).format(date);
@@ -64,13 +62,9 @@ export function formatDateTime(
 /**
  * Format a currency value according to locale
  */
-export function formatCurrency(
-  value: number,
-  locale: string,
-  currency: string
-): string {
+export function formatCurrency(value: number, locale: string, currency: string): string {
   return new Intl.NumberFormat(locale, {
-    style: 'currency',
+    style: "currency",
     currency,
   }).format(value);
 }
@@ -81,8 +75,8 @@ export function formatCurrency(
  */
 export function getLocaleString(locale: Locale): string {
   const localeMap: Record<Locale, string> = {
-    en: 'en-US',
-    es: 'es-ES',
+    en: "en-US",
+    es: "es-ES",
   };
   return localeMap[locale] || locale;
 }

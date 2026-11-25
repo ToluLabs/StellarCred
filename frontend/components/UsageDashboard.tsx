@@ -75,8 +75,7 @@ function QuotaRow({
   dim: UsageDimension;
   windowSeconds: number;
 }) {
-  const pct =
-    dim.limit > 0 ? Math.min(100, Math.round((dim.used / dim.limit) * 100)) : 0;
+  const pct = dim.limit > 0 ? Math.min(100, Math.round((dim.used / dim.limit) * 100)) : 0;
   const exhausted = dim.throttled && dim.limit > 0;
 
   return (
@@ -99,7 +98,9 @@ function QuotaRow({
           <span style={{ fontWeight: 600 }}>{label}</span>
         </span>
         <span className="mono" style={{ fontSize: "0.7rem", color: "var(--faint)" }}>
-          used <strong style={{ color: exhausted ? "var(--danger)" : "var(--text)" }}>{dim.used}</strong> / {dim.limit}
+          used{" "}
+          <strong style={{ color: exhausted ? "var(--danger)" : "var(--text)" }}>{dim.used}</strong>{" "}
+          / {dim.limit}
         </span>
       </div>
 
@@ -116,11 +117,7 @@ function QuotaRow({
             height: "100%",
             width: `${pct}%`,
             borderRadius: "999px",
-            background: exhausted
-              ? "var(--danger)"
-              : pct >= 80
-                ? "var(--warn)"
-                : "var(--accent)",
+            background: exhausted ? "var(--danger)" : pct >= 80 ? "var(--warn)" : "var(--accent)",
             transition: "width 0.4s var(--ease)",
           }}
         />
@@ -134,7 +131,11 @@ function QuotaRow({
           marginTop: "0.35rem",
         }}
       >
-        <span>{exhausted ? "Limit reached — new issuances rejected" : `${dim.remaining} of ${dim.limit} remaining`}</span>
+        <span>
+          {exhausted
+            ? "Limit reached — new issuances rejected"
+            : `${dim.remaining} of ${dim.limit} remaining`}
+        </span>
         <span className="mono">
           resets in <strong>{fmtReset(dim.resetSeconds)}</strong> · {windowSeconds}s window
         </span>
@@ -154,9 +155,7 @@ export function UsageDashboard({ wallet }: { wallet?: string }) {
     setLoading(true);
     setError("");
     try {
-      const qs = wallet && wallet.trim()
-        ? `?wallet=${encodeURIComponent(wallet.trim())}`
-        : "";
+      const qs = wallet && wallet.trim() ? `?wallet=${encodeURIComponent(wallet.trim())}` : "";
       const res = await fetch(`/api/usage${qs}`);
       const body = (await res.json()) as Partial<UsageResponse> & { error?: string };
       if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`);
@@ -184,10 +183,7 @@ export function UsageDashboard({ wallet }: { wallet?: string }) {
 
   return (
     <div className="card" style={{ padding: "1.15rem 1.25rem" }}>
-      <div
-        className="between"
-        style={{ marginBottom: "0.35rem", gap: "0.75rem" }}
-      >
+      <div className="between" style={{ marginBottom: "0.35rem", gap: "0.75rem" }}>
         <span className="row" style={{ gap: "0.5rem" }}>
           <IconGauge size={15} style={{ color: "var(--accent)" }} />
           <strong style={{ fontSize: "0.85rem" }}>Rate-limit &amp; quota</strong>
@@ -222,12 +218,19 @@ export function UsageDashboard({ wallet }: { wallet?: string }) {
             <IconAlertTriangle size={14} />
             Rate limit reached
           </div>
-          <div style={{ fontSize: "0.78rem", marginTop: "0.25rem", lineHeight: 1.6, color: "var(--muted)" }}>
+          <div
+            style={{
+              fontSize: "0.78rem",
+              marginTop: "0.25rem",
+              lineHeight: 1.6,
+              color: "var(--muted)",
+            }}
+          >
             Issuance is temporarily paused. The window resets in{" "}
             <strong className="mono" style={{ color: "var(--text)" }}>
               {fmtReset(Math.max(ipDim.resetSeconds, walletDim?.resetSeconds ?? 0))}
-            </strong>
-            {" "}— you can resume then.
+            </strong>{" "}
+            — you can resume then.
           </div>
         </div>
       )}
@@ -272,9 +275,12 @@ export function UsageDashboard({ wallet }: { wallet?: string }) {
             </div>
           )}
 
-          <div className="faint" style={{ fontSize: "0.68rem", marginTop: "0.35rem", lineHeight: 1.6 }}>
-            Usage is per connection and per holder wallet over a {windowSeconds}-second
-            window. Polling this view never counts against your limits.
+          <div
+            className="faint"
+            style={{ fontSize: "0.68rem", marginTop: "0.35rem", lineHeight: 1.6 }}
+          >
+            Usage is per connection and per holder wallet over a {windowSeconds}-second window.
+            Polling this view never counts against your limits.
           </div>
         </div>
       )}

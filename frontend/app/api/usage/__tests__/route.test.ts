@@ -13,11 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../route";
-import {
-  checkLimit,
-  rateLimitClear,
-  LIMITS,
-} from "@/lib/rate-limit";
+import { checkLimit, rateLimitClear, LIMITS } from "@/lib/rate-limit";
 
 const IP = "203.0.113.9";
 const WALLET = "GAAAAA";

@@ -141,7 +141,9 @@ describe("lib/shamir.ts - Secret Splitting & Reconstruction", () => {
 
     expect(() => splitSecret(new Uint8Array(0), 3, 2)).toThrow("Secret must not be empty");
     expect(() => splitSecret(secret, 3, 1)).toThrow("Threshold must be at least 2");
-    expect(() => splitSecret(secret, 2, 3)).toThrow("Total shares must be greater than or equal to threshold");
+    expect(() => splitSecret(secret, 2, 3)).toThrow(
+      "Total shares must be greater than or equal to threshold",
+    );
     expect(() => splitSecret(secret, 256, 2)).toThrow("Total shares cannot exceed 255");
   });
 

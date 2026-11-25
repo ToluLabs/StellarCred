@@ -3,8 +3,7 @@ import SubmitAppPageClient from "./SubmitAppPageClient";
 
 export const metadata: Metadata = {
   title: "StellarCred — Submit an App",
-  description:
-    "Submit your StellarCred integration for review and listing in the Apps gallery.",
+  description: "Submit your StellarCred integration for review and listing in the Apps gallery.",
 };
 
 export default function Page() {

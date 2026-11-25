@@ -13,6 +13,8 @@ import {
   getClaim,
   getClaimRecord,
   checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
   hasClaims,
   getClaims,
   verifyPreset,
@@ -45,8 +47,8 @@ import {
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
 import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
-import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import { subscribeClaims } from "./subscriptions";
+import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
 import {
   createOfflineVerifier,
   verifyOfflinePresentation,
@@ -85,6 +87,8 @@ export const StellarCred = {
   getClaim,
   getClaimRecord,
   checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
   hasClaims,
   getClaims,
   verifyPreset,

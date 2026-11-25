@@ -177,7 +177,13 @@ Use this when a check is red and you cannot reproduce it locally.
 Workflows that run outside `ci.yml`: `first-load.yml` and
 `preview-deployment.yml` (frontend paths), `proving-perf.yml` (circuit/perf
 paths), `e2e.yml` (schedule + manual only, not a PR gate),
-`reproducible-build.yml` (push to `main`).
+`reproducible-build.yml` (push to `main`), and `package-release-check.yml`
+(PRs touching `frontend/packages/{sdk,issuer}`, the release workflow or the
+release scripts).
+
+| Workflow job | Mirror it locally with |
+|---|---|
+| `package-release-check` | Build both packages (`pnpm build` in `frontend/packages/sdk` and `frontend/packages/issuer`), then from the repo root: `node --test .github/scripts/validate-release-packages.test.mjs`, `node .github/scripts/validate-release-packages.mjs --repo ToluLabs/StellarCred --packed`, `bash .github/scripts/publish-packages.sh dry-run latest`. Install with `--ignore-scripts`; the SDK needs its own `pnpm install --frozen-lockfile --ignore-workspace` — see [CONTRIBUTING.md § Releasing](../CONTRIBUTING.md#package-checks). |
 
 ## 8 · Common pitfalls
 

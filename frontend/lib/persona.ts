@@ -65,9 +65,7 @@ export async function createPersonaInquiry(
   });
   const json = await res.json();
   if (!res.ok) {
-    throw new Error(
-      `Persona: failed to create inquiry — ${JSON.stringify(json)}`,
-    );
+    throw new Error(`Persona: failed to create inquiry — ${JSON.stringify(json)}`);
   }
   const id: string = json.data.id;
   const url = `https://withpersona.com/verify?inquiry-id=${id}`;
@@ -83,16 +81,11 @@ export async function retrievePersonaInquiry(inquiryId: string): Promise<{
   });
   const json = await res.json();
   if (!res.ok) {
-    throw new Error(
-      `Persona: failed to retrieve inquiry — ${JSON.stringify(json)}`,
-    );
+    throw new Error(`Persona: failed to retrieve inquiry — ${JSON.stringify(json)}`);
   }
   return {
     status: json.data.attributes.status as string,
-    fields: (json.data.attributes.fields ?? {}) as Record<
-      string,
-      { value: unknown }
-    >,
+    fields: (json.data.attributes.fields ?? {}) as Record<string, { value: unknown }>,
   };
 }
 
@@ -111,9 +104,7 @@ export async function resolvePersonaKYC(inquiryId: string): Promise<{
     return { ok: false, error: `Persona KYC inquiry status: ${status}` };
   }
   const dob =
-    String(
-      fields["birthdate"]?.value ?? fields["birth-date"]?.value ?? "",
-    ).trim() || undefined;
+    String(fields["birthdate"]?.value ?? fields["birth-date"]?.value ?? "").trim() || undefined;
   const alpha2 =
     String(
       fields["selected-country-code"]?.value ??

@@ -41,11 +41,7 @@ interface Dimension {
   windowEnd: number;
 }
 
-function dimension(
-  key: string,
-  limit: number,
-  windowMs: number,
-): Dimension {
+function dimension(key: string, limit: number, windowMs: number): Dimension {
   const s: RateLimitStatus = getRateLimitStatus(key, limit, windowMs);
   return {
     used: s.used,

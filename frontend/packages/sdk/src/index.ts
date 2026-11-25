@@ -20,7 +20,6 @@ export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
-export * from "./version";
 
 // The `StellarCred` namespace object lives in its own module so this entry
 // point stays a lean barrel; it is re-exported (with `default`) from here.

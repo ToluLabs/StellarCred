@@ -294,8 +294,7 @@ export function withSentryRouteHandler(
     try {
       return await handler(req, ...args);
     } catch (error) {
-      const requestId =
-        req.headers.get("x-request-id") ?? randomHex(8);
+      const requestId = req.headers.get("x-request-id") ?? randomHex(8);
       const method = req.method;
       const path = req.nextUrl?.pathname ?? "unknown_endpoint";
 
