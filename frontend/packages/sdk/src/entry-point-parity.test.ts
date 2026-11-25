@@ -16,6 +16,7 @@ import * as fromCapabilities from "./capabilities";
 import * as fromChallenge from "./challenge";
 import * as fromPresentationToken from "./presentation-token";
 import * as fromErrors from "./errors";
+import * as fromRpcFailover from "./rpc-failover";
 
 // ── Claim-checking functions (sourced from claims.ts) ────────────────────────
 
@@ -45,6 +46,25 @@ const CLAIMS_EXPORTS = [
   "ConfigError",
   "InvalidAddressError",
   "IndexerError",
+  "executeWithRpcFailover",
+  "executeWithHorizonFailover",
+  "fetchHorizon",
+  "getRpcHealth",
+  "getHorizonHealth",
+  "resetRpcHealth",
+] as const;
+
+// RPC failover exports (sourced from rpc-failover.ts) - issue #1058
+const RPC_FAILOVER_EXPORTS = [
+  "RpcFailoverPool",
+  "createRpcFailoverPool",
+  "classifyFailoverFailure",
+  "fetchWithFailover",
+  "normalizeEndpointUrls",
+  "parseEndpointListEnv",
+  "isValidHttpEndpointUrl",
+  "DEFAULT_FAILOVER_COOLDOWN_MS",
+  "DEFAULT_FAILOVER_THRESHOLD",
 ] as const;
 
 // Errors exports (sourced from errors.ts) - issue #404
@@ -153,6 +173,19 @@ describe("entry-point parity (issue #609 / #522)", () => {
     });
   }
 
+  // ── rpc-failover.ts exports re-exported identically by index.ts (#1058) ──
+
+  for (const name of RPC_FAILOVER_EXPORTS) {
+    it(`index.ts re-exports the same ${name} reference as rpc-failover.ts`, () => {
+      const fromIndexValue = (fromIndex as Record<string, unknown>)[name];
+      const fromFailoverValue = (fromRpcFailover as Record<string, unknown>)[name];
+
+      expect(fromIndexValue).toBeDefined();
+      expect(fromFailoverValue).toBeDefined();
+      expect(fromIndexValue).toBe(fromFailoverValue);
+    });
+  }
+
   // ── StellarCred namespace holds same references ────────────────────────────
 
   it("StellarCred namespace members are the same references as claims.ts exports", () => {
@@ -212,6 +245,21 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.validateCapabilitiesDescriptor).toBe(
       fromCapabilities.validateCapabilitiesDescriptor,
     );
+  });
+
+  it("StellarCred namespace members are the same references as rpc-failover.ts exports", () => {
+    const ns = fromIndex.StellarCred;
+
+    expect(ns.RpcFailoverPool).toBe(fromRpcFailover.RpcFailoverPool);
+    expect(ns.createRpcFailoverPool).toBe(fromRpcFailover.createRpcFailoverPool);
+    expect(ns.classifyFailoverFailure).toBe(fromRpcFailover.classifyFailoverFailure);
+    expect(ns.fetchWithFailover).toBe(fromRpcFailover.fetchWithFailover);
+    expect(ns.executeWithRpcFailover).toBe(fromClaims.executeWithRpcFailover);
+    expect(ns.executeWithHorizonFailover).toBe(fromClaims.executeWithHorizonFailover);
+    expect(ns.fetchHorizon).toBe(fromClaims.fetchHorizon);
+    expect(ns.getRpcHealth).toBe(fromClaims.getRpcHealth);
+    expect(ns.getHorizonHealth).toBe(fromClaims.getHorizonHealth);
+    expect(ns.resetRpcHealth).toBe(fromClaims.resetRpcHealth);
   });
 
   it("default export equals the StellarCred named export", () => {
