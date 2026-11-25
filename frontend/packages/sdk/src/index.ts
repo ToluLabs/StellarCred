@@ -20,7 +20,146 @@ export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
+export * from "./wasm";
+
+ feat/universal-wasm-packaging
+import {
+  configure,
+  healthCheck,
+  isConfigured,
+  hasClaim,
+  getClaim,
+  getClaimRecord,
+  checkClaimStatus,
+  hasClaims,
+  getClaims,
+  verifyPreset,
+  buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
+  parseReturnParams,
+  watchClaim,
+  withRetry,
+  normalizeRpcError,
+  classifyTransientFailure,
+  CLAIM_TYPES,
+  deriveNullifier,
+  isNullifierUsed,
+  verifyUniquePersonhood,
+  invalidateClaimCache,
+  clearClaimCache,
+  TimeoutError,
+  ConfigError,
+  InvalidAddressError,
+} from "./claims";
+import {
+  RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
+} from "./errors";
+import { submitTransaction } from "./submit";
+import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
+import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
+import { subscribeClaims } from "./subscriptions";
+
+// Version helpers — Issue #841
+export * from "./version";
+
+import {
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
+} from "./version";
+
+import {
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
+  CredentialValidationError,
+} from "./validateCredential";
+import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
+import {
+  clearWasmCache,
+  compileWasm,
+  detectWasmRuntime,
+  getWasmCacheSize,
+  initWasm,
+  isStreamingSupported,
+  isWasmSupported,
+  WasmLoadError,
+} from "./wasm";
+
+export const StellarCred = {
+  configure,
+  bootstrap,
+  fetchCapabilities,
+  validateCapabilitiesDescriptor,
+  healthCheck,
+  isConfigured,
+  hasClaim,
+  getClaim,
+  getClaimRecord,
+  checkClaimStatus,
+  hasClaims,
+  getClaims,
+  verifyPreset,
+  buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
+  parseReturnParams,
+  watchClaim,
+  /** Drop cached claim reads for a wallet (see `configure({ claimCache })`). */
+  invalidate: invalidateClaimCache,
+  invalidateClaimCache,
+  clearClaimCache,
+  withRetry,
+  normalizeRpcError,
+  classifyTransientFailure,
+  submitTransaction,
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
+  subscribeClaims,
+  listIssuers,
+  listIssuerIds,
+  getIssuer,
+  isValidIssuer,
+  createWalletChallenge,
+  verifyWalletSignature,
+  verifyWalletClaim,
+  CLAIM_TYPES,
+  deriveNullifier,
+  isNullifierUsed,
+  verifyUniquePersonhood,
+  TimeoutError,
+  ConfigError,
+  InvalidAddressError,
+  RpcError,
+  // Version helpers (#841)
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
+  IndexerError,
+  ContractError,
+  ContractErrorCode,
+  TransactionSubmissionError,
+  CredentialValidationError,
+  parseContractError,
+  // Universal WASM helpers
+  initWasm,
+  compileWasm,
+  detectWasmRuntime,
+  isWasmSupported,
+  isStreamingSupported,
+  clearWasmCache,
+  getWasmCacheSize,
+  WasmLoadError,
+};
+export default StellarCred;
 
 // The `StellarCred` namespace object lives in its own module so this entry
 // point stays a lean barrel; it is re-exported (with `default`) from here.
 export { StellarCred, default } from "./namespace";
+ main
