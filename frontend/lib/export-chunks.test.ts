@@ -321,7 +321,7 @@ describe("export-chunks — serveExportChunk", () => {
   it("rejects an out-of-range cursor with 400", async () => {
     const { record, job } = await setupMultiChunkJob(10, 100); // 1 chunk
     // Craft a cursor for index 5 (out of range) signed with the real secret.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { createCursor } = await import("./export-cursor");
     const bad = createCursor(job.jobId, 5);
     const res = await serveExportChunk({
@@ -335,7 +335,7 @@ describe("export-chunks — serveExportChunk", () => {
 
   it("returns 404 for a cursor whose job is gone (valid sig but unknown job)", async () => {
     const { record, job } = await setupMultiChunkJob(10, 100);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { createCursor } = await import("./export-cursor");
     const cursor = createCursor(job.jobId, 0);
     // Wipe the job from the shared store + caches.
@@ -408,7 +408,7 @@ describe("export-chunks — serveExportChunk", () => {
       limit: null,
     });
     const firstCursor = (first.body as { nextCursor: string }).nextCursor;
-    let entries = auditLogEntries();
+    const entries = auditLogEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].adminAction).toBe("export:chunk");
     expect(entries[0].issuer).toBe("admin");

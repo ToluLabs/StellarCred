@@ -11,9 +11,10 @@ function mockRequest(headers: Record<string, string> = {}) {
 }
 
 describe("harden API auth checks and session validation (#945)", () => {
-  const basePayload: Omit<SessionPayload, "iat"> = {
+  const basePayload: SessionPayload = {
     sub: "GUSER1234567890STEL",
     exp: Math.floor(Date.now() / 1000) + 3600,
+    iat: Math.floor(Date.now() / 1000),
     iss: "StellarCredAuth",
     role: "holder",
   };
@@ -135,7 +136,7 @@ describe("harden API auth checks and session validation (#945)", () => {
 
       const res = requireSession(req, { secret: TEST_SECRET });
       expect("ok" in res && res.ok).toBe(true);
-      if ("ok" in res && res.ok) {
+      if ("session" in res) {
         expect(res.session.sub).toBe("GUSER1234567890STEL");
       }
     });
