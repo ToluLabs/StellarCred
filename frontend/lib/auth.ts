@@ -145,8 +145,6 @@ export function createSignedSessionToken<
   const header = { alg: "HS256", typ: "JWT" };
   const fullPayload: SessionPayload = {
     ...payload,
-    sub: payload.sub ?? "",
-    exp: payload.exp ?? now + 3600,
     iat: payload.iat ?? now,
   };
   const headerB64 = Buffer.from(JSON.stringify(header), "utf8").toString("base64url");

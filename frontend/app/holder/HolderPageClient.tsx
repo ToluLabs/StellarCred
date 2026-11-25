@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
@@ -16,9 +15,7 @@ import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
-import { IMPORT_PARAM } from "@/lib/transfer";
 import { removeCredential, type Credential } from "@/lib/credential";
-import { proofStatus, isExpiringSoon, daysRemaining } from "@/lib/proof-helpers";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
 import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
@@ -98,14 +95,7 @@ function HolderInner() {
   useTransferImportParam(setImportPayload);
 
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  const unproved = displayCreds.filter((c) => proofStatus(c) === "unproved");
-  const expiringSoon = displayCreds
-    .filter((c) => proofStatus(c) === "proved" && isExpiringSoon(c, 7))
-    .sort((a, b) => daysRemaining(a) - daysRemaining(b));
-  const activeProved = displayCreds.filter(
-    (c) => proofStatus(c) === "proved" && !isExpiringSoon(c, 7),
-  );
-  const expired = displayCreds.filter((c) => proofStatus(c) === "expired");
+  const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
 
   // Warm the UltraHonk backend for whatever credential types the user still
   // needs to prove, in the background, once the wallet is actually connected

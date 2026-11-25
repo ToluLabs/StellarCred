@@ -4,12 +4,10 @@
 // StellarCred. By default the only thing a protocol trusts is the on-chain
 // ProofRegistry — there is no API key, no backend, and no personal data
 // handling. `hasClaim` is the primary integration call.
-//
 // Reads can optionally be sourced from a StellarCred indexer instead
 // (`{ source: "indexer" }`), which is much faster but trusts whoever operates
 // that indexer. It is off by default and must never be the sole basis for a
 // security decision. See the SDK README §Indexer fast path (issue #613).
-//
 // *Requires @stellar/stellar-sdk as a peer dependency.
 //
 // Quick start and every configuration option: see README.md.

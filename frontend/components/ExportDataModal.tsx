@@ -151,9 +151,11 @@ export function ExportDataModal({
 }: ExportDataModalProps) {
   const [activeTab, setActiveTab] = useState<"request" | "monitor">("request");
   const [selectedScope, setSelectedScope] = useState<ExportScope>("full");
-  const [selectedFormat] = useState<ExportFormat>("json");
+  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
   const [jobs, setJobs] = useState<ExportJob[]>([]);
   const [allowedScopes, setAllowedScopes] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [timeRemainingMap, setTimeRemainingMap] = useState<Record<string, number>>({});
@@ -178,7 +180,8 @@ export function ExportDataModal({
 
   useEffect(() => {
     if (isOpen) {
-      void fetchJobs();
+      setLoadingJobs(true);
+      fetchJobs().finally(() => setLoadingJobs(false));
     }
   }, [isOpen, fetchJobs]);
 
@@ -196,10 +199,32 @@ export function ExportDataModal({
     return () => clearInterval(interval);
   }, [isOpen, jobs, fetchJobs]);
 
+  // Expiration countdown ticker
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const tick = () => {
+      const now = Date.now();
+      const updated: Record<string, number> = {};
+      for (const job of jobs) {
+        if (job.expiresAt) {
+          const diffSec = Math.max(0, Math.floor((job.expiresAt - now) / 1000));
+          updated[job.id] = diffSec;
+        }
+      }
+      setTimeRemainingMap(updated);
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen, jobs]);
+
   if (!isOpen) return null;
 
   async function handleRequestExport(e: React.FormEvent) {
     e.preventDefault();
+    setSubmitting(true);
     setError(null);
     setSuccessNotice(null);
 
@@ -228,7 +253,16 @@ export function ExportDataModal({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Request failed";
       setError(msg);
+    } finally {
+      setSubmitting(false);
     }
+  }
+
+  function formatCountdown(seconds: number): string {
+    if (seconds <= 0) return "Expired";
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs.toString().padStart(2, "0")}s`;
   }
 
   return (

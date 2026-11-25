@@ -76,7 +76,7 @@ describe("harden API auth checks and session validation (#945)", () => {
     });
 
     it("rejects tokens issued in the future beyond max clock skew", () => {
-      const futurePayload = {
+      const futurePayload: SessionPayload = {
         ...basePayload,
         iat: Math.floor(Date.now() / 1000) + 1000,
       };
@@ -134,8 +134,8 @@ describe("harden API auth checks and session validation (#945)", () => {
       const req = mockRequest({ authorization: `Bearer ${token}` });
 
       const res = requireSession(req, { secret: TEST_SECRET });
-      expect("session" in res).toBe(true);
-      if ("session" in res) {
+      expect("ok" in res && res.ok).toBe(true);
+      if ("ok" in res && res.ok) {
         expect(res.session.sub).toBe("GUSER1234567890STEL");
       }
     });

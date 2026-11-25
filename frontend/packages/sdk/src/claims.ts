@@ -682,6 +682,8 @@ export interface CredentialStatusResult {
   cause?: unknown;
 }
 
+export type ClaimOutcomeResult = CredentialStatusResult;
+
 // ---------------------------------------------------------------------------
 // Low-level read: ProofRegistry.is_verified via simulation
 // ---------------------------------------------------------------------------
@@ -2151,18 +2153,11 @@ export async function getClaimOutcome(
   wallet: string,
   claimType: string,
   opts?: ClaimOptions,
-): Promise<CredentialStatusResult> {
+): Promise<ClaimOutcomeResult> {
   return checkClaimStatus(wallet, claimType, opts);
 }
 
-export const readClaim = getClaimOutcome;
-export const readClaimOutcome = getClaimOutcome;
-export const getClaimReadOutcome = getClaimOutcome;
 export const checkClaimOutcome = getClaimOutcome;
-export const getClaimReadResult = getClaimOutcome;
-export const readClaimResult = getClaimOutcome;
-export const getClaimStatusOutcome = getClaimOutcome;
-export const readClaimStatus = getClaimOutcome;
 
 /**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.

@@ -169,26 +169,6 @@ export async function sealArtifact(artifact: ExportArtifactV1): Promise<ExportAr
   return { ...artifact, integrity };
 }
 
-/** Serialize a sealed or unsigned artifact as stable JSON text. */
-export function serializeArtifact(artifact: ExportArtifactV1): string {
-  return JSON.stringify(artifact);
-}
-
-/** Structural and schema guard for export artifact inputs. */
-export function isExportArtifact(raw: unknown): raw is ExportArtifactV1 {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
-  const value = raw as Partial<ExportArtifactV1>;
-  return (
-    value.schemaVersion === EXPORT_SCHEMA_VERSION &&
-    typeof value.generation === "object" &&
-    value.generation !== null &&
-    typeof value.generation.generatedAt === "string" &&
-    typeof value.generation.generator === "string" &&
-    typeof value.count === "number" &&
-    Array.isArray(value.entries)
-  );
-}
-
 /**
  * Verify an artifact before import. Rejects (throws `ArtifactIntegrityError`)
  * with an actionable message when:
