@@ -1,6 +1,4 @@
-import { defineConfig } from "tsup";
-
-export default defineConfig({
+export default {
   entry: {
     index: "src/index.ts",
     server: "src/server.ts",
@@ -16,4 +14,4 @@ export default defineConfig({
   splitting: false,
   platform: "neutral",
   external: ["@stellar/stellar-sdk", "node:fs/promises", "node:url"],
-});
+};
