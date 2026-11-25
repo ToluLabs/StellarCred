@@ -1362,6 +1362,27 @@ textarea:focus-visible {
 
 .cred-card {
   padding: var(--spacing-xl, 1rem) var(--spacing-2xl, 1.25rem);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.cred-card--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: 0.125rem 0.4rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--text);
+  background: var(--surface-raised, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border);
+  border-radius: 4px;
 }
 
 .cred-card__top {

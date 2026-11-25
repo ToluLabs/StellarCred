@@ -1,9 +1,17 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
+import {
+  IconAlertTriangle,
+  IconDownload,
+  IconFileExport,
+  IconKeyboard,
+  IconPlus,
+  IconSearch,
+  IconX,
+} from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
@@ -24,6 +32,9 @@ import { useProofApproval } from "@/lib/hooks/useProofApproval";
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
 import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
 import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
+import { useKeyboardShortcuts } from "@/lib/hooks/useKeyboardShortcuts";
+import { credIsExpired } from "@/lib/proof-helpers";
+import { proofSubmissionConfigured } from "@/lib/config";
 
 // ── Components ────────────────────────────────────────────────────────────────
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
@@ -61,6 +72,10 @@ const DisclosurePreviewModal = dynamic(
   () => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal),
   { ssr: false },
 );
+const ShortcutCheatSheetModal = dynamic(
+  () => import("@/components/ShortcutCheatSheetModal").then((m) => m.ShortcutCheatSheetModal),
+  { ssr: false },
+);
 
 function HolderInner() {
   const { address, walletId, connect, restoring } = useWallet();
@@ -86,7 +101,12 @@ function HolderInner() {
   const [transferCred, setTransferCred] = useState<Credential | null>(null);
   const { importPayload, setImportPayload } = useTransferQuery();
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const cardRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   // A transfer QR opened directly (native camera app -> /holder?import=...)
   // lands here with the payload already in the URL — prompt for the
@@ -95,7 +115,37 @@ function HolderInner() {
   useTransferImportParam(setImportPayload);
 
   const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
+  const filteredCreds = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return displayCreds;
+    return displayCreds.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.claim.toLowerCase().includes(q) ||
+        c.issuer.toLowerCase().includes(q) ||
+        c.commitment.toLowerCase().includes(q),
+    );
+  }, [displayCreds, searchQuery]);
+  const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(filteredCreds);
+  const orderedCreds = useMemo(
+    () => [...expiringSoon, ...expired, ...unproved, ...activeProved],
+    [expiringSoon, expired, unproved, activeProved],
+  );
+  const clampedActiveIndex =
+    orderedCreds.length === 0
+      ? -1
+      : activeIndex >= orderedCreds.length
+        ? orderedCreds.length - 1
+        : activeIndex;
+  const activeCommitment =
+    clampedActiveIndex >= 0 && clampedActiveIndex < orderedCreds.length
+      ? orderedCreds[clampedActiveIndex].commitment
+      : null;
+
+  useEffect(() => {
+    if (!activeCommitment) return;
+    cardRefs.current.get(activeCommitment)?.scrollIntoView?.({ block: "nearest" });
+  }, [activeCommitment]);
 
   // Warm the UltraHonk backend for whatever credential types the user still
   // needs to prove, in the background, once the wallet is actually connected
@@ -130,8 +180,54 @@ function HolderInner() {
     setConfirmBulkAction(null);
   }
 
+  const anyModalOpen = Boolean(
+    detailCred ||
+    transferCred ||
+    importPayload ||
+    showExportModal ||
+    showShortcutsModal ||
+    proofApproval.creds ||
+    confirmBulkAction,
+  );
+
+  useKeyboardShortcuts({
+    enabled: view.kind === "list" && !anyModalOpen,
+    itemCount: orderedCreds.length,
+    activeIndex: clampedActiveIndex,
+    setActiveIndex,
+    onFocusSearch: () => {
+      searchInputRef.current?.focus();
+    },
+    onInspect: (idx) => {
+      const target = orderedCreds[idx];
+      if (target) setDetailCred(target);
+    },
+    onProve: (idx) => {
+      const target = orderedCreds[idx];
+      if (!target || !address || credIsExpired(target) || !proofSubmissionConfigured()) return;
+      proofApproval.request({ kind: "single", cred: target });
+    },
+    onToggleSelect: (idx) => {
+      const target = orderedCreds[idx];
+      if (!target || !canBatch) return;
+      if (unproved.some((u) => u.commitment === target.commitment)) {
+        toggleSelected(target);
+      }
+    },
+    onExport: () => setShowExportModal(true),
+    onOpenHelp: () => setShowShortcutsModal(true),
+    onEscape: () => {
+      if (clampedActiveIndex !== -1) {
+        setActiveIndex(-1);
+      } else if (searchQuery) {
+        setSearchQuery("");
+      }
+    },
+  });
+
   /** One credential card — shared by every section below. */
   function renderCred(c: Credential, selection?: BatchSelection) {
+    const isActive = activeCommitment === c.commitment;
     return (
       <CredCard
         key={c.commitment}
@@ -142,6 +238,14 @@ function HolderInner() {
         onInspect={() => setDetailCred(c)}
         isPreview={isPreview}
         selection={selection}
+        isActive={isActive}
+        cardRef={(el) => {
+          if (el) {
+            cardRefs.current.set(c.commitment, el);
+          } else {
+            cardRefs.current.delete(c.commitment);
+          }
+        }}
       />
     );
   }
@@ -169,6 +273,16 @@ function HolderInner() {
           >
             <IconFileExport size={15} style={{ marginRight: "0.3rem" }} />
             Export Data
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowShortcutsModal(true)}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            id="btn-keyboard-shortcuts"
+          >
+            <IconKeyboard size={16} aria-hidden="true" />
           </button>
           <WalletButton />
         </div>
@@ -248,6 +362,86 @@ function HolderInner() {
 
               {/* ── Empty state ── */}
               {creds.length === 0 && !importing && <EmptyCredentialsState />}
+
+              {/* ── Credential search / filter ── */}
+              {displayCreds.length > 0 && (
+                <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <IconSearch
+                      size={15}
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        left: "0.75rem",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        color: "var(--faint)",
+                        pointerEvents: "none",
+                      }}
+                    />
+                    <input
+                      ref={searchInputRef}
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.stopPropagation();
+                          if (searchQuery) {
+                            setSearchQuery("");
+                          } else {
+                            searchInputRef.current?.blur();
+                          }
+                        }
+                      }}
+                      placeholder="Filter credentials by title, claim, issuer, or commitment…"
+                      aria-label="Filter credentials"
+                      style={{
+                        width: "100%",
+                        paddingLeft: "2.25rem",
+                        paddingRight: searchQuery ? "2.25rem" : "2rem",
+                      }}
+                    />
+                    {searchQuery ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setSearchQuery("")}
+                        aria-label="Clear filter"
+                        style={{
+                          position: "absolute",
+                          right: "0.35rem",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          padding: "0.2rem",
+                        }}
+                      >
+                        <IconX size={14} aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <kbd
+                        className="kbd"
+                        aria-hidden="true"
+                        style={{
+                          position: "absolute",
+                          right: "0.6rem",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        /
+                      </kbd>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {displayCreds.length > 0 && filteredCreds.length === 0 && (
+                <p className="faint" role="status" style={{ fontSize: "0.875rem" }}>
+                  No credentials match &ldquo;{searchQuery}&rdquo;.
+                </p>
+              )}
 
               {/* ── Expiring soon (action recommended) ── */}
               {expiringSoon.length > 0 && (
@@ -471,6 +665,10 @@ function HolderInner() {
           onConfirm={() => executeBulkRemove(confirmBulkAction.commitments)}
           onCancel={() => setConfirmBulkAction(null)}
         />
+      )}
+
+      {showShortcutsModal && (
+        <ShortcutCheatSheetModal onClose={() => setShowShortcutsModal(false)} />
       )}
     </>
   );
