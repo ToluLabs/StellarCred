@@ -111,14 +111,19 @@ describe("HolderPageClient keyboard navigation shortcuts", () => {
 
     // Traverse down to first card, then second card, then back to first
     fireEvent.keyDown(window, { key: "j" });
-    const cards = screen.getAllByRole("article");
-    expect(cards[0]).toHaveAttribute("data-active", "true");
+    await waitFor(() => {
+      expect(screen.getAllByRole("article")[0]).toHaveAttribute("data-active", "true");
+    });
 
     fireEvent.keyDown(window, { key: "j" });
-    expect(cards[1]).toHaveAttribute("data-active", "true");
+    await waitFor(() => {
+      expect(screen.getAllByRole("article")[1]).toHaveAttribute("data-active", "true");
+    });
 
     fireEvent.keyDown(window, { key: "k" });
-    expect(cards[0]).toHaveAttribute("data-active", "true");
+    await waitFor(() => {
+      expect(screen.getAllByRole("article")[0]).toHaveAttribute("data-active", "true");
+    });
 
     // 'v' opens CredentialDetailModal for the active credential
     fireEvent.keyDown(window, { key: "v" });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 export interface UseKeyboardShortcutsOptions {
   /** Whether shortcuts are active (e.g. false when a modal is open). */
@@ -62,7 +62,7 @@ function isInteractiveControl(target: EventTarget | null): boolean {
  */
 export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void {
   const optionsRef = useRef(options);
-  useEffect(() => {
+  useLayoutEffect(() => {
     optionsRef.current = options;
   });
 
