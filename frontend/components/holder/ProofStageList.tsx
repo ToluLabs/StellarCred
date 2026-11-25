@@ -139,7 +139,7 @@ export function ProofStageList({
               }}
             >
               {isDone && <IconCheck size={12} stroke={3} />}
-              {isRunning && <IconLoader2 size={12} className="spin" />}
+              {isRunning && <IconLoader2 size={12} className="spin" aria-hidden="true" />}
               {isPending && <span style={{ fontSize: "0.6rem", lineHeight: 1 }}>&bull;</span>}
             </div>
 

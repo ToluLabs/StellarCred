@@ -21,7 +21,9 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
         >
           <div className="proof-progress-icon" aria-hidden="true">
             {step.status === "done" && <IconCheck size={13} stroke={3} />}
-            {step.status === "active" && <IconLoader2 size={13} className="spin" />}
+            {step.status === "active" && (
+              <IconLoader2 size={13} className="spin" aria-hidden="true" />
+            )}
             {step.status === "error" && <IconAlertTriangle size={13} />}
             {step.status === "pending" && <div className="pending-dot" />}
           </div>
