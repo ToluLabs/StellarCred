@@ -44,7 +44,7 @@ function collectFiles(dir, extensions = new Set([".ts", ".tsx", ".js", ".mjs", "
       const relPath = relative(ROOT_DIR, fullPath).replace(/\\/g, "/");
       if (entry.isDirectory()) {
         const shouldSkip = [...EXCLUDE_DIRS].some(
-          (e) => relPath === e || relPath.startsWith(e + "/"),
+          (e) => relPath.split("/").includes(e) || relPath === e || relPath.startsWith(e + "/"),
         );
         if (!shouldSkip) walk(fullPath);
         continue;

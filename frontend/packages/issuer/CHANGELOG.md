@@ -17,12 +17,14 @@ carry the same version in every release.
 First public release on npm.
 
 ### Added
+
 - Published by the repository's release workflow (`release.yml`) together with
   `@stellarcred/sdk`, with [npm provenance](https://docs.npmjs.com/generating-provenance-statements).
 - Documented package lifecycle: versioning, support windows, upgrade checklist and
   how to verify provenance (`SUPPORT_POLICY.md`, package README).
 
 ### Changed
+
 - Version aligned with `@stellarcred/sdk` (was `0.1.0`, which was never published).
 - `repository.url` now points at `ToluLabs/StellarCred`, and `publishConfig.access`
   is `public`. No source or API changes.

@@ -40,6 +40,15 @@ import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
 import { CredentialSearchBar } from "@/components/holder/CredentialSearchBar";
 import { ExpiryWarningBanner } from "@/components/holder/ExpiryWarningBanner";
+import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
+import {
+  getPortfolioAccounts,
+  recordConnectedAccount,
+  getActivePortfolioAccount,
+  setActivePortfolioAccount,
+  filterCredentialsByAccount,
+  type PortfolioAccount,
+} from "@/lib/account-portfolio";
 
 import type { PageView, BulkAction } from "./types";
 
@@ -100,7 +109,30 @@ function HolderInner() {
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useTransferImportParam(setImportPayload);
 
-  const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
+  // Multi-account portfolio segregation
+  const [portfolioAccounts, setPortfolioAccounts] = useState<PortfolioAccount[]>(() =>
+    getPortfolioAccounts(),
+  );
+  const [activeAccountFilter, setActiveAccountFilter] = useState<string | null>(() =>
+    getActivePortfolioAccount(),
+  );
+
+  // Update known accounts when connected address changes
+  useState(() => {
+    if (address) {
+      const updated = recordConnectedAccount(address);
+      setPortfolioAccounts(updated);
+    }
+  });
+
+  const handleSelectPortfolioAccount = (selectedAddr: string | null) => {
+    setActiveAccountFilter(selectedAddr);
+    setActivePortfolioAccount(selectedAddr);
+  };
+
+  const rawCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
+  // Segregate credentials by active account portfolio (without clearing session data)
+  const displayCreds = filterCredentialsByAccount(rawCreds, activeAccountFilter);
   const anyModalOpen = Boolean(
     detailCred ||
     transferCred ||
@@ -177,7 +209,14 @@ function HolderInner() {
           <span className="eyebrow">Holder</span>
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
-        <div className="row" style={{ gap: "0.75rem" }}>
+        <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
+          {portfolioAccounts.length > 0 && (
+            <AccountPortfolioSwitcher
+              accounts={portfolioAccounts}
+              activeAddress={activeAccountFilter}
+              onSelectAccount={handleSelectPortfolioAccount}
+            />
+          )}
           {/* Selective disclosure presets (#386): a named, shareable bundle
               of several claim types — defined and shared from its own page
               rather than crowding this one, but linked from here since the

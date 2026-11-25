@@ -6,6 +6,8 @@ import {
   buildReadinessResponse,
   checkDatabase,
   evaluateHorizonHealth,
+  DEFAULT_MAX_LEDGER_LAG,
+  DEFAULT_WARN_LEDGER_LAG,
   MAX_READY_LEDGER_LAG,
   resolveVersion,
   statusFromHealth,
@@ -28,9 +30,30 @@ const base: IngesterHealth = {
 
 describe("statusFromHealth", () => {
   it("maps consecutive errors to ok / degraded / error", () => {
-    expect(statusFromHealth({ consecutiveErrors: 0 })).toBe("ok");
-    expect(statusFromHealth({ consecutiveErrors: 2 })).toBe("degraded");
-    expect(statusFromHealth({ consecutiveErrors: 3 })).toBe("error");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 0 })).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 2, lag: 0 })).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 3, lag: 0 })).toBe("error");
+  });
+
+  it("maps ledger lag to ok / degraded / error based on default thresholds", () => {
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 0 })).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 29 })).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 30 })).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 119 })).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 120 })).toBe("error");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 200 })).toBe("error");
+  });
+
+  it("does not degrade or error when lag is negative (unknown head during startup)", () => {
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: -1 })).toBe("ok");
+  });
+
+  it("respects custom lag thresholds", () => {
+    const customThresholds = { warnLedgerLag: 10, maxLedgerLag: 50 };
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 9 }, customThresholds)).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 10 }, customThresholds)).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 49 }, customThresholds)).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 50 }, customThresholds)).toBe("error");
   });
 });
 
@@ -43,7 +66,7 @@ describe("resolveVersion", () => {
 });
 
 describe("buildHealthResponse", () => {
-  it("includes status, readiness and service metadata", () => {
+  it("includes status, readiness, thresholds, and service metadata", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     const body = buildHealthResponse(10, base, now);
     expect(body).toMatchObject({
@@ -52,15 +75,53 @@ describe("buildHealthResponse", () => {
       service: SERVICE_NAME,
       timestamp: "2026-01-01T00:00:00.000Z",
       lastLedger: 10,
+      headLedger: 12,
       lag: 2,
+      maxLedgerLag: DEFAULT_MAX_LEDGER_LAG,
+      warnLedgerLag: DEFAULT_WARN_LEDGER_LAG,
     });
     expect(typeof body.version).toBe("string");
   });
 
-  it("is not ready when the ingester is in the error state", () => {
+  it("is not ready when the ingester is in the error state due to consecutive errors", () => {
     const body = buildHealthResponse(10, { ...base, consecutiveErrors: 3, lastError: "boom" });
     expect(body.status).toBe("error");
     expect(body.ready).toBe(false);
+  });
+
+  it("marks status degraded and ready true when lag exceeds warning threshold", () => {
+    const body = buildHealthResponse(10, { ...base, lag: 35 });
+    expect(body.status).toBe("degraded");
+    expect(body.ready).toBe(true);
+    expect(body.lag).toBe(35);
+  });
+
+  it("marks status error and ready false when lag exceeds max threshold even with 0 errors", () => {
+    const body = buildHealthResponse(10, { ...base, consecutiveErrors: 0, lag: 150 });
+    expect(body.status).toBe("error");
+    expect(body.ready).toBe(false);
+    expect(body.lag).toBe(150);
+  });
+
+  it("uses custom thresholds when provided via options object", () => {
+    const body = buildHealthResponse(10, { ...base, lag: 20 }, {
+      thresholds: { warnLedgerLag: 15, maxLedgerLag: 40 },
+    });
+    expect(body.status).toBe("degraded");
+    expect(body.ready).toBe(true);
+    expect(body.warnLedgerLag).toBe(15);
+    expect(body.maxLedgerLag).toBe(40);
+  });
+
+  it("contains zero credential-level or identity fields in diagnostic payload", () => {
+    const body = buildHealthResponse(10, base);
+    const keys = Object.keys(body);
+    const forbiddenPatterns = [/wallet/i, /claim/i, /credential/i, /proof/i, /secret/i, /token/i, /key/i];
+    for (const pattern of forbiddenPatterns) {
+      for (const key of keys) {
+        expect(key).not.toMatch(pattern);
+      }
+    }
   });
 });
 

@@ -3,13 +3,15 @@
  *
  * Gives deployment and monitoring tooling (Docker HEALTHCHECK, Kubernetes
  * probes, load-balancer checks) one well-defined shape to poll, derived from
- * the ingester's health snapshot and the database cursor.
+ * the ingester's health snapshot, database cursor, and ledger lag relative to
+ * the trusted network head.
  *
  * Status semantics:
- *   "ok"       — no consecutive fetch errors; data is flowing.
- *   "degraded" — a fetch failed, but fewer than ERROR_THRESHOLD in a row.
- *   "error"    — ERROR_THRESHOLD or more consecutive failures; the ingester
- *                is very likely stalled and its data may be stale.
+ *   "ok"       — no consecutive fetch errors, and lag is below the warning threshold.
+ *   "degraded" — a fetch failed (fewer than ERROR_THRESHOLD), or lag is at/above
+ *                warnLedgerLag but below maxLedgerLag.
+ *   "error"    — ERROR_THRESHOLD or more consecutive failures, or lag is at/above
+ *                maxLedgerLag; the ingester is stalled and data is stale.
  *
  * `ready` is true unless status is "error".
  *
@@ -23,6 +25,12 @@ export const ERROR_THRESHOLD = 3;
 
 /** Maximum ledger lag allowed for the Horizon/ingester readiness check. */
 export const MAX_READY_LEDGER_LAG = 5;
+
+/** Default ledger lag threshold at or above which status becomes "degraded". */
+export const DEFAULT_WARN_LEDGER_LAG = 30;
+
+/** Default ledger lag threshold at or above which status becomes "error" and ready is false. */
+export const DEFAULT_MAX_LEDGER_LAG = 120;
 
 /** Stable service identifier reported in every health response. */
 export const SERVICE_NAME = "stellarcred-indexer";
@@ -82,6 +90,17 @@ export interface HealthzResponse extends ReadinessResponse {
   fetchFailures: number;
 }
 
+export interface HealthThresholds {
+  errorThreshold?: number;
+  warnLedgerLag?: number;
+  maxLedgerLag?: number;
+}
+
+export interface HealthOptions {
+  thresholds?: HealthThresholds;
+  now?: Date;
+}
+
 export interface IndexerHealthResponse {
   status: HealthStatus;
   ready: boolean;
@@ -92,6 +111,8 @@ export interface IndexerHealthResponse {
   lastLedger: number;
   headLedger: number;
   lag: number;
+  maxLedgerLag: number;
+  warnLedgerLag: number;
   lastSuccessLedger: number;
   lastError: string | null;
   lastErrorTime: number | null;
@@ -108,18 +129,54 @@ export function resolveVersion(env: NodeJS.ProcessEnv = process.env): string {
   return env.INDEXER_VERSION || env.npm_package_version || "dev";
 }
 
-export function statusFromHealth(h: Pick<IngesterHealth, "consecutiveErrors">): HealthStatus {
-  if (h.consecutiveErrors === 0) return "ok";
-  if (h.consecutiveErrors < ERROR_THRESHOLD) return "degraded";
-  return "error";
+export function statusFromHealth(
+  h: Pick<IngesterHealth, "consecutiveErrors"> & Partial<Pick<IngesterHealth, "lag">>,
+  thresholds?: HealthThresholds
+): HealthStatus {
+  const errorThreshold = thresholds?.errorThreshold ?? ERROR_THRESHOLD;
+  const maxLag = thresholds?.maxLedgerLag ?? DEFAULT_MAX_LEDGER_LAG;
+  const warnLag = thresholds?.warnLedgerLag ?? DEFAULT_WARN_LEDGER_LAG;
+
+  if (h.consecutiveErrors >= errorThreshold) return "error";
+  if (typeof h.lag === "number" && h.lag >= 0 && h.lag >= maxLag) return "error";
+  if (h.consecutiveErrors > 0) return "degraded";
+  if (typeof h.lag === "number" && h.lag >= 0 && h.lag >= warnLag) return "degraded";
+  return "ok";
 }
 
 export function buildHealthResponse(
   lastLedger: number,
   h: IngesterHealth,
-  now: Date = new Date()
+  optionsOrNow?: HealthOptions | HealthThresholds | Date,
+  thresholdsArg?: HealthThresholds
 ): IndexerHealthResponse {
-  const status = statusFromHealth(h);
+  let now: Date = new Date();
+  let thresholds: HealthThresholds | undefined = thresholdsArg;
+
+  if (optionsOrNow instanceof Date) {
+    now = optionsOrNow;
+  } else if (optionsOrNow && typeof optionsOrNow === "object") {
+    if ("now" in optionsOrNow && optionsOrNow.now instanceof Date) {
+      now = optionsOrNow.now;
+    }
+    if ("thresholds" in optionsOrNow && optionsOrNow.thresholds) {
+      thresholds = optionsOrNow.thresholds;
+    } else if (
+      "maxLedgerLag" in optionsOrNow ||
+      "warnLedgerLag" in optionsOrNow ||
+      "errorThreshold" in optionsOrNow
+    ) {
+      thresholds = optionsOrNow as HealthThresholds;
+    }
+  }
+
+  const effectiveThresholds: HealthThresholds = {
+    errorThreshold: thresholds?.errorThreshold ?? ERROR_THRESHOLD,
+    maxLedgerLag: thresholds?.maxLedgerLag ?? DEFAULT_MAX_LEDGER_LAG,
+    warnLedgerLag: thresholds?.warnLedgerLag ?? DEFAULT_WARN_LEDGER_LAG,
+  };
+
+  const status = statusFromHealth(h, effectiveThresholds);
   return {
     status,
     ready: status !== "error",
@@ -130,6 +187,8 @@ export function buildHealthResponse(
     lastLedger,
     headLedger: h.headLedger,
     lag: h.lag,
+    maxLedgerLag: effectiveThresholds.maxLedgerLag!,
+    warnLedgerLag: effectiveThresholds.warnLedgerLag!,
     lastSuccessLedger: h.lastSuccessLedger,
     lastError: h.lastError,
     lastErrorTime: h.lastErrorTime,

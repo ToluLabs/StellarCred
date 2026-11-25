@@ -209,9 +209,7 @@ describe("entry-point parity (issue #609 / #522)", () => {
 
     expect(ns.bootstrap).toBe(fromCapabilities.bootstrap);
     expect(ns.fetchCapabilities).toBe(fromCapabilities.fetchCapabilities);
-    expect(ns.validateCapabilitiesDescriptor).toBe(
-      fromCapabilities.validateCapabilitiesDescriptor,
-    );
+    expect(ns.validateCapabilitiesDescriptor).toBe(fromCapabilities.validateCapabilitiesDescriptor);
   });
 
   it("default export equals the StellarCred named export", () => {

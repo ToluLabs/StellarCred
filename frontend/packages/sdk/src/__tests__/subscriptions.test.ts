@@ -85,12 +85,15 @@ function jsonResponse(body: unknown) {
 }
 
 async function flush(): Promise<void> {
-  await vi.advanceTimersByTimeAsync(0);
+  for (let i = 0; i < 10; i++) {
+    await vi.advanceTimersByTimeAsync(0);
+  }
 }
 
 /** Advance `ms`, flushing timers and awaited microtasks at each step. */
 async function advance(ms: number): Promise<void> {
   await vi.advanceTimersByTimeAsync(ms);
+  await flush();
 }
 
 describe("subscribeClaims (#392)", () => {
