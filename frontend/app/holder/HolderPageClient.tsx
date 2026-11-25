@@ -3,12 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import {
-  IconAlertTriangle,
-  IconDownload,
-  IconFileExport,
-  IconPlus,
-} from "@tabler/icons-react";
+import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
@@ -257,7 +252,6 @@ function HolderInner() {
               {/* ── Expiring soon (action recommended) ── */}
               {expiringSoon.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>Expiring soon — Re-prove recommended</SectionLabel>
                   <SectionLabel>Expiring soon · Re-prove recommended</SectionLabel>
                   {expiringSoon.map((c) => renderCred(c))}
                 </div>
@@ -266,7 +260,6 @@ function HolderInner() {
               {/* ── Expired (action required) ── */}
               {expired.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>Expired proofs — Re-prove required</SectionLabel>
                   <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
                   <div
                     className="between"
@@ -344,7 +337,6 @@ function HolderInner() {
               {/* ── Active proved ── */}
               {activeProved.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>On-chain — active proofs</SectionLabel>
                   <SectionLabel>On-chain · active proofs</SectionLabel>
                   {activeProved.map((c) => renderCred(c))}
                 </div>
@@ -394,7 +386,10 @@ function HolderInner() {
                       <IconFileExport size={14} />
                       Export data
                     </button>
-                    <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
+                    <GuardianRecoveryControl
+                      hasCredentials={creds.length > 0}
+                      onRestored={reload}
+                    />
                   </div>
                   <p
                     className="faint"

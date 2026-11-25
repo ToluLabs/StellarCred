@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  auditLogBootstrap,
-  auditLogEntries,
-  auditLogVerify,
-} from "@/lib/audit-log";
+import { auditLogBootstrap, auditLogEntries, auditLogVerify } from "@/lib/audit-log";
 import { requireAdmin } from "@/app/api/_middleware";
 
 export const dynamic = "force-dynamic";
@@ -33,9 +29,7 @@ export async function GET(req: NextRequest) {
     let filtered = allEntries;
     if (issuerFilter) {
       const lower = issuerFilter.toLowerCase();
-      filtered = allEntries.filter((e) =>
-        e.issuer.toLowerCase().includes(lower),
-      );
+      filtered = allEntries.filter((e) => e.issuer.toLowerCase().includes(lower));
     }
 
     // Take the most recent N after filtering

@@ -171,9 +171,9 @@ describe("extractIp", () => {
   });
 
   it("prefers x-forwarded-for over x-real-ip", () => {
-    expect(
-      extractIp(makeRequest({ "x-forwarded-for": "10.0.0.1", "x-real-ip": "10.0.0.2" })),
-    ).toBe("10.0.0.1");
+    expect(extractIp(makeRequest({ "x-forwarded-for": "10.0.0.1", "x-real-ip": "10.0.0.2" }))).toBe(
+      "10.0.0.1",
+    );
   });
 
   it("returns 'unknown' when no IP header is present", () => {

@@ -12,13 +12,7 @@ import type { Requirement } from "@/lib/protocols";
  * the ledger proves nothing about the holder (Issue #634). `error` is kept for
  * a throw that is not a read result at all.
  */
-export type AccessCheckState =
-  | "idle"
-  | "loading"
-  | "granted"
-  | "denied"
-  | "unknown"
-  | "error";
+export type AccessCheckState = "idle" | "loading" | "granted" | "denied" | "unknown" | "error";
 
 const DEBOUNCE_MS = 300;
 
@@ -37,9 +31,7 @@ export function useProtocolAccessCheck(
   const { isPreview = false, networkKey } = opts;
 
   const [state, setState] = useState<AccessCheckState>("idle");
-  const [statuses, setStatuses] = useState<(boolean | null)[]>(() =>
-    requirements.map(() => false),
-  );
+  const [statuses, setStatuses] = useState<(boolean | null)[]>(() => requirements.map(() => false));
   const [issue, setIssue] = useState<RpcIssue | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
 

@@ -33,11 +33,7 @@ export function Badge({
   className = "",
   as: Tag = "span",
 }: BadgeProps) {
-  const classes = [
-    "badge",
-    variant !== "neutral" ? `badge-${variant}` : "",
-    className,
-  ]
+  const classes = ["badge", variant !== "neutral" ? `badge-${variant}` : "", className]
     .filter(Boolean)
     .join(" ");
 

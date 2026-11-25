@@ -59,7 +59,13 @@ export type ClaimResult =
 
 /** Outcome of {@link isVerified}. */
 export type VerificationResult =
-  | { status: "verified" | "unverified"; valid: boolean; verifiedAt: number; expiry: number; issue?: undefined }
+  | {
+      status: "verified" | "unverified";
+      valid: boolean;
+      verifiedAt: number;
+      expiry: number;
+      issue?: undefined;
+    }
   | { status: "unknown"; valid?: undefined; verifiedAt: 0; expiry: 0; issue: RpcIssue };
 
 /** Reason a read could not be attempted at all. */

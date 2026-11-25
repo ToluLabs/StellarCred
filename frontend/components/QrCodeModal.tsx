@@ -25,7 +25,9 @@ export function QrCodeModal({
     setDataUrl(null);
     setError("");
     toQrDataUrl(value)
-      .then((url) => { if (!cancelled) setDataUrl(url); })
+      .then((url) => {
+        if (!cancelled) setDataUrl(url);
+      })
       .catch((e) => {
         if (cancelled) return;
         // qrcode throws this exact message when the content exceeds what a
@@ -38,7 +40,9 @@ export function QrCodeModal({
             : "Couldn't generate a QR code — use the link below instead.",
         );
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [value]);
 
   return (
@@ -66,7 +70,10 @@ export function QrCodeModal({
         )}
 
         {hint && (
-          <p className="faint" style={{ fontSize: "0.8125rem", marginTop: "1rem", lineHeight: 1.6 }}>
+          <p
+            className="faint"
+            style={{ fontSize: "0.8125rem", marginTop: "1rem", lineHeight: 1.6 }}
+          >
             {hint}
           </p>
         )}

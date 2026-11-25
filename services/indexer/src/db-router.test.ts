@@ -6,7 +6,11 @@
 import { describe, it, expect, jest } from "@jest/globals";
 import { parseDatabaseReadReplicaUrls } from "./config";
 import type { SqlParam } from "./db-dialect";
-import { createPostgresDialect, type PostgresConnection } from "./db-postgres";
+import {
+  createPostgresDialect,
+  type PostgresConnection,
+  type PostgresQueryConfig,
+} from "./db-postgres";
 import { createReadReplicaRouter, isReadOnlyQuery } from "./db-router";
 import { createSharedDb } from "./db-shared";
 
@@ -27,7 +31,9 @@ function makeFakeConn(
   let ended = false;
 
   const conn: PostgresConnection = {
-    async query(sql: string, params?: SqlParam[]) {
+    async query(input: string | PostgresQueryConfig, maybeParams?: SqlParam[]) {
+      const sql = typeof input === "string" ? input : input.text;
+      const params = typeof input === "string" ? maybeParams : input.values;
       calls.push(params ? { sql, params } : { sql });
       if (opts?.fail) {
         throw new Error(`${name} unavailable`);

@@ -30,8 +30,7 @@ export function AdminExportsClient({
   initialChainValid,
 }: AdminExportsClientProps) {
   const [exports, setExports] = useState<ExportRecord[]>(initialExports);
-  const [auditEntries, setAuditEntries] =
-    useState<AuditLogEntry[]>(initialAuditEntries);
+  const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>(initialAuditEntries);
   const [chainValid, setChainValid] = useState<boolean>(initialChainValid);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [showAudit, setShowAudit] = useState(false);
@@ -48,9 +47,7 @@ export function AdminExportsClient({
         return;
       }
 
-      setExports((prev) =>
-        prev.map((r) => (r.id === id ? result.record : r)),
-      );
+      setExports((prev) => prev.map((r) => (r.id === id ? result.record : r)));
       setAuditEntries(result.auditEntries);
       setChainValid(result.chainValid);
     } catch (err) {
@@ -114,29 +111,24 @@ export function AdminExportsClient({
                     backgroundColor: "var(--bg-soft, var(--bg))",
                   }}
                 >
-                  {[
-                    "ID",
-                    "Credential Type",
-                    "Issuer",
-                    "Requested At",
-                    "Status",
-                    "Actions",
-                  ].map((col) => (
-                    <th
-                      key={col}
-                      scope="col"
-                      style={{
-                        padding: "0.75rem 1rem",
-                        textAlign: "left",
-                        fontSize: "0.8rem",
-                        fontWeight: 600,
-                        color: "var(--muted)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
+                  {["ID", "Credential Type", "Issuer", "Requested At", "Status", "Actions"].map(
+                    (col) => (
+                      <th
+                        key={col}
+                        scope="col"
+                        style={{
+                          padding: "0.75rem 1rem",
+                          textAlign: "left",
+                          fontSize: "0.8rem",
+                          fontWeight: 600,
+                          color: "var(--muted)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {col}
+                      </th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -216,9 +208,7 @@ export function AdminExportsClient({
                     <td style={{ padding: "0.75rem 1rem" }}>
                       <button
                         onClick={() => void handleRevoke(record.id)}
-                        disabled={
-                          record.revokedAt !== null || revoking === record.id
-                        }
+                        disabled={record.revokedAt !== null || revoking === record.id}
                         aria-label={`Revoke export ${truncate(record.id, 8)}`}
                         style={{
                           padding: "0.3rem 0.75rem",
@@ -231,10 +221,7 @@ export function AdminExportsClient({
                             record.revokedAt !== null || revoking === record.id
                               ? "not-allowed"
                               : "pointer",
-                          opacity:
-                            record.revokedAt !== null || revoking === record.id
-                              ? 0.5
-                              : 1,
+                          opacity: record.revokedAt !== null || revoking === record.id ? 0.5 : 1,
                         }}
                       >
                         {revoking === record.id ? "Revoking…" : "Revoke"}
@@ -258,13 +245,9 @@ export function AdminExportsClient({
             borderRadius: "8px",
             fontSize: "0.9rem",
             fontWeight: 500,
-            background: chainValid
-              ? "var(--accent-soft)"
-              : "rgba(240, 96, 77, 0.1)",
+            background: chainValid ? "var(--accent-soft)" : "rgba(240, 96, 77, 0.1)",
             color: chainValid ? "var(--accent)" : "var(--danger)",
-            border: `1px solid ${
-              chainValid ? "var(--accent)" : "var(--danger)"
-            }`,
+            border: `1px solid ${chainValid ? "var(--accent)" : "var(--danger)"}`,
           }}
         >
           {chainValid
@@ -283,10 +266,7 @@ export function AdminExportsClient({
             marginBottom: "1rem",
           }}
         >
-          <h2
-            id="audit-heading"
-            style={{ fontSize: "1.1rem", color: "var(--text)", margin: 0 }}
-          >
+          <h2 id="audit-heading" style={{ fontSize: "1.1rem", color: "var(--text)", margin: 0 }}>
             Audit Log
           </h2>
           <button
@@ -355,29 +335,24 @@ export function AdminExportsClient({
                       backgroundColor: "var(--bg-soft, var(--bg))",
                     }}
                   >
-                    {[
-                      "#",
-                      "Timestamp",
-                      "Request ID",
-                      "Issuer",
-                      "Commitment",
-                      "Admin Action",
-                    ].map((col) => (
-                      <th
-                        key={col}
-                        scope="col"
-                        style={{
-                          padding: "0.6rem 0.75rem",
-                          textAlign: "left",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
-                          color: "var(--muted)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {col}
-                      </th>
-                    ))}
+                    {["#", "Timestamp", "Request ID", "Issuer", "Commitment", "Admin Action"].map(
+                      (col) => (
+                        <th
+                          key={col}
+                          scope="col"
+                          style={{
+                            padding: "0.6rem 0.75rem",
+                            textAlign: "left",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                            color: "var(--muted)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {col}
+                        </th>
+                      ),
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -434,9 +409,7 @@ export function AdminExportsClient({
                       <td
                         style={{
                           padding: "0.6rem 0.75rem",
-                          color: entry.adminAction
-                            ? "var(--warn)"
-                            : "var(--faint)",
+                          color: entry.adminAction ? "var(--warn)" : "var(--faint)",
                         }}
                       >
                         {entry.adminAction ?? "—"}

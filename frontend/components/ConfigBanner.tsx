@@ -62,21 +62,22 @@ export function ConfigBanner({ requireIssuance = false }: { requireIssuance?: bo
     );
   }
 
-  if (allMissing.length === 0 && contractsConfigured() && (!requireIssuance || issuanceConfigured()))
+  if (
+    allMissing.length === 0 &&
+    contractsConfigured() &&
+    (!requireIssuance || issuanceConfigured())
+  )
     return null;
   if (allMissing.length === 0) return null;
 
   return (
-    <div
-      className="config-banner"
-      role="alert"
-    >
-
+    <div className="config-banner" role="alert">
       <IconInfoCircle size={16} className="config-banner__icon" />
       <span className="config-banner__text">
         <strong className="config-banner__strong">{t("config.notConfigured")}</strong>{" "}
         {t("config.activeNetwork")}: <strong>{NETWORK}</strong>.{" "}
-        {requireIssuance ? t("config.credentialIssuanceAnd") : ""}{t("config.onChainSubmissionDisabled")}{" "}
+        {requireIssuance ? t("config.credentialIssuanceAnd") : ""}
+        {t("config.onChainSubmissionDisabled")}{" "}
         <span className="config-banner__code">{allMissing.join(", ")}</span>. Run{" "}
         <span className="config-banner__code">{t("config.deployScript")}</span> and set them in{" "}
         <span className="config-banner__code">{t("config.envLocation")}</span>.
