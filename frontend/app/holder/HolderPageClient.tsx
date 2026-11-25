@@ -14,7 +14,6 @@ import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings"
 import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
-import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
 import { removeCredential, type Credential } from "@/lib/credential";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
@@ -23,6 +22,7 @@ import { useProofApproval } from "@/lib/hooks/useProofApproval";
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
 import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
 import { useCredentialTriage } from "@/lib/hooks/holder/useCredentialTriage";
+import { usePortfolioFilter } from "@/lib/hooks/holder/usePortfolioFilter";
 
 // ── Components ────────────────────────────────────────────────────────────────
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
@@ -41,14 +41,6 @@ import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
 import { CredentialSearchBar } from "@/components/holder/CredentialSearchBar";
 import { ExpiryWarningBanner } from "@/components/holder/ExpiryWarningBanner";
 import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
-import {
-  getPortfolioAccounts,
-  recordConnectedAccount,
-  getActivePortfolioAccount,
-  setActivePortfolioAccount,
-  filterCredentialsByAccount,
-  type PortfolioAccount,
-} from "@/lib/account-portfolio";
 
 import type { PageView, BulkAction } from "./types";
 
@@ -109,39 +101,12 @@ function HolderInner() {
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useTransferImportParam(setImportPayload);
 
-  // Multi-account portfolio segregation
-  const [portfolioAccounts, setPortfolioAccounts] = useState<PortfolioAccount[]>(() =>
-    getPortfolioAccounts(),
-  );
-  const [activeAccountFilter, setActiveAccountFilter] = useState<string | null>(() =>
-    getActivePortfolioAccount(),
-  );
-
-  // Update known accounts when connected address changes
-  useState(() => {
-    if (address) {
-      const updated = recordConnectedAccount(address);
-      setPortfolioAccounts(updated);
-    }
-  });
-
-  const handleSelectPortfolioAccount = (selectedAddr: string | null) => {
-    setActiveAccountFilter(selectedAddr);
-    setActivePortfolioAccount(selectedAddr);
-  };
-
-  const rawCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  // Segregate credentials by active account portfolio (without clearing session data)
-  const displayCreds = filterCredentialsByAccount(rawCreds, activeAccountFilter);
-  const anyModalOpen = Boolean(
-    detailCred ||
-    transferCred ||
-    importPayload ||
-    showExportModal ||
-    showShortcutsModal ||
-    proofApproval.creds ||
-    confirmBulkAction,
-  );
+  const portfolio = usePortfolioFilter(creds, isPreview, address);
+  const displayCreds = portfolio.displayCreds;
+  const anyModalOpen = [
+    detailCred, transferCred, importPayload, showExportModal,
+    showShortcutsModal, proofApproval.creds, confirmBulkAction,
+  ].some(Boolean);
   const triage = useCredentialTriage({
     creds: displayCreds,
     address,
@@ -210,11 +175,11 @@ function HolderInner() {
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
         <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
-          {portfolioAccounts.length > 0 && (
+          {portfolio.accounts.length > 0 && (
             <AccountPortfolioSwitcher
-              accounts={portfolioAccounts}
-              activeAddress={activeAccountFilter}
-              onSelectAccount={handleSelectPortfolioAccount}
+              accounts={portfolio.accounts}
+              activeAddress={portfolio.activeAddress}
+              onSelectAccount={portfolio.selectAccount}
             />
           )}
           {/* Selective disclosure presets (#386): a named, shareable bundle
