@@ -25,7 +25,6 @@ vi.mock("@stellar/stellar-sdk", () => ({
 
 import {
   configure,
-  resetConfig,
   hasClaim,
   getClaims,
   getClaimRecord,
@@ -41,6 +40,7 @@ import {
   TimeoutError,
   StellarCred,
   withRetry,
+  resetConfig,
   __resetBoundaryWarningForTesting,
 } from "./index";
 import { hasClaim as sharedHasClaim } from "./claims";
@@ -217,7 +217,6 @@ describe("read request timeout", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    // configure() merges, so the 25 ms timeout must not leak into later suites.
     resetConfig();
   });
 

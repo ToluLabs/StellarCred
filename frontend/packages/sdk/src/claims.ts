@@ -1943,8 +1943,8 @@ export interface ClaimReadResult {
   error?: string;
 }
 
-/** Backwards-friendly alias for the result type. `ClaimOutcomeResult` is the
- * #1007 status shape returned by {@link getClaimOutcome}. */
+/** Backwards-friendly aliases for the result type. */
+/** Backwards-friendly alias for the detailed read result type. */
 export type ClaimReadOutcomeResult = ClaimReadResult;
 
 async function performClaimRead(
@@ -2127,11 +2127,7 @@ async function performClaimRead(
   }
 }
 
-/**
- * Detailed typed claim read (issue #979). `getClaimOutcome` /
- * `checkClaimOutcome` are the #1007 aliases of {@link checkClaimStatus}.
- */
-export async function readClaimOutcome(
+export async function readClaim(
   wallet: string,
   claimType: string,
   opts?: ClaimOptions,
@@ -2140,12 +2136,12 @@ export async function readClaimOutcome(
 }
 
 // Aliases for the detailed read API (issue #979).
-export const readClaim = readClaimOutcome;
-export const getClaimReadOutcome = readClaimOutcome;
-export const getClaimReadResult = readClaimOutcome;
-export const readClaimResult = readClaimOutcome;
-export const getClaimStatusOutcome = readClaimOutcome;
-export const readClaimStatus = readClaimOutcome;
+export const readClaimOutcome = readClaim;
+export const getClaimReadOutcome = readClaim;
+export const getClaimReadResult = readClaim;
+export const readClaimResult = readClaim;
+export const getClaimStatusOutcome = readClaim;
+export const readClaimStatus = readClaim;
 
 /**
  * Reads a wallet's credential claim and returns a granular, typed outcome

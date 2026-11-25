@@ -1,8 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import {
-  resolveVerifyRedirect,
-  performVerifyRedirect,
-} from "../verify-redirect";
+import { resolveVerifyRedirect, performVerifyRedirect } from "../verify-redirect";
 import * as verifyNonce from "../verify-nonce";
 
 describe("verify-redirect", () => {
@@ -39,7 +36,10 @@ describe("verify-redirect", () => {
       expect(res).toEqual({
         target: {
           kind: "internal",
-          url: "/apps/lendfi?session=123&sc_verified=true&sc_wallet=" + address + "&sc_claims=kyc%2Cage",
+          url:
+            "/apps/lendfi?session=123&sc_verified=true&sc_wallet=" +
+            address +
+            "&sc_claims=kyc%2Cage",
         },
       });
     });
@@ -71,7 +71,10 @@ describe("verify-redirect", () => {
       expect(res).toEqual({
         target: {
           kind: "external",
-          url: "https://protocol.finance/verify-callback?step=done&sc_verified=true&sc_wallet=" + address + "&sc_claims=income",
+          url:
+            "https://protocol.finance/verify-callback?step=done&sc_verified=true&sc_wallet=" +
+            address +
+            "&sc_claims=income",
         },
       });
     });
@@ -133,7 +136,9 @@ describe("verify-redirect", () => {
         navigation: { setHref },
       });
 
-      expect(routerPush).toHaveBeenCalledWith("/apps/defi?sc_verified=true&sc_wallet=" + address + "&sc_claims=kyc");
+      expect(routerPush).toHaveBeenCalledWith(
+        "/apps/defi?sc_verified=true&sc_wallet=" + address + "&sc_claims=kyc",
+      );
       expect(setHref).not.toHaveBeenCalled();
     });
 
@@ -150,7 +155,11 @@ describe("verify-redirect", () => {
         navigation: { setHref },
       });
 
-      expect(setHref).toHaveBeenCalledWith("https://external-app.io/auth?sc_verified=true&sc_wallet=" + address + "&sc_claims=accreditation");
+      expect(setHref).toHaveBeenCalledWith(
+        "https://external-app.io/auth?sc_verified=true&sc_wallet=" +
+          address +
+          "&sc_claims=accreditation",
+      );
       expect(routerPush).not.toHaveBeenCalled();
     });
 

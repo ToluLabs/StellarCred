@@ -1,16 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getExportJob } from '@/lib/export-jobs';
+import { NextRequest, NextResponse } from "next/server";
+import { getExportJob } from "@/lib/export-jobs";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const job = await getExportJob(id);
 
     if (!job) {
-      return NextResponse.json({ error: 'Export job not found' }, { status: 404 });
+      return NextResponse.json({ error: "Export job not found" }, { status: 404 });
     }
 
     const isExpired = Boolean(job.expiresAt && Date.now() > job.expiresAt);
@@ -22,7 +19,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Failed to fetch export job';
+    const msg = error instanceof Error ? error.message : "Failed to fetch export job";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

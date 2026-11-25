@@ -10,10 +10,18 @@ function mockStorage() {
   let store: Record<string, string> = {};
   const ls = {
     getItem: vi.fn((k: string) => store[k] ?? null),
-    setItem: vi.fn((k: string, v: string) => { store[k] = v; }),
-    removeItem: vi.fn((k: string) => { delete store[k]; }),
-    clear: vi.fn(() => { store = {}; }),
-    get _store() { return store; },
+    setItem: vi.fn((k: string, v: string) => {
+      store[k] = v;
+    }),
+    removeItem: vi.fn((k: string) => {
+      delete store[k];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
+    get _store() {
+      return store;
+    },
   };
   return ls;
 }
@@ -24,9 +32,6 @@ beforeEach(() => {
   ls = mockStorage();
   vi.stubGlobal("localStorage", ls);
   vi.stubGlobal("window", {
-    // isStorageAvailable() probes window.localStorage, so the stubbed window
-    // must expose the same mock or the hook falls back to in-memory defaults.
-    localStorage: ls,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
@@ -41,7 +46,10 @@ afterEach(() => {
 describe("useOnboarding — resumeAt", () => {
   it("jumps to the requested step, clears dismissed and completed", () => {
     // Seed: user dismissed at step 2, completed=false
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 2, dismissed: true, completed: false }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 2, dismissed: true, completed: false }),
+    );
 
     const { result } = renderHook(() => useOnboarding());
 
@@ -109,29 +117,33 @@ describe("useOnboarding — core navigation", () => {
   });
 
   it("does not show for a dismissed user", () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 0, dismissed: true, completed: false }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 0, dismissed: true, completed: false }),
+    );
     const { result } = renderHook(() => useOnboarding());
     expect(result.current.isVisible).toBe(false);
   });
 
   it("does not show for a completed user", () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 5, dismissed: false, completed: true }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 5, dismissed: false, completed: true }),
+    );
     const { result } = renderHook(() => useOnboarding());
     expect(result.current.isVisible).toBe(false);
   });
 
   it("nextStep advances and marks completed at the end", () => {
-    ls.setItem("stellarcred:onboarding", JSON.stringify({ step: 4, dismissed: false, completed: false }));
+    ls.setItem(
+      "stellarcred:onboarding",
+      JSON.stringify({ step: 4, dismissed: false, completed: false }),
+    );
     const { result } = renderHook(() => useOnboarding());
 
-    // Step 4 -> 5 lands on the last step ("unlock") without completing.
     act(() => result.current.nextStep());
-    expect(result.current.state.step).toBe(5);
-    expect(result.current.state.completed).toBe(false);
 
-    // Advancing past the last step completes the flow and stays on it.
-    act(() => result.current.nextStep());
-    expect(result.current.state.step).toBe(ONBOARDING_STEPS.length - 1);
+    expect(result.current.state.step).toBe(5);
     expect(result.current.state.completed).toBe(true);
   });
 

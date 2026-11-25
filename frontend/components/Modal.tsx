@@ -12,7 +12,6 @@ import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
-
 export interface ModalProps {
   /** Optional HTML id prefix for ARIA attributes */
   id?: string;
@@ -42,7 +41,9 @@ export function Modal({
   useEffect(() => setMounted(true), []);
 
   const dialogRef = useRef<HTMLDivElement>(null);
-  const titleId = id ? `${id}-title` : `modal-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const titleId = id
+    ? `${id}-title`
+    : `modal-title-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
   // Move focus into the dialog on open, trap Tab within it while open, close
   // on Escape, and restore focus to whatever had it beforehand on close —

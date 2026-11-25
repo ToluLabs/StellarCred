@@ -27,8 +27,7 @@ export default async function AdminIssuancePage({
         <h2 id="issuance-login">Admin sign-in required</h2>
         <form action={loginAction} style={{ display: "flex", gap: "0.5rem" }}>
           <label>
-            Admin key{" "}
-            <input name="key" type="password" autoComplete="off" required />
+            Admin key <input name="key" type="password" autoComplete="off" required />
           </label>
           <button type="submit">Sign in</button>
         </form>

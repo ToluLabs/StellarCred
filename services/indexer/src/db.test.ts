@@ -146,9 +146,9 @@ function registerSuite(
       let rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBe(200_000);
 
-      // A later event: upserts only apply strictly newer ledger sequences (#1004).
+      // A later ledger replaces the row; the #1004 guard ignores same-ledger replays.
       await db.upsertClaim(
-        makeClaim({ credential_type: "income", threshold: null, ledger_sequence: 101 }),
+        makeClaim({ credential_type: "income", threshold: null, ledger_sequence: 200 }),
       );
       rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBeNull();
@@ -190,11 +190,11 @@ function registerSuite(
       await db.enqueueWebhookEvent(event);
       await db.enqueueWebhookEvent(event);
 
-      // The Postgres leg shares one database with the other suites, which may
-      // have left their own deliveries queued — only count this test's event.
-      const deliveries = (await db.pendingWebhookDeliveries(1_724_000_000, 10, 8)).filter(
-        (d) => d.event_id === event.event_id,
-      );
+      // On Postgres the conformance suite shares the database and runs in
+      // parallel, so only look at this subscription's deliveries.
+      const deliveries = (
+        await db.pendingWebhookDeliveries(1_724_000_000, 10, 8)
+      ).filter((d) => d.subscription_id === id);
       expect(deliveries).toHaveLength(1);
       expect(deliveries[0]).toMatchObject({
         subscription_id: id,
@@ -205,9 +205,7 @@ function registerSuite(
 
       expect(await db.deleteWebhookSubscription(id)).toBe(true);
       expect(await db.deleteWebhookSubscription(id)).toBe(false);
-      expect(
-        (await db.webhookDeliveries(id, 10)).filter((d) => d.event_id === event.event_id),
-      ).toHaveLength(1);
+      expect(await db.webhookDeliveries(id, 10)).toHaveLength(1);
     });
 
     it("returns only subscribed active claims whose expiry has passed", async () => {

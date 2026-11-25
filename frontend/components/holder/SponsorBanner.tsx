@@ -26,8 +26,8 @@ export function SponsorBanner() {
     >
       <IconBolt size={15} stroke={2} style={{ color: "#63a2ff", flexShrink: 0 }} />
       <span>
-        <strong>Gasless submission available.</strong>{" "}
-        You can submit proofs without XLM — fees are covered by the protocol.
+        <strong>Gasless submission available.</strong> You can submit proofs without XLM — fees are
+        covered by the protocol.
       </span>
     </div>
   );

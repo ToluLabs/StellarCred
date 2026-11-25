@@ -15,7 +15,11 @@ type ProgressStep = {
 
 export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
   return (
-    <div role="list" aria-label="Proof progress" style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+    <div
+      role="list"
+      aria-label="Proof progress"
+      style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}
+    >
       {steps.map((s, idx) => {
         const isLast = idx === steps.length - 1;
         return (
@@ -27,7 +31,13 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
           >
             <div
               aria-hidden="true"
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 28, flexShrink: 0 }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                width: 28,
+                flexShrink: 0,
+              }}
             >
               <div
                 style={{
@@ -37,12 +47,19 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
                   display: "grid",
                   placeItems: "center",
                   border: `1px solid ${
-                    s.status === "done" ? "var(--accent)" :
-                    s.status === "active" ? "rgba(62,207,142,0.5)" :
-                    "var(--border-strong)"
+                    s.status === "done"
+                      ? "var(--accent)"
+                      : s.status === "active"
+                        ? "rgba(62,207,142,0.5)"
+                        : "var(--border-strong)"
                   }`,
                   background: s.status === "done" ? "var(--accent)" : "transparent",
-                  color: s.status === "done" ? "var(--bg)" : s.status === "active" ? "var(--accent)" : "var(--faint)",
+                  color:
+                    s.status === "done"
+                      ? "var(--bg)"
+                      : s.status === "active"
+                        ? "var(--accent)"
+                        : "var(--faint)",
                   transition: "all 0.25s var(--ease)",
                 }}
               >
@@ -71,8 +88,21 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", paddingTop: "0.25rem" }}>
-                <span style={{ fontWeight: 600, fontSize: "0.9rem", color: s.status === "pending" ? "var(--muted)" : "var(--text)" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  paddingTop: "0.25rem",
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    color: s.status === "pending" ? "var(--muted)" : "var(--text)",
+                  }}
+                >
                   {s.label}
                 </span>
                 {s.status !== "active" && <span className="sr-only">({s.status})</span>}
@@ -93,7 +123,10 @@ export function ProofProgress({ steps }: { steps: ProgressStep[] }) {
                 )}
               </div>
               {s.error && (
-                <div role="alert" style={{ marginTop: "0.45rem", color: "var(--danger)", fontSize: "0.82rem" }}>
+                <div
+                  role="alert"
+                  style={{ marginTop: "0.45rem", color: "var(--danger)", fontSize: "0.82rem" }}
+                >
                   {s.error}
                 </div>
               )}

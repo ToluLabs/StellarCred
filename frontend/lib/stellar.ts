@@ -14,11 +14,9 @@ interface NetworkPreset {
   rpcUrl: string;
   networkPassphrase: string;
   explorerNetwork: string;
-  /** Network is still selectable but scheduled for removal (#911). */
+  /** Optional lifecycle metadata rendered by NetworkSelector. */
   deprecated?: boolean;
-  /** Network is currently unreachable or not deployed (#911). */
   unavailable?: boolean;
-  /** Optional notice shown in the network selector (#911). */
   warningMessage?: string;
 }
 

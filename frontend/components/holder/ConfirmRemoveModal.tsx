@@ -59,9 +59,13 @@ export function ConfirmRemoveModal({
         <h2 id="confirm-remove-title" style={{ marginTop: 0, fontSize: "1.2rem" }}>
           {label}
         </h2>
-        <p id="confirm-remove-desc" className="faint" style={{ fontSize: "0.9rem", margin: "1rem 0" }}>
-          This will permanently remove {count} credential{count > 1 ? "s" : ""} from
-          your browser&apos;s local storage.
+        <p
+          id="confirm-remove-desc"
+          className="faint"
+          style={{ fontSize: "0.9rem", margin: "1rem 0" }}
+        >
+          This will permanently remove {count} credential{count > 1 ? "s" : ""} from your
+          browser&apos;s local storage.
         </p>
         <div className="row" style={{ justifyContent: "flex-end", gap: "0.75rem" }}>
           <button ref={cancelRef} className="btn btn-secondary" onClick={onCancel}>

@@ -453,6 +453,22 @@ jobs:
           export PATH="$HOME/.nargo/bin:$PATH"
           node circuits/scripts/fuzz_circuits.js --iterations 10
 
+      # Deterministic edge-case vectors (#1039): zero values, u64 / field maxima,
+      # off-by-one thresholds, inverted windows, last list slot, last Merkle leaf.
+      # `check` fails when circuits/testvectors/edge/*.json is stale relative to
+      # the generator; `execute` runs every vector through nargo and fails when
+      # a circuit accepts or rejects something other than what the vector records.
+      - name: Unit-test edge-case vector generator
+        run: node --test circuits/scripts/edge_vectors.test.js
+
+      - name: Check edge-case vectors are current
+        run: node circuits/scripts/edge_vectors.js check
+
+      - name: Execute edge-case vectors against the circuits
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          node circuits/scripts/edge_vectors.js execute
+
   # ── Frontend: typecheck, lint, test, build (once) ──────────────────────────
   # Runs in parallel with contracts, circuits, and indexer.
   # Builds the frontend once and uploads the .next output as an artifact so
@@ -785,6 +801,21 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Run DB test matrix (SQLite + Postgres) and unit tests
+        run: npm test
+        env:
+          # Dummy contract ID / RPC so the ingester tests run headlessly.
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+          # Point the Postgres leg of the DB matrix at the service container.
+          TEST_POSTGRES_URL: postgres://indexer:indexer@localhost:5432/indexer
+
+      - name: Run indexer parsing and persistence tests (#820)
+        run: npm test -- --testPathPattern=tests/indexer
+        env:
+          PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
+          RPC_URL: https://soroban-testnet.stellar.org
+
       # One jest run per job, with coverage. The Postgres leg shares a
       # single database across every test in the suite, and beforeEach only
       # clears claims/cursor — a second jest invocation in the same job would
@@ -802,6 +833,77 @@ jobs:
           name: indexer-coverage-${{ github.sha }}
           path: services/indexer/coverage
           retention-days: 7
+
+  # ── Indexer: PostgreSQL query-latency regression gate ──────────────────────
+  # Runs the indexer's real schema + hot statements through pgbench and fails
+  # when mean latency exceeds the committed baseline by more than the gate's
+  # tolerance. Guards the pool/index work of #1069: an index removed or a query
+  # made more expensive shows up here, not in production.
+  indexer-pgbench:
+    name: Indexer pgbench latency regression (Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/indexer
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: indexer
+          POSTGRES_PASSWORD: indexer
+          POSTGRES_DB: indexer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U indexer -d indexer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/indexer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # pgbench ships with the PostgreSQL contrib tools; the runner image may
+      # already have it, so only install when it is missing.
+      - name: Locate pgbench
+        run: |
+          set -euo pipefail
+          if command -v pgbench >/dev/null 2>&1; then
+            echo "PGBENCH_BIN=$(command -v pgbench)" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-contrib
+          PGBENCH=$(command -v pgbench || ls /usr/lib/postgresql/*/bin/pgbench | head -n 1)
+          echo "PGBENCH_BIN=$PGBENCH" >> "$GITHUB_ENV"
+
+      - name: Verify the latency gate logic
+        run: node scripts/pgbench-latency.mjs --self-test
+
+      - name: Run pgbench latency regression
+        run: node scripts/pgbench-latency.mjs --clients 8 --seconds 15
+        env:
+          DATABASE_URL: postgres://indexer:indexer@localhost:5432/indexer
+
+      - name: Upload pgbench report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: indexer-pgbench-${{ github.sha }}
+          path: services/indexer/perf/pgbench-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   # ── SDK integration tests ───────────────────────────────────────────────────
   sdk-integration:

@@ -40,7 +40,14 @@ interface Recorded {
 function fakePostgres(respond?: (sql: string) => unknown[]) {
   const calls: Recorded[] = [];
   const conn: PostgresConnection = {
-    async query(sql, params) {
+    // Accepts both the `(text, values)` and the `{ name, text, values }` form
+    // that `pg` supports, so the same fake covers simple and prepared modes.
+    async query(
+      textOrConfig: string | { text: string; values?: SqlParam[] },
+      values?: SqlParam[],
+    ) {
+      const sql = typeof textOrConfig === "string" ? textOrConfig : textOrConfig.text;
+      const params = typeof textOrConfig === "string" ? values : textOrConfig.values;
       calls.push(params ? { sql, params } : { sql });
       return { rows: respond?.(sql) ?? [] };
     },
@@ -58,6 +65,9 @@ function fakeSqlite(respond?: (sql: string) => unknown) {
       return undefined;
     },
     pragma() {
+      return undefined;
+    },
+    async backup() {
       return undefined;
     },
     prepare(sql) {
@@ -81,9 +91,6 @@ function fakeSqlite(respond?: (sql: string) => unknown) {
       return fn;
     },
     close() {
-      return undefined;
-    },
-    async backup() {
       return undefined;
     },
   };
@@ -534,10 +541,9 @@ describe("schema", () => {
 
     const p = fakePostgres();
     await createSharedDb(createPostgresDialect(p.conn)).migrate();
-    // migrate() first reads schema_version for the compatibility check, so
-    // look for the DDL batch rather than assuming it is the first call.
-    const ddl = p.calls.find((c) => c.sql.includes("INSERT INTO ledger_cursor"));
-    expect(ddl?.sql).toContain("ON CONFLICT (id) DO NOTHING");
+    // migrate() reads schema_version first, then creates the tables.
+    const seed = p.calls.find((c) => c.sql.includes("INSERT INTO ledger_cursor"));
+    expect(seed?.sql).toContain("ON CONFLICT (id) DO NOTHING");
   });
 });
 

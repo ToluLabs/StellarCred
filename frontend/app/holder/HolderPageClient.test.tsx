@@ -1,5 +1,6 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/lib/test-utils";
 
 import HolderPageClient from "./HolderPageClient";
 
@@ -50,10 +51,9 @@ vi.mock("@/components/Toast", () => ({
 // Keep the test focused on the list area; unrelated chrome and child widgets
 // are stubbed out.
 vi.mock("@/components/WalletButton", () => ({ WalletButton: () => null }));
-vi.mock("@/components/ConfigBanner", () => ({ ConfigBanner: () => null }));
-vi.mock("@/components/OnboardingNudge", () => ({ OnboardingNudge: () => null }));
 vi.mock("@/components/WalletOnboarding", () => ({ WalletOnboarding: () => null }));
-vi.mock("@/components/holder/SponsorBanner", () => ({ SponsorBanner: () => null }));
+vi.mock("@/components/OnboardingNudge", () => ({ OnboardingNudge: () => null }));
+vi.mock("@/components/ConfigBanner", () => ({ ConfigBanner: () => null }));
 vi.mock("@/components/DataWipePanel", () => ({ DataWipePanel: () => null }));
 vi.mock("@/components/CredentialDetailModal", () => ({ default: () => null }));
 vi.mock("@/components/holder/CredCard", () => ({ CredCard: () => null }));
@@ -71,7 +71,7 @@ describe("HolderPageClient loading state", () => {
       }),
     );
 
-    render(<HolderPageClient />);
+    renderWithIntl(<HolderPageClient />);
 
     // Mid-hydration: skeleton placeholders, no "No credentials yet" flash.
     expect(screen.getByRole("status", { name: /loading credentials/i })).toBeInTheDocument();

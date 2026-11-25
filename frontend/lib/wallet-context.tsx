@@ -70,9 +70,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
     kitRestore(saved)
       .then((restoredAddress) => {
+        if (!cancelled) {
+          setAddress(restoredAddress);
+          setWalletId(saved);
+        }
         if (cancelled) return;
         setAddress(restoredAddress);
-        setWalletId(saved as string);
+        setWalletId(saved);
       })
       .catch(() => {
         try {

@@ -17,8 +17,8 @@ export function NetworkMismatchBanner() {
     NETWORK === "mainnet"
       ? t("network.mainnet")
       : NETWORK === "futurenet"
-      ? t("network.futurenet")
-      : t("network.testnet");
+        ? t("network.futurenet")
+        : t("network.testnet");
 
   return (
     <div
@@ -35,10 +35,12 @@ export function NetworkMismatchBanner() {
         fontSize: "0.8125rem",
       }}
     >
-      <IconAlertTriangle size={16} style={{ color: "var(--danger)", flexShrink: 0 }} aria-hidden="true" />
-      <span>
-        {t("network.mismatchBanner", { network: networkLabel })}
-      </span>
+      <IconAlertTriangle
+        size={16}
+        style={{ color: "var(--danger)", flexShrink: 0 }}
+        aria-hidden="true"
+      />
+      <span>{t("network.mismatchBanner", { network: networkLabel })}</span>
     </div>
   );
 }

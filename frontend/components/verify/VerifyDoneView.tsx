@@ -7,10 +7,7 @@ export interface VerifyDoneViewProps {
   urlError?: string;
 }
 
-export function VerifyDoneView({
-  requestingDomain,
-  urlError,
-}: VerifyDoneViewProps) {
+export function VerifyDoneView({ requestingDomain, urlError }: VerifyDoneViewProps) {
   const isVerifiedProtocol = Boolean(requestingDomain && !urlError);
 
   return (
@@ -36,13 +33,8 @@ export function VerifyDoneView({
       >
         <IconCheck size={24} color="var(--accent)" stroke={2.5} />
       </span>
-      <div style={{ fontWeight: 500 }}>
-        {isVerifiedProtocol ? "Verified" : "Credential saved"}
-      </div>
-      <div
-        className="muted"
-        style={{ fontSize: "0.85rem", marginTop: "0.3rem" }}
-      >
+      <div style={{ fontWeight: 500 }}>{isVerifiedProtocol ? "Verified" : "Credential saved"}</div>
+      <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.3rem" }}>
         {isVerifiedProtocol
           ? `Returning to ${requestingDomain}…`
           : "Credential saved — redirecting to your wallet…"}

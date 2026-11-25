@@ -59,7 +59,8 @@ const baseStyle: React.CSSProperties = {
   cursor: "pointer",
   whiteSpace: "nowrap",
   textDecoration: "none",
-  transition: "background 0.15s var(--ease), border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), opacity 0.15s var(--ease), transform 0.07s var(--ease)",
+  transition:
+    "background 0.15s var(--ease), border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), opacity 0.15s var(--ease), transform 0.07s var(--ease)",
 };
 
 export function Button({
@@ -74,12 +75,9 @@ export function Button({
   ref,
   ...props
 }: ButtonProps) {
-  const classes = [
-    "btn",
-    "btn-" + variant,
-    size !== "md" ? "btn-" + size : "",
-    className,
-  ].filter(Boolean).join(" ");
+  const classes = ["btn", "btn-" + variant, size !== "md" ? "btn-" + size : "", className]
+    .filter(Boolean)
+    .join(" ");
 
   const geometryStyle: React.CSSProperties = {
     ...baseStyle,
