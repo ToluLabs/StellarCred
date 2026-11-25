@@ -4,6 +4,20 @@
 
 Closes #
 
+## Components touched
+
+<!-- Name every component the diff touches. `.github/CODEOWNERS` uses the paths
+     you change to request reviewers; see docs/COMPONENT_OWNERSHIP.md for the
+     scope of each component. -->
+
+- [ ] Contracts
+- [ ] Circuits and VKs
+- [ ] SDK and client bindings
+- [ ] Frontend
+- [ ] Issuer
+- [ ] Indexer
+- [ ] CI / tooling / docs only
+
 ## Type of change
 
 - [ ] Bug fix
@@ -12,28 +26,36 @@ Closes #
 - [ ] Docs
 - [ ] CI / tooling
 
-## Merge requirements
+## Checklist
 
-- [ ] **CI is green* * — `cargo test` (contracts), `pnpm tsc --noEmit` (frontend), `pnpm build` (frontend), circuit tests — all green
-- [ ] **Gretile confidence ≥ 4/5** — all review comments addressed, no unresolved threads
-- [ ] Circuit changes: `fixtures/<type>/` artifacts updated
+<!-- See CONTRIBUTING.md for code style, commit message format, testing
+     expectations, and the CI job → command map. -->
+
+- [ ] Tests added or updated
+- [ ] Lint passes (`make lint` / `pnpm lint`)
+- [ ] CHANGELOG.md updated (user-facing changes)
+
+## Security checks (issuance, signing, KYC, circuits)
+
+<!-- Check these when the diff touches the paths named in
+     docs/COMPONENT_OWNERSHIP.md § Sensitive changes. -->
+
 - [ ] No `NEXT_PUBLIC_` prefix on server-only env vars
 - [ ] No identity fields stored or logged after KYC provider call
 - [ ] `prehash:false` preserved on any issuer signing path touched
 - [ ] Issuer private key never referenced from client-bundled code
+- [ ] Circuit changes: `fixtures/<type>/` artifacts updated
 
-## Coverage
+## CI and merge readiness
 
-<!-- Coverage reports are uploaded by CI\n     and annotated on this PR. Summary appears in the checks below. -->
+<!-- Every job that runs on this PR must be green before merge. The list of
+     PR-triggered workflows is in docs/COMPONENT_OWNERSHIP.md § 5. -->
 
-- [ ] Coverage report uploaded and visible in PR checks
+- [ ] All CI checks that ran on this PR are green
+- [ ] Every review comment is addressed — no unresolved threads
 - [ ] Coverage thresholds met (no regression vs. base)
-
-## ➡ Merge requirements
-
-- [ ] All CI checks pass (contracts / frontend / circuits as applicable)
-- [ ] Every Gretile review comment is addressed — no unresolved review threads
-- [ ] Gretile confidence score is **4/5 or higher**
+- [ ] A reviewer from each touched component has reviewed (requested
+      automatically by `.github/CODEOWNERS`)
 
 ## Notes for reviewers
 

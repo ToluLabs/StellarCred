@@ -40,7 +40,14 @@ interface Recorded {
 function fakePostgres(respond?: (sql: string) => unknown[]) {
   const calls: Recorded[] = [];
   const conn: PostgresConnection = {
-    async query(sql, params) {
+    // Accepts both the `(text, values)` and the `{ name, text, values }` form
+    // that `pg` supports, so the same fake covers simple and prepared modes.
+    async query(
+      textOrConfig: string | { text: string; values?: SqlParam[] },
+      values?: SqlParam[],
+    ) {
+      const sql = typeof textOrConfig === "string" ? textOrConfig : textOrConfig.text;
+      const params = typeof textOrConfig === "string" ? values : textOrConfig.values;
       calls.push(params ? { sql, params } : { sql });
       return { rows: respond?.(sql) ?? [] };
     },
@@ -58,6 +65,9 @@ function fakeSqlite(respond?: (sql: string) => unknown) {
       return undefined;
     },
     pragma() {
+      return undefined;
+    },
+    async backup() {
       return undefined;
     },
     prepare(sql) {
@@ -219,6 +229,13 @@ describe("shared query layer drives both backends identically", () => {
     });
     expect(byIssuer.postgres).toBe(byIssuer.sqlite);
     expect(byIssuer.params).toEqual(["GISSUER"]);
+
+    const byIssuerLimited = await statementsFor(async (db) => {
+      await db.claimsByIssuer("GISSUER", 25);
+    });
+    expect(byIssuerLimited.postgres).toBe(byIssuerLimited.sqlite);
+    expect(byIssuerLimited.sqlite).toContain("LIMIT ?");
+    expect(byIssuerLimited.params).toEqual(["GISSUER", 25]);
   });
 
   it("aggregates", async () => {
@@ -434,6 +451,17 @@ describe("schema", () => {
     );
   });
 
+  it("indexes the issuer column used by per-issuer listings", () => {
+    for (const dialect of [
+      createSqliteDialect(fakeSqlite().db),
+      createPostgresDialect(fakePostgres().conn),
+    ]) {
+      expect(buildSchema(dialect).indexes).toContain(
+        "CREATE INDEX IF NOT EXISTS idx_claims_issuer ON claims (issuer)",
+      );
+    }
+  });
+
   it("names every column it declares", () => {
     for (const dialect of [
       createSqliteDialect(fakeSqlite().db),
@@ -513,8 +541,9 @@ describe("schema", () => {
 
     const p = fakePostgres();
     await createSharedDb(createPostgresDialect(p.conn)).migrate();
-    expect(p.calls[0].sql).toContain("INSERT INTO ledger_cursor");
-    expect(p.calls[0].sql).toContain("ON CONFLICT (id) DO NOTHING");
+    // migrate() reads schema_version first, then creates the tables.
+    const seed = p.calls.find((c) => c.sql.includes("INSERT INTO ledger_cursor"));
+    expect(seed?.sql).toContain("ON CONFLICT (id) DO NOTHING");
   });
 });
 

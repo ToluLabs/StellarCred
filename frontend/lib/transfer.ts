@@ -8,11 +8,7 @@
 
 import { parseCredential, type Credential } from "./credential";
 import { filterCredentialForExport } from "./export-visibility";
-import {
-  encryptWithPassphrase,
-  decryptWithPassphrase,
-  DecryptionError,
-} from "./credential-crypto";
+import { encryptWithPassphrase, decryptWithPassphrase, DecryptionError } from "./credential-crypto";
 
 export { DecryptionError };
 
@@ -39,7 +35,10 @@ export async function buildTransferUrl(
 }
 
 /** Reverses buildTransferUrl's encryption. Throws DecryptionError on a wrong passphrase. */
-export async function decryptTransferPayload(payload: string, passphrase: string): Promise<Credential> {
+export async function decryptTransferPayload(
+  payload: string,
+  passphrase: string,
+): Promise<Credential> {
   const json = await decryptWithPassphrase(payload, passphrase);
   return parseCredential(json);
 }

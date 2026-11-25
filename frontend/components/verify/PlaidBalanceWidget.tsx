@@ -29,7 +29,7 @@ export function PlaidBalanceWidget({
           gap: "0.4rem",
         }}
       >
-        <IconLoader2 size={12} className="spin" />
+        <IconLoader2 size={12} className="spin" aria-hidden="true" />
         Reading balance from Plaid…
       </p>
     );
@@ -79,11 +79,7 @@ export function PlaidBalanceWidget({
       {plaidAccounts.length > 1 && (
         <div className="stack" style={{ gap: "0.2rem" }}>
           {plaidAccounts.map((a, i) => (
-            <div
-              key={`${a.name}-${i}`}
-              className="between"
-              style={{ fontSize: "0.72rem" }}
-            >
+            <div key={`${a.name}-${i}`} className="between" style={{ fontSize: "0.72rem" }}>
               <span className="faint">{a.name}</span>
               <span className="mono" style={{ color: "var(--muted)" }}>
                 ${a.available.toLocaleString("en-US")}
@@ -119,9 +115,8 @@ export function PlaidBalanceWidget({
           margin: "0.35rem 0 0",
         }}
       >
-        Balances from all linked accounts are summed before attestation. The
-        aggregate — not any individual account — is committed, and only this
-        threshold is ever public.
+        Balances from all linked accounts are summed before attestation. The aggregate — not any
+        individual account — is committed, and only this threshold is ever public.
       </p>
     </div>
   );

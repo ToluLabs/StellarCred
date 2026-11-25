@@ -11,12 +11,7 @@ import {
 } from "@stellarcred/issuer";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { env } from "./env";
-import {
-  auditLogAppend,
-  auditLogBootstrap,
-  auditLogFilePath,
-  auditLogPersist,
-} from "./audit-log";
+import { auditLogAppend, auditLogBootstrap, auditLogFilePath, auditLogPersist } from "./audit-log";
 import { logger, stripSensitiveFields } from "./logger";
 
 export interface SignParams {
@@ -37,9 +32,7 @@ export class IssuerSigner {
     const key =
       privateKeyHex ||
       env.ISSUER_PRIVATE_KEY ||
-      Buffer.from(
-        sha256(new TextEncoder().encode("stellarcred-demo-issuer")),
-      ).toString("hex");
+      Buffer.from(sha256(new TextEncoder().encode("stellarcred-demo-issuer"))).toString("hex");
 
     if (!privateKeyHex && !env.ISSUER_PRIVATE_KEY) {
       logger.warn(

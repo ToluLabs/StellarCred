@@ -48,10 +48,9 @@ describe("useWarmProver", () => {
   });
 
   it("does not re-warm on a re-render with the same types", () => {
-    const { rerender } = renderHook(
-      ({ types, enabled }: Props) => useWarmProver(types, enabled),
-      { initialProps: { types: ["age"], enabled: true } },
-    );
+    const { rerender } = renderHook(({ types, enabled }: Props) => useWarmProver(types, enabled), {
+      initialProps: { types: ["age"], enabled: true },
+    });
     expect(warmProver).toHaveBeenCalledTimes(1);
 
     // A fresh array instance with identical contents should not re-trigger
@@ -62,10 +61,9 @@ describe("useWarmProver", () => {
   });
 
   it("re-warms when the set of unproved types changes", () => {
-    const { rerender } = renderHook(
-      ({ types, enabled }: Props) => useWarmProver(types, enabled),
-      { initialProps: { types: ["age"], enabled: true } },
-    );
+    const { rerender } = renderHook(({ types, enabled }: Props) => useWarmProver(types, enabled), {
+      initialProps: { types: ["age"], enabled: true },
+    });
     expect(warmProver).toHaveBeenCalledTimes(1);
 
     // The effect re-fires for the whole new list (warmProver/getBackend is
@@ -78,10 +76,9 @@ describe("useWarmProver", () => {
   });
 
   it("starts warming once the wallet transitions from disconnected to connected", () => {
-    const { rerender } = renderHook(
-      ({ types, enabled }: Props) => useWarmProver(types, enabled),
-      { initialProps: { types: ["age"], enabled: false } },
-    );
+    const { rerender } = renderHook(({ types, enabled }: Props) => useWarmProver(types, enabled), {
+      initialProps: { types: ["age"], enabled: false },
+    });
     expect(warmProver).not.toHaveBeenCalled();
 
     rerender({ types: ["age"], enabled: true });

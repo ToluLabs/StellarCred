@@ -18,10 +18,11 @@ NODE_MAJOR      := 20
 PNPM_MAJOR      := 9
 
 .PHONY: help all build test lint fmt clean check-api-reference doctor \
+        verify-deployment \
         build-contracts test-contracts lint-contracts \
         ci-cache-setup ci-cache-save build-contracts-fast \
         compile-circuits check-circuits \
-        build-frontend test-frontend lint-frontend test-sdk test-example test-a11y \
+        build-frontend test-frontend lint-frontend test-sdk docs-sdk test-example test-a11y \
         build-indexer test-indexer lint-indexer run-indexer \
         backfill backfill-resume
 
@@ -37,6 +38,7 @@ help:
 	@echo ""
 	@echo "Top-Level Targets:"
 	@echo "  make doctor          - Check that every pinned toolchain version is installed correctly"
+	@echo "  make verify-deployment - Verify contract IDs, versions, WASM hashes, and VKs end to end (NETWORK=testnet|mainnet)"
 	@echo "  make all             - Run build, test, and lint across all workspaces"
 	@echo "  make build           - Build contracts, circuits, frontend, and indexer"
 	@echo "  make test            - Run all unit, integration, and contract test suites"
@@ -84,6 +86,11 @@ fmt:
 ## check-api-reference: Verify the ProofRegistry API reference matches the contract source
 check-api-reference:
 	node .github/scripts/check-api-reference.mjs
+
+## verify-deployment: Verify contract IDs, versions, WASM hashes, and VKs end to end for a network
+NETWORK ?= testnet
+verify-deployment:
+	bash ./scripts/verify-deployment.sh --network $(NETWORK)
 
 ## clean: Remove all target outputs and build artifacts
 clean:
@@ -260,6 +267,10 @@ lint-frontend:
 ## test-sdk: Run SDK standalone integration tests
 test-sdk:
 	cd frontend/packages/sdk && pnpm typecheck && pnpm test:integration
+
+## docs-sdk: Generate the SDK TypeDoc API reference
+docs-sdk:
+	cd frontend/packages/sdk && pnpm docs:api
 
 ## test-example: Run integration example typechecks and test suites
 test-example:

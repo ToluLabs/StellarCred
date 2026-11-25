@@ -67,9 +67,7 @@ describe("isMissingAccountError", () => {
   it("recognises a holder with no account on the ledger", async () => {
     const { isMissingAccountError } = await loadModule();
     expect(isMissingAccountError(new Error("Account not found"))).toBe(true);
-    expect(
-      isMissingAccountError(new Error("Failed to fetch: account not found")),
-    ).toBe(false);
+    expect(isMissingAccountError(new Error("Failed to fetch: account not found"))).toBe(false);
   });
 });
 

@@ -8,7 +8,7 @@ import { locales, localeNames, type Locale } from "@/i18n.config";
 
 /**
  * Language Switcher Component
- * 
+ *
  * Allows users to switch between available locales (en, es).
  * - Stores preference in localStorage for persistence
  * - Updates URL pathname to navigate to locale-specific route
@@ -87,11 +87,7 @@ export function LanguageSwitcher() {
   }
 
   return (
-    <div
-      ref={dropdownRef}
-      style={{ position: "relative" }}
-      className="language-switcher"
-    >
+    <div ref={dropdownRef} style={{ position: "relative" }} className="language-switcher">
       <button
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
@@ -169,11 +165,7 @@ export function LanguageSwitcher() {
             >
               <span>{localeNames[loc]}</span>
               {loc === locale && (
-                <IconCheck
-                  size={16}
-                  stroke={2}
-                  style={{ color: "var(--accent)", flexShrink: 0 }}
-                />
+                <IconCheck size={16} stroke={2} style={{ color: "var(--accent)", flexShrink: 0 }} />
               )}
             </button>
           ))}

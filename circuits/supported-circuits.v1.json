@@ -1,0 +1,192 @@
+{
+  "$schema": "https://stellarcred.xyz/schemas/supported-circuits.v1.json",
+  "manifestVersion": "1.0.0",
+  "release": "v1.0.0",
+  "publishedAt": "2026-11-22T00:00:00Z",
+  "description": "Authoritative release manifest of supported and experimental zero-knowledge circuits for StellarCred v1.0.0 (#972). Frozen v1 public surface: changes to any supported circuit's id, publicInputs, vkVersion, or compatibility require sign-off from contract, circuits, and SDK maintainers per the v1 public-surface freeze checklist.",
+  "freeze": {
+    "checklist": "docs/v1-public-surface-freeze.md",
+    "signOffRequired": ["contracts", "circuits", "sdk"],
+    "frozenFields": ["id", "credentialType", "status", "version", "vkVersion", "publicInputs", "compatibility"]
+  },
+  "circuits": [
+    {
+      "id": "kyc_proof",
+      "credentialType": "kyc",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitment",
+        "issuer_pub_x",
+        "issuer_pub_y",
+        "merkle_root"
+      ],
+      "constraints": 4200,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "age_proof",
+      "credentialType": "age",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitment",
+        "threshold_years",
+        "current_date",
+        "issuer_pub_x",
+        "issuer_pub_y"
+      ],
+      "constraints": 4500,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "income_proof",
+      "credentialType": "income",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitment",
+        "min_income",
+        "issuer_pub_x",
+        "issuer_pub_y"
+      ],
+      "constraints": 4300,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "jurisdiction_proof",
+      "credentialType": "jurisdiction",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitment",
+        "mode",
+        "country_code",
+        "issuer_pub_x",
+        "issuer_pub_y"
+      ],
+      "constraints": 4400,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "funds_proof",
+      "credentialType": "funds",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitment",
+        "min_balance",
+        "issuer_pub_x",
+        "issuer_pub_y"
+      ],
+      "constraints": 4300,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "accreditation_proof",
+      "credentialType": "accreditation",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitment",
+        "accreditation_type",
+        "issuer_pub_x",
+        "issuer_pub_y"
+      ],
+      "constraints": 4350,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "employment_proof",
+      "credentialType": "employment",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitment",
+        "min_seniority",
+        "issuer_pub_x",
+        "issuer_pub_y"
+      ],
+      "constraints": 4400,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "aggregate_proof",
+      "credentialType": "aggregate",
+      "status": "supported",
+      "version": "1.0.0",
+      "vkVersion": 1,
+      "publicInputs": [
+        "commitments_root",
+        "proof_flags",
+        "issuer_pub_x",
+        "issuer_pub_y"
+      ],
+      "constraints": 9800,
+      "compatibility": {
+        "minAppVersion": "1.0.0",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "composite_eligibility_proof",
+      "credentialType": "composite_eligibility",
+      "status": "experimental",
+      "version": "0.1.0-alpha",
+      "vkVersion": 1,
+      "publicInputs": [
+        "policy_hash",
+        "outcome"
+      ],
+      "constraints": 12000,
+      "compatibility": {
+        "minAppVersion": "1.1.0-alpha",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    },
+    {
+      "id": "set_membership",
+      "credentialType": "set_membership",
+      "status": "experimental",
+      "version": "0.1.0-alpha",
+      "vkVersion": 1,
+      "publicInputs": [
+        "merkle_root",
+        "leaf_hash"
+      ],
+      "constraints": 5000,
+      "compatibility": {
+        "minAppVersion": "1.1.0-alpha",
+        "supportedContractVersions": ["1.0.0"]
+      }
+    }
+  ]
+}
