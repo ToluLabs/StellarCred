@@ -103,9 +103,12 @@ export function useVerifyFlow({
   // eligible set no longer contains the current pick (claim type switched,
   // registry loaded late).
   useEffect(() => {
-    if (issuersForType.some((issuer) => issuer.id === selectedIssuerId)) return;
-    setSelectedIssuerId(pickDefaultIssuer(issuersForType, trustedIssuerGate));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Functional update: a pick made before this effect flushes must win.
+    setSelectedIssuerId((current) =>
+      issuersForType.some((issuer) => issuer.id === current)
+        ? current
+        : pickDefaultIssuer(issuersForType, trustedIssuerGate),
+    );
   }, [issuersForType, trustedIssuerGate]);
 
   const issuerAccepted = selectedIssuer

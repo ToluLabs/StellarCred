@@ -11,8 +11,15 @@ export function VerifyDoneView({ requestingDomain, urlError }: VerifyDoneViewPro
   const isVerifiedProtocol = Boolean(requestingDomain && !urlError);
 
   return (
-    <div className="reveal" style={{ textAlign: "center", padding: "2rem 0" }}>
+    <div
+      className="reveal"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      style={{ textAlign: "center", padding: "2rem 0" }}
+    >
       <span
+        aria-hidden="true"
         style={{
           display: "inline-flex",
           alignItems: "center",

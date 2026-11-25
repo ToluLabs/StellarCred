@@ -3,7 +3,7 @@
 // picking an issuer outside the protocol's trusted list warns instead of
 // silently issuing a proof that will be rejected.
 
-import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithIntl } from "@/lib/test-utils";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { RegisteredIssuer } from "@/lib/issuer-registry";
@@ -126,7 +126,11 @@ describe("holder picks the issuer (#620)", () => {
   });
 
   afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
     vi.unstubAllGlobals();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("lists the issuers that can attest the claim, preselects the protocol-accepted one", async () => {
@@ -160,9 +164,20 @@ describe("holder picks the issuer (#620)", () => {
     const picker = await screen.findByRole("radiogroup", {
       name: /issuing authority/i,
     });
-    fireEvent.click(within(picker).getByText(/Globule Registry/));
+    // Let the protocol-accepted preselection settle before overriding it.
+    await waitFor(() =>
+      expect(within(picker).getByRole("radio", { name: /Third Trust/ })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      ),
+    );
+    const globule = within(picker).getByRole("radio", { name: /Globule Registry/ });
+    fireEvent.click(globule);
+    await waitFor(() => expect(globule).toHaveAttribute("aria-checked", "true"), {
+      timeout: 5000,
+    });
 
-    await screen.findByText(/trusted-issuer list/i);
+    await screen.findByText(/trusted-issuer list/i, undefined, { timeout: 5000 });
     expect(screen.getByText(/will reject a proof from it/i)).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("button", { name: /get credential/i }));

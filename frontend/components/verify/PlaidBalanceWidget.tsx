@@ -29,7 +29,7 @@ export function PlaidBalanceWidget({
           gap: "0.4rem",
         }}
       >
-        <IconLoader2 size={12} className="spin" />
+        <IconLoader2 size={12} className="spin" aria-hidden="true" />
         Reading balance from Plaid…
       </p>
     );
