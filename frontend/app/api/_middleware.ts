@@ -59,24 +59,102 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { tooManyRequestsResponse } from "@/lib/rate-limit";
+import { checkLimitRedis } from "@/lib/redis-rate-limit";
 import {
   withSentryRouteHandler,
   captureServerException,
   initSentry,
   getSentryClient,
 } from "@/lib/monitoring/sentry";
-import { checkAdminAuth, UNAUTHORIZED } from "@/lib/auth";
+import {
+  authFailure,
+  checkAdminAuth,
+  extractBearerToken,
+  UNAUTHORIZED,
+  type AuthResult,
+  validateSessionToken,
+  type SessionPayload,
+  type SessionValidationOptions,
+} from "@/lib/auth";
+import { resolveTenant, type Tenant } from "@/lib/tenancy";
 
-export { withSentryRouteHandler, captureServerException, initSentry, getSentryClient };
+export interface RateLimitOptions {
+  /** Namespaced key for this limiter bucket (e.g. `"issue:ip:<raw-ip>"`). */
+  key: string;
+  /** Maximum requests allowed in the window. */
+  limit: number;
+  /** Window length in milliseconds. */
+  windowMs: number;
+  /** The actual route handler, called only when the request is not throttled. */
+  handler: () => Promise<NextResponse>;
+}
 
 /**
- * Returns a 401 response when the request is not an authorized admin,
- * or null when admin access is allowed.
+ * Apply rate limiting to a route handler.
+ *
+ * Returns a 429 `NextResponse` when the limit is exceeded; otherwise calls
+ * and returns the result of `handler`.
+ *
+ * Rate-limit state is stored in Redis when `REDIS_URL` is configured, and
+ * falls back to the in-process store otherwise - callers are agnostic to
+ * which backend is active.
  */
-export function requireAdmin(req: NextRequest): NextResponse | null {
-  if (checkAdminAuth(req)) return null;
-  return NextResponse.json(UNAUTHORIZED, { status: 401 });
+export async function withRateLimit(
+  _req: NextRequest,
+  { key, limit, windowMs, handler }: RateLimitOptions,
+): Promise<NextResponse> {
+  const result = await checkLimitRedis(key, limit, windowMs);
+
+  if (result.throttled) {
+    return tooManyRequestsResponse(result.retryAfterMs);
+  }
+
+  return handler();
 }
+
+/**
+ * Apply two rate-limit checks in series: first `primary` (e.g. per-IP),
+ * then `secondary` (e.g. per-wallet).  Returns a 429 on the first throttled
+ * check; calls `handler` only when both pass.
+ *
+ * This replaces the two sequential `checkLimit` calls in the issue routes
+ * with a single wrapper that handles both checks and the 429 response.
+ */
+export async function withRateLimits(
+  _req: NextRequest,
+  opts: {
+    primary: Omit<RateLimitOptions, "handler">;
+    secondary: Omit<RateLimitOptions, "handler">;
+    handler: RateLimitOptions["handler"];
+  },
+): Promise<NextResponse> {
+  const primary = await checkLimitRedis(
+    opts.primary.key,
+    opts.primary.limit,
+    opts.primary.windowMs,
+  );
+  if (primary.throttled) {
+    return tooManyRequestsResponse(primary.retryAfterMs);
+  }
+
+  const secondary = await checkLimitRedis(
+    opts.secondary.key,
+    opts.secondary.limit,
+    opts.secondary.windowMs,
+  );
+  if (secondary.throttled) {
+    return tooManyRequestsResponse(secondary.retryAfterMs);
+  }
+
+  return opts.handler();
+}
+
+// ---------------------------------------------------------------------------
+// Shared error boundary and Sentry observability middleware (#853)
+// ---------------------------------------------------------------------------
+
+export { withSentryRouteHandler, captureServerException, initSentry, getSentryClient };
 
 /**
  * Standard API error boundary wrapper.
