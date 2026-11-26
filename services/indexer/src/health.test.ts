@@ -1,23 +1,16 @@
-/**
- * health.test.ts — Unit tests for the indexer health payload builder.
- *
- * Pure functions, no DB or network: `db` and `ingester` are minimal stubs so
- * each status branch can be asserted deterministically.
- */
-
 import request from "supertest";
 import {
   buildHealthResponse,
   buildHealthzResponse,
   buildLivenessResponse,
   buildReadinessResponse,
-  buildUnavailableHealthResponse,
   checkDatabase,
   evaluateHorizonHealth,
+  DEFAULT_MAX_LEDGER_LAG,
+  DEFAULT_WARN_LEDGER_LAG,
   MAX_READY_LEDGER_LAG,
   resolveVersion,
   statusFromHealth,
-  DEGRADED_ERROR_THRESHOLD,
   SERVICE_NAME,
 } from "./health";
 import { buildApp } from "./api";
@@ -35,221 +28,93 @@ const base: IngesterHealth = {
   fetchFailures: 0,
 };
 
-function makeIngester(overrides?: Partial<IngesterHealth>) {
-  const health: IngesterHealth = {
-    lastSuccessLedger: 0,
-    headLedger: 0,
-    lag: -1,
-    lastError: null,
-    lastErrorTime: null,
-    consecutiveErrors: 0,
-    fetchAttempts: 0,
-    fetchFailures: 0,
-    ...overrides,
-  };
-  return { getHealth: () => ({ ...health }) };
-}
-
-const db = { getLastLedger: () => 123 } as const;
-
 describe("statusFromHealth", () => {
-  it("is ok with no consecutive errors", () => {
-    expect(statusFromHealth({ consecutiveErrors: 0 })).toBe("ok");
+  it("maps consecutive errors to ok / degraded / error", () => {
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 0 })).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 2, lag: 0 })).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 3, lag: 0 })).toBe("error");
   });
 
-  it("is degraded below the error threshold", () => {
-    expect(statusFromHealth({ consecutiveErrors: 1 })).toBe("degraded");
-    expect(statusFromHealth({ consecutiveErrors: DEGRADED_ERROR_THRESHOLD - 1 })).toBe(
-      "degraded",
-    );
+  it("maps ledger lag to ok / degraded / error based on default thresholds", () => {
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 0 })).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 29 })).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 30 })).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 119 })).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 120 })).toBe("error");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 200 })).toBe("error");
   });
 
-  it("is error at or above the threshold", () => {
-    expect(statusFromHealth({ consecutiveErrors: DEGRADED_ERROR_THRESHOLD })).toBe("error");
-    expect(statusFromHealth({ consecutiveErrors: 10 })).toBe("error");
+  it("does not degrade or error when lag is negative (unknown head during startup)", () => {
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: -1 })).toBe("ok");
+  });
+
+  it("respects custom lag thresholds", () => {
+    const customThresholds = { warnLedgerLag: 10, maxLedgerLag: 50 };
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 9 }, customThresholds)).toBe("ok");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 10 }, customThresholds)).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 49 }, customThresholds)).toBe("degraded");
+    expect(statusFromHealth({ consecutiveErrors: 0, lag: 50 }, customThresholds)).toBe("error");
   });
 });
 
 describe("resolveVersion", () => {
-  const original = process.env["npm_package_version"];
-  const originalOverride = process.env["INDEXER_VERSION"];
-
-  afterEach(() => {
-    if (original === undefined) delete process.env["npm_package_version"];
-    else process.env["npm_package_version"] = original;
-    if (originalOverride === undefined) delete process.env["INDEXER_VERSION"];
-    else process.env["INDEXER_VERSION"] = originalOverride;
-  });
-
-  it("prefers the explicit INDEXER_VERSION override", () => {
-    process.env["INDEXER_VERSION"] = "2.0.0";
-    process.env["npm_package_version"] = "1.2.3";
-    expect(resolveVersion()).toBe("2.0.0");
-  });
-
-  it("returns npm_package_version when set", () => {
-    delete process.env["INDEXER_VERSION"];
-    process.env["npm_package_version"] = "1.2.3";
-    expect(resolveVersion()).toBe("1.2.3");
-  });
-
-  it("falls back to dev when unset", () => {
-    delete process.env["INDEXER_VERSION"];
-    delete process.env["npm_package_version"];
-    expect(resolveVersion()).toBe("dev");
-  });
-
-  it("ignores a blank override", () => {
-    process.env["INDEXER_VERSION"] = "   ";
-    process.env["npm_package_version"] = "1.2.3";
-    expect(resolveVersion()).toBe("1.2.3");
+  it("prefers INDEXER_VERSION, then npm_package_version, then dev", () => {
+    expect(resolveVersion({ INDEXER_VERSION: "2.0.0", npm_package_version: "1.0.0" })).toBe("2.0.0");
+    expect(resolveVersion({ npm_package_version: "1.0.0" })).toBe("1.0.0");
+    expect(resolveVersion({})).toBe("dev");
   });
 });
 
 describe("buildHealthResponse", () => {
-  const originalVersion = process.env["npm_package_version"];
-  const originalOverride = process.env["INDEXER_VERSION"];
-
-  beforeEach(() => {
-    // The payload assertions below expect the "dev" fallback, so the explicit
-    // deployment override must not leak in from the ambient environment.
-    delete process.env["INDEXER_VERSION"];
-  });
-
-  afterEach(() => {
-    if (originalVersion === undefined) delete process.env["npm_package_version"];
-    else process.env["npm_package_version"] = originalVersion;
-    if (originalOverride === undefined) delete process.env["INDEXER_VERSION"];
-    else process.env["INDEXER_VERSION"] = originalOverride;
-  });
-
-  it("reports ok, ready, service and version metadata", async () => {
-    delete process.env["npm_package_version"];
-    const payload = await buildHealthResponse(db, makeIngester() as never, {
-      now: 1000,
-      uptimeSeconds: 5,
-    });
-
-    expect(payload).toMatchObject({
+  it("includes status, readiness, thresholds, and service metadata", () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const body = buildHealthResponse(10, base, now);
+    expect(body).toMatchObject({
       status: "ok",
       ready: true,
       service: SERVICE_NAME,
-      version: "dev",
-      timestamp: 1000,
-      uptimeSeconds: 5,
-      lastLedger: 123,
-      headLedger: 0,
-      lag: -1,
-      consecutiveErrors: 0,
-      lastError: null,
+      timestamp: "2026-01-01T00:00:00.000Z",
+      lastLedger: 10,
+      headLedger: 12,
+      lag: 2,
+      maxLedgerLag: DEFAULT_MAX_LEDGER_LAG,
+      warnLedgerLag: DEFAULT_WARN_LEDGER_LAG,
     });
+    expect(typeof body.version).toBe("string");
   });
 
-  it("is degraded but still ready with a few consecutive errors", async () => {
-    const payload = await buildHealthResponse(
-      db,
-      makeIngester({ consecutiveErrors: 2, lastError: "timeout" }) as never,
-    );
-
-    expect(payload.status).toBe("degraded");
-    expect(payload.ready).toBe(true);
-    expect(payload.lastError).toBe("timeout");
+  it("is not ready when the ingester is in the error state due to consecutive errors", () => {
+    const body = buildHealthResponse(10, { ...base, consecutiveErrors: 3, lastError: "boom" });
+    expect(body.status).toBe("error");
+    expect(body.ready).toBe(false);
   });
 
-  it("is error and not ready at the threshold", async () => {
-    const payload = await buildHealthResponse(
-      db,
-      makeIngester({ consecutiveErrors: DEGRADED_ERROR_THRESHOLD, lag: 120 }) as never,
-    );
-
-    expect(payload.status).toBe("error");
-    expect(payload.ready).toBe(false);
-    expect(payload.lag).toBe(120);
-  });
-
-  it("propagates a database error instead of reporting healthy", async () => {
-    const failingDb = {
-      getLastLedger: () => {
-        throw new Error("db down");
-      },
-    };
-    await expect(buildHealthResponse(failingDb as never, makeIngester() as never)).rejects.toThrow(
-      "db down",
-    );
-  });
-});
-
-describe("buildUnavailableHealthResponse", () => {
-  const originalVersion = process.env["npm_package_version"];
-  const originalOverride = process.env["INDEXER_VERSION"];
-
-  beforeEach(() => {
-    delete process.env["INDEXER_VERSION"];
-  });
-
-  afterEach(() => {
-    if (originalVersion === undefined) delete process.env["npm_package_version"];
-    else process.env["npm_package_version"] = originalVersion;
-    if (originalOverride === undefined) delete process.env["INDEXER_VERSION"];
-    else process.env["INDEXER_VERSION"] = originalOverride;
-  });
-
-  it("reports error, not ready, and carries the failure message", () => {
-    delete process.env["npm_package_version"];
-    const payload = buildUnavailableHealthResponse(makeIngester() as never, new Error("db down"), {
-      now: 1000,
-      uptimeSeconds: 5,
-    });
-
-    expect(payload).toMatchObject({
-      status: "error",
-      ready: false,
-      service: SERVICE_NAME,
-      version: "dev",
-      timestamp: 1000,
-      uptimeSeconds: 5,
-      lastLedger: 0,
-      error: "db down",
-    });
-  });
-
-  it("keeps the ingester counters so operators can see the wider picture", () => {
-    const payload = buildUnavailableHealthResponse(
-      makeIngester({ headLedger: 900, lag: 42, consecutiveErrors: 4, lastError: "timeout" }) as never,
-      "boom",
-    );
-
-    expect(payload.headLedger).toBe(900);
-    expect(payload.lag).toBe(42);
-    expect(payload.consecutiveErrors).toBe(4);
-    expect(payload.lastError).toBe("timeout");
-  });
-
-  it("stringifies a non-Error failure", () => {
-    const payload = buildUnavailableHealthResponse(makeIngester() as never, "plain string");
-
-    expect(payload.error).toBe("plain string");
-  });
-
-  it("reports ledger lag without changing a healthy status", async () => {
-    const body = await buildHealthResponse(db, makeIngester({ lag: 35 }) as never);
-    expect(body.status).toBe("ok");
+  it("marks status degraded and ready true when lag exceeds warning threshold", () => {
+    const body = buildHealthResponse(10, { ...base, lag: 35 });
+    expect(body.status).toBe("degraded");
     expect(body.ready).toBe(true);
     expect(body.lag).toBe(35);
   });
 
-  it("reports an error and not ready once the error threshold is reached", async () => {
-    const body = await buildHealthResponse(
-      db,
-      makeIngester({ consecutiveErrors: DEGRADED_ERROR_THRESHOLD, lag: 150 }) as never,
-    );
+  it("marks status error and ready false when lag exceeds max threshold even with 0 errors", () => {
+    const body = buildHealthResponse(10, { ...base, consecutiveErrors: 0, lag: 150 });
     expect(body.status).toBe("error");
     expect(body.ready).toBe(false);
     expect(body.lag).toBe(150);
   });
 
-  it("contains zero credential-level or identity fields in diagnostic payload", async () => {
-    const body = await buildHealthResponse(db, makeIngester() as never);
+  it("uses custom thresholds when provided via options object", () => {
+    const body = buildHealthResponse(10, { ...base, lag: 20 }, {
+      thresholds: { warnLedgerLag: 15, maxLedgerLag: 40 },
+    });
+    expect(body.status).toBe("degraded");
+    expect(body.ready).toBe(true);
+    expect(body.warnLedgerLag).toBe(15);
+    expect(body.maxLedgerLag).toBe(40);
+  });
+
+  it("contains zero credential-level or identity fields in diagnostic payload", () => {
+    const body = buildHealthResponse(10, base);
     const keys = Object.keys(body);
     const forbiddenPatterns = [/wallet/i, /claim/i, /credential/i, /proof/i, /secret/i, /token/i, /key/i];
     for (const pattern of forbiddenPatterns) {

@@ -1,58 +1,42 @@
 /**
- * health.ts — Health/readiness payload for the indexer service.
+ * health.ts — Health payload for the indexer worker.
  *
- * A single, well-defined shape that deployment and monitoring tooling (Docker
- * `HEALTHCHECK`, Kubernetes liveness/readiness probes, load-balancer health
- * checks) can poll. It is derived from the ingester's health snapshot and the
- * database cursor so callers get both a coarse `status` and the underlying
- * numbers that produced it.
+ * Gives deployment and monitoring tooling (Docker HEALTHCHECK, Kubernetes
+ * probes, load-balancer checks) one well-defined shape to poll, derived from
+ * the ingester's health snapshot, database cursor, and ledger lag relative to
+ * the trusted network head.
  *
- * Status semantics (kept in sync with the `/health` route in api.ts):
- *   "ok"       — no consecutive fetch errors; data is flowing.
- *   "degraded" — a fetch failed but recent history is otherwise healthy
- *                (fewer than DEGRADED_ERROR_THRESHOLD consecutive failures).
- *   "error"    — DEGRADED_ERROR_THRESHOLD or more consecutive failures; the
- *                indexer is very likely stalled and its data may be stale.
+ * Status semantics:
+ *   "ok"       — no consecutive fetch errors, and lag is below the warning threshold.
+ *   "degraded" — a fetch failed (fewer than ERROR_THRESHOLD), or lag is at/above
+ *                warnLedgerLag but below maxLedgerLag.
+ *   "error"    — ERROR_THRESHOLD or more consecutive failures, or lag is at/above
+ *                maxLedgerLag; the ingester is stalled and data is stale.
  *
- * `ready` is the readiness signal for routing traffic: the process is up,
- * the database is reachable (getLastLedger resolved), and the ingester is not
- * in the "error" state. It is `false` on an unhandled error.
+ * `ready` is true unless status is "error".
  *
- * See docs/HEALTHCHECKS.md for the full contract and integration guidance.
+ * See docs/HEALTHCHECKS.md for the full contract.
  */
 
-import type { Db } from "./db";
-import type { Ingester, IngesterHealth } from "./ingester";
+import type { IngesterHealth } from "./ingester";
 
 /** Consecutive fetch failures at or above which status becomes "error". */
-export const DEGRADED_ERROR_THRESHOLD = 3;
-
-/** Stable service identifier used by deployment and monitoring tooling. */
-export const SERVICE_NAME = "stellarcred-indexer";
-
-/**
- * Resolve the deployed indexer version without a runtime `package.json` read.
- *
- * `INDEXER_VERSION` is the explicit override a deployment sets (containers
- * started with a bare `node` command have no npm context); `npm_package_version`
- * is set by npm when the service is started through its package scripts. Either
- * one identifies the running build; otherwise the field falls back to a
- * non-empty placeholder so the response shape never changes.
- */
-export function resolveVersion(): string {
-  return (
-    process.env["INDEXER_VERSION"]?.trim() ||
-    process.env["npm_package_version"]?.trim() ||
-    "dev"
-  );
-}
-
-export type HealthStatus = "ok" | "degraded" | "error";
+export const ERROR_THRESHOLD = 3;
 
 /** Maximum ledger lag allowed for the Horizon/ingester readiness check. */
 export const MAX_READY_LEDGER_LAG = 5;
 
-/** Result of probing the database cursor, including round-trip latency. */
+/** Default ledger lag threshold at or above which status becomes "degraded". */
+export const DEFAULT_WARN_LEDGER_LAG = 30;
+
+/** Default ledger lag threshold at or above which status becomes "error" and ready is false. */
+export const DEFAULT_MAX_LEDGER_LAG = 120;
+
+/** Stable service identifier reported in every health response. */
+export const SERVICE_NAME = "stellarcred-indexer";
+
+export type HealthStatus = "ok" | "degraded" | "error";
+
 export interface DatabaseCheckResult {
   status: "ok" | "error";
   latencyMs: number;
@@ -60,7 +44,6 @@ export interface DatabaseCheckResult {
   error: string | null;
 }
 
-/** Result of evaluating ingester sync state against the error/lag thresholds. */
 export interface HorizonCheckResult {
   status: HealthStatus;
   synced: boolean;
@@ -72,7 +55,6 @@ export interface HorizonCheckResult {
   lastError: string | null;
 }
 
-/** Payload of the liveness probe (`/livez`): the process is serving requests. */
 export interface LivenessResponse {
   status: "ok";
   alive: true;
@@ -82,7 +64,6 @@ export interface LivenessResponse {
   timestamp: string;
 }
 
-/** Payload of the readiness probe (`/readyz`): database and Horizon state. */
 export interface ReadinessResponse {
   status: HealthStatus;
   ready: boolean;
@@ -96,7 +77,6 @@ export interface ReadinessResponse {
   };
 }
 
-/** Payload of the deep health probe (`/healthz`): readiness plus telemetry. */
 export interface HealthzResponse extends ReadinessResponse {
   alive: true;
   lastLedger: number | null;
@@ -110,112 +90,111 @@ export interface HealthzResponse extends ReadinessResponse {
   fetchFailures: number;
 }
 
-export interface HealthResponse {
-  /** Coarse overall status — see the module doc comment. */
-  status: HealthStatus;
-  /** Whether the service should receive traffic. */
-  ready: boolean;
-  /** Stable service name. */
-  service: string;
-  /** Deployed version (from npm_package_version), or "dev". */
-  version: string;
-  /** Unix ms the payload was produced. */
-  timestamp: number;
-  /** Process uptime in seconds. */
-  uptimeSeconds: number;
-  /** Ledger sequence of the most recently persisted event (0 if none). */
-  lastLedger: number;
-  /** Current chain head ledger as observed by the ingester (0 if unknown). */
-  headLedger: number;
-  /** `headLedger - lastLedger`, or -1 if the head is unknown. */
-  lag: number;
-  /** Consecutive failed fetch ticks (0 = healthy). */
-  consecutiveErrors: number;
-  /** Message from the most recent failed fetch, if any. */
-  lastError: string | null;
-  /** Timestamp (ms) of the most recent failed fetch, if any. */
-  lastErrorTime: number | null;
-  /**
-   * Set only when the check could not complete normally — currently that means
-   * the database read failed. The payload is still a well-formed health
-   * document so a probe can parse every response with one code path.
-   */
-  error?: string;
+export interface HealthThresholds {
+  errorThreshold?: number;
+  warnLedgerLag?: number;
+  maxLedgerLag?: number;
 }
 
-/** Map an ingester snapshot to the coarse health status. */
-export function statusFromHealth(health: Pick<IngesterHealth, "consecutiveErrors">): HealthStatus {
-  if (health.consecutiveErrors === 0) return "ok";
-  if (health.consecutiveErrors < DEGRADED_ERROR_THRESHOLD) return "degraded";
-  return "error";
+export interface HealthOptions {
+  thresholds?: HealthThresholds;
+  now?: Date;
+}
+
+export interface IndexerHealthResponse {
+  status: HealthStatus;
+  ready: boolean;
+  service: string;
+  version: string;
+  uptimeSeconds: number;
+  timestamp: string;
+  lastLedger: number;
+  headLedger: number;
+  lag: number;
+  maxLedgerLag: number;
+  warnLedgerLag: number;
+  lastSuccessLedger: number;
+  lastError: string | null;
+  lastErrorTime: number | null;
+  consecutiveErrors: number;
+  fetchAttempts: number;
+  fetchFailures: number;
 }
 
 /**
- * Build the health payload. `getLastLedger` is awaited so a database outage
- * surfaces as a thrown error (the caller maps that to a 503) rather than being
- * silently reported as healthy.
+ * Deployed version: INDEXER_VERSION when set by the deployment, otherwise
+ * npm_package_version (set when started via npm scripts), otherwise "dev".
  */
-export async function buildHealthResponse(
-  db: Pick<Db, "getLastLedger">,
-  ingester: Pick<Ingester, "getHealth">,
-  options: { now?: number; uptimeSeconds?: number } = {},
-): Promise<HealthResponse> {
-  const lastLedger = Number(await db.getLastLedger());
-  const h = ingester.getHealth();
-  const status = statusFromHealth(h);
+export function resolveVersion(env: NodeJS.ProcessEnv = process.env): string {
+  return env.INDEXER_VERSION || env.npm_package_version || "dev";
+}
 
+export function statusFromHealth(
+  h: Pick<IngesterHealth, "consecutiveErrors"> & Partial<Pick<IngesterHealth, "lag">>,
+  thresholds?: HealthThresholds
+): HealthStatus {
+  const errorThreshold = thresholds?.errorThreshold ?? ERROR_THRESHOLD;
+  const maxLag = thresholds?.maxLedgerLag ?? DEFAULT_MAX_LEDGER_LAG;
+  const warnLag = thresholds?.warnLedgerLag ?? DEFAULT_WARN_LEDGER_LAG;
+
+  if (h.consecutiveErrors >= errorThreshold) return "error";
+  if (typeof h.lag === "number" && h.lag >= 0 && h.lag >= maxLag) return "error";
+  if (h.consecutiveErrors > 0) return "degraded";
+  if (typeof h.lag === "number" && h.lag >= 0 && h.lag >= warnLag) return "degraded";
+  return "ok";
+}
+
+export function buildHealthResponse(
+  lastLedger: number,
+  h: IngesterHealth,
+  optionsOrNow?: HealthOptions | HealthThresholds | Date,
+  thresholdsArg?: HealthThresholds
+): IndexerHealthResponse {
+  let now: Date = new Date();
+  let thresholds: HealthThresholds | undefined = thresholdsArg;
+
+  if (optionsOrNow instanceof Date) {
+    now = optionsOrNow;
+  } else if (optionsOrNow && typeof optionsOrNow === "object") {
+    if ("now" in optionsOrNow && optionsOrNow.now instanceof Date) {
+      now = optionsOrNow.now;
+    }
+    if ("thresholds" in optionsOrNow && optionsOrNow.thresholds) {
+      thresholds = optionsOrNow.thresholds;
+    } else if (
+      "maxLedgerLag" in optionsOrNow ||
+      "warnLedgerLag" in optionsOrNow ||
+      "errorThreshold" in optionsOrNow
+    ) {
+      thresholds = optionsOrNow as HealthThresholds;
+    }
+  }
+
+  const effectiveThresholds: HealthThresholds = {
+    errorThreshold: thresholds?.errorThreshold ?? ERROR_THRESHOLD,
+    maxLedgerLag: thresholds?.maxLedgerLag ?? DEFAULT_MAX_LEDGER_LAG,
+    warnLedgerLag: thresholds?.warnLedgerLag ?? DEFAULT_WARN_LEDGER_LAG,
+  };
+
+  const status = statusFromHealth(h, effectiveThresholds);
   return {
-    ...baseFields(options),
     status,
     ready: status !== "error",
+    service: SERVICE_NAME,
+    version: resolveVersion(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: now.toISOString(),
     lastLedger,
     headLedger: h.headLedger,
     lag: h.lag,
-    consecutiveErrors: h.consecutiveErrors,
+    maxLedgerLag: effectiveThresholds.maxLedgerLag!,
+    warnLedgerLag: effectiveThresholds.warnLedgerLag!,
+    lastSuccessLedger: h.lastSuccessLedger,
     lastError: h.lastError,
     lastErrorTime: h.lastErrorTime,
-  };
-}
-
-/**
- * Build the health payload for the case where the database could not be read.
- *
- * The process is alive but cannot serve data, so readiness fails: `status` is
- * "error" and `ready` is false. The caller answers with HTTP 503 so a probe
- * can tell "not ready" apart from "process gone", and the payload keeps the
- * same shape as a successful check.
- */
-export function buildUnavailableHealthResponse(
-  ingester: Pick<Ingester, "getHealth">,
-  error: unknown,
-  options: { now?: number; uptimeSeconds?: number } = {},
-): HealthResponse {
-  const h = ingester.getHealth();
-
-  return {
-    ...baseFields(options),
-    status: "error",
-    ready: false,
-    lastLedger: 0,
-    headLedger: h.headLedger,
-    lag: h.lag,
     consecutiveErrors: h.consecutiveErrors,
-    lastError: h.lastError,
-    lastErrorTime: h.lastErrorTime,
-    error: error instanceof Error ? error.message : String(error),
-  };
-}
-
-/** Fields every health payload carries, regardless of the outcome. */
-function baseFields(options: { now?: number; uptimeSeconds?: number }): Pick<
-  HealthResponse,
-  "service" | "version" | "timestamp" | "uptimeSeconds"
-> {
-  return {
-    service: SERVICE_NAME,
-    version: resolveVersion(),
-    timestamp: options.now ?? Date.now(),
-    uptimeSeconds: options.uptimeSeconds ?? Math.round(process.uptime()),
+    fetchAttempts: h.fetchAttempts,
+    fetchFailures: h.fetchFailures,
   };
 }
 
