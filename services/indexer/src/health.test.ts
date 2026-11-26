@@ -210,6 +210,41 @@ describe("buildUnavailableHealthResponse", () => {
 
     expect(payload.error).toBe("plain string");
   });
+
+  it("marks status degraded and ready true when lag exceeds warning threshold", () => {
+    const body = buildHealthResponse(10, { ...base, lag: 35 });
+    expect(body.status).toBe("degraded");
+    expect(body.ready).toBe(true);
+    expect(body.lag).toBe(35);
+  });
+
+  it("marks status error and ready false when lag exceeds max threshold even with 0 errors", () => {
+    const body = buildHealthResponse(10, { ...base, consecutiveErrors: 0, lag: 150 });
+    expect(body.status).toBe("error");
+    expect(body.ready).toBe(false);
+    expect(body.lag).toBe(150);
+  });
+
+  it("uses custom thresholds when provided via options object", () => {
+    const body = buildHealthResponse(10, { ...base, lag: 20 }, {
+      thresholds: { warnLedgerLag: 15, maxLedgerLag: 40 },
+    });
+    expect(body.status).toBe("degraded");
+    expect(body.ready).toBe(true);
+    expect(body.warnLedgerLag).toBe(15);
+    expect(body.maxLedgerLag).toBe(40);
+  });
+
+  it("contains zero credential-level or identity fields in diagnostic payload", () => {
+    const body = buildHealthResponse(10, base);
+    const keys = Object.keys(body);
+    const forbiddenPatterns = [/wallet/i, /claim/i, /credential/i, /proof/i, /secret/i, /token/i, /key/i];
+    for (const pattern of forbiddenPatterns) {
+      for (const key of keys) {
+        expect(key).not.toMatch(pattern);
+      }
+    }
+  });
 });
 
 describe("checkDatabase", () => {

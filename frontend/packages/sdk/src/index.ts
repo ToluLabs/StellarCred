@@ -1,41 +1,28 @@
- feat/1064-telemetry-opt-in-sanitization
-// @stellarcred/sdk
-//
-// A tiny, zero-dependency* read-only client for protocols integrating
-// StellarCred. By default the only thing a protocol trusts is the on-chain
-// ProofRegistry — there is no API key, no backend, and no personal data
-// handling. `hasClaim` is the primary integration call.
-// Reads can optionally be sourced from a StellarCred indexer instead
-// (`{ source: "indexer" }`), which is much faster but trusts whoever operates
-// that indexer. It is off by default and must never be the sole basis for a
-// security decision. See the SDK README §Indexer fast path (issue #613).
-// *Requires @stellar/stellar-sdk as a peer dependency.
-//
-// Quick start and every configuration option: see README.md.
-
 // @stellarcred/sdk — read-only client for protocols integrating StellarCred.
 // The on-chain ProofRegistry is the default source of truth; the optional
-// indexer fast path (`{ source: "indexer" }`, #613) trusts its operator and
-// must never be the sole basis for a security decision. See the SDK README
-// for quick start, configuration and env vars. Peer dep: @stellar/stellar-sdk.
-  main
+// indexer fast path trusts its operator and must not be the sole basis for a
+// security decision. See the SDK README for setup and trust-model details.
 
 export * from "./claims";
-export * from "./issuers"; // IssuerRegistry reads
+export * from "./issuers";
 export * from "./capabilities";
 export * from "./challenge";
+export * from "./presentation-token"; // Server-side presentation tokens (#1062)
 export * from "./subscriptions";
-export * from "./errors"; // Typed error taxonomy (#404)
-export * from "./telemetry"; // Opt-in, zero-PII telemetry (#1064)
-export * from "./validateCredential"; // Credential JSON validation (#27)
+export * from "./errors";
+export * from "./telemetry";
+export * from "./validateCredential";
 export * from "./buildVerifyUrl";
+export * from "./offline"; // Air-gapped presentation verification (#1059)
 export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
 export type { SubmitTransactionOptions } from "./submit";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
+export * from "./wasm";
 
+ feat/universal-wasm-packaging
 import {
   configure,
   healthCheck,
@@ -44,11 +31,6 @@ import {
   getClaim,
   getClaimRecord,
   checkClaimStatus,
-  getClaimOutcome,
- feat/979-typed-claim-read-outcomes
-
-  checkClaimOutcome,
- main
   hasClaims,
   getClaims,
   verifyPreset,
@@ -71,12 +53,7 @@ import {
   InvalidAddressError,
 } from "./claims";
 import {
-  RpcError,
-  IndexerError,
-  ContractError,
-  ContractErrorCode,
-  parseContractError,
-  TransactionSubmissionError,
+  RpcError, IndexerError, ContractError, ContractErrorCode, parseContractError, TransactionSubmissionError,
 } from "./errors";
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
@@ -101,7 +78,16 @@ import {
   CredentialValidationError,
 } from "./validateCredential";
 import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
-import { telemetry } from "./telemetry";
+import {
+  clearWasmCache,
+  compileWasm,
+  detectWasmRuntime,
+  getWasmCacheSize,
+  initWasm,
+  isStreamingSupported,
+  isWasmSupported,
+  WasmLoadError,
+} from "./wasm";
 
 export const StellarCred = {
   configure,
@@ -114,11 +100,6 @@ export const StellarCred = {
   getClaim,
   getClaimRecord,
   checkClaimStatus,
-  getClaimOutcome,
- feat/979-typed-claim-read-outcomes
-
-  checkClaimOutcome,
- main
   hasClaims,
   getClaims,
   verifyPreset,
@@ -166,6 +147,19 @@ export const StellarCred = {
   TransactionSubmissionError,
   CredentialValidationError,
   parseContractError,
-  telemetry, // Opt-in, zero-PII telemetry (#1064)
+  // Universal WASM helpers
+  initWasm,
+  compileWasm,
+  detectWasmRuntime,
+  isWasmSupported,
+  isStreamingSupported,
+  clearWasmCache,
+  getWasmCacheSize,
+  WasmLoadError,
 };
 export default StellarCred;
+
+// The `StellarCred` namespace object lives in its own module so this entry
+// point stays a lean barrel; it is re-exported (with `default`) from here.
+export { StellarCred, default } from "./namespace";
+ main

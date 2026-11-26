@@ -25,8 +25,7 @@ export interface CursorPayload {
 }
 
 export type CursorVerifyResult =
-  | { ok: true; jobId: string; index: number }
-  | { ok: false; reason: string };
+  { ok: true; jobId: string; index: number } | { ok: false; reason: string };
 
 /**
  * Resolve the signing secret. Trim each candidate first, then fall back:
@@ -36,11 +35,7 @@ export type CursorVerifyResult =
  * `ADMIN_API_KEY`, the fallback covers dev/tests out of the box.
  */
 function cursorSecret(): string {
-  return (
-    process.env.EXPORT_CURSOR_SECRET?.trim() ||
-    process.env.ADMIN_API_KEY?.trim() ||
-    ""
-  );
+  return process.env.EXPORT_CURSOR_SECRET?.trim() || process.env.ADMIN_API_KEY?.trim() || "";
 }
 
 function base64UrlEncode(input: string): string {
@@ -65,9 +60,7 @@ function base64UrlDecode(input: string): string {
 export function createCursor(jobId: string, index: number): string {
   const secret = cursorSecret();
   if (!secret) {
-    throw new Error(
-      "EXPORT_CURSOR_SECRET or ADMIN_API_KEY must be set to sign cursors",
-    );
+    throw new Error("EXPORT_CURSOR_SECRET or ADMIN_API_KEY must be set to sign cursors");
   }
   const payloadJson = JSON.stringify({ j: jobId, i: index });
   const sig = createHmac("sha256", secret).update(payloadJson).digest("hex");
@@ -103,9 +96,7 @@ export function verifyCursor(token: string): CursorVerifyResult {
       return { ok: false, reason: "malformed cursor" };
     }
 
-    const expected = createHmac("sha256", secret)
-      .update(payloadJson)
-      .digest("hex");
+    const expected = createHmac("sha256", secret).update(payloadJson).digest("hex");
 
     // Length check first so timingSafeEqual never throws on a length mismatch.
     if (sigPart.length !== expected.length) {
@@ -127,11 +118,7 @@ export function verifyCursor(token: string): CursorVerifyResult {
     } catch {
       return { ok: false, reason: "malformed cursor" };
     }
-    if (
-      typeof raw !== "object" ||
-      raw === null ||
-      Array.isArray(raw)
-    ) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
       return { ok: false, reason: "malformed cursor" };
     }
     const obj = raw as { j?: unknown; i?: unknown };

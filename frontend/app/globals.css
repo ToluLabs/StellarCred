@@ -985,13 +985,23 @@ textarea:focus-visible {
 /* ---- Onboarding wizard ----------------------------------------------------- */
 
 @keyframes obFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes obSlideUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ob-wizard-overlay {
@@ -1380,6 +1390,15 @@ textarea:focus-visible {
 .cred-card__title {
   font-weight: 600;
   font-size: var(--type-lg, 0.9rem);
+}
+
+/* Rendered as an <h3> for screen-reader heading navigation; keep the
+   original inline-text look rather than the global heading styles. */
+h3.cred-card__title {
+  font-family: inherit;
+  letter-spacing: normal;
+  line-height: inherit;
+  color: inherit;
 }
 
 .cred-card__meta {
@@ -2103,4 +2122,17 @@ textarea:focus-visible {
 .login-footer-link:focus-visible {
   text-decoration: underline;
   outline: none;
+}
+
+/* ---- Screen-reader-only text (WCAG 1.1.1 / 1.3.1) ------------------------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

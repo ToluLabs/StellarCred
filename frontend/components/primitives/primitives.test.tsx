@@ -7,15 +7,23 @@ import { Heading, Text } from "./Text";
 
 describe("Button", () => {
   it("renders a <button> by default with variant/size classes", () => {
-    render(<Button variant="secondary" size="sm">Generate proof</Button>);
+    render(
+      <Button variant="secondary" size="sm">
+        Generate proof
+      </Button>,
+    );
     const btn = screen.getByRole("button", { name: "Generate proof" });
     expect(btn.tagName).toBe("BUTTON");
     expect(btn.className).toContain("btn-secondary");
     expect(btn.className).toContain("btn-sm");
   });
 
-  it("renders an <a> when as=\"a\" and href is provided", () => {
-    render(<Button as="a" href="/docs" variant="ghost">Back to docs</Button>);
+  it('renders an <a> when as="a" and href is provided', () => {
+    render(
+      <Button as="a" href="/docs" variant="ghost">
+        Back to docs
+      </Button>,
+    );
     const link = screen.getByRole("link", { name: "Back to docs" });
     expect(link.tagName).toBe("A");
     expect(link).toHaveAttribute("href", "/docs");
@@ -31,7 +39,11 @@ describe("Button", () => {
 
 describe("Text", () => {
   it("renders a <p> by default and maps variant + color to tokens", () => {
-    render(<Text variant="lg" color="muted">Hello</Text>);
+    render(
+      <Text variant="lg" color="muted">
+        Hello
+      </Text>,
+    );
     const el = screen.getByText("Hello");
     expect(el.tagName).toBe("P");
     const style = el.getAttribute("style") ?? "";
@@ -40,7 +52,11 @@ describe("Text", () => {
   });
 
   it("renders as a different element and applies fontWeight", () => {
-    render(<Text as="span" variant="sm" color="accent" fontWeight={600}>Label</Text>);
+    render(
+      <Text as="span" variant="sm" color="accent" fontWeight={600}>
+        Label
+      </Text>,
+    );
     const el = screen.getByText("Label");
     expect(el.tagName).toBe("SPAN");
     expect(el.getAttribute("style")).toContain("font-weight: 600");
@@ -48,7 +64,11 @@ describe("Text", () => {
   });
 
   it("applies eyebrow styling", () => {
-    render(<Text variant="xs" eyebrow>Design System</Text>);
+    render(
+      <Text variant="xs" eyebrow>
+        Design System
+      </Text>,
+    );
     const el = screen.getByText("Design System");
     expect(el.className).toContain("eyebrow");
     expect(el).toHaveStyle({ textTransform: "uppercase" });

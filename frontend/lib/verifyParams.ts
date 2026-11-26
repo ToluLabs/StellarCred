@@ -36,7 +36,7 @@ const ISO_NUMERIC_RE = /^\d{1,3}$/;
  */
 export function validateReturnUrl(
   returnUrl: string,
-  currentOrigin?: string
+  currentOrigin?: string,
 ): { ok: true } | { ok: false; error: string } {
   if (!returnUrl) return { ok: true }; // no return_url is fine â€” will fall back to /holder
 
@@ -78,9 +78,7 @@ export function validateReturnUrl(
  * Validate the `claim` query param.
  * Returns `null` when the claim is missing or invalid (caller should fall back to default).
  */
-export function validateClaimParam(
-  claim: string | null | undefined
-): ValidClaimType | null {
+export function validateClaimParam(claim: string | null | undefined): ValidClaimType | null {
   if (!claim) return null;
   return (VALID_CLAIM_TYPES as readonly string[]).includes(claim)
     ? (claim as ValidClaimType)
@@ -96,7 +94,7 @@ export function validateClaimParam(
  */
 export function validateNumericParam(
   raw: string | null | undefined,
-  opts: { name: string; min?: number; max?: number; integer?: boolean } = { name: "value" }
+  opts: { name: string; min?: number; max?: number; integer?: boolean } = { name: "value" },
 ): { ok: true; value: number } | { ok: false; error: string } | { ok: true; value: undefined } {
   if (raw == null || raw === "") return { ok: true, value: undefined };
 
@@ -127,11 +125,14 @@ export function validateNumericParam(
  * @returns `{ ok: true, codes: string[] }` or `{ ok: false, error: string }`.
  */
 export function validateRestrictedList(
-  raw: string | null | undefined
+  raw: string | null | undefined,
 ): { ok: true; codes: string[] } | { ok: false; error: string } {
   if (!raw) return { ok: true, codes: [] };
 
-  const entries = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const entries = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   if (entries.length > 8) {
     return {
@@ -165,7 +166,7 @@ const G_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
  * `{ ok: false, error }` naming the malformed entries.
  */
 export function parseTrustedIssuersParam(
-  raw: string | null | undefined
+  raw: string | null | undefined,
 ): { ok: true; issuers: string[] } | { ok: false; error: string } {
   const entries = (raw ?? "")
     .split(",")
@@ -203,10 +204,7 @@ export function validateVerifyParams(params: {
   trustedIssuersError: string | null;
   hasErrors: boolean;
 } {
-  const returnUrlResult = validateReturnUrl(
-    params.returnUrl ?? "",
-    params.currentOrigin
-  );
+  const returnUrlResult = validateReturnUrl(params.returnUrl ?? "", params.currentOrigin);
 
   const claimError =
     params.claim && !(VALID_CLAIM_TYPES as readonly string[]).includes(params.claim)
@@ -436,7 +434,11 @@ export function parseVerifyParams(search: {
   const isThresholdClaim = claim !== undefined && THRESHOLD_CLAIMS.includes(claim);
   const primaryThreshold =
     claim === "age" ? (threshold_years ?? min_threshold) : (threshold ?? min_threshold);
-  if (isThresholdClaim && primaryThreshold !== undefined && !isNonNegativeInteger(primaryThreshold)) {
+  if (
+    isThresholdClaim &&
+    primaryThreshold !== undefined &&
+    !isNonNegativeInteger(primaryThreshold)
+  ) {
     return {
       ok: false,
       isVerificationLink: true,
@@ -483,7 +485,10 @@ export function parseVerifyParams(search: {
     if (primaryThreshold !== undefined) cleanClaimParams.threshold = primaryThreshold;
   }
   if (claim !== undefined && claim === "jurisdiction" && restricted) {
-    const restrictedCodes = restricted.split(",").map((s) => s.trim()).filter(Boolean);
+    const restrictedCodes = restricted
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (restrictedCodes.length > 0) cleanClaimParams.restricted = restrictedCodes.sort();
   }
 
@@ -491,11 +496,7 @@ export function parseVerifyParams(search: {
   // the legacy, unbounded behaviour and must keep working unchanged.
   if (exp !== undefined && exp !== "") {
     const expSeconds = Number(exp);
-    if (
-      !Number.isFinite(expSeconds) ||
-      expSeconds <= 0 ||
-      !Number.isInteger(expSeconds)
-    ) {
+    if (!Number.isFinite(expSeconds) || expSeconds <= 0 || !Number.isInteger(expSeconds)) {
       return {
         ok: false,
         isVerificationLink: true,
@@ -544,10 +545,7 @@ export function parseVerifyParams(search: {
     }
   }
 
-  const expSeconds =
-    exp !== undefined && exp !== ""
-      ? Number(exp)
-      : undefined;
+  const expSeconds = exp !== undefined && exp !== "" ? Number(exp) : undefined;
 
   return {
     ok: true,

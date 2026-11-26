@@ -25,9 +25,7 @@ describe("pre-existing truncation helpers (unchanged contract)", () => {
   });
 
   it("truncatePubkey keeps 8+8", () => {
-    expect(truncatePubkey("0011223344556677889900aabbccddeeff")).toBe(
-      "00112233…ccddeeff",
-    );
+    expect(truncatePubkey("0011223344556677889900aabbccddeeff")).toBe("00112233…ccddeeff");
     expect(truncatePubkey("short")).toBe("short");
   });
 });
@@ -48,9 +46,7 @@ describe("truncateMiddle", () => {
 
 describe("truncateTxHash", () => {
   it("renders explored tx hashes 8+6 with ASCII dots", () => {
-    expect(truncateTxHash("abcdefghijklmnopqrstuvwxyz012345")).toBe(
-      "abcdefgh...012345",
-    );
+    expect(truncateTxHash("abcdefghijklmnopqrstuvwxyz012345")).toBe("abcdefgh...012345");
   });
 
   it("returns empty/short hashes unchanged", () => {

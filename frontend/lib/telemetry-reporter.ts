@@ -11,6 +11,7 @@ import {
   type ProofStageName,
   type StageTiming,
 } from "./proof-perf";
+export type { ProofRun };
 
 export type { ProofRun } from "./proof-perf";
 
@@ -41,15 +42,11 @@ function median(nums: number[]): number {
   if (nums.length === 0) return 0;
   const sorted = [...nums].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 function forStage(runs: ProofRun[], stage: ProofStageName): StageTiming[] {
-  return runs
-    .map((r) => r.stages.find((s) => s.stage === stage))
-    .filter(Boolean) as StageTiming[];
+  return runs.map((r) => r.stages.find((s) => s.stage === stage)).filter(Boolean) as StageTiming[];
 }
 
 /** Summarize a set of runs for the debug view / reporting payload. */

@@ -18,10 +18,7 @@ export const dynamic = "force-dynamic";
  * Auth: `Authorization: Bearer <ADMIN_API_KEY>` (enforced here, before the
  * orchestrator runs). See lib/auth.ts.
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const denied = requireAdmin(req);
   if (denied) return denied;
 

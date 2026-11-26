@@ -169,6 +169,12 @@ subscribers.
 | `DB_DRIVER` | Database driver (`sqlite` or `postgres`) | `sqlite` |
 | `SQLITE_PATH` | Path to SQLite database file | `./data/indexer.db` |
 | `DATABASE_URL` | PostgreSQL connection string | — |
+| `DB_POOL_MAX` | Max pooled Postgres connections per process | `10` |
+| `DB_POOL_MIN` | Connections kept warm even while idle | `2` |
+| `DB_POOL_IDLE_TIMEOUT_MS` | Close an unused connection after this long | `10000` |
+| `DB_POOL_CONNECTION_TIMEOUT_MS` | Fail a query that cannot get a connection within this long (`0` = wait forever) | `5000` |
+| `DB_POOL_MAX_USES` | Recycle a connection after this many uses (`0` = never) | `7500` |
+| `DB_POOL_PREPARED_STATEMENTS` | Send parameterised queries as named prepared statements | `true` |
 | `RPC_URL` | Soroban RPC endpoint URL | `https://soroban-testnet.stellar.org` |
 | `HORIZON_URL` | Stellar Horizon endpoint URL | `https://horizon-testnet.stellar.org` |
 | `PROOF_REGISTRY_CONTRACT_ID` | Deployed `ProofRegistry` contract address | *(Required)* |
@@ -247,6 +253,35 @@ Because the two engines use different SQL dialects (`INSERT OR IGNORE` vs
 `ON CONFLICT`, `INTEGER` vs `BIGINT`), the matrix is exactly where silent
 cross-backend divergences surface (e.g. Postgres returning `BIGINT` columns as
 strings) — running it on both is how we keep either backend from rotting.
+
+### Connection pooling and prepared statements
+
+Under peak ledger ingestion the indexer runs several queries per event (read
+cursor, upsert claim, read claims for webhooks, …). An unbounded pool turns that
+burst into one Postgres connection per in-flight query, which exhausts
+`max_connections` and makes every other client time out. The Postgres adapter is
+therefore bounded and tunable:
+
+| Setting | What it controls | Why it matters |
+|---|---|---|
+| `DB_POOL_MAX` | Hard ceiling on pooled connections per process | Size it as `(max_connections − reserved) / indexer replicas`. If the pool is full, queries queue rather than opening more connections. |
+| `DB_POOL_MIN` | Connections kept warm | Avoids paying TCP + auth + TLS on the first queries of an idle period. `0` is fine for spiky, low-traffic deployments. |
+| `DB_POOL_IDLE_TIMEOUT_MS` | Idle reaping | Returns connections to the server under low load. |
+| `DB_POOL_CONNECTION_TIMEOUT_MS` | Acquire timeout | Turns exhaustion into a fast, logged error instead of an ingest loop that hangs forever. |
+| `DB_POOL_MAX_USES` | Connection rotation | Spreads load across replicas / a pooler and bounds per-connection memory growth. |
+| `DB_POOL_PREPARED_STATEMENTS` | Named prepared statements | Each parameterised statement is parsed and planned once per connection instead of once per execution. Set `false` when the indexer connects through PgBouncer in transaction mode, which cannot reuse session-level prepared statements. |
+
+Prepared statements are named deterministically from the statement text (a
+SHA-1 of the bound SQL), so every connection and every process agrees on the
+name. DDL batches (`migrate()`) deliberately use the unnamed simple-query
+protocol, which is what allows a multi-statement `CREATE TABLE …; CREATE INDEX
+…;` batch. An idle client that the server drops (restart, failover) is logged
+and replaced on the next acquisition rather than crashing the indexer.
+
+Pool saturation is observable from the database side with
+`SELECT state, count(*) FROM pg_stat_activity WHERE datname = current_database() GROUP BY state;`
+and per-connection from `pg_stat_activity.backend_start` (high `maxUses` churn
+shows up as short-lived backends).
 
 ---
 
@@ -468,7 +503,34 @@ npm run lint
 
 # Start the indexer
 npm start
+
+# Query-latency regression gate (needs a reachable Postgres + pgbench)
+npm run build
+DATABASE_URL=postgres://indexer:indexer@localhost:5432/indexer npm run bench:pgbench
+
+# Only validate the gate's comparison logic (no database needed)
+npm run bench:pgbench:self-test
 ```
+
+### Query latency regression benchmark
+
+`perf/pgbench/queries.sql` runs the indexer's four hottest statements — the
+per-wallet read, the keyset `/recent` page, the `/stats` aggregate, and the
+claim upsert — against the schema the migrations create, seeded with a
+deterministic 50k-row dataset. `scripts/pgbench-latency.mjs` builds the schema
+through `dist/db.js`, seeds it, runs `pgbench`, and compares the mean
+transaction latency with `perf/pgbench/baseline.json`. The CI job
+`Indexer pgbench latency regression (Postgres)` runs the same gate; a run fails
+only when latency exceeds `max(baseline × 2.5, 20 ms)`, so CI jitter on a fast
+query does not break the build. Re-record the baseline deliberately (in the PR
+that changes the query) with:
+
+```bash
+DATABASE_URL=postgres://… npm run bench:pgbench -- --write-baseline
+```
+
+See [perf/pgbench/README.md](perf/pgbench/README.md) for how the workload is built
+and what the numbers mean.
 
 ### Test suites
 

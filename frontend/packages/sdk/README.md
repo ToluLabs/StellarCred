@@ -26,17 +26,34 @@ npm install @stellarcred/sdk
 
 ## API Reference
 
-Generate the SDK API documentation locally:
+The comprehensive, searchable API reference generated from the SDK TSDoc is automatically published on every update to `main`:
+
+👉 **[Browse the StellarCred SDK API Reference](https://psalmuel01.github.io/StellarCred/)**
+
+It includes full documentation, signatures, options, and return types for:
+
+- Core claim verification (`hasClaim`, `hasClaims`, `getClaim`, `getClaims`, `watchClaim`)
+- URL generation and redirect handling (`buildVerifyUrl`, `parseReturnParams`)
+- Anti-spoofing challenge and signature verification (`createWalletChallenge`, `verifyWalletClaim`)
+- React integration (`useStellarCred`)
+- Server-side runtime utilities (`@stellarcred/sdk/server`)
+- Error types and taxonomy (`RpcError`, `ContractError`, `ConfigError`, `IndexerError`, etc.)
+
+### Generate locally
+
+You can also generate the API reference locally from source:
 
 ```bash
 pnpm docs:api
 ```
 
-The generated documentation is written to:
+The generated HTML documentation is written to:
 
 ```
 docs/api/
 ```
+
+Open `docs/api/index.html` in your browser to view it.
 
 ## Quick start
 
@@ -646,6 +663,83 @@ does **not** prove the credential on-chain or verify that the commitment is
 valid — for that, keep using `hasClaim` / `checkClaimStatus`, which read from
 ProofRegistry.
 
+## Offline / air-gapped verification
+
+Air-gapped devices — border-control desks, venue-entry terminals, kiosks on a
+locked-down network — cannot reach a Soroban RPC endpoint. `createOfflineVerifier`
+verifies a zero-knowledge presentation using only material already on the device:
+cached verifier keys, a cached state snapshot, and a local UltraHonk verifier.
+The module performs no I/O at all; there is no `fetch`, no RPC client, and no
+fallback to the network.
+
+```ts
+import { readFileSync } from "node:fs";
+import { createOfflineVerifier } from "@stellarcred/sdk";
+
+const verifier = createOfflineVerifier({
+  verifierKeys: JSON.parse(readFileSync("cache/vks.json", "utf8")),
+  stateSnapshot: JSON.parse(readFileSync("cache/state.json", "utf8")),
+  trustedIssuers: ["GBBB…"],
+  maxSnapshotAgeSeconds: 86_400, // default: 24 hours
+});
+
+const result = await verifier.verify({
+  credential_type: "age",
+  holder: "GAAA…",
+  proof: "0x…", // UltraHonk proof bytes, hex
+  public_inputs: "0x…", // concatenated 32-byte field elements, hex
+  vk_version: 1,
+  issuer_id: "GBBB…",
+  issuer_pub_key: "0x…", // 64 bytes: x || y
+  commitment: "0x…",
+  min_threshold: 18,
+});
+
+if (!result.valid) console.error(result.code, result.message);
+```
+
+Verification is fail-closed and checks, in order: presentation shape and proof
+length; snapshot freshness and network; the cached verifier key (exact VK
+version, deprecation); the cached claim record (presence, VK version, revocation,
+expiry); commitment binding to the record, revocation list and public inputs;
+issuer trust and issuer-key binding; Merkle root; thresholds; nullifier replay;
+and finally the UltraHonk proof itself. Every failure carries a stable `code`
+(e.g. `stale_state_snapshot`, `revoked`, `issuer_key_mismatch`, `proof_invalid`)
+and a `checks` trace, so a terminal can log exactly where verification stopped.
+
+**Cache format.** The snapshot reuses the indexer's `/claims` wire shape for
+claim rows (`wallet`, `credential_type`, `verified_at`, `expiry`, `issuer`,
+`revoked`, `threshold`, `ledger_sequence`), so an exporter can persist
+`GET /claims` output verbatim and add the top-level metadata
+(`snapshotVersion: 1`, `capturedAt`, `ledgerSequence`) plus optional
+`nullifiers`, `issuerKeys`, `revokedCommitments` and `merkleRoot`. Rows may also
+carry `commitment`, `issuer_pub_key` and `vk_version` when the exporter has them.
+
+**Proof backend.** The built-in backend loads the optional `@aztec/bb.js`
+package from the device and verifies against the circuit bytecode cached on the
+verifier key (`circuit_bytecode`), since bb.js derives the verification key from
+the circuit artifact. It verifies single-threaded, so the device needs no
+`SharedArrayBuffer` or cross-origin isolation. A device that vendors bb.js
+elsewhere, or uses a native verifier, can pass its own `proofVerifier` instead:
+
+```ts
+const verifier = createOfflineVerifier({
+  verifierKeys,
+  stateSnapshot,
+  proofVerifier: async ({ verifierKey, proof, publicInputs }) =>
+    nativeUltraHonkVerify(verifierKey, proof, publicInputs),
+});
+```
+
+`public_inputs` is the prover's field list exactly as bb.js emits it: Noir
+flattens a `[u8; N]` public input into N single-byte fields, so pass the output
+through unchanged. The verifier binds a 64-byte issuer key in either the packed
+or the byte-expanded encoding.
+
+When the backend is unavailable the result is `proof_backend_missing` — never a
+silent `valid: true`. A stale snapshot is likewise a hard failure rather than a
+warning; refresh it on a networked device and carry the new file across.
+
 ## Types
 
 The package exports its public types so you can type your own wrappers without
@@ -801,6 +895,162 @@ import { hasClaim, configure } from "@stellarcred/sdk/server";
 This is a thin re-export of the same SDK — the API is identical. The separate
 path makes the intent explicit at the import site and suppresses the
 development-mode warning described below.
+
+### Server-side presentation tokens (#1062)
+
+Next.js App Router **Server Components cannot access browser wallet
+extensions**, so a page rendered on the server cannot sign a challenge or read a
+wallet itself. Presentation tokens solve that without a custom verification API
+route: the holder's browser packages the credentials it wants to present into a
+compact token signed by its Stellar wallet, and the Server Component verifies
+that token directly.
+
+#### Token format
+
+```text
+scpt1.<base64url(payload JSON)>.<base64url(Ed25519 signature)>
+```
+
+The signature is made by `payload.wallet` over the domain-separated message
+`stellarcred/presentation-token/v1` + `"\n"` + the encoded payload. Tokens are
+short-lived (five minutes by default), can bind an `audience`, and carry an
+optional `nonce` for callers that need single-use bookkeeping.
+
+#### Create a token (holder's browser)
+
+```ts
+import { createPresentationToken } from "@stellarcred/sdk";
+
+const token = await createPresentationToken({
+  wallet: publicKey,
+  claims: ["kyc", "age"],
+  audience: "app.example.com",
+  sign: async (message) => {
+    // Freighter and other Stellar wallets sign arbitrary UTF-8 messages.
+    const { signedMessage } = await freighter.signMessage(message);
+    return signedMessage; // hex, base64, or Uint8Array are all accepted
+  },
+});
+
+await fetch("/api/session", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ token }),
+});
+```
+
+#### Verify in a Server Component (Node.js or Edge runtime)
+
+```tsx
+// app/dashboard/page.tsx
+import { cookies } from "next/headers";
+import { verifyPresentationToken } from "@stellarcred/sdk/server";
+
+export default async function Dashboard() {
+  const token = (await cookies()).get("sc_presentation")?.value ?? "";
+
+  const result = await verifyPresentationToken(token, {
+    requiredClaims: ["kyc"],
+    audience: "app.example.com",
+  });
+
+  if (!result.ok) {
+    // result.failureReason is machine-readable, result.error is human-readable.
+    return <p>Access denied: {result.error}</p>;
+  }
+
+  return <p>Welcome, KYC-verified {result.wallet}</p>;
+}
+```
+
+#### Verify in an API route, middleware, or Server Action
+
+The same helper works anywhere server-side, with no browser globals:
+
+```ts
+// app/api/gate/route.ts
+import { verifyPresentationToken } from "@stellarcred/sdk/server";
+
+export async function POST(request: Request) {
+  const { token } = (await request.json()) as { token?: string };
+
+  const result = await verifyPresentationToken(token ?? "", {
+    requiredClaims: ["kyc"],
+    audience: new URL(request.url).host,
+    claimOptions: { trustedIssuers: [TRUSTED_PERSONA_ISSUER] },
+  });
+
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: 401 });
+  }
+
+  return Response.json({ wallet: result.wallet, claims: result.claims });
+}
+```
+
+#### What verification checks
+
+1. **Envelope and payload shape** — prefix, segments, version, wallet, claims,
+   timestamps, audience, and nonce types.
+2. **Signature** — Ed25519 over the signed payload, using the same
+   `verifyWalletSignature` implementation as the wallet-challenge flow.
+3. **Freshness** — `issuedAt` is not in the future and `expiresAt` has not
+   passed (60 seconds of clock skew by default; set `clockSkewSeconds`).
+4. **Expectations** — `requiredClaims`, `wallet`, and `audience` when supplied.
+5. **On-chain credentials** — every presented claim is re-checked with
+   `hasClaim`, and failures are enriched through `checkClaimStatus`. Set
+   `verifyClaims: false` only when a signature-only check is genuinely intended.
+
+`verifyPresentationToken` never throws for untrusted token content or remote
+verification failures. It returns a typed result:
+
+```ts
+type PresentationTokenVerificationResult = {
+  ok: boolean;
+  wallet: string;
+  claims: ClaimType[];
+  payload?: PresentationTokenPayload;
+  signatureValid: boolean;
+  claimsChecked: boolean;
+  claimsValid?: boolean;
+  claimStatuses?: Partial<Record<ClaimType, CredentialStatusResult>>;
+  failedClaim?: ClaimType;
+  failureReason?:
+    | "malformed_token"
+    | "unsupported_version"
+    | "invalid_payload"
+    | "invalid_wallet"
+    | "invalid_signature"
+    | "token_expired"
+    | "token_not_yet_valid"
+    | "expiry_required"
+    | "audience_mismatch"
+    | "wallet_mismatch"
+    | "claim_missing"
+    | "claim_not_verified"
+    | "credential_expired"
+    | "credential_revoked"
+    | "on_chain_error"
+    | "invalid_options";
+  error?: string;
+};
+```
+
+#### Security notes
+
+- Always pass `requiredClaims` and `audience` for access control. A valid
+  signature only proves who signed the token, not what the caller needs.
+- Keep tokens short-lived. `createPresentationToken` defaults `expiresAt` to
+  five minutes; verification requires it unless you opt out with
+  `requireExpiry: false`.
+- For strict single-use semantics, include a `nonce` in the token and record it
+  server-side before granting access. Verification does not consume it.
+- Claim checks use ProofRegistry reads by default. `claimOptions.source`
+  follows the normal trust rules in §Indexer fast path — never use an
+  indexer-only read as the sole basis for an access-control decision.
+- The helper is runtime-compatible with Node.js and Edge: it has no browser
+  dependencies and does not access `window`, `document`, storage, wallet
+  extensions, or Node-only built-ins.
 
 ### Development-mode boundary warning
 

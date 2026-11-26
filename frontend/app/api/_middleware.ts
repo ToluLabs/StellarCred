@@ -129,17 +129,19 @@ export function requireAdmin(req: NextRequest): NextResponse | null {
 }
 
 /** Require a valid, properly signed session token on protected routes (#945). */
+type SessionFailureResponse = NextResponse & { readonly ok: false };
+
 export function requireSession(
   req: NextRequest,
   options?: SessionValidationOptions,
-): { ok: true; session: SessionPayload } | NextResponse {
+): { ok: true; session: SessionPayload } | SessionFailureResponse {
   const token =
     req.headers.get("x-session-token") ?? extractBearerToken(req.headers.get("authorization"));
 
   const validated = validateSessionToken(token, options);
   if (!validated.ok) {
     const status = validated.status >= 500 ? 500 : 401;
-    return NextResponse.json(UNAUTHORIZED, { status });
+    return NextResponse.json(UNAUTHORIZED, { status }) as SessionFailureResponse;
   }
   return { ok: true, session: validated.value };
 }

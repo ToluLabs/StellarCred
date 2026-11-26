@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 
-import {
-  buildCapabilitiesDescriptor,
-  CAPABILITIES_CACHE_CONTROL,
-} from "../../../lib/capabilities";
+import { buildCapabilitiesDescriptor, CAPABILITIES_CACHE_CONTROL } from "../../../lib/capabilities";
 
 export const dynamic = "force-dynamic";
 

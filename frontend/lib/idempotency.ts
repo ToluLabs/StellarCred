@@ -53,9 +53,7 @@ export interface PersonaPendingIdempotencyRecord {
 }
 
 export type IdempotencyRecord =
-  | CompletedIdempotencyRecord
-  | EncryptedResponseIdempotencyRecord
-  | PersonaPendingIdempotencyRecord;
+  CompletedIdempotencyRecord | EncryptedResponseIdempotencyRecord | PersonaPendingIdempotencyRecord;
 
 function replayEncryptionKey(): Buffer {
   const value = process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY ?? "";
@@ -222,11 +220,7 @@ function parseStoredRecord(raw: string): {
   const value = parsed as Record<string, unknown>;
   if (typeof value.createdAt !== "number") return null;
 
-  if (
-    value.version === 1 &&
-    value.kind === "completed" &&
-    typeof value.responseHash === "string"
-  ) {
+  if (value.version === 1 && value.kind === "completed" && typeof value.responseHash === "string") {
     return {
       record: {
         version: 1,
@@ -242,7 +236,8 @@ function parseStoredRecord(raw: string): {
     value.version === 1 &&
     value.kind === "encrypted_response" &&
     typeof value.status === "number" &&
-    value.status >= 200 && value.status < 300 &&
+    value.status >= 200 &&
+    value.status < 300 &&
     typeof value.nonce === "string" &&
     typeof value.authTag === "string" &&
     typeof value.ciphertext === "string"
@@ -302,10 +297,7 @@ function persistLocal(key: string, record: IdempotencyRecord): void {
   enforceCap();
 }
 
-async function persistShared(
-  key: string,
-  record: IdempotencyRecord,
-): Promise<void> {
+async function persistShared(key: string, record: IdempotencyRecord): Promise<void> {
   await getSharedStore()
     .set(`idem:${key}`, JSON.stringify(record), remainingTtlSeconds(record.createdAt))
     .catch(() => null);
@@ -335,9 +327,7 @@ export function idempotencyGet(key: string): IdempotencyRecord | null {
  * Legacy full-response records are immediately overwritten with a redacted
  * completion marker and are never replayed.
  */
-export async function idempotencyGetAsync(
-  key: string,
-): Promise<IdempotencyRecord | null> {
+export async function idempotencyGetAsync(key: string): Promise<IdempotencyRecord | null> {
   checkMultiInstanceStoreWarning();
   if (!isValidIdempotencyKey(key)) return null;
 
@@ -351,7 +341,9 @@ export async function idempotencyGetAsync(
     const parsed = parseStoredRecord(raw);
     if (!parsed) return null;
     if (isExpired(parsed.record)) {
-      await getSharedStore().del(`idem:${key}`).catch(() => null);
+      await getSharedStore()
+        .del(`idem:${key}`)
+        .catch(() => null);
       return null;
     }
 
@@ -377,10 +369,7 @@ export function idempotencySet(key: string, record: IdempotencyRecord): void {
 /**
  * Store an idempotency record in the configured shared store.
  */
-export async function idempotencySetAsync(
-  key: string,
-  record: IdempotencyRecord,
-): Promise<void> {
+export async function idempotencySetAsync(key: string, record: IdempotencyRecord): Promise<void> {
   if (!isValidIdempotencyKey(key)) return;
 
   persistLocal(key, record);
@@ -448,9 +437,7 @@ function pruneStaleInFlight(now: number, ttl: number): void {
  * The slot resolves with an idempotency record. Batch response bodies are
  * encrypted before being placed here; single-issuance records remain hashes.
  */
-export function idempotencyInFlightBegin(
-  key: string,
-): Promise<IdempotencyRecord> | null {
+export function idempotencyInFlightBegin(key: string): Promise<IdempotencyRecord> | null {
   if (!isValidIdempotencyKey(key)) return null;
 
   const now = Date.now();
@@ -475,10 +462,7 @@ export function idempotencyInFlightBegin(
 /**
  * Resolve the in-flight slot for `key` with a minimal record.
  */
-export function idempotencyInFlightSettle(
-  key: string,
-  record: IdempotencyRecord,
-): void {
+export function idempotencyInFlightSettle(key: string, record: IdempotencyRecord): void {
   const entry = inFlight.get(key);
   if (!entry) return;
   inFlight.delete(key);

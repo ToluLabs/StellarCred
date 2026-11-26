@@ -82,7 +82,10 @@ describe("createEncryptedBackup", () => {
     );
 
     const backup = await createEncryptedBackup(PASSPHRASE);
-    const exported = JSON.parse(await openWithPassphrase(backup, PASSPHRASE)) as Record<string, unknown>[];
+    const exported = JSON.parse(await openWithPassphrase(backup, PASSPHRASE)) as Record<
+      string,
+      unknown
+    >[];
 
     expect(exported[0]).not.toHaveProperty("value");
     expect(exported[0]).toHaveProperty("holder", "GTESTHOLDER");
@@ -166,9 +169,7 @@ describe("decryptBackup legacy envelopes (#547 backward compatibility)", () => {
   it("rejects an unknown future version", async () => {
     const legacy = await makeLegacyEnvelope([storedCredential()], PASSPHRASE, 2, 100_000);
     legacy.version = 9;
-    await expect(decryptBackup(legacy, PASSPHRASE)).rejects.toThrow(
-      "Unsupported backup version",
-    );
+    await expect(decryptBackup(legacy, PASSPHRASE)).rejects.toThrow("Unsupported backup version");
   });
 });
 

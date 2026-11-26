@@ -88,17 +88,9 @@ function parseFiniteInt(val: unknown): number | undefined {
 /**
  * Extracts and sanitizes violation fields from a report object.
  */
-function extractViolation(
-  raw: Record<string, unknown>,
-  fallbackUrl?: unknown,
-): CspViolation {
-  const docUri =
-    raw["documentURL"] ??
-    raw["document-uri"] ??
-    raw["documentUri"] ??
-    fallbackUrl;
-  const blockedUri =
-    raw["blockedURL"] ?? raw["blocked-uri"] ?? raw["blockedUri"];
+function extractViolation(raw: Record<string, unknown>, fallbackUrl?: unknown): CspViolation {
+  const docUri = raw["documentURL"] ?? raw["document-uri"] ?? raw["documentUri"] ?? fallbackUrl;
+  const blockedUri = raw["blockedURL"] ?? raw["blocked-uri"] ?? raw["blockedUri"];
   const sourceFile = raw["sourceFile"] ?? raw["source-file"];
   const directive =
     raw["effectiveDirective"] ??
