@@ -11,9 +11,9 @@
 // behavior per test; this file's own export is never exercised.
 export const UltraHonkBackend = class {
   generateProof(): never {
-    throw new Error("bb-index.ts stub was not mocked — call vi.mock(\"/bb/index.js\", ...)");
+    throw new Error('bb-index.ts stub was not mocked — call vi.mock("/bb/index.js", ...)');
   }
   destroy(): never {
-    throw new Error("bb-index.ts stub was not mocked — call vi.mock(\"/bb/index.js\", ...)");
+    throw new Error('bb-index.ts stub was not mocked — call vi.mock("/bb/index.js", ...)');
   }
 };

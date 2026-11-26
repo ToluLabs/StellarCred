@@ -14,7 +14,14 @@ import {
   type AuditLogEntry,
 } from "./audit-log";
 
-function coreFields(overrides: Partial<{ timestamp: number; requestId: string; issuer: string; commitment: string }> = {}) {
+function coreFields(
+  overrides: Partial<{
+    timestamp: number;
+    requestId: string;
+    issuer: string;
+    commitment: string;
+  }> = {},
+) {
   return {
     timestamp: 1_700_000_000,
     requestId: "req-admin-1",

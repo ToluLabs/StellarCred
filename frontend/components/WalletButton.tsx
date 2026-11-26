@@ -16,8 +16,6 @@ import { truncateAddress } from "@/lib/format";
 import CopyButton from "@/components/CopyButton";
 
 export function WalletButton() {
-  const { address, restoring, connecting, error, networkMismatch, ledgerDisconnected, connect, disconnect } =
-    useWallet();
   const {
     address,
     restoring,

@@ -1297,6 +1297,217 @@ fn cancel_admin_proposal_emits_expected_event() {
     );
 }
 
+// ── Timelock & Multi-signature VK updates (#1011) ───────────────────────────
+
+#[test]
+fn configure_vk_timelock_success_and_query() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let s3 = Address::generate(&env);
+    let signers = vec![&env, s1.clone(), s2.clone(), s3.clone()];
+    let delay = 86_400u64; // 1 day
+
+    c.configure_vk_timelock(&signers, &2u32, &delay);
+
+    let config = c.get_vk_timelock_config().unwrap();
+    assert_eq!(config.threshold, 2);
+    assert_eq!(config.delay_seconds, delay);
+    assert_eq!(config.signers.len(), 3);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #12)")]
+fn configure_vk_timelock_rejects_zero_threshold() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let signers = vec![&env, s1];
+    c.configure_vk_timelock(&signers, &0u32, &100);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #12)")]
+fn configure_vk_timelock_rejects_threshold_greater_than_signers() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let signers = vec![&env, s1];
+    c.configure_vk_timelock(&signers, &2u32, &100);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #12)")]
+fn configure_vk_timelock_rejects_duplicate_signers() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let signers = vec![&env, s1.clone(), s1];
+    c.configure_vk_timelock(&signers, &2u32, &100);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn direct_set_vk_rejected_when_timelock_configured() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    c.configure_vk_timelock(&vec![&env, s1], &1u32, &100);
+
+    c.set_vk(
+        &Symbol::new(&env, "kyc"),
+        &1u32,
+        &KYC.vk_bytes(&env),
+    );
+}
+
+#[test]
+fn full_timelock_multisig_vk_lifecycle() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let s3 = Address::generate(&env);
+    let signers = vec![&env, s1.clone(), s2.clone(), s3.clone()];
+    let delay = 1000u64;
+
+    // Configure 2-of-3 multi-sig with 1000s delay
+    c.configure_vk_timelock(&signers, &2u32, &delay);
+
+    let ct = Symbol::new(&env, "kyc");
+    let version = 1u32;
+    let vk = KYC.vk_bytes(&env);
+
+    // 1. Signer 1 proposes the VK update
+    c.propose_vk_update(&s1, &ct, &version, &vk);
+
+    let prop = c.get_vk_proposal(&ct, &version).unwrap();
+    assert_eq!(prop.version, 1);
+    assert_eq!(prop.approvals.len(), 1);
+    assert_eq!(prop.approved_at, 0); // threshold (2) not yet met
+
+    // 2. Signer 2 approves the proposal -> threshold (2) reached
+    env.ledger().set_timestamp(500);
+    c.approve_vk_update(&s2, &ct, &version);
+
+    let prop = c.get_vk_proposal(&ct, &version).unwrap();
+    assert_eq!(prop.approvals.len(), 2);
+    assert_eq!(prop.approved_at, 500);
+
+    // 3. Execution before delay expires fails
+    env.ledger().set_timestamp(1499);
+    // At timestamp 1499, delay has not expired (approved_at 500 + delay 1000 = 1500)
+    let res = c.try_execute_vk_update(&ct, &version);
+    assert!(res.is_err());
+
+    // 4. Execution at or after delay succeeds
+    env.ledger().set_timestamp(1500);
+    c.execute_vk_update(&ct, &version);
+
+    // Proposal should be removed
+    assert!(c.get_vk_proposal(&ct, &version).is_none());
+
+    // VK is now active! Verify proof with the new VK succeeds
+    assert_eq!(c.get_latest_version(&ct), 1);
+    assert!(c.verify_proof(
+        &ct,
+        &KYC.proof_bytes(&env),
+        &KYC.public_inputs_bytes(&env),
+        &None,
+    ));
+}
+
+#[test]
+fn cancel_vk_proposal_works() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let signers = vec![&env, s1.clone(), s2.clone()];
+    c.configure_vk_timelock(&signers, &2u32, &1000);
+
+    let ct = Symbol::new(&env, "kyc");
+    let version = 1u32;
+    c.propose_vk_update(&s1, &ct, &version, &KYC.vk_bytes(&env));
+    assert!(c.get_vk_proposal(&ct, &version).is_some());
+
+    c.cancel_vk_proposal(&s2, &ct, &version);
+    assert!(c.get_vk_proposal(&ct, &version).is_none());
+}
+
+#[test]
+fn rejects_duplicate_approval() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let s2 = Address::generate(&env);
+    let signers = vec![&env, s1.clone(), s2.clone()];
+    c.configure_vk_timelock(&signers, &2u32, &1000);
+
+    let ct = Symbol::new(&env, "kyc");
+    let version = 1u32;
+    c.propose_vk_update(&s1, &ct, &version, &KYC.vk_bytes(&env));
+
+    // s1 already approved by proposing; approving again should fail
+    let res = c.try_approve_vk_update(&s1, &ct, &version);
+    assert!(res.is_err());
+}
+
+#[test]
+fn rejects_unauthorized_proposer_and_approver() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin.clone(),));
+    let c = CredentialVerifierClient::new(&env, &id);
+
+    let s1 = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+    c.configure_vk_timelock(&vec![&env, s1.clone()], &1u32, &1000);
+
+    let ct = Symbol::new(&env, "kyc");
+    let version = 1u32;
+    let res = c.try_propose_vk_update(&unauthorized, &ct, &version, &KYC.vk_bytes(&env));
+    assert!(res.is_err());
+
+    c.propose_vk_update(&s1, &ct, &version, &KYC.vk_bytes(&env));
+    let res = c.try_approve_vk_update(&unauthorized, &ct, &version);
+    assert!(res.is_err());
+}
+
 // ── Malformed-input regressions (#1020) ─────────────────────────────────────
 // Commitments are opaque to the verifier crate and the host's BN254 ops fail
 // the whole invocation on a non-canonical or off-curve point. Both the proof
@@ -1372,4 +1583,31 @@ fn set_vk_rejects_off_curve_and_non_canonical_points() {
     }
     // The genuine key still registers.
     c.set_vk(&ct, &1, &KYC.vk_bytes(&env));
+}
+
+#[test]
+fn propose_vk_update_rejects_off_curve_vk() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin,));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let s1 = Address::generate(&env);
+    c.configure_vk_timelock(&vec![&env, s1.clone()], &1u32, &100);
+
+    let mut off_curve = [0u8; 64];
+    off_curve[31] = 1; // x = 1
+    off_curve[63] = 1; // y = 1: canonical but not on BN254
+    let r = c.try_propose_vk_update(
+        &s1,
+        &Symbol::new(&env, "kyc"),
+        &1u32,
+        &vk_with_point(&env, 0, off_curve),
+    );
+    assert_eq!(
+        r,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::VkInvalid as u32
+        )))
+    );
 }

@@ -73,7 +73,10 @@ export function ProofPerfPanel() {
           Proof performance
         </span>
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-          <label className="row faint" style={{ gap: "0.4rem", fontSize: "0.75rem", cursor: "pointer" }}>
+          <label
+            className="row faint"
+            style={{ gap: "0.4rem", fontSize: "0.75rem", cursor: "pointer" }}
+          >
             <input
               type="checkbox"
               checked={optedIn}
@@ -98,9 +101,12 @@ export function ProofPerfPanel() {
         </p>
       )}
 
-      <div className="faint" style={{ fontSize: "0.72rem", margin: "0.4rem 0 0.75rem", lineHeight: 1.6 }}>
-        Timings are measured locally and kept only in this browser. Nothing is sent
-        unless you opt in above. Time-to-first-proof target:{" "}
+      <div
+        className="faint"
+        style={{ fontSize: "0.72rem", margin: "0.4rem 0 0.75rem", lineHeight: 1.6 }}
+      >
+        Timings are measured locally and kept only in this browser. Nothing is sent unless you opt
+        in above. Time-to-first-proof target:{" "}
         <span className="mono">{fmt(PROOF_PERF_TARGETS.timeToFirstProofMs)}</span>.
       </div>
 
@@ -111,10 +117,7 @@ export function ProofPerfPanel() {
       ) : (
         <>
           {/* Aggregate summary */}
-          <div
-            className="row"
-            style={{ gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.85rem" }}
-          >
+          <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.85rem" }}>
             <Metric label="Runs" value={String(summary.totalRuns)} />
             <Metric
               label="Avg TTFP"
@@ -159,12 +162,19 @@ function Metric({ label, value, warn }: { label: string; value: string; warn?: b
         border: `1px solid ${warn ? "rgba(240,96,77,0.4)" : "var(--border)"}`,
       }}
     >
-      <div className="faint" style={{ fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      <div
+        className="faint"
+        style={{ fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.04em" }}
+      >
         {label}
       </div>
       <div
         className="mono"
-        style={{ fontSize: "0.85rem", fontWeight: 600, color: warn ? "var(--danger)" : "var(--text)" }}
+        style={{
+          fontSize: "0.85rem",
+          fontWeight: 600,
+          color: warn ? "var(--danger)" : "var(--text)",
+        }}
       >
         {value}
       </div>
@@ -207,7 +217,10 @@ function ProofRunRow({ run }: { run: ProofRun }) {
             {run.deviceClass} · {run.cores}c{run.memoryGB ? ` · ${run.memoryGB}GB` : ""}
           </span>
         </span>
-        <span className="mono" style={{ fontSize: "0.72rem", color: over ? "var(--warn)" : "var(--faint)" }}>
+        <span
+          className="mono"
+          style={{ fontSize: "0.72rem", color: over ? "var(--warn)" : "var(--faint)" }}
+        >
           TTFP {fmt(run.timeToFirstProofMs)}
           {run.totalMs !== run.timeToFirstProofMs ? ` · total ${fmt(run.totalMs)}` : ""}
         </span>
@@ -220,8 +233,14 @@ function ProofRunRow({ run }: { run: ProofRun }) {
       </div>
 
       {(over || failed) && (
-        <div className="row faint" style={{ gap: "0.35rem", marginTop: "0.4rem", fontSize: "0.7rem" }}>
-          <IconAlertTriangle size={12} style={{ color: failed ? "var(--danger)" : "var(--warn)" }} />
+        <div
+          className="row faint"
+          style={{ gap: "0.35rem", marginTop: "0.4rem", fontSize: "0.7rem" }}
+        >
+          <IconAlertTriangle
+            size={12}
+            style={{ color: failed ? "var(--danger)" : "var(--warn)" }}
+          />
           <span>
             {failed
               ? `Failed during ${run.errorStage ?? "proof"}${run.errorStage === "prove" ? " — try a warm run next time" : ""}.`

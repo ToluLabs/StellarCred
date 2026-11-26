@@ -2,10 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  verifyPreset,
-  type PresetVerificationResult,
-} from "@stellarcred/sdk";
+import { verifyPreset, type PresetVerificationResult } from "@stellarcred/sdk";
 import { decodePresetClaims } from "@/lib/presets";
 import { TYPE_META } from "@/lib/credential";
 import { classifyRpcError, probeRpcHealth } from "@/lib/rpc-health";
@@ -16,8 +13,7 @@ function VerifyPresetInner() {
   const claims = decodePresetClaims(params.get("c") ?? "");
 
   const [wallet, setWallet] = useState("");
-  const [result, setResult] =
-    useState<PresetVerificationResult | null>(null);
+  const [result, setResult] = useState<PresetVerificationResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   /**
@@ -53,15 +49,12 @@ function VerifyPresetInner() {
     <>
       <div style={{ marginBottom: "2rem" }}>
         <span className="eyebrow">Verify preset</span>
-        <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>
-          {name}
-        </h1>
+        <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>{name}</h1>
       </div>
 
       {claims.length === 0 ? (
         <p className="faint">
-          This link doesn&apos;t name any recognised claims — ask the holder
-          for a fresh one.
+          This link doesn&apos;t name any recognised claims — ask the holder for a fresh one.
         </p>
       ) : (
         <div className="card" style={{ maxWidth: 480 }}>
@@ -73,8 +66,7 @@ function VerifyPresetInner() {
             }}
           >
             Checks {claims.length} claim
-            {claims.length === 1 ? "" : "s"} against the on-chain
-            ProofRegistry:{" "}
+            {claims.length === 1 ? "" : "s"} against the on-chain ProofRegistry:{" "}
             {claims
               .map((c) =>
                 c.minThreshold !== undefined
@@ -131,9 +123,8 @@ function VerifyPresetInner() {
                 ? Status unknown
               </p>
               <p style={{ marginTop: "0.35rem", fontSize: "0.8125rem", lineHeight: 1.6 }}>
-                {undetermined} The claims were not checked — this is not a
-                result, and it is not a rejection. Try again once the network
-                recovers.
+                {undetermined} The claims were not checked — this is not a result, and it is not a
+                rejection. Try again once the network recovers.
               </p>
             </div>
           )}
@@ -141,9 +132,7 @@ function VerifyPresetInner() {
           {result && (
             <div style={{ marginTop: "1.25rem" }}>
               <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>
-                {result.allValid
-                  ? "✓ All claims verified"
-                  : "✗ Not all claims verified"}
+                {result.allValid ? "✓ All claims verified" : "✗ Not all claims verified"}
               </p>
               <ul
                 style={{
@@ -155,9 +144,7 @@ function VerifyPresetInner() {
                 {claims.map((c) => (
                   <li key={c.type}>
                     {TYPE_META[c.type].title}:{" "}
-                    {result.results[c.type]
-                      ? "verified"
-                      : "not verified"}
+                    {result.results[c.type] ? "verified" : "not verified"}
                   </li>
                 ))}
               </ul>

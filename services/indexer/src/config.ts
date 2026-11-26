@@ -97,6 +97,9 @@ export function resolveDbPoolConfig(
     preparedStatements:
       (env["DB_POOL_PREPARED_STATEMENTS"] ?? "true").toLowerCase() !== "false",
   };
+}
+
+/**
  * Tuning for the shared outbound HTTP client (#761): retries with exponential
  * backoff for 429/5xx and a circuit breaker for a provider that stays down.
  */
@@ -123,6 +126,7 @@ export interface Config {
    * {@link DEFAULT_DB_POOL}).
    */
   dbPool?: DbPoolConfig;
+  /**
    * Optional comma-separated PostgreSQL read-replica connection URLs
    * (DATABASE_READ_REPLICA_URLS). When set with DB_DRIVER=postgres, read-only
    * queries are round-robin routed to replicas while writes stay on primary.
@@ -142,6 +146,16 @@ export interface Config {
    * Default: 6 (≈30 seconds at ~5 s/ledger on Stellar).
    */
   finalityLag: number;
+  /**
+   * Maximum ledger lag before indexer status becomes "error" and readiness is false (#1001).
+   * Default: 120 ledgers (≈10 minutes).
+   */
+  maxLedgerLag?: number;
+  /**
+   * Ledger lag threshold at or above which indexer status becomes "degraded" (#1001).
+   * Default: 30 ledgers (≈2.5 minutes).
+   */
+  warnLedgerLag?: number;
   corsOrigins: string[];
   rateLimitWindowMs: number;
   rateLimitMax: number;
@@ -303,6 +317,22 @@ export function loadConfig(): Config {
     startLedger: Number(optional("START_LEDGER", "0")),
     port: Number(optional("PORT", "3001")),
     finalityLag: Number(optional("FINALITY_LAG", "6")),
+    maxLedgerLag: clampedInt(
+      process.env["INDEXER_MAX_LEDGER_LAG"] !== undefined
+        ? "INDEXER_MAX_LEDGER_LAG"
+        : "MAX_LEDGER_LAG",
+      120,
+      1,
+      1_000_000
+    ),
+    warnLedgerLag: clampedInt(
+      process.env["INDEXER_WARN_LEDGER_LAG"] !== undefined
+        ? "INDEXER_WARN_LEDGER_LAG"
+        : "WARN_LEDGER_LAG",
+      30,
+      1,
+      1_000_000
+    ),
     corsOrigins: parseCorsOrigins(rawCors),
     rateLimitWindowMs: (Number.isFinite(windowSec) && windowSec > 0 ? windowSec : 60) * 1000,
     rateLimitMax: Number.isFinite(maxReq) && maxReq > 0 ? maxReq : 120,

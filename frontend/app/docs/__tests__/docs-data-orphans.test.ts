@@ -13,10 +13,7 @@ import path from "node:path";
 function findFrontendRoot(): string {
   let dir = process.cwd();
   while (true) {
-    if (
-      existsSync(path.join(dir, "package.json")) &&
-      existsSync(path.join(dir, "app", "docs"))
-    ) {
+    if (existsSync(path.join(dir, "package.json")) && existsSync(path.join(dir, "app", "docs"))) {
       return dir;
     }
     const parent = path.dirname(dir);
@@ -122,7 +119,7 @@ describe("app/docs has no orphaned data files (#605)", () => {
     const orphans = docsFiles.filter((file) => !imported.has(file));
     expect(
       orphans.map((f) => path.relative(FRONTEND_ROOT, f)),
-      "Unreferenced files under app/docs are dead code; import or delete them."
+      "Unreferenced files under app/docs are dead code; import or delete them.",
     ).toEqual([]);
   });
 });

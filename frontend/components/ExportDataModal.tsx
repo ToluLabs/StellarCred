@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   IconX,
   IconDownload,
@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import type { ExportJob, ExportScope, ExportFormat, ScopeDefinition } from "@/lib/export-jobs";
 import { EXPORT_SCOPES } from "@/lib/export-jobs";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
 interface ExportDataModalProps {
   isOpen: boolean;
@@ -158,6 +159,8 @@ export function ExportDataModal({
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [timeRemainingMap, setTimeRemainingMap] = useState<Record<string, number>>({});
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, { onEscape: onClose, active: isOpen });
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -266,9 +269,6 @@ export function ExportDataModal({
     <div
       className="modal-backdrop"
       onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="export-modal-title"
       style={{
         position: "fixed",
         inset: 0,
@@ -282,6 +282,11 @@ export function ExportDataModal({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-modal-title"
+        tabIndex={-1}
         className="card"
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -661,7 +666,7 @@ export function ExportDataModal({
               >
                 {submitting ? (
                   <>
-                    <IconLoader2 size={16} className="spin" />
+                    <IconLoader2 size={16} className="spin" aria-hidden="true" />
                     Requesting...
                   </>
                 ) : (
@@ -705,7 +710,12 @@ export function ExportDataModal({
 
             {loadingJobs && jobs.length === 0 ? (
               <div style={{ textAlign: "center", padding: "2.5rem 0", color: "var(--faint)" }}>
-                <IconLoader2 size={24} className="spin" style={{ margin: "0 auto 0.5rem" }} />
+                <IconLoader2
+                  size={24}
+                  className="spin"
+                  style={{ margin: "0 auto 0.5rem" }}
+                  aria-hidden="true"
+                />
                 <p style={{ fontSize: "0.85rem", margin: 0 }}>Loading export status...</p>
               </div>
             ) : jobs.length === 0 ? (
@@ -810,7 +820,7 @@ export function ExportDataModal({
                                 gap: "0.3rem",
                               }}
                             >
-                              <IconLoader2 size={12} className="spin" />
+                              <IconLoader2 size={12} className="spin" aria-hidden="true" />
                               Processing {job.progress}%
                             </span>
                           )}
@@ -876,6 +886,20 @@ export function ExportDataModal({
                         <span style={{ color: "var(--faint, #888)" }}>
                           Requested: {new Date(job.createdAt).toLocaleTimeString()} · Job ID:{" "}
                           <span className="mono">{job.id.slice(0, 10)}</span>
+                          {job.status === "ready" && job.checksum && (
+                            <div
+                              id={`export-checksum-${job.id}`}
+                              className="mono"
+                              style={{
+                                fontSize: "0.7rem",
+                                color: "var(--faint, #888)",
+                                wordBreak: "break-all",
+                              }}
+                            >
+                              SHA-256: {job.checksum} · Verify before import; mismatched hashes
+                              indicate tampering.
+                            </div>
+                          )}
                         </span>
 
                         {job.status === "ready" && !isExpired && job.downloadUrl && (

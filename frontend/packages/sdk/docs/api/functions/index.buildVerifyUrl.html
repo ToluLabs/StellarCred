@@ -14,62 +14,68 @@
 <section class="tsd-panel">
 <ul class="tsd-signatures">
 <li class="">
-<div class="tsd-signature tsd-anchor-link" id="buildverifyurl"><span class="tsd-kind-call-signature">buildVerifyUrl</span><span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">options</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">{</span><br/>        <span class="tsd-kind-property">baseUrl</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>        <span class="tsd-kind-property">claim</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>        <span class="tsd-kind-property">claimParams</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">{</span><br/>            <span class="tsd-kind-property">restricted</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>            <span class="tsd-kind-property">threshold</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>            <span class="tsd-kind-property">threshold_years</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>        <span class="tsd-signature-symbol">}</span><span class="tsd-signature-symbol">;</span><br/>        <span class="tsd-kind-property">returnUrl</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-signature-symbol">}</span><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><a href="#buildverifyurl" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
+<div class="tsd-signature tsd-anchor-link" id="buildverifyurl"><span class="tsd-kind-call-signature">buildVerifyUrl</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">opts</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/index.BuildVerifyUrlOptions.html" class="tsd-signature-type tsd-kind-interface">BuildVerifyUrlOptions</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><a href="#buildverifyurl" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
-<div class="tsd-comment tsd-typography"><p>Build a StellarCred verification URL to redirect users to. After the user
-verifies, StellarCred sends them back to <code>returnUrl</code> with <code>sc_verified=true</code>,
-<code>sc_wallet=&lt;address&gt;</code>, and <code>sc_claims=&lt;comma-separated-types&gt;</code> appended as
-query params. <code>sc_claims</code> contains only the claim types issued in the current
-session (not all-time claims).</p>
-<p>Pass <code>claimParams</code> to customize thresholds for parameterised claims:</p>
+<div class="tsd-comment tsd-typography"><p>Builds a strongly typed StellarCred verification redirect URL.</p>
+<p>Redirecting an unverified user to this URL opens the StellarCred verification flow.
+After verifying (or cancelling), StellarCred redirects back to <code>returnUrl</code> with
+query parameters:</p>
+<ul>
+<li><code>sc_verified</code>: <code>&quot;true&quot;</code> if verification succeeded</li>
+<li><code>sc_wallet</code>: The holder's wallet address</li>
+<li><code>sc_claims</code>: Comma-separated list of claim types issued in this session</li>
+<li><code>sc_state</code>: Roundtrips the <code>state</code> parameter if supplied</li>
+</ul>
+<p>⚠️ SECURITY NOTICE:
+Parameters in the redirect URL are UNTRUSTED HINTS. Anyone can construct a URL with
+arbitrary parameters. Always verify wallet control via challenge signature and
+confirm on-chain credentials via <code>hasClaim</code> / <code>verifyWalletClaim</code> before granting access.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
 <ul class="tsd-parameter-list">
-<li><span><span class="tsd-kind-parameter">options</span>: <span class="tsd-signature-symbol">{</span><br/>    <span class="tsd-kind-property">baseUrl</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-kind-property">claim</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-kind-property">claimParams</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">{</span><br/>        <span class="tsd-kind-property">restricted</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>        <span class="tsd-kind-property">threshold</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>        <span class="tsd-kind-property">threshold_years</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-signature-symbol">}</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-kind-property">returnUrl</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></span>
-<ul class="tsd-parameters">
-<li class="tsd-parameter">
-<h5><code class="tsd-tag">Optional</code><span class="tsd-kind-property">baseUrl</span><span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span></h5>
-<div class="tsd-comment tsd-typography"><p>Override the StellarCred base URL (defaults to config or <a href="https://stellarcred.xyz">https://stellarcred.xyz</a>).</p>
-</div></li>
-<li class="tsd-parameter">
-<h5><span class="tsd-kind-property">claim</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">string</span></h5></li>
-<li class="tsd-parameter">
-<h5><code class="tsd-tag">Optional</code><span class="tsd-kind-property">claimParams</span><span class="tsd-signature-symbol">?: </span><span class="tsd-signature-symbol">{</span> <span class="tsd-kind-property">restricted</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span> <span class="tsd-kind-property">threshold</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span> <span class="tsd-kind-property">threshold_years</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">}</span></h5>
-<ul class="tsd-parameters">
-<li class="tsd-parameter">
-<h5><code class="tsd-tag">Optional</code><span class="tsd-kind-property">restricted</span><span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span></h5>
-<div class="tsd-comment tsd-typography"><p>For &quot;jurisdiction&quot; claims: ISO 3166-1 numeric codes to block (default []).</p>
-</div></li>
-<li class="tsd-parameter">
-<h5><code class="tsd-tag">Optional</code><span class="tsd-kind-property">threshold</span><span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span></h5>
-<div class="tsd-comment tsd-typography"><p>For &quot;income&quot; / &quot;funds&quot; claims: minimum value in whole units (default varies).</p>
-</div></li>
-<li class="tsd-parameter">
-<h5><code class="tsd-tag">Optional</code><span class="tsd-kind-property">threshold_years</span><span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span></h5>
-<div class="tsd-comment tsd-typography"><p>For &quot;age&quot; claims: minimum age in years (default &quot;18&quot;).</p>
-</div></li></ul></li>
-<li class="tsd-parameter">
-<h5><span class="tsd-kind-property">returnUrl</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">string</span></h5></li></ul></li></ul></div>
-<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">string</span></h4>
+<li><span><span class="tsd-kind-parameter">opts</span>: <a href="../interfaces/index.BuildVerifyUrlOptions.html" class="tsd-signature-type tsd-kind-interface">BuildVerifyUrlOptions</a></span>
+<div class="tsd-comment tsd-typography"><p>Verification redirect URL options</p>
+</div></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">string</span></h4><p>The fully constructed verification URL string</p>
+
 <div class="tsd-comment tsd-typography">
+<div class="tsd-tag-throws">
+<h4 class="tsd-anchor-link" id="throws">Throws<a href="#throws" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><p>If <code>returnUrl</code> is missing or empty.</p>
+</div>
+<div class="tsd-tag-throws">
+<h4 class="tsd-anchor-link" id="throws-1">Throws<a href="#throws-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><p>If <code>expiresInMinutes</code> is not a positive finite number.</p>
+</div>
+<div class="tsd-tag-throws">
+<h4 class="tsd-anchor-link" id="throws-2">Throws<a href="#throws-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><p>If <code>singleUse</code> is true but no crypto implementation is available.</p>
+</div>
 <div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example">Example<a href="#example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">// Require age ≥ 21</span><br/><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({ </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;/deposit&quot;</span><span class="hl-1">, </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">, </span><span class="hl-3">claimParams:</span><span class="hl-1"> { </span><span class="hl-3">threshold_years:</span><span class="hl-1"> </span><span class="hl-2">&quot;21&quot;</span><span class="hl-1"> } })</span>
+<h4 class="tsd-anchor-link" id="example">Example<a href="#example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-3">// Basic KYC redirect</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/dashboard&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">});</span>
 </code><button type="button">Copy</button></pre>
 
 </div>
 <div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example-1">Example<a href="#example-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">// Require balance &gt; $50,000</span><br/><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({ </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;/vault&quot;</span><span class="hl-1">, </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">, </span><span class="hl-3">claimParams:</span><span class="hl-1"> { </span><span class="hl-3">threshold:</span><span class="hl-1"> </span><span class="hl-2">&quot;50000&quot;</span><span class="hl-1"> } })</span>
+<h4 class="tsd-anchor-link" id="example-1">Example<a href="#example-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-3">// Age verification requiring 21+</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/app&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;age&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">threshold_years:</span><span class="hl-1"> </span><span class="hl-8">21</span><span class="hl-1"> },</span><br/><span class="hl-1">});</span>
 </code><button type="button">Copy</button></pre>
 
 </div>
 <div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example-2">Example<a href="#example-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">// Restrict specific countries</span><br/><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({ </span><span class="hl-3">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;/app&quot;</span><span class="hl-1">, </span><span class="hl-3">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;jurisdiction&quot;</span><span class="hl-1">, </span><span class="hl-3">claimParams:</span><span class="hl-1"> { </span><span class="hl-3">restricted:</span><span class="hl-1"> [</span><span class="hl-2">&quot;840&quot;</span><span class="hl-1">,</span><span class="hl-2">&quot;364&quot;</span><span class="hl-1">] } })</span>
+<h4 class="tsd-anchor-link" id="example-2">Example<a href="#example-2" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-3">// Funds verification requiring &gt;= $50,000 balance</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/vault&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;funds&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">threshold:</span><span class="hl-1"> </span><span class="hl-8">50_000</span><span class="hl-1"> },</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+</div>
+<div class="tsd-tag-example">
+<h4 class="tsd-anchor-link" id="example-3">Example<a href="#example-3" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-3">// Jurisdiction gate blocking specific ISO 3166-1 numeric country codes</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/trade&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;jurisdiction&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claimParams:</span><span class="hl-1"> { </span><span class="hl-4">restricted:</span><span class="hl-1"> [</span><span class="hl-2">&quot;840&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;364&quot;</span><span class="hl-1">] },</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+</div>
+<div class="tsd-tag-example">
+<h4 class="tsd-anchor-link" id="example-4">Example<a href="#example-4" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-3">// Single-use, time-limited verification link</span><br/><span class="hl-7">const</span><span class="hl-1"> </span><span class="hl-6">url</span><span class="hl-1"> = </span><span class="hl-0">buildVerifyUrl</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">returnUrl:</span><span class="hl-1"> </span><span class="hl-2">&quot;https://yourapp.xyz/callback&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">claim:</span><span class="hl-1"> </span><span class="hl-2">&quot;kyc&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">expiresInMinutes:</span><span class="hl-1"> </span><span class="hl-8">15</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">singleUse:</span><span class="hl-1"> </span><span class="hl-7">true</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-4">state:</span><span class="hl-1"> </span><span class="hl-2">&quot;sess_xyz123&quot;</span><span class="hl-1">,</span><br/><span class="hl-1">});</span>
 </code><button type="button">Copy</button></pre>
 
 </div></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/vaishnavidesai09/StellarCred/blob/3f151b3043bc059c316c15c74d47e80f73cf8f15/frontend/packages/sdk/src/index.ts#L272">packages/sdk/src/index.ts:272</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in src/buildVerifyUrl.ts:199</li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

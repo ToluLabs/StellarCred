@@ -60,9 +60,6 @@ export const DEFAULT_LATENCY_GATE: LatencyGateOptions = {
   absoluteFloorMs: 20,
 };
 
-/** Smallest value a baseline is allowed to have if it is meant to be real. */
-const MIN_REAL_BASELINE_MS = 0.1;
-
 export function evaluateLatencyGate(
   observed: LatencyObservation,
   baseline: LatencyBaseline,

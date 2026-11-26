@@ -11,7 +11,12 @@ describe("check-dep-bump-threshold", () => {
     it("parses valid semver versions", () => {
       expect(parseSemver("1.2.3")).toEqual({ major: 1, minor: 2, patch: 3, raw: "1.2.3" });
       expect(parseSemver("v2.0.1")).toEqual({ major: 2, minor: 0, patch: 1, raw: "v2.0.1" });
-      expect(parseSemver("0.87.0-beta.1")).toEqual({ major: 0, minor: 87, patch: 0, raw: "0.87.0-beta.1" });
+      expect(parseSemver("0.87.0-beta.1")).toEqual({
+        major: 0,
+        minor: 87,
+        patch: 0,
+        raw: "0.87.0-beta.1",
+      });
     });
 
     it("returns null on invalid input", () => {
@@ -47,17 +52,15 @@ describe("check-dep-bump-threshold", () => {
 
   describe("areFilesManifestOnly", () => {
     it("allows package.json and lockfile modifications", () => {
-      expect(
-        areFilesManifestOnly(["frontend/package.json", "frontend/pnpm-lock.yaml"]),
-      ).toBe(true);
+      expect(areFilesManifestOnly(["frontend/package.json", "frontend/pnpm-lock.yaml"])).toBe(true);
       expect(areFilesManifestOnly(["Cargo.toml", "Cargo.lock"])).toBe(true);
       expect(areFilesManifestOnly([".github/workflows/ci.yml"])).toBe(true);
     });
 
     it("rejects application source code changes", () => {
-      expect(
-        areFilesManifestOnly(["frontend/package.json", "frontend/lib/stellar.ts"]),
-      ).toBe(false);
+      expect(areFilesManifestOnly(["frontend/package.json", "frontend/lib/stellar.ts"])).toBe(
+        false,
+      );
       expect(areFilesManifestOnly(["contracts/proof_registry/src/lib.rs"])).toBe(false);
     });
   });

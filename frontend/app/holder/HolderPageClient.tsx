@@ -3,12 +3,6 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import {
-  IconAlertTriangle,
-  IconDownload,
-  IconFileExport,
-  IconPlus,
-} from "@tabler/icons-react";
 import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
@@ -45,6 +39,15 @@ import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
 import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
+import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
+import {
+  getPortfolioAccounts,
+  recordConnectedAccount,
+  getActivePortfolioAccount,
+  setActivePortfolioAccount,
+  filterCredentialsByAccount,
+  type PortfolioAccount,
+} from "@/lib/account-portfolio";
 
 import type { PageView, BulkAction } from "./types";
 
@@ -100,7 +103,30 @@ function HolderInner() {
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useTransferImportParam(setImportPayload);
 
-  const displayCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
+  // Multi-account portfolio segregation
+  const [portfolioAccounts, setPortfolioAccounts] = useState<PortfolioAccount[]>(() =>
+    getPortfolioAccounts(),
+  );
+  const [activeAccountFilter, setActiveAccountFilter] = useState<string | null>(() =>
+    getActivePortfolioAccount(),
+  );
+
+  // Update known accounts when connected address changes
+  useState(() => {
+    if (address) {
+      const updated = recordConnectedAccount(address);
+      setPortfolioAccounts(updated);
+    }
+  });
+
+  const handleSelectPortfolioAccount = (selectedAddr: string | null) => {
+    setActiveAccountFilter(selectedAddr);
+    setActivePortfolioAccount(selectedAddr);
+  };
+
+  const rawCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
+  // Segregate credentials by active account portfolio (without clearing session data)
+  const displayCreds = filterCredentialsByAccount(rawCreds, activeAccountFilter);
   const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
 
   // Warm the UltraHonk backend for whatever credential types the user still
@@ -159,7 +185,14 @@ function HolderInner() {
           <span className="eyebrow">Holder</span>
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
-        <div className="row" style={{ gap: "0.75rem" }}>
+        <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
+          {portfolioAccounts.length > 0 && (
+            <AccountPortfolioSwitcher
+              accounts={portfolioAccounts}
+              activeAddress={activeAccountFilter}
+              onSelectAccount={handleSelectPortfolioAccount}
+            />
+          )}
           {/* Selective disclosure presets (#386): a named, shareable bundle
               of several claim types — defined and shared from its own page
               rather than crowding this one, but linked from here since the
@@ -258,7 +291,6 @@ function HolderInner() {
               {/* ── Expiring soon (action recommended) ── */}
               {expiringSoon.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>Expiring soon — Re-prove recommended</SectionLabel>
                   <SectionLabel>Expiring soon · Re-prove recommended</SectionLabel>
                   {expiringSoon.map((c) => renderCred(c))}
                 </div>
@@ -267,7 +299,6 @@ function HolderInner() {
               {/* ── Expired (action required) ── */}
               {expired.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>Expired proofs — Re-prove required</SectionLabel>
                   <SectionLabel>Expired proofs · Re-prove required</SectionLabel>
                   <div
                     className="between"
@@ -345,7 +376,6 @@ function HolderInner() {
               {/* ── Active proved ── */}
               {activeProved.length > 0 && (
                 <div className="stack" style={{ gap: "0.6rem" }}>
-                  <SectionLabel>On-chain — active proofs</SectionLabel>
                   <SectionLabel>On-chain · active proofs</SectionLabel>
                   {activeProved.map((c) => renderCred(c))}
                 </div>
@@ -395,7 +425,10 @@ function HolderInner() {
                       <IconFileExport size={14} />
                       Export data
                     </button>
-                    <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
+                    <GuardianRecoveryControl
+                      hasCredentials={creds.length > 0}
+                      onRestored={reload}
+                    />
                   </div>
                   <p
                     className="faint"
@@ -415,64 +448,6 @@ function HolderInner() {
                 </div>
               )}
             </>
-            </>
-          )}
-
-          {importing ? (
-            <ImportPanel
-              onImport={(c) => {
-                save(c);
-                setImporting(false);
-              }}
-              onCancel={() => setImporting(false)}
-            />
-          ) : (
-            <div className="stack" style={{ gap: "0.55rem" }}>
-              <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
-                  <IconPlus size={14} />
-                  Import credential JSON
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={downloadBackup}
-                  disabled={creds.length === 0}
-                  title={
-                    creds.length === 0
-                      ? "No credentials to back up yet"
-                      : "Download a JSON backup of all credentials"
-                  }
-                >
-                  <IconDownload size={14} />
-                  Export backup
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowExportModal(true)}
-                  id="btn-export-data-action"
-                  title="Request scoped exports with secure expiring download links"
-                >
-                  <IconFileExport size={14} />
-                  Export data
-                </button>
-                <GuardianRecoveryControl hasCredentials={creds.length > 0} onRestored={reload} />
-              </div>
-              <p
-                className="faint"
-                style={{ fontSize: "0.75rem", maxWidth: 560, lineHeight: 1.6, margin: 0 }}
-              >
-                Credentials live only in this browser (localStorage) — export a backup before
-                clearing site data or switching devices, and restore it here with “Import credential
-                JSON”.{" "}
-                <Link
-                  href="/docs#storage"
-                  style={{ color: "var(--accent)", textDecoration: "underline" }}
-                >
-                  Where your credentials live
-                </Link>
-              </p>
-              <ExportVisibilitySettings />
-            </div>
           )}
         </div>
       )}
