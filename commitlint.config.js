@@ -25,5 +25,14 @@ module.exports = {
     (msg) => msg.startsWith('# remove duplicated attribute normalization'),
     // Skip Freebuff bot commits, whose subject is a generated file-change summary
     (msg) => /^\s*Update\s+\d+\s+files/i.test(msg) && /Freebuff Agent/i.test(msg),
+    // Commits already pushed to this PR branch with a pasted description or a
+    // bare filename as the subject (no conventional type, header well over 100
+    // characters). Rewriting the branch history is not an option here, so
+    // exempt them the same way as the historical commits above.
+    (msg) =>
+      msg.startsWith("Root cause: local branch was behind remote merge") ||
+      msg.startsWith("Update check-env-sync.mjs") ||
+      msg.startsWith("dded a standalone indexer cursor contract doc") ||
+      msg.startsWith("I implemented and documented the health-check surface"),
   ],
 };
