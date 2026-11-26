@@ -39,6 +39,7 @@
     "packages/sdk/test",
     "packages/sdk/dist",
     "packages/sdk/vitest.config.ts",
+    "packages/sdk/tsup.config.ts",
     // The stellarcred CLI is likewise standalone (own tsconfig and vitest
     // config, typechecked and tested in its own CI steps).
     "packages/cli",

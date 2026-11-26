@@ -13,8 +13,6 @@ import {
 } from "./proof-perf";
 export type { ProofRun };
 
-export type { ProofRun } from "./proof-perf";
-
 // ---------------------------------------------------------------------------
 // Aggregates (for the debug view and the reported payload)
 // ---------------------------------------------------------------------------
