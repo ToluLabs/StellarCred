@@ -21,7 +21,7 @@ was checked against open issues on 2026-10-22.
 | Contracts | `contracts/` (`issuer_registry`, `credential_verifier`, `proof_registry`, `gated_pool`; soroban-sdk 26.0.1) | `CONTRACT_VERSION = 1_000_000` already; real UltraHonk verifier via `rs-soroban-ultrahonk` pinned to a git rev (not published). Testnet only. |
 | Circuits | `circuits/` (12 proven circuits in `circuit-versions.json`, Noir 1.0.0-beta.9 / bb 0.87.0) | All at circuit `1.0.0`, VK version 1. Constraint baseline in `circuits/AUDIT.md`. |
 | SDK | `frontend/packages/sdk` (`@stellarcred/sdk` 0.1.1) | Read-only claim client. A second, private package `sdk/` (`@sdk/core` 0.0.0) still exists at the repo root. |
-| Issuer package | `frontend/packages/issuer` (`@stellarcred/issuer` 0.1.0) | Server-only issuance. Not published by `release.yml`. |
+| Issuer package | `frontend/packages/issuer` (`@stellarcred/issuer` 0.1.1) | Server-only issuance. Released with the SDK by `release.yml` (same version, npm provenance); not yet on npm until the first tag. Policy: `SUPPORT_POLICY.md`. |
 | Generated clients | `frontend/packages/proof-registry`, `frontend/packages/issuer-registry` | Generated from contracts (`scripts/gen-bindings.sh`). |
 | App + API | `frontend/` (Next.js; holder, verify, issuer, admin, apps, developers; `app/api/issue`) | Beta. Several open security and correctness issues. |
 | Indexer | `services/indexer` | Event indexer (SQLite/Postgres). No tests running in CI yet. |
@@ -194,7 +194,7 @@ Owners are roles; replace them with a GitHub handle when someone claims the task
 
 | Task | Issue | Est. | Owner | Milestone |
 |---|---|---|---|---|
-| Release pipeline: align versions, publish `@stellarcred/issuer`, fix package metadata, support pre-release tags | NEW | M (3d) | Release manager (maintainer) | alpha |
+| Release pipeline: align versions, publish `@stellarcred/issuer`, fix package metadata, support pre-release tags | #969 | M (3d) | Release manager (maintainer) | alpha |
 | Fix deploy-script typo and non-idempotent deploys | #764, #910 | M (3d) | Contributor | beta |
 | Better logging in deploy scripts | #754 | S (1d) | Contributor | beta |
 | One command to verify a deployment end to end | #692 | S (2d) | Contributor | rc |

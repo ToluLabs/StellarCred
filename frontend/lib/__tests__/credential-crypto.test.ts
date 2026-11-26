@@ -163,9 +163,9 @@ describe("credential-crypto — envelope version resolution", () => {
   });
 
   it("v1 never trusts a stored iterations field (cost stays the legacy value)", () => {
-    expect(
-      resolveEnvelopeIterations({ version: 1, iterations: 1, iv: "", ciphertext: "" }),
-    ).toBe(LEGACY_PBKDF2_ITERATIONS);
+    expect(resolveEnvelopeIterations({ version: 1, iterations: 1, iv: "", ciphertext: "" })).toBe(
+      LEGACY_PBKDF2_ITERATIONS,
+    );
   });
 });
 

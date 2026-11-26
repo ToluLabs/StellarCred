@@ -71,8 +71,7 @@ export function useIssuerStatus(
 
         for (const cred of credsRef.current) {
           const stale =
-            !cred.issuerStatusCheckedAt ||
-            now - cred.issuerStatusCheckedAt > RECHECK_SECS;
+            !cred.issuerStatusCheckedAt || now - cred.issuerStatusCheckedAt > RECHECK_SECS;
           const actionRequired = ALWAYS_RECHECK.includes(cred.issuerStatus);
 
           if (!stale && !actionRequired) continue;
@@ -91,8 +90,7 @@ export function useIssuerStatus(
             status = "unknown";
           }
 
-          const changed =
-            status !== cred.issuerStatus || !cred.issuerStatusCheckedAt;
+          const changed = status !== cred.issuerStatus || !cred.issuerStatusCheckedAt;
           await saveCredential({
             ...cred,
             issuerStatus: status,
@@ -109,6 +107,5 @@ export function useIssuerStatus(
 
     void run();
     // address and credsKey are the real triggers; refs handle the rest.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, credsKey]);
 }

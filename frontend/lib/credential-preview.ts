@@ -62,9 +62,7 @@ export function buildClaimLabel(type: CredentialType, claimParams?: ClaimParams)
       return `employed, seniority ≥ ${t} yrs`;
     }
     case "jurisdiction":
-      return claimParams?.mode === "1"
-        ? "country in allowed list"
-        : "country not restricted";
+      return claimParams?.mode === "1" ? "country in allowed list" : "country not restricted";
     case "kyc":
     default:
       return "identity verified";
@@ -89,9 +87,7 @@ export function formatAttributeDisplay(
     case "funds":
     case "accreditation": {
       const n = Number(attributeValue);
-      return Number.isFinite(n)
-        ? `$${n.toLocaleString("en-US")}`
-        : attributeValue;
+      return Number.isFinite(n) ? `$${n.toLocaleString("en-US")}` : attributeValue;
     }
     case "employment": {
       const n = Number(attributeValue);

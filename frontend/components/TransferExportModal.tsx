@@ -49,11 +49,14 @@ export function TransferExportModal({ cred, onClose }: { cred: Credential; onClo
   return (
     <Modal title="Transfer credential" onClose={onClose}>
       <p className="faint" style={{ fontSize: "0.8125rem", marginBottom: "1rem", lineHeight: 1.6 }}>
-        Set a passphrase to encrypt <strong style={{ color: "var(--text)" }}>{cred.title}</strong> before
-        it becomes a QR code. You&rsquo;ll enter the same passphrase on the other device to import it.
+        Set a passphrase to encrypt <strong style={{ color: "var(--text)" }}>{cred.title}</strong>{" "}
+        before it becomes a QR code. You&rsquo;ll enter the same passphrase on the other device to
+        import it.
       </p>
 
-      <label htmlFor="export-passphrase" className="field-label">Passphrase</label>
+      <label htmlFor="export-passphrase" className="field-label">
+        Passphrase
+      </label>
       <input
         id="export-passphrase"
         type="password"
@@ -63,7 +66,13 @@ export function TransferExportModal({ cred, onClose }: { cred: Credential; onClo
         autoFocus
       />
 
-      <label htmlFor="export-confirm-passphrase" className="field-label" style={{ marginTop: "0.75rem" }}>Confirm passphrase</label>
+      <label
+        htmlFor="export-confirm-passphrase"
+        className="field-label"
+        style={{ marginTop: "0.75rem" }}
+      >
+        Confirm passphrase
+      </label>
       <input
         id="export-confirm-passphrase"
         type="password"
@@ -72,7 +81,14 @@ export function TransferExportModal({ cred, onClose }: { cred: Credential; onClo
         onKeyDown={(e) => e.key === "Enter" && onGenerate()}
       />
 
-      {error && <p role="alert" style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.6rem" }}>{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          style={{ color: "var(--danger)", fontSize: "0.8125rem", marginTop: "0.6rem" }}
+        >
+          {error}
+        </p>
+      )}
 
       <button
         className="btn btn-primary"

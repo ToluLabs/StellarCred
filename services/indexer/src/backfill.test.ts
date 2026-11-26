@@ -69,6 +69,7 @@ const opts = (dir: string, over: Partial<BackfillOptions> = {}): BackfillOptions
   to: 200,
   batchSize: 2,
   resume: false,
+  force: false,
   checkpointPath: path.join(dir, "cp.json"),
   ...over,
 });
@@ -76,7 +77,12 @@ const opts = (dir: string, over: Partial<BackfillOptions> = {}): BackfillOptions
 describe("parseBackfillArgs", () => {
   it("parses an explicit bounded range", () => {
     const o = parseBackfillArgs(["--from", "1000", "--to", "2000", "--batch-size", "50"]);
-    expect(o).toMatchObject({ from: 1000, to: 2000, batchSize: 50, resume: false });
+    expect(o).toMatchObject({ from: 1000, to: 2000, batchSize: 50, resume: false, force: false });
+  });
+
+  it("parses --force flag", () => {
+    const o = parseBackfillArgs(["--from", "1000", "--force"]);
+    expect(o.force).toBe(true);
   });
 
   it("defaults to genesis..head", () => {
@@ -173,7 +179,7 @@ describe("runBackfill", () => {
     expect(res.processed).toBe(5);
   });
 
-  it("refuses to start a new range over an unfinished checkpoint", async () => {
+  it("refuses to start a new range over an unfinished checkpoint without --resume or --force", async () => {
     const events = [ev(100), ev(110), ev(120)];
     await expect(
       runBackfill(config, makeDb().asDb, opts(dir), { fetchImpl: makeHorizon(1000, events, 3), log, sleep })
@@ -181,6 +187,90 @@ describe("runBackfill", () => {
     await expect(
       runBackfill(config, makeDb().asDb, opts(dir), { fetchImpl: makeHorizon(1000, events), log, sleep })
     ).rejects.toThrow(/--resume/);
+  });
+
+  it("stamps network and contractId in checkpoint and prevents resume across different networks", async () => {
+    const events = [ev(100), ev(110)];
+    const db1 = makeDb();
+    // Interrupt run
+    await expect(
+      runBackfill(config, db1.asDb, opts(dir), { fetchImpl: makeHorizon(1000, events, 3), log, sleep })
+    ).rejects.toThrow();
+
+    const cp = readCheckpoint(path.join(dir, "cp.json"));
+    expect(cp?.contractId).toBe(CONTRACT);
+
+    // Attempt resume with conflicting network configuration
+    const conflictingNetConfig = {
+      ...config,
+      stellarNetwork: "mainnet",
+    } as unknown as Config;
+
+    await expect(
+      runBackfill(conflictingNetConfig, makeDb().asDb, opts(dir, { resume: true }), {
+        fetchImpl: makeHorizon(1000, events),
+        log,
+        sleep,
+      })
+    ).rejects.toThrow(/different networks/);
+  });
+
+  it("prevents resume across different contract identities", async () => {
+    const events = [ev(100), ev(110)];
+    const db1 = makeDb();
+    await expect(
+      runBackfill(config, db1.asDb, opts(dir), { fetchImpl: makeHorizon(1000, events, 3), log, sleep })
+    ).rejects.toThrow();
+
+    const conflictingContractConfig = {
+      ...config,
+      proofRegistryContractId: "COTHER_CONTRACT",
+    } as unknown as Config;
+
+    await expect(
+      runBackfill(conflictingContractConfig, makeDb().asDb, opts(dir, { resume: true }), {
+        fetchImpl: makeHorizon(1000, events),
+        log,
+        sleep,
+      })
+    ).rejects.toThrow(/different contracts/);
+  });
+
+  it("requires --force to overwrite or rewind a completed checkpoint", async () => {
+    const events = [ev(100), ev(150)];
+    const db1 = makeDb();
+    await runBackfill(config, db1.asDb, opts(dir), { fetchImpl: makeHorizon(1000, events), log, sleep });
+
+    // Trying to start a new range without --force must throw
+    await expect(
+      runBackfill(config, makeDb().asDb, opts(dir), { fetchImpl: makeHorizon(1000, events), log, sleep })
+    ).rejects.toThrow(/Pass --force to overwrite or rewind/);
+
+    // Passing --force allows replacing/rewinding
+    const db2 = makeDb();
+    const res = await runBackfill(config, db2.asDb, opts(dir, { force: true }), {
+      fetchImpl: makeHorizon(1000, events),
+      log,
+      sleep,
+    });
+    expect(res.processed).toBe(2);
+  });
+
+  it("guarantees idempotent replays across multiple backfill runs", async () => {
+    const events = [ev(100), ev(150)];
+    const { db, asDb } = makeDb();
+
+    // First backfill pass
+    await runBackfill(config, asDb, opts(dir), { fetchImpl: makeHorizon(1000, events), log, sleep });
+    expect(db.upsertClaim).toHaveBeenCalledTimes(2);
+
+    // Second backfill pass with --force
+    await runBackfill(config, asDb, opts(dir, { force: true }), {
+      fetchImpl: makeHorizon(1000, events),
+      log,
+      sleep,
+    });
+    expect(db.upsertClaim).toHaveBeenCalledTimes(4);
   });
 
   it("retries transient Horizon errors before failing", async () => {

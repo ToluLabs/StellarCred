@@ -46,10 +46,7 @@ export async function POST(req: NextRequest) {
       stripSensitiveFields({ event: "persona_webhook_secret_missing" }),
       "PERSONA_WEBHOOK_SECRET is not configured",
     );
-    return NextResponse.json(
-      { error: "Webhook secret is not configured" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Webhook secret is not configured" }, { status: 401 });
   }
 
   const signatureHeader =
@@ -62,10 +59,7 @@ export async function POST(req: NextRequest) {
       stripSensitiveFields({ event: "persona_webhook_invalid_signature" }),
       "Rejected Persona webhook: invalid or missing HMAC signature",
     );
-    return NextResponse.json(
-      { error: "Invalid or missing webhook signature" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Invalid or missing webhook signature" }, { status: 401 });
   }
 
   const event = parsePersonaWebhook(rawBody);
@@ -98,10 +92,16 @@ export async function POST(req: NextRequest) {
 
   const existing = getInquiryResult(event.inquiryId);
   if (existing?.status === "completed") {
-    return NextResponse.json({ status: "already_processed", inquiryId: event.inquiryId }, { status: 200 });
+    return NextResponse.json(
+      { status: "already_processed", inquiryId: event.inquiryId },
+      { status: 200 },
+    );
   }
   if (!beginInquiryProcessing(event.inquiryId, event.eventId)) {
-    return NextResponse.json({ status: "already_processing", inquiryId: event.inquiryId }, { status: 200 });
+    return NextResponse.json(
+      { status: "already_processing", inquiryId: event.inquiryId },
+      { status: 200 },
+    );
   }
 
   // If status is failed or declined, record failed status in cache
@@ -115,9 +115,8 @@ export async function POST(req: NextRequest) {
 
   try {
     let dob =
-      String(
-        event.fields["birthdate"]?.value ?? event.fields["birth-date"]?.value ?? "",
-      ).trim() || undefined;
+      String(event.fields["birthdate"]?.value ?? event.fields["birth-date"]?.value ?? "").trim() ||
+      undefined;
 
     let alpha2 =
       String(
@@ -227,10 +226,7 @@ export async function POST(req: NextRequest) {
       status: "failed",
       error: (error as Error).message,
     });
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   } finally {
     finishInquiryProcessing(event.inquiryId);
   }

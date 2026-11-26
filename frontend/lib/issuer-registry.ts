@@ -174,12 +174,7 @@ export async function fetchIssuerPubkey(
  *   conservatively: the UI does not block proving but also does not assert
  *   the issuer is active.
  */
-export type IssuerStatus =
-  | "active"
-  | "key_retired"
-  | "key_revoked"
-  | "issuer_revoked"
-  | "unknown";
+export type IssuerStatus = "active" | "key_retired" | "key_revoked" | "issuer_revoked" | "unknown";
 
 /**
  * Check whether the issuer that signed a specific credential is still active
@@ -261,11 +256,7 @@ export async function checkIssuerStatus(
     const pubkeyScVal = xdr.ScVal.scvBytes(Buffer.from(pubkeyBytes));
     keyValid = await simulate<boolean>(
       simulationAccount,
-      contract.call(
-        "is_valid_issuer_key",
-        Address.fromString(issuerId).toScVal(),
-        pubkeyScVal,
-      ),
+      contract.call("is_valid_issuer_key", Address.fromString(issuerId).toScVal(), pubkeyScVal),
     );
   } catch {
     // Key check failed — treat as active so we don't block unnecessarily.

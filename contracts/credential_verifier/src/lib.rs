@@ -28,7 +28,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Bytes, BytesN, Env, Map, Symbol,
+    Bytes, BytesN, Env, Map, Symbol, Vec,
 };
 use ultrahonk_soroban_verifier::{UltraHonkVerifier, PROOF_BYTES};
 
@@ -69,11 +69,80 @@ pub struct EventContractUpgraded {
     pub upgraded_at: u64,
 }
 
+/// Payload emitted when a verification key update is proposed (#1011).
+/// Topics: ("cred_ver", "vk_prop", credential_type)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVkProposed {
+    pub proposer: Address,
+    pub version: u32,
+    pub proposed_at: u64,
+}
+
+/// Payload emitted when a verification key update proposal receives an approval (#1011).
+/// Topics: ("cred_ver", "vk_appr", credential_type)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVkApproved {
+    pub approver: Address,
+    pub version: u32,
+    pub approvals_count: u32,
+    pub threshold: u32,
+}
+
+/// Payload emitted when a pending verification key update proposal is cancelled (#1011).
+/// Topics: ("cred_ver", "vk_canc", credential_type)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVkCancelled {
+    pub caller: Address,
+    pub version: u32,
+}
+
+/// Payload emitted when the verification key timelock/multisig configuration is updated (#1011).
+/// Topics: ("cred_ver", "tl_cfg")
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventVkTimelockConfigured {
+    pub admin: Address,
+    pub threshold: u32,
+    pub delay_seconds: u64,
+}
+
+/// Multi-signature and timelock configuration for verification key updates (#1011).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VkTimelockConfig {
+    pub signers: Vec<Address>,
+    pub threshold: u32,
+    pub delay_seconds: u64,
+}
+
+/// A pending verification key update proposal (#1011).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VkProposal {
+    pub credential_type: Symbol,
+    pub version: u32,
+    pub vk: Bytes,
+    pub proposed_by: Address,
+    pub proposed_at: u64,
+    pub approvals: Vec<Address>,
+    pub approved_at: u64,
+}
+
 // ── Contract versioning ──────────────────────────────────────────────────────
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
 // Increment MINOR on additive changes (new events, new query endpoints)
 // Increment PATCH on bug fixes with no ABI changes
+//
+// v1 public-surface freeze: the contract ABI, event topics and payloads,
+// error codes, and version promises are frozen at 1.x. The canonical v1
+// compatibility page maps each frozen surface to its source of truth.
+// Any change touching the frozen surface requires sign-off from the
+// contract, circuits, and SDK maintainers before merge, and must update
+// the compatibility page in the same commit.
 const CONTRACT_VERSION: u32 = 1_000_000; // 1.0.0 encoded as (major * 1000000) + (minor * 1000) + patch
 
 // Persistent-entry lifetime management (~5s ledgers). VKs are long-lived.
@@ -108,6 +177,10 @@ pub enum DataKey {
     DeprecatedAt(Symbol, u32),
     /// Timestamp of the last upgrade (for audit trail).
     LastUpgradeTimestamp,
+    /// Multisig configuration for verification key updates (#1011).
+    VkTimelockConfig,
+    /// Pending proposal for a (credential_type, version) VK update (#1011).
+    VkProposal(Symbol, u32),
 }
 
 #[contracterror]
@@ -131,6 +204,22 @@ pub enum Error {
     RoleHolderMismatch = 8,
     /// `accept_admin` was called with no pending proposal (#342).
     NoPendingAdmin = 9,
+    /// VK timelock/multisig is enforced; direct set_vk calls are rejected (#1011).
+    TimelockEnforced = 10,
+    /// Caller is not an authorized VK multisig signer (#1011).
+    NotAuthorizedSigner = 11,
+    /// Invalid multisig config (e.g. threshold = 0 or threshold > signers count) (#1011).
+    InvalidMultisigConfig = 12,
+    /// No proposal exists for the requested (credential_type, version) (#1011).
+    ProposalNotFound = 13,
+    /// Proposal has already been approved by this signer (#1011).
+    AlreadyApproved = 14,
+    /// Proposal has not reached the required multi-signature approval threshold (#1011).
+    ThresholdNotMet = 15,
+    /// Mandatory timelock delay has not yet elapsed (#1011).
+    TimelockNotExpired = 16,
+    /// Proposal already exists for this (credential_type, version) (#1011).
+    ProposalAlreadyExists = 17,
 }
 
 #[contract]
@@ -166,6 +255,9 @@ impl CredentialVerifier {
     #[allow(deprecated)]
     pub fn set_vk(env: Env, credential_type: Symbol, version: u32, vk: Bytes) {
         let admin = Self::require_role(&env, &symbol_short!("admin"));
+        if env.storage().instance().has(&DataKey::VkTimelockConfig) {
+            panic_with_error!(&env, Error::TimelockEnforced);
+        }
         // Version 0 is reserved — it is the ProofRecord sentinel meaning
         // "no version" (see ProofRegistry), and no VK may be registered at 0.
         if version == 0 {
@@ -570,6 +662,358 @@ impl CredentialVerifier {
             .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized));
         admin.require_auth();
         admin
+    }
+
+    /// Configure the multi-signature and timelock requirements for verification key updates (#1011).
+    /// Root-admin only.
+    ///
+    /// - `signers`: Authorized addresses eligible to propose, approve, and cancel VK updates.
+    /// - `threshold`: Minimum number of unique signer approvals required before a proposal can be executed.
+    /// - `delay_seconds`: Mandatory delay (in seconds) between reaching the threshold and executing the update.
+    #[allow(deprecated)]
+    pub fn configure_vk_timelock(
+        env: Env,
+        signers: Vec<Address>,
+        threshold: u32,
+        delay_seconds: u64,
+    ) {
+        let admin = Self::require_admin(&env);
+
+        if threshold == 0 || signers.len() < threshold {
+            panic_with_error!(&env, Error::InvalidMultisigConfig);
+        }
+
+        // Validate uniqueness of signers
+        for i in 0..signers.len() {
+            let s1 = signers.get(i).unwrap();
+            for j in (i + 1)..signers.len() {
+                let s2 = signers.get(j).unwrap();
+                if s1 == s2 {
+                    panic_with_error!(&env, Error::InvalidMultisigConfig);
+                }
+            }
+        }
+
+        let config = VkTimelockConfig {
+            signers,
+            threshold,
+            delay_seconds,
+        };
+
+        env.storage()
+            .instance()
+            .set(&DataKey::VkTimelockConfig, &config);
+
+        env.events().publish(
+            (symbol_short!("cred_ver"), symbol_short!("tl_cfg")),
+            EventVkTimelockConfigured {
+                admin,
+                threshold,
+                delay_seconds,
+            },
+        );
+    }
+
+    /// Read the current VK timelock/multisig configuration, if configured (#1011).
+    pub fn get_vk_timelock_config(env: Env) -> Option<VkTimelockConfig> {
+        env.storage().instance().get(&DataKey::VkTimelockConfig)
+    }
+
+    /// Propose a new or updated verification key under multi-signature and timelock governance (#1011).
+    /// Callable by an authorized signer or root admin.
+    /// The proposer's signature automatically counts as the first approval.
+    #[allow(deprecated)]
+    pub fn propose_vk_update(
+        env: Env,
+        proposer: Address,
+        credential_type: Symbol,
+        version: u32,
+        vk: Bytes,
+    ) {
+        proposer.require_auth();
+
+        if version == 0 {
+            panic_with_error!(&env, Error::VkInvalid);
+        }
+
+        let config: VkTimelockConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::VkTimelockConfig)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+        Self::verify_authorized_signer_or_admin(&env, &config, &proposer);
+
+        let vk_key = DataKey::Vk(credential_type.clone(), version);
+        if env.storage().persistent().has(&vk_key) {
+            panic_with_error!(&env, Error::VkAlreadySet);
+        }
+
+        if env
+            .storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::DeprecatedVersion(
+                credential_type.clone(),
+                version,
+            ))
+            .unwrap_or(false)
+        {
+            panic_with_error!(&env, Error::VersionDeprecated);
+        }
+
+        let prop_key = DataKey::VkProposal(credential_type.clone(), version);
+        if env.storage().persistent().has(&prop_key) {
+            panic_with_error!(&env, Error::ProposalAlreadyExists);
+        }
+
+        if UltraHonkVerifier::new(&env, &vk).is_err() {
+            panic_with_error!(&env, Error::VkInvalid);
+        }
+
+        let now = env.ledger().timestamp();
+        let mut approvals: Vec<Address> = Vec::new(&env);
+        approvals.push_back(proposer.clone());
+
+        let approved_at = if approvals.len() >= config.threshold {
+            now
+        } else {
+            0
+        };
+
+        let proposal = VkProposal {
+            credential_type: credential_type.clone(),
+            version,
+            vk,
+            proposed_by: proposer.clone(),
+            proposed_at: now,
+            approvals,
+            approved_at,
+        };
+
+        env.storage().persistent().set(&prop_key, &proposal);
+        env.storage()
+            .persistent()
+            .extend_ttl(&prop_key, VK_BUMP_THRESHOLD, VK_TTL);
+
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("vk_prop"),
+                credential_type,
+            ),
+            EventVkProposed {
+                proposer,
+                version,
+                proposed_at: now,
+            },
+        );
+    }
+
+    /// Approve an existing VK update proposal (#1011).
+    /// Callable by an authorized signer who has not yet approved.
+    #[allow(deprecated)]
+    pub fn approve_vk_update(
+        env: Env,
+        approver: Address,
+        credential_type: Symbol,
+        version: u32,
+    ) {
+        approver.require_auth();
+
+        let config: VkTimelockConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::VkTimelockConfig)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+        Self::verify_authorized_signer(&env, &config, &approver);
+
+        let prop_key = DataKey::VkProposal(credential_type.clone(), version);
+        let mut proposal: VkProposal = env
+            .storage()
+            .persistent()
+            .get(&prop_key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::ProposalNotFound));
+
+        // Reject duplicate approval from the same signer
+        for i in 0..proposal.approvals.len() {
+            if proposal.approvals.get(i).unwrap() == approver {
+                panic_with_error!(&env, Error::AlreadyApproved);
+            }
+        }
+
+        proposal.approvals.push_back(approver.clone());
+
+        let now = env.ledger().timestamp();
+        if proposal.approved_at == 0 && proposal.approvals.len() >= config.threshold {
+            proposal.approved_at = now;
+        }
+
+        env.storage().persistent().set(&prop_key, &proposal);
+        env.storage()
+            .persistent()
+            .extend_ttl(&prop_key, VK_BUMP_THRESHOLD, VK_TTL);
+
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("vk_appr"),
+                credential_type,
+            ),
+            EventVkApproved {
+                approver,
+                version,
+                approvals_count: proposal.approvals.len(),
+                threshold: config.threshold,
+            },
+        );
+    }
+
+    /// Cancel an active VK update proposal (#1011).
+    /// Callable by an authorized signer or root admin.
+    #[allow(deprecated)]
+    pub fn cancel_vk_proposal(
+        env: Env,
+        caller: Address,
+        credential_type: Symbol,
+        version: u32,
+    ) {
+        caller.require_auth();
+
+        let config: VkTimelockConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::VkTimelockConfig)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+        Self::verify_authorized_signer_or_admin(&env, &config, &caller);
+
+        let prop_key = DataKey::VkProposal(credential_type.clone(), version);
+        if !env.storage().persistent().has(&prop_key) {
+            panic_with_error!(&env, Error::ProposalNotFound);
+        }
+
+        env.storage().persistent().remove(&prop_key);
+
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("vk_canc"),
+                credential_type,
+            ),
+            EventVkCancelled {
+                caller,
+                version,
+            },
+        );
+    }
+
+    /// Execute an approved VK update whose timelock delay has expired (#1011).
+    /// Requires that the approval threshold was reached and the mandatory delay has passed.
+    #[allow(deprecated)]
+    pub fn execute_vk_update(env: Env, credential_type: Symbol, version: u32) {
+        let config: VkTimelockConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::VkTimelockConfig)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+        let prop_key = DataKey::VkProposal(credential_type.clone(), version);
+        let proposal: VkProposal = env
+            .storage()
+            .persistent()
+            .get(&prop_key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::ProposalNotFound));
+
+        if proposal.approvals.len() < config.threshold {
+            panic_with_error!(&env, Error::ThresholdNotMet);
+        }
+
+        if proposal.approved_at == 0 {
+            panic_with_error!(&env, Error::ThresholdNotMet);
+        }
+
+        let now = env.ledger().timestamp();
+        if now < proposal.approved_at.saturating_add(config.delay_seconds) {
+            panic_with_error!(&env, Error::TimelockNotExpired);
+        }
+
+        let key = DataKey::Vk(credential_type.clone(), version);
+        if env.storage().persistent().has(&key) {
+            panic_with_error!(&env, Error::VkAlreadySet);
+        }
+
+        env.storage().persistent().set(&key, &proposal.vk);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, VK_BUMP_THRESHOLD, VK_TTL);
+
+        let latest_key = DataKey::LatestVersion(credential_type.clone());
+        let current = env
+            .storage()
+            .persistent()
+            .get::<_, u32>(&latest_key)
+            .unwrap_or(0);
+        if version > current {
+            env.storage().persistent().set(&latest_key, &version);
+        }
+        env.storage()
+            .persistent()
+            .extend_ttl(&latest_key, VK_BUMP_THRESHOLD, VK_TTL);
+
+        // Remove the executed proposal
+        env.storage().persistent().remove(&prop_key);
+
+        env.events().publish(
+            (
+                symbol_short!("cred_ver"),
+                symbol_short!("vk_set"),
+                credential_type,
+            ),
+            EventVkSet {
+                admin: proposal.proposed_by,
+                version,
+                contract_version: CONTRACT_VERSION,
+            },
+        );
+    }
+
+    /// Read a pending VK proposal, if any (#1011).
+    pub fn get_vk_proposal(env: Env, credential_type: Symbol, version: u32) -> Option<VkProposal> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::VkProposal(credential_type, version))
+    }
+
+    fn verify_authorized_signer(env: &Env, config: &VkTimelockConfig, address: &Address) {
+        let mut authorized = false;
+        for i in 0..config.signers.len() {
+            if config.signers.get(i).unwrap() == *address {
+                authorized = true;
+                break;
+            }
+        }
+        if !authorized {
+            panic_with_error!(env, Error::NotAuthorizedSigner);
+        }
+    }
+
+    fn verify_authorized_signer_or_admin(
+        env: &Env,
+        config: &VkTimelockConfig,
+        address: &Address,
+    ) {
+        let root_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized));
+
+        if *address == root_admin {
+            return;
+        }
+
+        Self::verify_authorized_signer(env, config, address);
     }
 
     /// Admin-only: upgrade contract to new WASM, emitting an upgrade event.

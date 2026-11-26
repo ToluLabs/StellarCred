@@ -7,7 +7,7 @@ import { locales, defaultLocale, type Locale } from "@/i18n.config";
 /**
  * Component that adds hreflang meta tags for SEO
  * Declares alternate language versions of the current page
- * 
+ *
  * Note: Uses window.location.origin to make it domain-agnostic
  */
 export function LocaleMetaTags({ locale: propLocale }: { locale?: Locale } = {}) {
@@ -41,30 +41,23 @@ export function LocaleMetaTags({ locale: propLocale }: { locale?: Locale } = {})
   return (
     <>
       {/* Current page's canonical URL */}
-      {baseUrl && (
-        <link rel="canonical" href={`${baseUrl}${getPathForLocale(locale)}`} />
-      )}
+      {baseUrl && <link rel="canonical" href={`${baseUrl}${getPathForLocale(locale)}`} />}
 
       {/* Alternate language versions for SEO */}
-      {locales.map((loc) => (
-        baseUrl && (
-          <link
-            key={loc}
-            rel="alternate"
-            hrefLang={loc === "en" ? "en-US" : `${loc}-${loc.toUpperCase()}`}
-            href={`${baseUrl}${getPathForLocale(loc)}`}
-          />
-        )
-      ))}
+      {locales.map(
+        (loc) =>
+          baseUrl && (
+            <link
+              key={loc}
+              rel="alternate"
+              hrefLang={loc === "en" ? "en-US" : `${loc}-${loc.toUpperCase()}`}
+              href={`${baseUrl}${getPathForLocale(loc)}`}
+            />
+          ),
+      )}
 
       {/* x-default for fallback to English */}
-      {baseUrl && (
-        <link
-          rel="alternate"
-          hrefLang="x-default"
-          href={`${baseUrl}/`}
-        />
-      )}
+      {baseUrl && <link rel="alternate" hrefLang="x-default" href={`${baseUrl}/`} />}
     </>
   );
 }
