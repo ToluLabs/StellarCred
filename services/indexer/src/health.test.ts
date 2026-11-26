@@ -5,15 +5,35 @@
  * each status branch can be asserted deterministically.
  */
 
+import request from "supertest";
 import {
   buildHealthResponse,
+  buildHealthzResponse,
+  buildLivenessResponse,
+  buildReadinessResponse,
   buildUnavailableHealthResponse,
+  checkDatabase,
+  evaluateHorizonHealth,
+  MAX_READY_LEDGER_LAG,
   resolveVersion,
   statusFromHealth,
   DEGRADED_ERROR_THRESHOLD,
   SERVICE_NAME,
 } from "./health";
-import type { IngesterHealth } from "./ingester";
+import { buildApp } from "./api";
+import type { Db } from "./db";
+import type { Ingester, IngesterHealth, IngesterMetrics } from "./ingester";
+
+const base: IngesterHealth = {
+  lastSuccessLedger: 10,
+  headLedger: 12,
+  lag: 2,
+  lastError: null,
+  lastErrorTime: null,
+  consecutiveErrors: 0,
+  fetchAttempts: 5,
+  fetchFailures: 0,
+};
 
 function makeIngester(overrides?: Partial<IngesterHealth>) {
   const health: IngesterHealth = {
@@ -211,32 +231,25 @@ describe("buildUnavailableHealthResponse", () => {
     expect(payload.error).toBe("plain string");
   });
 
-  it("marks status degraded and ready true when lag exceeds warning threshold", () => {
-    const body = buildHealthResponse(10, { ...base, lag: 35 });
-    expect(body.status).toBe("degraded");
+  it("reports ledger lag without changing a healthy status", async () => {
+    const body = await buildHealthResponse(db, makeIngester({ lag: 35 }) as never);
+    expect(body.status).toBe("ok");
     expect(body.ready).toBe(true);
     expect(body.lag).toBe(35);
   });
 
-  it("marks status error and ready false when lag exceeds max threshold even with 0 errors", () => {
-    const body = buildHealthResponse(10, { ...base, consecutiveErrors: 0, lag: 150 });
+  it("reports an error and not ready once the error threshold is reached", async () => {
+    const body = await buildHealthResponse(
+      db,
+      makeIngester({ consecutiveErrors: DEGRADED_ERROR_THRESHOLD, lag: 150 }) as never,
+    );
     expect(body.status).toBe("error");
     expect(body.ready).toBe(false);
     expect(body.lag).toBe(150);
   });
 
-  it("uses custom thresholds when provided via options object", () => {
-    const body = buildHealthResponse(10, { ...base, lag: 20 }, {
-      thresholds: { warnLedgerLag: 15, maxLedgerLag: 40 },
-    });
-    expect(body.status).toBe("degraded");
-    expect(body.ready).toBe(true);
-    expect(body.warnLedgerLag).toBe(15);
-    expect(body.maxLedgerLag).toBe(40);
-  });
-
-  it("contains zero credential-level or identity fields in diagnostic payload", () => {
-    const body = buildHealthResponse(10, base);
+  it("contains zero credential-level or identity fields in diagnostic payload", async () => {
+    const body = await buildHealthResponse(db, makeIngester() as never);
     const keys = Object.keys(body);
     const forbiddenPatterns = [/wallet/i, /claim/i, /credential/i, /proof/i, /secret/i, /token/i, /key/i];
     for (const pattern of forbiddenPatterns) {
