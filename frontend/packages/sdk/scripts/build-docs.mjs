@@ -20,6 +20,11 @@ async function buildDocs() {
     excludePrivate: true,
     excludeProtected: true,
     excludeInternal: true,
+    // The SDK type-imports the generated registry bindings (proof-registry),
+    // whose own dependencies are not installed in the docs job, so TypeScript
+    // reports unresolved modules from those sources. The SDK is typechecked
+    // separately; documenting it must not depend on those sources resolving.
+    skipErrorChecking: true,
     githubPages: true,
     highlightLanguages: [
       "typescript",
