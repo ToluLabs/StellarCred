@@ -37,10 +37,7 @@ export const SUPPORTED_SDK_VERSION_RANGE = ">=0.1.1 <1";
 export const CAPABILITIES_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=600";
 
 export type CapabilitiesContractKey =
-  | "issuer_registry"
-  | "credential_verifier"
-  | "proof_registry"
-  | "gated_pool";
+  "issuer_registry" | "credential_verifier" | "proof_registry" | "gated_pool";
 
 const CONTRACT_KEYS: Array<{
   descriptor: CapabilitiesContractKey;
@@ -81,8 +78,7 @@ export interface CapabilitiesDescriptor {
 
 // Any existing account works as the source for read-only simulations — same
 // pattern as app/api/issuers/route.ts.
-const SIMULATION_ACCOUNT_FALLBACK =
-  "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+const SIMULATION_ACCOUNT_FALLBACK = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
 function simulationAccount(): string {
   return env.NEXT_PUBLIC_ISSUER_ADDRESS || SIMULATION_ACCOUNT_FALLBACK;
@@ -100,9 +96,7 @@ async function buildContracts(simAccount: string): Promise<CapabilitiesDescripto
   return Object.fromEntries(entries) as CapabilitiesDescriptor["contracts"];
 }
 
-async function buildIssuerSummary(
-  simAccount: string,
-): Promise<CapabilitiesDescriptor["issuers"]> {
+async function buildIssuerSummary(simAccount: string): Promise<CapabilitiesDescriptor["issuers"]> {
   if (!CONTRACTS.issuerRegistry) return null;
   try {
     const issuers = await fetchRegisteredIssuers(simAccount);

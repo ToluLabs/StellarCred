@@ -12,3 +12,5 @@ data/
 src/**/*.js
 src/**/*.d.ts
 src/**/*.js.map
+.backfill-checkpoint.json
+.backfill-checkpoint.json.tmp

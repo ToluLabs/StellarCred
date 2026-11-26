@@ -1,0 +1,91 @@
+name: Package Release Check
+
+# ── Publish dry run for the npm packages (#969) ─────────────────────────────
+# release.yml publishes @stellarcred/sdk and @stellarcred/issuer when a v* tag is
+# pushed. Everything that can go wrong at that point — a version that does not
+# line up, package metadata npm provenance rejects, a tarball missing its build
+# output or carrying a file it should not — is checked here on the pull request
+# instead, with the same scripts the release job runs:
+#
+#   .github/scripts/validate-release-packages.mjs   version alignment + metadata + tarball contents
+#   .github/scripts/publish-packages.sh dry-run     `pnpm publish --dry-run` for each package
+#
+# No secrets, no credentials and nothing is uploaded: a dry run never talks to the
+# registry's write API. Provenance itself needs the OIDC token of a real tag run,
+# so it is exercised by release.yml, not here.
+#
+# Only `pull_request` (never `pull_request_target`) is used, so this job never
+# checks out untrusted code with a privileged token.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/packages/sdk/**'
+      - 'frontend/packages/issuer/**'
+      - 'frontend/public/circuits/commit.json'
+      - 'frontend/public/circuits/commit3.json'
+      - 'frontend/pnpm-lock.yaml'
+      - 'frontend/pnpm-workspace.yaml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/package-release-check.yml'
+      - '.github/scripts/validate-release-packages.mjs'
+      - '.github/scripts/validate-release-packages.test.mjs'
+      - '.github/scripts/publish-packages.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-release-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-release-check:
+    name: Validate and dry-run publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # Scripts are disabled for the same reason as in release.yml: nothing a
+      # dependency ships should execute while we check what we are about to publish.
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install SDK dependencies
+        working-directory: frontend/packages/sdk
+        run: pnpm install --frozen-lockfile --ignore-workspace --ignore-scripts
+
+      - name: Unit-test the release validator
+        run: node --test .github/scripts/validate-release-packages.test.mjs
+
+      - name: Validate package metadata and version alignment
+        run: node .github/scripts/validate-release-packages.mjs --repo "$GITHUB_REPOSITORY"
+
+      - name: Build SDK
+        working-directory: frontend/packages/sdk
+        run: pnpm build
+
+      - name: Build issuer
+        working-directory: frontend/packages/issuer
+        run: pnpm build
+
+      - name: Validate package tarballs
+        run: node .github/scripts/validate-release-packages.mjs --repo "$GITHUB_REPOSITORY" --packed
+
+      - name: Publish dry run
+        run: bash .github/scripts/publish-packages.sh dry-run latest

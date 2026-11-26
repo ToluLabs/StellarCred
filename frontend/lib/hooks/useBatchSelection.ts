@@ -28,10 +28,7 @@ export function useBatchSelection(
     [unproved, selectedCommitments],
   );
 
-  const selectedTypes = useMemo(
-    () => new Set(selectedCreds.map((c) => c.type)),
-    [selectedCreds],
-  );
+  const selectedTypes = useMemo(() => new Set(selectedCreds.map((c) => c.type)), [selectedCreds]);
 
   const atBatchLimit = selectedCreds.length >= MAX_BATCH_SIZE;
 

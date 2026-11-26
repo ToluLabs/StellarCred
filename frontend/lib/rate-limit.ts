@@ -31,6 +31,7 @@
  * | `RATE_LIMIT_ISSUE_WALLET`       | 10      | max issue requests per wallet per window|
  * | `RATE_LIMIT_WITNESS_IP`         | 60      | max witness requests per IP per window  |
  * | `RATE_LIMIT_PLAID_IP`           | 30      | max plaid-balance requests per IP/window|
+ * | `RATE_LIMIT_CSP_REPORT_IP`      | 30      | max csp-report requests per IP/window   |
  * | `RATE_LIMIT_WINDOW_SECONDS`     | 60      | window length in seconds (all routes)   |
  *
  * ## Multi-instance / serverless deploy note
@@ -83,6 +84,8 @@ export const LIMITS = {
   witnessPerIp: () => readInt("RATE_LIMIT_WITNESS_IP", 60),
   /** Max requests per IP per window on /api/plaid-balance. */
   plaidPerIp: () => readInt("RATE_LIMIT_PLAID_IP", 30),
+  /** Max requests per IP per window on /api/csp-report. */
+  cspReportPerIp: () => readInt("RATE_LIMIT_CSP_REPORT_IP", 30),
   /** Window duration in milliseconds (shared by all routes). */
   windowMs: () => readInt("RATE_LIMIT_WINDOW_SECONDS", 60) * 1000,
 } as const;
@@ -165,7 +168,9 @@ function increment(
   storeKey: string,
   limit: number,
   windowMs: number,
-): { allowed: true; remaining: number; windowEnd: number } | { allowed: false; retryAfterMs: number } {
+):
+  | { allowed: true; remaining: number; windowEnd: number }
+  | { allowed: false; retryAfterMs: number } {
   const now = Date.now();
   evictIfNeeded(now);
   let bucket = store.get(storeKey);
@@ -201,11 +206,7 @@ export type RateLimitResult =
  * caller; this function stores it verbatim.  Keys are never logged by this
  * module.
  */
-export function checkLimit(
-  key: string,
-  limit: number,
-  windowMs: number,
-): RateLimitResult {
+export function checkLimit(key: string, limit: number, windowMs: number): RateLimitResult {
   checkMultiInstanceStoreWarning();
   const result = increment(key, limit, windowMs);
   if (!result.allowed) {
@@ -284,11 +285,7 @@ export interface RateLimitStatus {
  * reports an untouched window (`used: 0`) whose reset is one full window
  * length away.
  */
-export function getRateLimitStatus(
-  key: string,
-  limit: number,
-  windowMs: number,
-): RateLimitStatus {
+export function getRateLimitStatus(key: string, limit: number, windowMs: number): RateLimitStatus {
   const now = Date.now();
   const bucket = store.get(key);
   const expired = !bucket || now >= bucket.windowEnd;

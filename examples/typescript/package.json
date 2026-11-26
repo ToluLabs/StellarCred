@@ -1,0 +1,22 @@
+{
+  "name": "stellarcred-typescript-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal TypeScript example for @stellarcred/sdk demonstrating imports, typings, credential gating, and transaction creation/signing on Stellar",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/index.test.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^13.3.0",
+    "@stellarcred/sdk": "file:../../frontend/packages/sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  }
+}

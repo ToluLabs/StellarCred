@@ -77,13 +77,11 @@ function postRequest(body: unknown, headers: Record<string, string> = {}) {
 }
 
 describe("mock-mode fallback (no ISSUER_PRIVATE_KEY)", () => {
-  it("derives the demo issuer key deterministically from sha256(\"stellarcred-demo-issuer\")", async () => {
+  it('derives the demo issuer key deterministically from sha256("stellarcred-demo-issuer")', async () => {
     delete process.env.ISSUER_PRIVATE_KEY;
     const { POST } = await loadRoute();
 
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
     expect(res.status).toBe(200);
     const { credentials } = await res.json();
 
@@ -104,9 +102,7 @@ describe("signature correctness", () => {
     delete process.env.ISSUER_PRIVATE_KEY;
     const { POST } = await loadRoute();
 
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
     const { credentials } = await res.json();
     const credential = credentials[0];
 
@@ -256,6 +252,43 @@ describe("funds issuance (aggregate proof-of-funds)", () => {
 });
 
 describe("validation", () => {
+  it("returns unsigned preview metadata without requiring a signing key or calling providers", async () => {
+    delete process.env.ISSUER_PRIVATE_KEY;
+    process.env.PERSONA_API_KEY = "test-persona-key";
+    process.env.PERSONA_KYC_TEMPLATE_ID = "itmpl_test";
+    process.env.PLAID_CLIENT_ID = "test-plaid-client-id";
+    process.env.PLAID_SECRET = "test-plaid-secret";
+    process.env.PLAID_ACCESS_TOKENS = "test-plaid-token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { POST } = await loadRoute();
+    const { IssuerClient } = await import("@stellarcred/issuer");
+    const issueSpy = vi.spyOn(IssuerClient.prototype, "issue");
+
+    const res = await POST(
+      postRequest({
+        preview: true,
+        credential_types: ["age", "kyc", "funds"],
+        holder: HOLDER,
+        issuerId: ISSUER_ID,
+        attributes: { date_of_birth: "1995-06-15", balance: "25000" },
+        claimParams: { threshold_years: "21" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.preview).toBe(true);
+    expect(body.credentials).toHaveLength(3);
+    expect(body.credentials[0]).toMatchObject({ type: "age", claim: "age ≥ 21", signed: false });
+    expect(body.credentials[0]).toHaveProperty("publicInputs.commitment");
+    expect(body.credentials[0]).not.toHaveProperty("sig");
+    expect(body.credentials[0]).not.toHaveProperty("issuerPubX");
+    expect(body.credentials[0]).not.toHaveProperty("value");
+    expect(issueSpy).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects an unknown credential type", async () => {
     delete process.env.ISSUER_PRIVATE_KEY;
     const { POST } = await loadRoute();
@@ -336,9 +369,7 @@ describe("idempotency", () => {
       attributes: { date_of_birth: "1995-06-15" },
     };
 
-    const first = await POST(
-      postRequest(body, { "Idempotency-Key": key }),
-    );
+    const first = await POST(postRequest(body, { "Idempotency-Key": key }));
     expect(first.status).toBe(200);
     await expect(first.json()).resolves.toMatchObject({
       credentials: [expect.objectContaining({ type: "age" })],
@@ -347,20 +378,11 @@ describe("idempotency", () => {
 
     const serializedRecord = JSON.stringify(idempotencyGet(key));
     expect(serializedRecord).toContain('"kind":"completed"');
-    for (const prohibited of [
-      "1995-06-15",
-      "credentials",
-      "value",
-      "salt",
-      "commitment",
-      "sig",
-    ]) {
+    for (const prohibited of ["1995-06-15", "credentials", "value", "salt", "commitment", "sig"]) {
       expect(serializedRecord).not.toContain(prohibited);
     }
 
-    const replay = await POST(
-      postRequest(body, { "Idempotency-Key": key }),
-    );
+    const replay = await POST(postRequest(body, { "Idempotency-Key": key }));
     expect(replay.status).toBe(409);
     expect(replay.headers.get("X-Idempotent")).toBe("true");
     expect(replay.headers.get("X-Idempotency-Replay")).toBe("redacted");
@@ -390,9 +412,7 @@ describe("idempotency", () => {
       attributes: { date_of_birth: "1995-06-15" },
     };
 
-    const first = await POST(
-      postRequest(body, { "Idempotency-Key": key }),
-    );
+    const first = await POST(postRequest(body, { "Idempotency-Key": key }));
     expect(first.status).toBe(202);
     const firstBody = await first.json();
     expect(firstBody).toMatchObject({
@@ -406,9 +426,7 @@ describe("idempotency", () => {
     expect(serializedRecord).not.toContain("date_of_birth");
     expect(serializedRecord).not.toContain("1995-06-15");
 
-    const replay = await POST(
-      postRequest(body, { "Idempotency-Key": key }),
-    );
+    const replay = await POST(postRequest(body, { "Idempotency-Key": key }));
     expect(replay.status).toBe(202);
     expect(replay.headers.get("X-Idempotent")).toBe("true");
     await expect(replay.json()).resolves.toEqual(firstBody);
@@ -427,12 +445,10 @@ describe("idempotency", () => {
     const firstIssue = new Promise<never>((_resolve, reject) => {
       rejectFirstIssue = reject;
     });
-    const issueSpy = vi
-      .spyOn(IssuerClient.prototype, "issue")
-      .mockImplementationOnce(async () => {
-        signalFirstIssueStarted();
-        return firstIssue;
-      });
+    const issueSpy = vi.spyOn(IssuerClient.prototype, "issue").mockImplementationOnce(async () => {
+      signalFirstIssueStarted();
+      return firstIssue;
+    });
     const body = {
       credential_types: ["age"],
       holder: HOLDER,
@@ -449,11 +465,7 @@ describe("idempotency", () => {
     rejectFirstIssue(new Error("leader failed"));
 
     const responses = await Promise.all([leader, duplicateOne, duplicateTwo]);
-    expect(responses.map((response) => response.status).sort()).toEqual([
-      200,
-      409,
-      500,
-    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409, 500]);
     expect(issueSpy).toHaveBeenCalledTimes(2);
   });
 });
@@ -541,9 +553,7 @@ describe("issuance audit log (hash-chained, PII-free)", () => {
     // same fresh audit-log module instance route.ts just imported.
     const { auditLogEntries, auditLogVerify, auditLogSize } = await import("@/lib/audit-log");
 
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
     expect(res.status).toBe(200);
     const { credentials } = await res.json();
     expect(credentials).toHaveLength(1);
@@ -575,9 +585,7 @@ describe("issuance audit log (hash-chained, PII-free)", () => {
     const { auditLogEntries, auditLogVerify, readAuditLogFile, verifyAuditChain } =
       await import("@/lib/audit-log");
 
-    const res1 = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res1 = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
     expect(res1.status).toBe(200);
     const res2 = await POST(
       postRequest({
@@ -615,9 +623,7 @@ describe("issuer-key mismatch", () => {
     vi.mocked(fetchIssuerPubkey).mockResolvedValue(new Uint8Array(64).fill(0xff));
 
     const { POST } = await loadRoute();
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
 
     expect(res.status).toBe(403);
     const body = await res.json();
@@ -641,9 +647,7 @@ describe("issuer-key mismatch", () => {
     vi.mocked(fetchIssuerPubkey).mockResolvedValue(matchingPubkeyBytes);
 
     const { POST } = await loadRoute();
-    const res = await POST(
-      postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }),
-    );
+    const res = await POST(postRequest({ type: "kyc", holder: HOLDER, issuerId: ISSUER_ID }));
 
     expect(res.status).toBe(200);
   });

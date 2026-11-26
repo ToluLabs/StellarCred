@@ -30,13 +30,17 @@ import {
   getClaimRecord,
   buildVerifyUrl,
   checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
   verifyPreset,
   ConfigError,
   InvalidAddressError,
+  InvalidClaimTypeError,
   RpcError,
   TimeoutError,
   StellarCred,
   withRetry,
+  resetConfig,
   __resetBoundaryWarningForTesting,
 } from "./index";
 import { hasClaim as sharedHasClaim } from "./claims";
@@ -99,18 +103,16 @@ describe("hasClaim â€” address validation", () => {
   });
 
   it("throws InvalidAddressError for an invalid address when throwOnError is enabled", async () => {
-    await expect(
-      hasClaim("invalid-address", "kyc", { throwOnError: true }),
-    ).rejects.toBeInstanceOf(InvalidAddressError);
+    await expect(hasClaim("invalid-address", "kyc", { throwOnError: true })).rejects.toBeInstanceOf(
+      InvalidAddressError,
+    );
 
     expect(isVerified).not.toHaveBeenCalled();
     expect(checkClaim).not.toHaveBeenCalled();
   });
 
   it("does not make an RPC call for an invalid threshold claim", async () => {
-    await expect(
-      hasClaim("invalid-address", "age", { minThreshold: 21 }),
-    ).resolves.toBe(false);
+    await expect(hasClaim("invalid-address", "age", { minThreshold: 21 })).resolves.toBe(false);
 
     expect(isVerified).not.toHaveBeenCalled();
     expect(checkClaim).not.toHaveBeenCalled();
@@ -215,6 +217,8 @@ describe("read request timeout", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    resetConfig();
+    configure({ requestTimeoutMs: 10_000, retries: 0 });
   });
 
   it("returns false when is_verified never settles", async () => {
@@ -288,9 +292,9 @@ describe("getClaims â€” address validation", () => {
   });
 
   it("throws InvalidAddressError when getClaims receives an invalid address and throwOnError is enabled", async () => {
-    await expect(
-      getClaims("invalid-address", { throwOnError: true }),
-    ).rejects.toBeInstanceOf(InvalidAddressError);
+    await expect(getClaims("invalid-address", { throwOnError: true })).rejects.toBeInstanceOf(
+      InvalidAddressError,
+    );
 
     expect(isVerified).not.toHaveBeenCalled();
     expect(checkClaim).not.toHaveBeenCalled();
@@ -333,6 +337,7 @@ describe("SDK withRetry with exponential backoff", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    configure({ requestTimeoutMs: 10_000, retries: 0 });
   });
 
   it("should return immediately if operation succeeds", async () => {
@@ -345,20 +350,23 @@ describe("SDK withRetry with exponential backoff", () => {
 
   it("should fail fast if error is non-retryable", async () => {
     const operation = vi.fn().mockRejectedValue(new Error("invalid argument provided"));
-    
+
     await expect(withRetry(operation)).rejects.toThrow("invalid argument provided");
     expect(operation).toHaveBeenCalledTimes(1);
   });
 
   it("should retry on transient errors and eventually succeed", async () => {
-    const operation = vi.fn()
+    const operation = vi
+      .fn()
       .mockRejectedValueOnce(new Error("network error"))
       .mockRejectedValueOnce(new Error("timeout"))
       .mockResolvedValueOnce("success");
 
     let error: any;
-    const promise = withRetry(operation).catch(e => { error = e; });
-    
+    const promise = withRetry(operation).catch((e) => {
+      error = e;
+    });
+
     // First attempt fails, wait for delay (100ms)
     await vi.advanceTimersByTimeAsync(100);
     // Second attempt fails, wait for delay (200ms)
@@ -373,8 +381,10 @@ describe("SDK withRetry with exponential backoff", () => {
     const operation = vi.fn().mockRejectedValue(new Error("network error"));
 
     let error: any;
-    const promise = withRetry(operation).catch(e => { error = e; });
-    
+    const promise = withRetry(operation).catch((e) => {
+      error = e;
+    });
+
     // Attempt 1 fails -> wait 100
     await vi.advanceTimersByTimeAsync(100);
     // Attempt 2 fails -> wait 200
@@ -486,8 +496,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     configure({ registryId: "C_SERVER_REGISTRY" });
 
     // No boundary warning should fire â€” we're in Node, not a browser.
-    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+      ([msg]) =>
+        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
     );
     expect(boundaryWarnings).toHaveLength(0);
   });
@@ -500,9 +511,7 @@ describe("warnOnClientServerBoundaryViolation", () => {
 
     configure({ registryId: "C_LEAKED_REGISTRY" });
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[StellarCred]"),
-    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("[StellarCred]"));
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining("server-only environment variables"),
     );
@@ -515,9 +524,7 @@ describe("warnOnClientServerBoundaryViolation", () => {
     // Simulate the integrator mistake: using the server-only var value in configure().
     configure({ registryId: process.env["PROOF_REGISTRY_ID"] });
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[StellarCred]"),
-    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("[StellarCred]"));
   });
 
   it("does NOT warn in a browser context when no suspicious env indicators are present", () => {
@@ -529,8 +536,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     // Use a fresh value not in process.env.
     configure({ registryId: "C_FRESH_PUBLIC_REGISTRY_ID_NOT_IN_ENV" });
 
-    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+      ([msg]) =>
+        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
     );
     expect(boundaryWarnings).toHaveLength(0);
   });
@@ -543,8 +551,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     configure({ registryId: "C_LEAKED" });
     configure({ registryId: "C_LEAKED" });
 
-    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-      typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+    const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+      ([msg]) =>
+        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
     );
     expect(boundaryWarnings).toHaveLength(1);
   });
@@ -559,8 +568,9 @@ describe("warnOnClientServerBoundaryViolation", () => {
     try {
       configure({ registryId: "C_LEAKED_PROD" });
 
-      const boundaryWarnings = consoleWarnSpy.mock.calls.filter(([msg]) =>
-        typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
+      const boundaryWarnings = consoleWarnSpy.mock.calls.filter(
+        ([msg]) =>
+          typeof msg === "string" && msg.includes("[StellarCred]") && msg.includes("server-only"),
       );
       expect(boundaryWarnings).toHaveLength(0);
     } finally {
@@ -697,6 +707,141 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
       threshold: 21,
       vkVersion: 2,
     });
+  });
+
+  it("evaluates 'unsupported' when claim type is not a valid ClaimType (#1007)", async () => {
+    const res = await checkClaimStatus(WALLET, "unsupported_claim_type");
+    expect(res.valid).toBe(false);
+    expect(res.status).toBe("unsupported");
+    expect(res.error).toContain("unsupported");
+    expect(getRecord).not.toHaveBeenCalled();
+  });
+
+  it("throws InvalidClaimTypeError for unsupported claim when throwOnError is true (#1007)", async () => {
+    await expect(
+      checkClaimStatus(WALLET, "unsupported_claim_type", { throwOnError: true }),
+    ).rejects.toThrow(InvalidClaimTypeError);
+  });
+
+  it("evaluates 'unavailable' when RPC throws without conflating with not_verified (#1007)", async () => {
+    getRecord.mockRejectedValue(new Error("RPC timeout or network connection reset"));
+    const res = await checkClaimStatus(WALLET, "kyc");
+    expect(res.valid).toBe(false);
+    expect(res.status).toBe("unavailable");
+    expect(res.record).toBeNull();
+    expect(res.error).toContain("RPC timeout or network connection reset");
+  });
+
+  it("evaluates 'unavailable' when ProofRegistry client is not configured (#1007)", async () => {
+    configure({ registryId: "" });
+    const res = await checkClaimStatus(WALLET, "kyc");
+    expect(res.valid).toBe(false);
+    expect(res.status).toBe("unavailable");
+    expect(res.error).toContain("missing registryId");
+  });
+
+  it("throws RpcError when RPC throws and throwOnError is true (#1007)", async () => {
+    getRecord.mockRejectedValue(new Error("Network connection dropped"));
+    await expect(checkClaimStatus(WALLET, "kyc", { throwOnError: true })).rejects.toThrow(RpcError);
+  });
+
+  it("getClaimOutcome and checkClaimOutcome alias checkClaimStatus (#1007)", async () => {
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: 1_700_000_000n,
+        expiry: 2_000_000_000n,
+        revoked: false,
+        issuer: "G_TRUSTED_ISSUER",
+        threshold: undefined,
+        vk_version: 1,
+      },
+    });
+    const outcome1 = await getClaimOutcome(WALLET, "kyc");
+    expect(outcome1.status).toBe("verified");
+    expect(outcome1.valid).toBe(true);
+
+    const outcome2 = await checkClaimOutcome(WALLET, "kyc");
+    expect(outcome2.status).toBe("verified");
+  });
+});
+
+describe("proof expiry versus contract storage TTL agreement (#1006)", () => {
+  beforeEach(() => {
+    isVerified.mockReset();
+    checkClaim.mockReset();
+    getRecord.mockReset();
+    configure({ registryId: "C_TEST_REGISTRY" });
+  });
+
+  it("agrees with contract on active valid claim (now < expiry, TTL > 0)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    isVerified.mockResolvedValue({
+      result: [true, BigInt(now - 3600), BigInt(now + 86400)],
+    });
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: BigInt(now - 3600),
+        expiry: BigInt(now + 86400),
+        revoked: false,
+        issuer: "G_ISSUER_A",
+        threshold: null,
+        vk_version: 1,
+      },
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(true);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(true);
+    expect(status.status).toBe("verified");
+    expect(status.record?.verifiedAt).toBe(now - 3600);
+    expect(status.record?.expiry).toBe(now + 86400);
+  });
+
+  it("agrees with contract on active expired claim (now >= expiry, TTL > 0)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    isVerified.mockResolvedValue({
+      result: [false, BigInt(now - 86400 * 10), BigInt(now - 3600)],
+    });
+    getRecord.mockResolvedValue({
+      result: {
+        verified_at: BigInt(now - 86400 * 10),
+        expiry: BigInt(now - 3600),
+        revoked: false,
+        issuer: "G_ISSUER_A",
+        threshold: null,
+        vk_version: 1,
+      },
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(false);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(false);
+    expect(status.status).toBe("expired");
+    expect(status.record).not.toBeNull();
+    expect(status.record?.expiry).toBe(now - 3600);
+    expect(status.error).toContain("expired at");
+  });
+
+  it("agrees with contract on archived / lapsed storage entry (TTL == 0)", async () => {
+    isVerified.mockResolvedValue({
+      result: [false, 0n, 0n],
+    });
+    getRecord.mockResolvedValue({
+      result: null,
+    });
+
+    const has = await hasClaim(WALLET, "kyc");
+    expect(has).toBe(false);
+
+    const status = await checkClaimStatus(WALLET, "kyc");
+    expect(status.valid).toBe(false);
+    expect(status.status).toBe("not_verified");
+    expect(status.record).toBeNull();
+    expect(status.error).toContain("no on-chain proof");
   });
 });
 describe("buildVerifyUrl expiry + single-use", () => {

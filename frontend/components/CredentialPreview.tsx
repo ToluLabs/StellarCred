@@ -69,12 +69,7 @@ function PreviewRow({
   );
 }
 
-export function CredentialPreview({
-  data,
-  onConfirm,
-  onBack,
-  busy,
-}: CredentialPreviewProps) {
+export function CredentialPreview({ data, onConfirm, onBack, busy }: CredentialPreviewProps) {
   const displayValue = formatAttributeDisplay(
     data.type,
     data.attributeValue ?? "",
@@ -88,9 +83,7 @@ export function CredentialPreview({
         <span className="eyebrow" style={{ marginBottom: "0.4rem", display: "block" }}>
           Confirm before signing
         </span>
-        <h2 style={{ fontSize: "1.35rem", margin: 0 }}>
-          Review the attestation
-        </h2>
+        <h2 style={{ fontSize: "1.35rem", margin: 0 }}>Review the attestation</h2>
         <p
           style={{
             fontSize: "0.8125rem",
@@ -99,8 +92,7 @@ export function CredentialPreview({
             lineHeight: 1.55,
           }}
         >
-          Once you sign, the commitment is irrevocable. Check every field
-          before proceeding.
+          Once you sign, the commitment is irrevocable. Check every field before proceeding.
         </p>
       </div>
 
@@ -145,20 +137,21 @@ export function CredentialPreview({
       >
         <IconKey size={16} style={{ color: "var(--faint)", flexShrink: 0, marginTop: 1 }} />
         <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--muted)", lineHeight: 1.55 }}>
-          {data.attributeLabel
-            ? <>
-                This <strong style={{ color: "var(--text)" }}>{data.attributeLabel.toLowerCase()}</strong> is
-                hashed into a Poseidon2 commitment. The issuance service stores
-                only that commitment in its audit log, not the raw attribute.
-                The signed credential retains proof material on the holder&apos;s
-                device so they can later prove this claim.
-              </>
-            : <>
-                A fresh random secret is hashed into a Poseidon2 commitment.
-                The issuance service stores only that commitment in its audit
-                log; the signed credential retains the proof material needed to
-                prove the binary claim.
-              </>}
+          {data.attributeLabel ? (
+            <>
+              This{" "}
+              <strong style={{ color: "var(--text)" }}>{data.attributeLabel.toLowerCase()}</strong>{" "}
+              is hashed into a Poseidon2 commitment. The issuance service stores only that
+              commitment in its audit log, not the raw attribute. The signed credential retains
+              proof material on the holder&apos;s device so they can later prove this claim.
+            </>
+          ) : (
+            <>
+              A fresh random secret is hashed into a Poseidon2 commitment. The issuance service
+              stores only that commitment in its audit log; the signed credential retains the proof
+              material needed to prove the binary claim.
+            </>
+          )}
         </p>
       </div>
 
@@ -175,11 +168,14 @@ export function CredentialPreview({
           marginBottom: "1.5rem",
         }}
       >
-        <IconAlertTriangle size={16} style={{ color: "var(--warn)", flexShrink: 0, marginTop: 1 }} />
+        <IconAlertTriangle
+          size={16}
+          style={{ color: "var(--warn)", flexShrink: 0, marginTop: 1 }}
+        />
         <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--muted)", lineHeight: 1.55 }}>
-          Signing is <strong style={{ color: "var(--text)" }}>irrevocable</strong>.
-          A wrong threshold or expiry can only be fixed by revoking and
-          re-issuing the credential. Use the Back button to correct any field.
+          Signing is <strong style={{ color: "var(--text)" }}>irrevocable</strong>. A wrong
+          threshold or expiry can only be fixed by revoking and re-issuing the credential. Use the
+          Back button to correct any field.
         </p>
       </div>
 

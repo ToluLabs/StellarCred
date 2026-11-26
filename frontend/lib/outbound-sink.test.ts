@@ -1,9 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import {
-  OutboundSink,
-  redactOutboundEvent,
-  resetOutboundSinkForTests,
-} from "./outbound-sink";
+import { OutboundSink, redactOutboundEvent, resetOutboundSinkForTests } from "./outbound-sink";
 
 describe("outbound sink", () => {
   beforeEach(() => {
@@ -16,12 +12,14 @@ describe("outbound sink", () => {
     const telemetry = redactOutboundEvent({
       kind: "telemetry",
       payload: {
-        runs: [{
-          deviceClass: "mid",
-          timeToFirstProofMs: 10,
-          wallet: "GPII-MUST-NOT-LEAK",
-          stages: [{ stage: "prove", durationMs: 9, secret: "drop" }],
-        }],
+        runs: [
+          {
+            deviceClass: "mid",
+            timeToFirstProofMs: 10,
+            wallet: "GPII-MUST-NOT-LEAK",
+            stages: [{ stage: "prove", durationMs: 9, secret: "drop" }],
+          },
+        ],
       },
     });
     expect(JSON.stringify(telemetry)).not.toContain("GPII-MUST-NOT-LEAK");
@@ -29,11 +27,13 @@ describe("outbound sink", () => {
     expect(telemetry).toEqual({
       kind: "telemetry",
       payload: {
-        runs: [{
-          deviceClass: "mid",
-          timeToFirstProofMs: 10,
-          stages: [{ stage: "prove", durationMs: 9 }],
-        }],
+        runs: [
+          {
+            deviceClass: "mid",
+            timeToFirstProofMs: 10,
+            stages: [{ stage: "prove", durationMs: 9 }],
+          },
+        ],
       },
     });
 
@@ -48,9 +48,10 @@ describe("outbound sink", () => {
     const sink = new OutboundSink(1);
     let release!: () => void;
     const delivery = vi.fn(
-      () => new Promise<void>((resolve) => {
-        release = resolve;
-      }),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
     );
     expect(sink.enqueue({ kind: "error", payload: { status: 500 } }, delivery)).toBe(true);
     expect(sink.enqueue({ kind: "error", payload: { status: 500 } }, delivery)).toBe(false);

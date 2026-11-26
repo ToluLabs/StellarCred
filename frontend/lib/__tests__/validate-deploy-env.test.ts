@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  validateDeployEnv,
-  DEPRECATED_TYPO_VARS,
-} from "../../scripts/validate-deploy-env.mjs";
+import { validateDeployEnv, DEPRECATED_TYPO_VARS } from "../../scripts/validate-deploy-env.mjs";
 
 describe("validateDeployEnv", () => {
   it("rejects deprecated NEXT_PUBLIC_CONTRACT_ID typo with descriptive guidance", () => {
@@ -13,9 +10,7 @@ describe("validateDeployEnv", () => {
 
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("NEXT_PUBLIC_CONTRACT_ID"),
-      ]),
+      expect.arrayContaining([expect.stringContaining("NEXT_PUBLIC_CONTRACT_ID")]),
     );
     expect(result.errors[0]).toContain(DEPRECATED_TYPO_VARS.NEXT_PUBLIC_CONTRACT_ID);
   });
@@ -41,9 +36,7 @@ describe("validateDeployEnv", () => {
 
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("Invalid NEXT_PUBLIC_STELLAR_NETWORK"),
-      ]),
+      expect.arrayContaining([expect.stringContaining("Invalid NEXT_PUBLIC_STELLAR_NETWORK")]),
     );
   });
 
@@ -51,14 +44,13 @@ describe("validateDeployEnv", () => {
     const result = validateDeployEnv({
       NEXT_PUBLIC_STELLAR_NETWORK: "testnet",
       NEXT_PUBLIC_PROOF_REGISTRY_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      NEXT_PUBLIC_ISSUER_PRIVATE_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      NEXT_PUBLIC_ISSUER_PRIVATE_KEY:
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     });
 
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("Critical Security Leak"),
-      ]),
+      expect.arrayContaining([expect.stringContaining("Critical Security Leak")]),
     );
   });
 
@@ -66,9 +58,7 @@ describe("validateDeployEnv", () => {
     const missing = validateDeployEnv({}, { target: "contracts" });
     expect(missing.valid).toBe(false);
     expect(missing.errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("ISSUER_PRIVATE_KEY"),
-      ]),
+      expect.arrayContaining([expect.stringContaining("ISSUER_PRIVATE_KEY")]),
     );
 
     const invalidHex = validateDeployEnv(
@@ -91,7 +81,8 @@ describe("validateDeployEnv", () => {
       NEXT_PUBLIC_STELLAR_NETWORK: "testnet",
       NEXT_PUBLIC_PROOF_REGISTRY_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       NEXT_PUBLIC_ISSUER_REGISTRY_ID: "CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-      NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID:
+        "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
       NEXT_PUBLIC_GATED_POOL_ID: "CDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
     });
 

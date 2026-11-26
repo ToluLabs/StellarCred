@@ -6,7 +6,6 @@ export const logger = pino({
   level: LOG_LEVEL,
 });
 
-
 // Correlates one issuance across /api/issue -> /api/witness -> /api/plaid-balance
 // (and any Persona relay round-trip) so every log line for a single request can
 // be grepped by requestId.
@@ -20,9 +19,7 @@ export const logger = pino({
  * valid 1-64 character alphanumeric / dash / underscore string.  Otherwise
  * generates a random 32-char hex id.
  */
-export function resolveRequestId(
-  inbound: string | null | undefined,
-): string {
+export function resolveRequestId(inbound: string | null | undefined): string {
   const REQUEST_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
   if (inbound && REQUEST_ID_RE.test(inbound)) return inbound;
   const bytes = new Uint8Array(16);
@@ -69,7 +66,13 @@ export const SAFE_FIELDS = [
   "itemIndex",
   "itemCount",
   "accountCount",
+  "cspViolation",
   "sentryEventId",
+  // OpenTelemetry / W3C trace context (see lib/trace-context.ts).
+  "traceId",
+  "spanId",
+  "traceFlags",
+  "traceparent",
 ];
 
 export function stripSensitiveFields<T extends Record<string, unknown>>(obj: T): Partial<T> {

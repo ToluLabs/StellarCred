@@ -4,8 +4,111 @@
  */
 
 import { NETWORK_PRESETS, checkNetworkConsistency, parseNetwork } from "./networks";
+import type { BreakerPolicy, RetryPolicy } from "./http-client";
 
 export type DbDriver = "sqlite" | "postgres";
+
+/**
+ * Postgres connection-pool tuning (#1069).
+ *
+ * The defaults are deliberately conservative: a bounded pool keeps peak
+ * ingestion from opening one connection per in-flight query, and a non-zero
+ * `connectionTimeoutMs` turns "the pool is exhausted" into a fast, visible
+ * error instead of an ingest loop that blocks forever on `pool.connect()`.
+ */
+export interface DbPoolConfig {
+  /** Maximum pooled connections held open at once. */
+  max: number;
+  /** Connections kept warm even while idle. */
+  min: number;
+  /** Milliseconds an unused connection is kept before being closed. */
+  idleTimeoutMs: number;
+  /** Milliseconds to wait for a pooled connection before failing. 0 = wait forever. */
+  connectionTimeoutMs: number;
+  /** Recycle a connection after this many uses. 0 = never. */
+  maxUses: number;
+  /** Send parameterised statements as named prepared statements. */
+  preparedStatements: boolean;
+}
+
+export const DEFAULT_DB_POOL: DbPoolConfig = {
+  max: 10,
+  min: 2,
+  idleTimeoutMs: 10_000,
+  connectionTimeoutMs: 5_000,
+  maxUses: 7_500,
+  preparedStatements: true,
+};
+
+function intEnv(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const raw = env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(
+      `${name} must be an integer between ${min} and ${max}, got: "${raw}"`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Read the Postgres pool settings from the environment.
+ *
+ * Exported separately from `loadConfig` so the validation rules can be tested
+ * without a full set of indexer env vars (notably the required
+ * `PROOF_REGISTRY_CONTRACT_ID`).
+ */
+export function resolveDbPoolConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): DbPoolConfig {
+  const max = intEnv(env, "DB_POOL_MAX", DEFAULT_DB_POOL.max, 1, 1_000);
+  const min = intEnv(env, "DB_POOL_MIN", DEFAULT_DB_POOL.min, 0, 1_000);
+  if (min > max) {
+    throw new Error(
+      `DB_POOL_MIN (${min}) must not exceed DB_POOL_MAX (${max})`,
+    );
+  }
+
+  return {
+    max,
+    min,
+    idleTimeoutMs: intEnv(
+      env,
+      "DB_POOL_IDLE_TIMEOUT_MS",
+      DEFAULT_DB_POOL.idleTimeoutMs,
+      0,
+      3_600_000,
+    ),
+    connectionTimeoutMs: intEnv(
+      env,
+      "DB_POOL_CONNECTION_TIMEOUT_MS",
+      DEFAULT_DB_POOL.connectionTimeoutMs,
+      0,
+      600_000,
+    ),
+    maxUses: intEnv(env, "DB_POOL_MAX_USES", DEFAULT_DB_POOL.maxUses, 0, 1_000_000),
+    preparedStatements:
+      (env["DB_POOL_PREPARED_STATEMENTS"] ?? "true").toLowerCase() !== "false",
+  };
+}
+
+/**
+ * Tuning for the shared outbound HTTP client (#761): retries with exponential
+ * backoff for 429/5xx and a circuit breaker for a provider that stays down.
+ */
+export interface HttpClientConfig {
+  retry: RetryPolicy;
+  breaker: BreakerPolicy;
+  /** Per-attempt request timeout in ms. */
+  timeoutMs: number;
+}
 
 export interface Config {
   stellarNetwork: string;
@@ -17,6 +120,23 @@ export interface Config {
   dbDriver: DbDriver;
   sqlitePath: string;
   databaseUrl: string | undefined;
+  /**
+   * Postgres pool tuning; ignored by the SQLite driver. Optional so test
+   * fixtures can omit it (the Postgres adapter falls back to
+   * {@link DEFAULT_DB_POOL}).
+   */
+  dbPool?: DbPoolConfig;
+  /**
+   * Optional comma-separated PostgreSQL read-replica connection URLs
+   * (DATABASE_READ_REPLICA_URLS). When set with DB_DRIVER=postgres, read-only
+   * queries are round-robin routed to replicas while writes stay on primary.
+   */
+  databaseReadReplicaUrls?: string[];
+  /**
+   * Fall back to primary if all read replicas fail a read query.
+   * Defaults to true (DATABASE_REPLICA_FALLBACK_TO_PRIMARY).
+   */
+  databaseReplicaFallbackToPrimary?: boolean;
   pollIntervalMs: number;
   startLedger: number;
   port: number;
@@ -26,6 +146,16 @@ export interface Config {
    * Default: 6 (≈30 seconds at ~5 s/ledger on Stellar).
    */
   finalityLag: number;
+  /**
+   * Maximum ledger lag before indexer status becomes "error" and readiness is false (#1001).
+   * Default: 120 ledgers (≈10 minutes).
+   */
+  maxLedgerLag?: number;
+  /**
+   * Ledger lag threshold at or above which indexer status becomes "degraded" (#1001).
+   * Default: 30 ledgers (≈2.5 minutes).
+   */
+  warnLedgerLag?: number;
   corsOrigins: string[];
   rateLimitWindowMs: number;
   rateLimitMax: number;
@@ -48,6 +178,12 @@ export interface Config {
   integrityCheckIntervalMs: number;
   /** Claims compared against contract state per check. */
   integrityCheckSampleSize: number;
+  /**
+   * Outbound HTTP retry/circuit-breaker limits (#761). Optional like apiKey
+   * so test fixtures built as full Config literals keep compiling; absent
+   * means the client's documented defaults.
+   */
+  httpClient?: HttpClientConfig;
 }
 
 function required(name: string): string {
@@ -58,6 +194,24 @@ function required(name: string): string {
 
 function optional(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
+}
+
+/** Env int, clamped into [min, max]; a non-numeric value degrades to `def`. */
+function clampedInt(name: string, def: number, min: number, max: number): number {
+  const raw = Number(optional(name, String(def)));
+  if (!Number.isFinite(raw)) return def;
+  return Math.min(max, Math.max(min, Math.floor(raw)));
+}
+
+export function parseDatabaseReadReplicaUrls(raw?: string): string[] {
+  if (!raw || raw.trim() === "") {
+    return [];
+  }
+
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 export function parseCorsOrigins(raw?: string): string[] {
@@ -137,6 +291,12 @@ export function loadConfig(): Config {
   const integrityCheckEnabled =
     optional("INTEGRITY_CHECK_ENABLED", "true").toLowerCase() !== "false";
 
+  // ── Outbound HTTP retry / circuit breaker (#761) ─────────────────────────
+  // Clamped like the integrity settings: a typo must degrade to a sane limit,
+  // not switch retry protection off or wedge the breaker permanently.
+  const rawJitter = Number(optional("HTTP_RETRY_JITTER_RATIO", "0.2"));
+  const jitterRatio = Number.isFinite(rawJitter) ? Math.min(1, Math.max(0, rawJitter)) : 0.2;
+
   return {
     stellarNetwork: network,
     horizonUrl: envHorizon ?? preset.horizonUrl,
@@ -146,11 +306,33 @@ export function loadConfig(): Config {
     dbDriver: driver,
     sqlitePath: optional("SQLITE_PATH", "./data/indexer.db"),
     databaseUrl: process.env["DATABASE_URL"],
+    dbPool: resolveDbPoolConfig(),
+    databaseReadReplicaUrls: parseDatabaseReadReplicaUrls(
+      process.env["DATABASE_READ_REPLICA_URLS"],
+    ),
+    databaseReplicaFallbackToPrimary:
+      optional("DATABASE_REPLICA_FALLBACK_TO_PRIMARY", "true").toLowerCase() !== "false",
     pollIntervalMs:
       Number(optional("POLL_INTERVAL_SECONDS", "6")) * 1000,
     startLedger: Number(optional("START_LEDGER", "0")),
     port: Number(optional("PORT", "3001")),
     finalityLag: Number(optional("FINALITY_LAG", "6")),
+    maxLedgerLag: clampedInt(
+      process.env["INDEXER_MAX_LEDGER_LAG"] !== undefined
+        ? "INDEXER_MAX_LEDGER_LAG"
+        : "MAX_LEDGER_LAG",
+      120,
+      1,
+      1_000_000
+    ),
+    warnLedgerLag: clampedInt(
+      process.env["INDEXER_WARN_LEDGER_LAG"] !== undefined
+        ? "INDEXER_WARN_LEDGER_LAG"
+        : "WARN_LEDGER_LAG",
+      30,
+      1,
+      1_000_000
+    ),
     corsOrigins: parseCorsOrigins(rawCors),
     rateLimitWindowMs: (Number.isFinite(windowSec) && windowSec > 0 ? windowSec : 60) * 1000,
     rateLimitMax: Number.isFinite(maxReq) && maxReq > 0 ? maxReq : 120,
@@ -165,5 +347,18 @@ export function loadConfig(): Config {
       Number.isFinite(integritySampleSize) && integritySampleSize > 0
         ? Math.floor(integritySampleSize)
         : 25,
+    httpClient: {
+      retry: {
+        maxAttempts: clampedInt("HTTP_MAX_ATTEMPTS", 3, 1, 10),
+        baseDelayMs: clampedInt("HTTP_RETRY_BASE_MS", 500, 0, 10_000),
+        maxDelayMs: clampedInt("HTTP_RETRY_MAX_DELAY_MS", 8_000, 0, 120_000),
+        jitterRatio,
+      },
+      breaker: {
+        failureThreshold: clampedInt("HTTP_BREAKER_FAILURE_THRESHOLD", 5, 1, 100),
+        resetTimeoutMs: clampedInt("HTTP_BREAKER_RESET_MS", 30_000, 1_000, 3_600_000),
+      },
+      timeoutMs: clampedInt("HTTP_REQUEST_TIMEOUT_MS", 10_000, 100, 300_000),
+    },
   };
 }

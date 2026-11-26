@@ -1,11 +1,11 @@
 /**
  * Central enumeration of all StellarCred localStorage keys.
- * 
+ *
  * Every feature that persists state should be listed here so that:
  * 1. The data wipe flow (#558) can remove everything without orphaning keys
  * 2. New storage features are caught at review time
  * 3. Cross-tab sync and migration logic can discover all keys in one place
- * 
+ *
  * Rules:
  * - Add new storage keys here when adding features that persist to localStorage
  * - Update the JSDoc when keys are deprecated or change semantics
@@ -25,9 +25,9 @@ export const STORAGE_KEYS = {
   /** Local proof cache for performance optimization (lib/proof-cache.ts) */
   PROOF_CACHE: "stellarcred:proof-cache",
 
-  /** 
+  /**
    * Proof timeline events per credential (lib/useProofTimeline.ts).
-   * Actual keys are `proofTimeline:{commitment}` — use {@link getTimelineKeys} 
+   * Actual keys are `proofTimeline:{commitment}` — use {@link getTimelineKeys}
    * to enumerate them dynamically.
    */
   PROOF_TIMELINE_PREFIX: "proofTimeline:",
@@ -43,6 +43,13 @@ export const STORAGE_KEYS = {
 
   /** User theme preference: "light" | "dark" (lib/theme.ts) */
   THEME: "theme",
+
+  /** Dismissal flag for the onboarding re-entry nudge banner on /holder (#899) */
+  ONBOARDING_NUDGE_DISMISSED: "stellarcred:onboarding-nudge-dismissed",
+
+  /** Known connected accounts and active account switcher (lib/account-portfolio.ts) */
+  PORTFOLIO_ACCOUNTS: "stellarcred:portfolio-accounts",
+  ACTIVE_PORTFOLIO_ACCOUNT: "stellarcred:active-portfolio-account",
 } as const;
 
 /**
@@ -78,6 +85,9 @@ export function getAllStorageKeys(): string[] {
     STORAGE_KEYS.ONBOARDING_LEGACY,
     STORAGE_KEYS.WALLET_ID,
     STORAGE_KEYS.THEME,
+    STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED,
+    STORAGE_KEYS.PORTFOLIO_ACCOUNTS,
+    STORAGE_KEYS.ACTIVE_PORTFOLIO_ACCOUNT,
     ...getTimelineKeys(),
   ];
 }

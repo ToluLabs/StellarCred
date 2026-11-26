@@ -54,6 +54,7 @@ import { Horizon } from "@stellar/stellar-sdk";
 import type { Config } from "./config";
 import type { Db } from "./db";
 import { createWebhookDispatcher } from "./webhooks";
+import { injectTraceHeaders, logger, withSpan } from "./logging";
 
 // ── Retry configuration ───────────────────────────────────────────────────
 
@@ -122,7 +123,7 @@ function freshHealth(): IngesterHealth {
  *
  * The full shape has many optional fields; we only care about these.
  */
-interface HorizonContractEvent {
+export interface HorizonContractEvent {
   /** Paging token / cursor. */
   paging_token: string;
   /** The contract that emitted this event. */
@@ -150,7 +151,7 @@ interface HorizonContractEvent {
   source_account?: string;
 }
 
-interface HorizonEventsPage {
+export interface HorizonEventsPage {
   _embedded: { records: HorizonContractEvent[] };
 }
 
@@ -285,9 +286,12 @@ async function fetchEventsWithRetry(
       const delayMs = retryAfter
         ? Math.min(Number(retryAfter) * 1000, MAX_RETRY_DELAY_MS)
         : Math.min(BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1), MAX_RETRY_DELAY_MS);
-      console.warn(
-        `[indexer] Horizon ${res.status} on attempt ${attempt}/${attempt + retries}, retrying in ${delayMs}ms…`,
-      );
+      logger.warn("horizon_retry", {
+        status: res.status,
+        attempt,
+        remaining_attempts: retries,
+        delay_ms: delayMs,
+      });
       await sleep(delayMs);
       return fetchEventsWithRetry(url, signal, retries - 1, attempt + 1);
     }
@@ -303,9 +307,12 @@ async function fetchEventsWithRetry(
       BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1),
       MAX_RETRY_DELAY_MS,
     );
-    console.warn(
-      `[indexer] transient fetch error on attempt ${attempt}/${attempt + retries}: ${(err as Error).message}; retrying in ${delayMs}ms…`,
-    );
+    logger.warn("horizon_retry", {
+      attempt,
+      remaining_attempts: retries,
+      delay_ms: delayMs,
+      error: err,
+    });
     await sleep(delayMs);
     return fetchEventsWithRetry(url, signal, retries - 1, attempt + 1);
   }
@@ -313,7 +320,7 @@ async function fetchEventsWithRetry(
 
 // ── Event parser ───────────────────────────────────────────────────────────
 
-type ParsedEvent =
+export type ParsedEvent =
   | {
       kind: "verified";
       holder: string;
@@ -352,7 +359,7 @@ type ParsedEvent =
  *   topics = ("proof_reg", "self_rev", credential_type)
  *   value  = EventHolderRevoked { holder, revoked_at }
  */
-function parseEvent(
+export function parseEvent(
   ev: HorizonContractEvent,
   contractId: string
 ): ParsedEvent {
@@ -535,7 +542,7 @@ export function createIngester(config: Config, db: Db): Ingester {
       await webhookDispatcher.enqueueExpiredClaims();
       await webhookDispatcher.dispatchPending();
     } catch (error) {
-      console.error("[indexer] webhook delivery cycle failed:", error);
+      logger.error("webhook_delivery_cycle_failed", { error });
     }
   }
 
@@ -565,6 +572,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     try {
       const res = await fetch(config.horizonUrl, {
         signal: AbortSignal.timeout(5_000),
+        headers: injectTraceHeaders(),
       });
       if (res.ok) {
         const root = (await res.json()) as HorizonRoot;
@@ -591,7 +599,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     url.searchParams.set("order", "desc");
     url.searchParams.set("limit", "1");
 
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { headers: injectTraceHeaders() });
     if (!res.ok) {
       throw new Error(`Horizon /ledgers responded ${res.status}`);
     }
@@ -621,7 +629,7 @@ export function createIngester(config: Config, db: Db): Ingester {
       url.searchParams.set("cursor", cursor);
     }
 
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { headers: injectTraceHeaders() });
     if (!res.ok) {
       if (res.status === 404) return [];
       throw new Error(`Horizon responded ${res.status}: ${await res.text()}`);
@@ -687,6 +695,12 @@ export function createIngester(config: Config, db: Db): Ingester {
   let lastTickEnd = Date.now();
 
   async function tick(): Promise<number> {
+    return withSpan("indexer.tick", () => tickOnce(), {
+      "contract.id": config.proofRegistryContractId,
+    });
+  }
+
+  async function tickOnce(): Promise<number> {
     const tickStart = Date.now();
     await processWebhookQueue();
 
@@ -697,7 +711,7 @@ export function createIngester(config: Config, db: Db): Ingester {
     try {
       headLedger = await getLedgerHead();
     } catch (err) {
-      console.warn("[indexer] Could not fetch ledger head:", (err as Error).message);
+      logger.warn("ledger_head_fetch_failed", { error: err });
       fetchErrorsTotal++;
       return 0;
     }
@@ -709,10 +723,10 @@ export function createIngester(config: Config, db: Db): Ingester {
     //    case where (head - lag) has fallen at or below our cursor, which
     //    would otherwise make reorg detection unreachable.
     if (lastLedger > headLedger) {
-      console.warn(
-        `[indexer] REORG DETECTED: cursor=${lastLedger} > head=${headLedger}. ` +
-          `Rolling back to head and re-scanning.`
-      );
+      logger.warn("reorg_detected", {
+        cursor_ledger: lastLedger,
+        head_ledger: headLedger,
+      });
       fetchErrorsTotal++;
       return reconcile(headLedger);
     }
@@ -746,7 +760,7 @@ export function createIngester(config: Config, db: Db): Ingester {
       health.lastErrorTime = Date.now();
       health.consecutiveErrors++;
       health.fetchFailures++;
-      console.warn("[indexer] Horizon fetch error:", (err as Error).message);
+      logger.warn("horizon_fetch_failed", { error: err });
       fetchErrorsTotal++;
       return 0;
     }
@@ -808,7 +822,7 @@ export function createIngester(config: Config, db: Db): Ingester {
    * from reorgPoint up to the current finality ceiling.
    */
   async function reconcile(reorgPoint: number): Promise<number> {
-    console.log(`[indexer] Reconciling from ledger ${reorgPoint}`);
+    logger.info("indexer_reconcile", { from_ledger: reorgPoint });
 
     // Roll back: delete all claims with ledger_sequence beyond the reorg point.
     await db.deleteClaimsAfter(reorgPoint);
@@ -828,10 +842,10 @@ export function createIngester(config: Config, db: Db): Ingester {
         inFlightTick = tick();
         const n = await inFlightTick;
         if (n > 0) {
-          console.log(`[indexer] processed ${n} event(s)`);
+          logger.info("indexer_tick_processed", { events: n });
         }
       } catch (err) {
-        console.error("[indexer] tick error:", err);
+        logger.error("indexer_tick_failed", { error: err });
       }
       scheduleNext();
     }, config.pollIntervalMs);
@@ -843,10 +857,11 @@ export function createIngester(config: Config, db: Db): Ingester {
     start() {
       if (running) return;
       running = true;
-      console.log(
-        `[indexer] starting — contract=${config.proofRegistryContractId} ` +
-          `network=${config.stellarNetwork} poll=${config.pollIntervalMs}ms`
-      );
+      logger.info("indexer_started", {
+        contract_id: config.proofRegistryContractId,
+        network: config.stellarNetwork,
+        poll_interval_ms: config.pollIntervalMs,
+      });
       scheduleNext();
     },
     stop() {
@@ -863,10 +878,10 @@ export function createIngester(config: Config, db: Db): Ingester {
         timer = null;
       }
       if (inFlightTick !== null) {
-        console.log("[indexer] Waiting for in-flight tick…");
+        logger.info("indexer_waiting_for_inflight_tick");
         await inFlightTick;
       }
-      console.log("[indexer] Ingester stopped.");
+      logger.info("indexer_ingester_stopped");
     },
     getHealth() {
       return { ...health };

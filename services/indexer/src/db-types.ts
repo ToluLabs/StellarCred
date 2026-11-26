@@ -75,9 +75,25 @@ export interface WebhookDelivery extends ClaimLifecycleEvent {
 
 // ── Adapter interface ──────────────────────────────────────────────────────
 
+export interface SchemaCompatibility {
+  compatible: boolean;
+  currentVersion: number;
+  expectedVersion: number;
+  message?: string;
+}
+
 export interface Db {
   /** Run schema migrations (idempotent). */
   migrate(): void | Promise<void>;
+
+  /** Return the current schema version persisted in the database (#1002). */
+  getSchemaVersion(): Promise<number>;
+
+  /** Verifies that the database schema is compatible with this indexer version (#1002). */
+  checkCompatibility(): Promise<SchemaCompatibility>;
+
+  /** Create an online backup of the database (supported on SQLite, #1002). */
+  backup?(destinationPath: string): Promise<void>;
 
   /** Return the last fully ingested ledger sequence (0 if none). */
   getLastLedger(): number | Promise<number>;
@@ -99,7 +115,14 @@ export interface Db {
 
   /** Upsert a verified claim event. */
   upsertClaim(row: ClaimRow): void | Promise<void>;
-  /** Upsert a verified claim event (the `id` cursor is assigned by the db). */
+  /**
+   * Upsert a verified claim event (the `id` cursor is assigned by the db).
+   *
+   * Idempotency (#1004): natural key is (wallet, credential_type). An incoming
+   * event only replaces the stored row when its ledger_sequence is STRICTLY
+   * greater, so duplicate deliveries are no-ops and out-of-order older events
+   * never overwrite newer state.
+   */
   upsertClaim(row: ClaimInput): void | Promise<void>;
 
   /** Mark a claim as revoked. */
@@ -146,8 +169,8 @@ export interface Db {
    */
   issuerStats(issuer: string): IssuerStatsRow | Promise<IssuerStatsRow>;
 
-  /** Return all claims issued by a specific issuer. */
-  claimsByIssuer(issuer: string): ClaimRow[] | Promise<ClaimRow[]>;
+  /** Return claims issued by a specific issuer, newest first. Pass `limit` to cap the page size. */
+  claimsByIssuer(issuer: string, limit?: number): ClaimRow[] | Promise<ClaimRow[]>;
 
   /** Return lifecycle event history and verifications for a credential commitment. */
   credentialEvents(
@@ -377,4 +400,18 @@ export function toClaimRow(row: Record<string, unknown>): ClaimRow {
 /** Coerce a possibly-string aggregate (`COUNT(*)`, `MAX(...)`) to a number. */
 export function toCount(value: SqlParam | undefined): number {
   return value == null ? 0 : Number(value);
+}
+
+/** Metadata written by a future seeding PR (issue #907). */
+export interface IssuerMetadataInput {
+  address: string;
+  name: string | null;
+  url: string | null;
+  logo: string | null;
+  ledger_sequence: number;
+}
+
+/** An issuer_metadata row as read back from the database. */
+export interface IssuerMetadataRow extends IssuerMetadataInput {
+  updated_at: string;
 }
