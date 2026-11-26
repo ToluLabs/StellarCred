@@ -16,7 +16,7 @@ describe("telemetry-privacy-regression (#975)", () => {
     sig: [1, 2, 3, 4, 5],
     issuerPrivateKey: "ed25519_secret_key_bytes",
     passphrase: "super_secret_user_passphrase",
-    credentialJson: '{"private":"everything"}',
+    credentialJson: '{\"private\":\"everything\"}',
   };
 
   it("stripSensitiveFields strips all sensitive credential data and keeps only SAFE_FIELDS", () => {
@@ -66,9 +66,6 @@ describe("telemetry-privacy-regression (#975)", () => {
         memoryGB: 8,
         warm: false,
         deviceClass: "desktop",
-        cores: 8,
-        memoryGB: 16,
-        warm: false,
       },
     ];
 
