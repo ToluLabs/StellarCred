@@ -49,6 +49,67 @@ export function resolveVersion(): string {
 
 export type HealthStatus = "ok" | "degraded" | "error";
 
+/** Maximum ledger lag allowed for the Horizon/ingester readiness check. */
+export const MAX_READY_LEDGER_LAG = 5;
+
+/** Result of probing the database cursor, including round-trip latency. */
+export interface DatabaseCheckResult {
+  status: "ok" | "error";
+  latencyMs: number;
+  lastLedger: number | null;
+  error: string | null;
+}
+
+/** Result of evaluating ingester sync state against the error/lag thresholds. */
+export interface HorizonCheckResult {
+  status: HealthStatus;
+  synced: boolean;
+  headLedger: number;
+  lastSuccessLedger: number;
+  lag: number;
+  maxLag: number;
+  consecutiveErrors: number;
+  lastError: string | null;
+}
+
+/** Payload of the liveness probe (`/livez`): the process is serving requests. */
+export interface LivenessResponse {
+  status: "ok";
+  alive: true;
+  service: string;
+  version: string;
+  uptimeSeconds: number;
+  timestamp: string;
+}
+
+/** Payload of the readiness probe (`/readyz`): database and Horizon state. */
+export interface ReadinessResponse {
+  status: HealthStatus;
+  ready: boolean;
+  service: string;
+  version: string;
+  uptimeSeconds: number;
+  timestamp: string;
+  checks: {
+    database: DatabaseCheckResult;
+    horizon: HorizonCheckResult;
+  };
+}
+
+/** Payload of the deep health probe (`/healthz`): readiness plus telemetry. */
+export interface HealthzResponse extends ReadinessResponse {
+  alive: true;
+  lastLedger: number | null;
+  headLedger: number;
+  lag: number;
+  lastSuccessLedger: number;
+  lastError: string | null;
+  lastErrorTime: number | null;
+  consecutiveErrors: number;
+  fetchAttempts: number;
+  fetchFailures: number;
+}
+
 export interface HealthResponse {
   /** Coarse overall status — see the module doc comment. */
   status: HealthStatus;
