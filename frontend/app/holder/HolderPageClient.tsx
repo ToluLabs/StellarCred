@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
+import { IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
@@ -40,6 +40,7 @@ import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel
 import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
 import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
+import { ExpiryBanner } from "@/components/holder/ExpiryBanner";
 import {
   getPortfolioAccounts,
   recordConnectedAccount,
@@ -248,41 +249,10 @@ function HolderInner() {
             <>
               {/* ── Expiry warning banner ── */}
               {(expiringSoon.length > 0 || expired.length > 0) && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="card"
-                  style={{
-                    padding: "0.85rem 1.15rem",
-                    backgroundColor:
-                      expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
-                    borderColor:
-                      expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "1rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
-                    <IconAlertTriangle
-                      size={18}
-                      style={{
-                        color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                      {expired.length > 0
-                        ? `${expired.length} proof${expired.length > 1 ? "s have" : " has"} expired and ${expired.length > 1 ? "need" : "needs"} re-proving.`
-                        : `${expiringSoon.length} proof${expiringSoon.length > 1 ? "s are" : " is"} expiring within 7 days.`}
-                    </span>
-                  </div>
-                  <span className="mono faint" style={{ fontSize: "0.75rem" }}>
-                    One-click re-prove available below
-                  </span>
-                </div>
+                <ExpiryBanner
+                  expiredCount={expired.length}
+                  expiringSoonCount={expiringSoon.length}
+                />
               )}
 
               {/* ── Empty state ── */}
@@ -349,9 +319,6 @@ function HolderInner() {
                   )}
                   {/* Select up to MAX_BATCH_SIZE credentials of distinct types
                       and prove them in one transaction. */}
-
-                  {/* Select up to MAX_BATCH_SIZE credentials of distinct types and
-                  prove them in one transaction. */}
                   {canBatch && (
                     <BatchBar
                       selectedCount={selectedCreds.length}
