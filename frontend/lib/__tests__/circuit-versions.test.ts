@@ -252,6 +252,23 @@ describe("parseCredential circuit-version guard", () => {
 // --------------------------------------------------------------------------- //
 
 describe("computeWitness circuit-version gate", () => {
+  it("accepts the binary witness response without hex decoding", async () => {
+    const bytes = new Uint8Array([0, 255, 16, 171]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { get: () => "application/octet-stream" },
+        arrayBuffer: async () => bytes.buffer,
+      }),
+    );
+
+    await expect(computeWitness("kyc", { type: "kyc", circuitVersion: "1.0.0" })).resolves.toEqual(
+      bytes,
+    );
+    vi.unstubAllGlobals();
+  });
+
   it("does not ask the server for a witness it cannot use", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

@@ -382,8 +382,9 @@ export async function POST(req: NextRequest) {
     const noir = new Noir(circuit as never);
     const inputs = await buildInputs(type, credential, currentDate);
     const { witness } = await noir.execute(inputs);
-    // Serialize Uint8Array —→ hex string for JSON transport.
-    const hex = Buffer.from(witness).toString("hex");
+    // Binary transport avoids a 2x hex JSON string and an additional browser
+    // decoding copy. The byte array remains private in the app response.
+    const bytes = Uint8Array.from(witness);
     logger.info(
       stripSensitiveFields({
         event: "witness_response_sent",
@@ -392,7 +393,15 @@ export async function POST(req: NextRequest) {
         requestId,
       }),
     );
-    return sendResponse(NextResponse.json({ witness: hex }));
+    const response = new NextResponse(bytes, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Cache-Control": "no-store",
+        "Content-Length": String(bytes.byteLength),
+      },
+    });
+    return sendResponse(response);
   } catch (e) {
     const err = e instanceof Error ? e : new Error("Witness generation failed");
     // #803 — a large credential payload can exhaust the prover's WASM memory

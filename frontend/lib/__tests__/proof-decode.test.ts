@@ -1,6 +1,21 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { computeWitness, decodeWitnessHex } from "../proof";
 import { CircuitVersionMismatchError } from "../circuit-versions";
+import { describe, it, expect, vi } from "vitest";
+import { decodeWitnessHex, backendOptions } from "../proof";
+
+describe("mobile WASM memory policy", () => {
+  it("caps mobile and resource-constrained realms to a one-thread backend", () => {
+    vi.stubGlobal("navigator", {
+      hardwareConcurrency: 8,
+      deviceMemory: 4,
+      userAgent: "Mozilla/5.0 (Linux; Android 14)",
+    });
+    vi.stubGlobal("crossOriginIsolated", true);
+    expect(backendOptions()).toEqual({ threads: 1 });
+    vi.unstubAllGlobals();
+  });
+});
 
 // #803 — decodeWitnessHex replaced a per-byte `hex.slice(...)` + `parseInt`
 // loop that allocated two temporary strings per byte. For large witnesses

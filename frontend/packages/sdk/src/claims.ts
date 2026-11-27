@@ -2051,7 +2051,7 @@ export interface ClaimReadResult {
 /** Backwards-friendly alias for the detailed read result type. */
 export type ClaimReadOutcomeResult = ClaimReadResult;
 
-async function performClaimRead(
+async function _performClaimRead(
   wallet: string,
   claimType: string,
   opts?: ClaimOptions,
@@ -2278,22 +2278,6 @@ async function performClaimRead(
   }
 }
 
-export async function readClaim(
-  wallet: string,
-  claimType: string,
-  opts?: ClaimOptions,
-): Promise<ClaimReadResult> {
-  return performClaimRead(wallet, claimType, opts);
-}
-
-// Aliases for the detailed read API (issue #979).
-export const readClaimOutcome = readClaim;
-export const getClaimReadOutcome = readClaim;
-export const getClaimReadResult = readClaim;
-export const readClaimResult = readClaim;
-export const getClaimStatusOutcome = readClaim;
-export const readClaimStatus = readClaim;
-
 /**
  * Reads a wallet's credential claim and returns a granular, typed outcome
  * ("verified", "not_verified", "expired", "unsupported", "unavailable",
@@ -2309,6 +2293,13 @@ export async function getClaimOutcome(
 }
 
 export const checkClaimOutcome = getClaimOutcome;
+export const readClaim = getClaimOutcome;
+export const readClaimOutcome = getClaimOutcome;
+export const getClaimReadOutcome = getClaimOutcome;
+export const getClaimReadResult = getClaimOutcome;
+export const readClaimResult = getClaimOutcome;
+export const getClaimStatusOutcome = getClaimOutcome;
+export const readClaimStatus = getClaimOutcome;
 
 /**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.

@@ -22,7 +22,7 @@ PNPM_MAJOR      := 9
         build-contracts test-contracts lint-contracts \
         ci-cache-setup ci-cache-save build-contracts-fast \
         compile-circuits check-circuits \
-        build-frontend test-frontend lint-frontend test-sdk test-example test-a11y \
+        build-frontend test-frontend lint-frontend test-sdk docs-sdk test-example test-a11y \
         build-indexer test-indexer lint-indexer run-indexer \
         backfill backfill-resume
 
@@ -273,6 +273,10 @@ lint-frontend:
 ## test-sdk: Run SDK standalone integration tests
 test-sdk: check-sdk-layout
 	cd frontend/packages/sdk && pnpm typecheck && pnpm test:integration
+
+## docs-sdk: Generate the SDK TypeDoc API reference
+docs-sdk:
+	cd frontend/packages/sdk && pnpm docs:api
 
 ## test-example: Run integration example typechecks and test suites
 test-example:

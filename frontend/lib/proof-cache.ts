@@ -248,6 +248,17 @@ export function removeCredentialProofs(
   persistProofCache(next, storage);
 }
 
+/** Clear all cached proofs entirely. */
+export function clearAllProofCache(storage?: ProofCacheStorage | null): void {
+  const store = storage ?? defaultStorage();
+  if (!store) return;
+  try {
+    store.removeItem(CACHE_KEY);
+  } catch {
+    // storage unavailable
+  }
+}
+
 // --------------------------------------------------------------------------- //
 // VK version resolution
 // --------------------------------------------------------------------------- //

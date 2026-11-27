@@ -218,6 +218,7 @@ describe("read request timeout", () => {
   afterEach(() => {
     vi.useRealTimers();
     resetConfig();
+    configure({ requestTimeoutMs: 10_000, retries: 0 });
   });
 
   it("returns false when is_verified never settles", async () => {
@@ -336,6 +337,7 @@ describe("SDK withRetry with exponential backoff", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    configure({ requestTimeoutMs: 10_000, retries: 0 });
   });
 
   it("should return immediately if operation succeeds", async () => {
