@@ -107,6 +107,5 @@ export function useIssuerStatus(
 
     void run();
     // address and credsKey are the real triggers; refs handle the rest.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, credsKey]);
 }

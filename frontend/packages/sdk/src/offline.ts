@@ -1009,9 +1009,9 @@ export function createBbJsProofVerifier(
       );
     }
 
-    let module: BbJsModuleLike;
+    let bbModule: BbJsModuleLike;
     try {
-      module = await loadBb();
+      bbModule = await loadBb();
     } catch (err) {
       throw new OfflineVerificationError(
         "proof_backend_missing",
@@ -1019,7 +1019,7 @@ export function createBbJsProofVerifier(
       );
     }
 
-    const backend = new module.UltraHonkBackend(input.circuitBytecode, { threads: 1 });
+    const backend = new bbModule.UltraHonkBackend(input.circuitBytecode, { threads: 1 });
     try {
       const publicInputs = splitFields(input.publicInputs).map((field) => `0x${toHex(field)}`);
       return await backend.verifyProof({ proof: input.proof, publicInputs }, verifyOptions);

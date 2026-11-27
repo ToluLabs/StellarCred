@@ -92,7 +92,7 @@ async function getRedisClient(): Promise<IoRedis | null> {
   _redisConnecting = true;
   try {
     // Dynamic import — fails gracefully if ioredis is not installed.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { default: Redis } = await (Function('return import("ioredis")')() as Promise<{
       default: { new (url: string, opts?: Record<string, unknown>): IoRedis };
     }>);
