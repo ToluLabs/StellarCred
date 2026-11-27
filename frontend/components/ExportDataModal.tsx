@@ -151,11 +151,11 @@ export function ExportDataModal({
 }: ExportDataModalProps) {
   const [activeTab, setActiveTab] = useState<"request" | "monitor">("request");
   const [selectedScope, setSelectedScope] = useState<ExportScope>("full");
-  const [_selectedFormat, _setSelectedFormat] = useState<ExportFormat>("json");
+  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
   const [jobs, setJobs] = useState<ExportJob[]>([]);
   const [allowedScopes, setAllowedScopes] = useState<string[]>([]);
-  const [_submitting, _setSubmitting] = useState(false);
-  const [_loadingJobs, _setLoadingJobs] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [timeRemainingMap, setTimeRemainingMap] = useState<Record<string, number>>({});
@@ -258,7 +258,7 @@ export function ExportDataModal({
     }
   }
 
-  function _formatCountdown(seconds: number): string {
+  function formatCountdown(seconds: number): string {
     if (seconds <= 0) return "Expired";
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
