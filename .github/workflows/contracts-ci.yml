@@ -93,7 +93,7 @@ jobs:
       - name: Upload contract client diff
         # Uploads concise diff artifact if client drift check fails (#999).
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-client-diff
           path: client-freshness.diff
