@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">CachedVerifierKey</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#circuit_bytecode">circuit_bytecode</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#credential_type">credential_type</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#deprecated">deprecated</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#vk">vk</a><span class="tsd-signature-symbol">:</span> <a href="../types/index.OfflineBytes.html" class="tsd-signature-type tsd-kind-type-alias">OfflineBytes</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#vk_version">vk_version</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/offline.ts#L146">src/offline.ts:146</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L146">src/offline.ts:146</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -42,35 +42,35 @@ verifier, which derives the VK from the artifact; ignored when a custom
 <code>proofVerifier</code> is supplied.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/offline.ts#L159">src/offline.ts:159</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L159">src/offline.ts:159</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="credential_type"><span>credential_<wbr/>type</span><a href="#credential_type" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">credential_type</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Credential type, e.g. <code>&quot;kyc&quot;</code>, <code>&quot;age&quot;</code>, <code>&quot;aggregate&quot;</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/offline.ts#L148">src/offline.ts:148</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L148">src/offline.ts:148</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="deprecated"><code class="tsd-tag">Optional</code><span>deprecated</span><a href="#deprecated" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">deprecated</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True once the key has been deprecated on-chain.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/offline.ts#L161">src/offline.ts:161</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L161">src/offline.ts:161</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="vk"><span>vk</span><a href="#vk" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">vk</span><span class="tsd-signature-symbol">:</span> <a href="../types/index.OfflineBytes.html" class="tsd-signature-type tsd-kind-type-alias">OfflineBytes</a></div>
 <div class="tsd-comment tsd-typography"><p>Serialized UltraHonk verification-key blob (hex).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/offline.ts#L152">src/offline.ts:152</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L152">src/offline.ts:152</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="vk_version"><span>vk_<wbr/>version</span><a href="#vk_version" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">vk_version</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>On-chain VK counter (CredentialVerifier <code>set_vk</code>). Must be &gt;= 1.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/offline.ts#L150">src/offline.ts:150</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L150">src/offline.ts:150</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">BuildVerifyUrlOptions</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#baseurl">baseUrl</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claim">claim</a><span class="tsd-signature-symbol">?:</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claimparams">claimParams</a><span class="tsd-signature-symbol">?:</span> <a href="index.BuildVerifyUrlClaimParams.html" class="tsd-signature-type tsd-kind-interface">BuildVerifyUrlClaimParams</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claims">claims</a><span class="tsd-signature-symbol">?:</span> (<br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><br/>    )<span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#expiresinminutes">expiresInMinutes</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#returnurl">returnUrl</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#singleuse">singleUse</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#state">state</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trustedissuers">trustedIssuers</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#wallet">wallet</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L39">src/buildVerifyUrl.ts:39</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L39">src/buildVerifyUrl.ts:39</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -45,28 +45,28 @@
 Defaults to configured SDK <code>baseUrl</code> or <code>&quot;https://stellarcred.xyz&quot;</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L72">src/buildVerifyUrl.ts:72</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L72">src/buildVerifyUrl.ts:72</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claim"><code class="tsd-tag">Optional</code><span>claim</span><a href="#claim" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claim</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">&quot;kyc&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span></div>
 <div class="tsd-comment tsd-typography"><p>Single credential claim type to request (e.g. <code>&quot;kyc&quot;</code>, <code>&quot;age&quot;</code>, <code>&quot;funds&quot;</code>, <code>&quot;income&quot;</code>, <code>&quot;jurisdiction&quot;</code>, <code>&quot;accreditation&quot;</code>).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L51">src/buildVerifyUrl.ts:51</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L51">src/buildVerifyUrl.ts:51</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claimparams"><code class="tsd-tag">Optional</code><span>claim<wbr/>Params</span><a href="#claimparams" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claimParams</span><span class="tsd-signature-symbol">?:</span> <a href="index.BuildVerifyUrlClaimParams.html" class="tsd-signature-type tsd-kind-interface">BuildVerifyUrlClaimParams</a></div>
 <div class="tsd-comment tsd-typography"><p>Claim-specific parameters such as threshold amount, age in years, or restricted country codes.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L95">src/buildVerifyUrl.ts:95</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L95">src/buildVerifyUrl.ts:95</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claims"><code class="tsd-tag">Optional</code><span>claims</span><a href="#claims" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claims</span><span class="tsd-signature-symbol">?:</span> (<span class="tsd-signature-type">&quot;kyc&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span>)<span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Multiple credential claim types to request in a single verification session.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L56">src/buildVerifyUrl.ts:56</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L56">src/buildVerifyUrl.ts:56</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="expiresinminutes"><code class="tsd-tag">Optional</code><span>expires<wbr/>In<wbr/>Minutes</span><a href="#expiresinminutes" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">expiresInMinutes</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
@@ -75,7 +75,7 @@ When specified, an <code>exp</code> Unix timestamp (seconds) parameter is append
 Must be a positive finite number.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L79">src/buildVerifyUrl.ts:79</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L79">src/buildVerifyUrl.ts:79</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="returnurl"><span>return<wbr/>Url</span><a href="#returnurl" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">returnUrl</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
@@ -84,7 +84,7 @@ StellarCred will append verification query parameters (<code>sc_verified</code>,
 <p>Required. Can be an absolute URL (e.g. <code>&quot;https://yourapp.xyz/callback&quot;</code>) or relative path (e.g. <code>&quot;/deposit&quot;</code>).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L46">src/buildVerifyUrl.ts:46</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L46">src/buildVerifyUrl.ts:46</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="singleuse"><code class="tsd-tag">Optional</code><span>single<wbr/>Use</span><a href="#singleuse" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">singleUse</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
@@ -92,28 +92,28 @@ StellarCred will append verification query parameters (<code>sc_verified</code>,
 The verify page consumes it on first use and prevents subsequent visits in the same session.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L85">src/buildVerifyUrl.ts:85</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L85">src/buildVerifyUrl.ts:85</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="state"><code class="tsd-tag">Optional</code><span>state</span><a href="#state" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">state</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Optional correlation or CSRF state token that will be passed back in the return URL (<code>sc_state</code>).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L66">src/buildVerifyUrl.ts:66</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L66">src/buildVerifyUrl.ts:66</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="trustedissuers"><code class="tsd-tag">Optional</code><span>trusted<wbr/>Issuers</span><a href="#trustedissuers" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">trustedIssuers</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Restricts accepted credential proofs to specific registered issuer public addresses.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L90">src/buildVerifyUrl.ts:90</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L90">src/buildVerifyUrl.ts:90</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="wallet"><code class="tsd-tag">Optional</code><span>wallet</span><a href="#wallet" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">wallet</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Optional holder wallet address (<code>G...</code>) to pre-fill or bind to the verification request.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/bf9370e99f6060285dad882e1997926ac3b9cfee/frontend/packages/sdk/src/buildVerifyUrl.ts#L61">src/buildVerifyUrl.ts:61</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/buildVerifyUrl.ts#L61">src/buildVerifyUrl.ts:61</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
