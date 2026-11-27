@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">CreatePresentationTokenParams</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#audience">audience</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claims">claims</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> (<br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><br/>    )<span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#expiresat">expiresAt</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#issuedat">issuedAt</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#nonce">nonce</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#sign">sign</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>        <span class="tsd-kind-parameter">message</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">string</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">Uint8Array</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">ArrayBufferLike</span><span class="tsd-signature-symbol">&gt;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">Uint8Array</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">ArrayBufferLike</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#wallet">wallet</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L125">src/presentation-token.ts:125</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L125">src/presentation-token.ts:125</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -41,14 +41,14 @@
 <div class="tsd-comment tsd-typography"><p>Optional audience bound into the signed payload.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L138">src/presentation-token.ts:138</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L138">src/presentation-token.ts:138</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claims"><span>claims</span><a href="#claims" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claims</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> (<br/>    <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><br/>)<span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Claim types to present. At least one; duplicates are rejected.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L129">src/presentation-token.ts:129</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L129">src/presentation-token.ts:129</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="expiresat"><code class="tsd-tag">Optional</code><span>expires<wbr/>At</span><a href="#expiresat" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">expiresAt</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
@@ -56,14 +56,14 @@
 short-lived by default.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L136">src/presentation-token.ts:136</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L136">src/presentation-token.ts:136</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="issuedat"><code class="tsd-tag">Optional</code><span>issued<wbr/>At</span><a href="#issuedat" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">issuedAt</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Unix timestamp in seconds. Defaults to the current time.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L131">src/presentation-token.ts:131</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L131">src/presentation-token.ts:131</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="nonce"><code class="tsd-tag">Optional</code><span>nonce</span><a href="#nonce" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">nonce</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
@@ -72,7 +72,7 @@ if the runtime exposes <code>crypto.randomUUID</code>; otherwise the token simpl
 no nonce and relies on <code>expiresAt</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L144">src/presentation-token.ts:144</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L144">src/presentation-token.ts:144</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="sign"><span>sign</span><a href="#sign" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">sign</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">message</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">string</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">Uint8Array</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">ArrayBufferLike</span><span class="tsd-signature-symbol">&gt;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">Uint8Array</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">ArrayBufferLike</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></div>
@@ -81,14 +81,14 @@ signature as hex, base64, base64url, or raw bytes. Wallet integrations
 typically call <code>signMessage(message)</code> and return its <code>signedMessage</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L150">src/presentation-token.ts:150</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L150">src/presentation-token.ts:150</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="wallet"><span>wallet</span><a href="#wallet" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">wallet</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Stellar public key (G...) that will sign the token.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/presentation-token.ts#L127">src/presentation-token.ts:127</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/presentation-token.ts#L127">src/presentation-token.ts:127</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

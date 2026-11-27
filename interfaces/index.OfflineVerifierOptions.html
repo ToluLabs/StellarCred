@@ -13,7 +13,7 @@
 <h1>Interface OfflineVerifierOptions</h1></div>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">OfflineVerifierOptions</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#allowdeprecatedkeys">allowDeprecatedKeys</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#maxclockskewseconds">maxClockSkewSeconds</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#maxsnapshotageseconds">maxSnapshotAgeSeconds</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#minthresholds">minThresholds</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Readonly</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#networkpassphrase">networkPassphrase</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#now">now</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span> <span class="tsd-signature-symbol">|</span> (<span class="tsd-signature-symbol">()</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">number</span>)<span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#proofverifier">proofVerifier</a><span class="tsd-signature-symbol">?:</span> <a href="../types/index.OfflineProofVerifier.html" class="tsd-signature-type tsd-kind-type-alias">OfflineProofVerifier</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#statesnapshot">stateSnapshot</a><span class="tsd-signature-symbol">:</span> <a href="index.OfflineStateSnapshot.html" class="tsd-signature-type tsd-kind-interface">OfflineStateSnapshot</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trustedissuers">trustedIssuers</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#verifierkeys">verifierKeys</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="index.CachedVerifierKey.html" class="tsd-signature-type tsd-kind-interface">CachedVerifierKey</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L279">src/offline.ts:279</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L279">src/offline.ts:279</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -41,14 +41,14 @@
 <div class="tsd-comment tsd-typography"><p>Allow proofs against a deprecated verifier key. Default <code>false</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L307">src/offline.ts:307</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L307">src/offline.ts:307</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="maxclockskewseconds"><code class="tsd-tag">Optional</code><span>max<wbr/>Clock<wbr/>Skew<wbr/>Seconds</span><a href="#maxclockskewseconds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">maxClockSkewSeconds</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Tolerated clock skew for future-dated snapshots. Default 300 seconds.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L300">src/offline.ts:300</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L300">src/offline.ts:300</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="maxsnapshotageseconds"><code class="tsd-tag">Optional</code><span>max<wbr/>Snapshot<wbr/>Age<wbr/>Seconds</span><a href="#maxsnapshotageseconds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">maxSnapshotAgeSeconds</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
@@ -57,14 +57,14 @@ hours. Raise it deliberately for devices that refresh on a slower cycle;
 a stale snapshot is a security failure, not a warning.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L298">src/offline.ts:298</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L298">src/offline.ts:298</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="minthresholds"><code class="tsd-tag">Optional</code><span>min<wbr/>Thresholds</span><a href="#minthresholds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">minThresholds</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Readonly</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p>Per-type minimum threshold applied when the presentation omits one.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L287">src/offline.ts:287</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L287">src/offline.ts:287</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="networkpassphrase"><code class="tsd-tag">Optional</code><span>network<wbr/>Passphrase</span><a href="#networkpassphrase" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">networkPassphrase</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
@@ -72,7 +72,7 @@ a stale snapshot is a security failure, not a warning.</p>
 carrying a different one is rejected. Off by default.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L305">src/offline.ts:305</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L305">src/offline.ts:305</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="now"><code class="tsd-tag">Optional</code><span>now</span><a href="#now" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">now</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span> <span class="tsd-signature-symbol">|</span> (<span class="tsd-signature-symbol">()</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">number</span>)</div>
@@ -80,7 +80,7 @@ carrying a different one is rejected. Off by default.</p>
 every verification, so a long-lived terminal keeps seeing the real clock.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L292">src/offline.ts:292</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L292">src/offline.ts:292</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="proofverifier"><code class="tsd-tag">Optional</code><span>proof<wbr/>Verifier</span><a href="#proofverifier" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">proofVerifier</span><span class="tsd-signature-symbol">?:</span> <a href="../types/index.OfflineProofVerifier.html" class="tsd-signature-type tsd-kind-type-alias">OfflineProofVerifier</a></div>
@@ -89,28 +89,28 @@ which requires <code>circuit_bytecode</code> on the selected verifier key and th
 optional <code>@aztec/bb.js</code> package to be installed on the device.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L313">src/offline.ts:313</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L313">src/offline.ts:313</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="statesnapshot"><span>state<wbr/>Snapshot</span><a href="#statesnapshot" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">stateSnapshot</span><span class="tsd-signature-symbol">:</span> <a href="index.OfflineStateSnapshot.html" class="tsd-signature-type tsd-kind-interface">OfflineStateSnapshot</a></div>
 <div class="tsd-comment tsd-typography"><p>The cached chain snapshot.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L283">src/offline.ts:283</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L283">src/offline.ts:283</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="trustedissuers"><code class="tsd-tag">Optional</code><span>trusted<wbr/>Issuers</span><a href="#trustedissuers" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">trustedIssuers</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>If set, presentations must name one of these issuers.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L285">src/offline.ts:285</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L285">src/offline.ts:285</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="verifierkeys"><span>verifier<wbr/>Keys</span><a href="#verifierkeys" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">verifierKeys</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="index.CachedVerifierKey.html" class="tsd-signature-type tsd-kind-interface">CachedVerifierKey</a><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>One entry per cached (credential type, VK version).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/79383b7e4a37acb50500682635fd7b0da631ca12/frontend/packages/sdk/src/offline.ts#L281">src/offline.ts:281</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/ToluLabs/StellarCred/blob/ec0b29c7da3687d36c7ad2275aa818ef42ba3e79/frontend/packages/sdk/src/offline.ts#L281">src/offline.ts:281</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
