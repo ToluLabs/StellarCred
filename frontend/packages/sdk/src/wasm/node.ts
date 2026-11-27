@@ -33,10 +33,17 @@ export {
 } from "./loader";
 
 async function nodeReadFile(pathOrUrl: string | URL): Promise<Uint8Array> {
-  const filePath =
-    pathOrUrl instanceof URL || pathOrUrl.startsWith("file://")
+  const isUrlObj =
+    pathOrUrl instanceof URL ||
+    (typeof pathOrUrl === "object" &&
+      pathOrUrl !== null &&
+      typeof (pathOrUrl as { href?: unknown }).href === "string");
+
+  const filePath = isUrlObj
+    ? fileURLToPath((pathOrUrl as { href: string }).href)
+    : typeof pathOrUrl === "string" && pathOrUrl.startsWith("file://")
       ? fileURLToPath(pathOrUrl)
-      : pathOrUrl;
+      : (pathOrUrl as string);
   const buf = await readFile(filePath);
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }

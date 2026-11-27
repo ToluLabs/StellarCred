@@ -18,7 +18,7 @@ untrusted token content or remote verification failures; inspect <code>ok</code>
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">PresentationTokenVerificationResult</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#claims">claims</a><span class="tsd-signature-symbol">:</span> (<br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><br/>    )<span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claimschecked">claimsChecked</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claimstatuses">claimStatuses</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><br/>        <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><br/>            <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">,</span><br/>            <a href="index.CredentialStatusResult.html" class="tsd-signature-type tsd-kind-interface">CredentialStatusResult</a><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claimsvalid">claimsValid</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#error">error</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#failedclaim">failedClaim</a><span class="tsd-signature-symbol">?:</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#failurereason">failureReason</a><span class="tsd-signature-symbol">?:</span> <a href="../types/index.PresentationTokenFailureReason.html" class="tsd-signature-type tsd-kind-type-alias">PresentationTokenFailureReason</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#ok">ok</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#payload">payload</a><span class="tsd-signature-symbol">?:</span> <a href="index.PresentationTokenPayload.html" class="tsd-signature-type tsd-kind-interface">PresentationTokenPayload</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#signaturevalid">signatureValid</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#wallet">wallet</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:203</li></ul></aside>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L203">src/presentation-token.ts:203</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -47,77 +47,77 @@ untrusted token content or remote verification failures; inspect <code>ok</code>
 <div class="tsd-comment tsd-typography"><p>Claims presented by the token, or <code>[]</code> when the token is malformed.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:209</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L209">src/presentation-token.ts:209</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claimschecked"><span>claims<wbr/>Checked</span><a href="#claimschecked" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claimsChecked</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True when on-chain claim verification ran.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:215</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L215">src/presentation-token.ts:215</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claimstatuses"><code class="tsd-tag">Optional</code><span>claim<wbr/>Statuses</span><a href="#claimstatuses" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claimStatuses</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><br/>    <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">,</span><br/>        <a href="index.CredentialStatusResult.html" class="tsd-signature-type tsd-kind-interface">CredentialStatusResult</a><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p>Per-claim on-chain status for claims that failed. Passing claims are omitted.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:219</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L219">src/presentation-token.ts:219</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claimsvalid"><code class="tsd-tag">Optional</code><span>claims<wbr/>Valid</span><a href="#claimsvalid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claimsValid</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True when every presented claim verified on-chain. Absent when not checked.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:217</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L217">src/presentation-token.ts:217</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="error"><code class="tsd-tag">Optional</code><span>error</span><a href="#error" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">error</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Human-readable explanation safe to log or show to the caller.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:225</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L225">src/presentation-token.ts:225</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="failedclaim"><code class="tsd-tag">Optional</code><span>failed<wbr/>Claim</span><a href="#failedclaim" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">failedClaim</span><span class="tsd-signature-symbol">?:</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span></div>
 <div class="tsd-comment tsd-typography"><p>First claim that failed verification, when applicable.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:221</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L221">src/presentation-token.ts:221</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="failurereason"><code class="tsd-tag">Optional</code><span>failure<wbr/>Reason</span><a href="#failurereason" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">failureReason</span><span class="tsd-signature-symbol">?:</span> <a href="../types/index.PresentationTokenFailureReason.html" class="tsd-signature-type tsd-kind-type-alias">PresentationTokenFailureReason</a></div>
 <div class="tsd-comment tsd-typography"><p>Machine-readable failure reason; absent when <code>ok</code> is true.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:223</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L223">src/presentation-token.ts:223</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="ok"><span>ok</span><a href="#ok" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">ok</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True only when the token is well-formed, signed, fresh, and its claims verify.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:205</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L205">src/presentation-token.ts:205</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="payload"><code class="tsd-tag">Optional</code><span>payload</span><a href="#payload" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">payload</span><span class="tsd-signature-symbol">?:</span> <a href="index.PresentationTokenPayload.html" class="tsd-signature-type tsd-kind-interface">PresentationTokenPayload</a></div>
 <div class="tsd-comment tsd-typography"><p>Decoded payload when the envelope and payload were structurally valid.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:211</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L211">src/presentation-token.ts:211</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="signaturevalid"><span>signature<wbr/>Valid</span><a href="#signaturevalid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">signatureValid</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True only when the wallet signature over the signed payload verified.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:213</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L213">src/presentation-token.ts:213</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="wallet"><span>wallet</span><a href="#wallet" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">wallet</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Holder wallet encoded in the token, or <code>&quot;&quot;</code> when the token is malformed.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:207</li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L207">src/presentation-token.ts:207</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

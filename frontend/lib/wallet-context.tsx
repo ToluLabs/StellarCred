@@ -219,8 +219,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     <WalletContext.Provider
       value={{
         address,
-        walletId,
         restoring,
+        walletId,
         connecting,
         error,
         networkMismatch,

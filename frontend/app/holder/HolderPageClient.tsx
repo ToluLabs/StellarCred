@@ -21,8 +21,8 @@ import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
 import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
-import { useCredentialTriage } from "@/lib/hooks/holder/useCredentialTriage";
-import { usePortfolioFilter } from "@/lib/hooks/holder/usePortfolioFilter";
+import { useAccountPortfolio } from "@/lib/hooks/holder/useAccountPortfolio";
+import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
 
 // ── Components ────────────────────────────────────────────────────────────────
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
@@ -101,23 +101,21 @@ function HolderInner() {
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useTransferImportParam(setImportPayload);
 
-  const portfolio = usePortfolioFilter(creds, isPreview, address);
-  const displayCreds = portfolio.displayCreds;
-  const anyModalOpen = [
-    detailCred, transferCred, importPayload, showExportModal,
-    showShortcutsModal, proofApproval.creds, confirmBulkAction,
-  ].some(Boolean);
-  const triage = useCredentialTriage({
-    creds: displayCreds,
-    address,
-    isEnabled: view.kind === "list" && !anyModalOpen,
-    onBatchError: toast.error,
-    onInspect: setDetailCred,
-    onProve: (c) => proofApproval.request({ kind: "single", cred: c }),
-    onExport: () => setShowExportModal(true),
-    onOpenHelp: () => setShowShortcutsModal(true),
-  });
-  const { unproved, expiringSoon, activeProved, expired, batch } = triage;
+  const rawCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
+  const { portfolioAccounts, activeAccountFilter, displayCreds, handleSelectPortfolioAccount } =
+    useAccountPortfolio(address, rawCreds);
+  const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
+
+  // Warm the UltraHonk backend for whatever credential types the user still
+  // needs to prove, in the background, once the wallet is actually connected
+  // (never in preview mode — there's nothing real to prove yet). Only the
+  // types actually present in `unproved` are warmed, not all seven circuits,
+  // to avoid paying wasm-init cost for types the user has no credential for.
+  const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
+  useWarmProver(unprovedTypes, Boolean(address));
+
+  // Batch selection enforces both on-chain limits (size + one per type) before
+  // anything is proved — see useBatchSelection.
   const {
     selectedCommitments,
     selectedCreds,
@@ -432,9 +430,7 @@ function HolderInner() {
 
       {detailCred && (
         <CredentialDetailModal
-          // ClaimParams is an interface, so it isn't assignable to the modal's
-          // Record<string, unknown> prop without a cast.
-          credential={detailCred as any}
+          credential={detailCred}
           onClose={() => setDetailCred(null)}
           onTransfer={(c) => {
             setDetailCred(null);

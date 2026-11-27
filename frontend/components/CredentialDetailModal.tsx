@@ -23,7 +23,7 @@ interface CredentialDetailModalProps {
     commitment: string;
     issuedAt: number;
     expiry: string;
-    claimParams?: Record<string, unknown>;
+    claimParams?: object;
   };
   onClose: () => void;
   /**

@@ -1,8 +1,4 @@
-import {
-  detectWasmRuntime,
-  isStreamingSupported,
-  isWasmSupported,
-} from "./runtime";
+import { detectWasmRuntime, isStreamingSupported, isWasmSupported } from "./runtime";
 import {
   WasmLoadError,
   type WasmInitOptions,
@@ -78,7 +74,7 @@ export function decodeBase64ToBytes(base64: string): Uint8Array {
   );
 }
 
-function toUint8Array(source: BufferSource): Uint8Array {
+function toUint8Array(source: ArrayBuffer | ArrayBufferView<ArrayBufferLike>): Uint8Array {
   if (source instanceof Uint8Array) {
     return source;
   }
@@ -88,15 +84,12 @@ function toUint8Array(source: BufferSource): Uint8Array {
   return new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
 }
 
-function isBufferSource(value: unknown): value is BufferSource {
+function isBufferSource(value: unknown): value is ArrayBuffer | ArrayBufferView<ArrayBufferLike> {
   return value instanceof ArrayBuffer || ArrayBuffer.isView(value);
 }
 
 function isResponse(value: unknown): value is Response {
-  return (
-    typeof Response !== "undefined" &&
-    value instanceof Response
-  );
+  return typeof Response !== "undefined" && value instanceof Response;
 }
 
 function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
@@ -117,6 +110,17 @@ function isHttpUrl(value: string): boolean {
 
 function isFileUrl(value: string): boolean {
   return /^file:\/\//i.test(value);
+}
+
+function isUrl(value: unknown): value is URL {
+  if (typeof value === "string") return false;
+  if (typeof URL !== "undefined" && value instanceof URL) return true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { href?: unknown }).href === "string" &&
+    typeof (value as { protocol?: unknown }).protocol === "string"
+  );
 }
 
 function isLocalPath(value: string): boolean {
@@ -165,11 +169,11 @@ async function readLocalWasmFile(
     };
 
     let filePath: string;
-    if (pathOrUrl instanceof URL) {
+    if (isUrl(pathOrUrl)) {
       const urlMod = (await import(/* @vite-ignore */ urlModuleName)) as {
-        fileURLToPath: (url: URL) => string;
+        fileURLToPath: (url: string | URL) => string;
       };
-      filePath = urlMod.fileURLToPath(pathOrUrl);
+      filePath = urlMod.fileURLToPath(pathOrUrl.href);
     } else if (isFileUrl(pathOrUrl)) {
       const urlMod = (await import(/* @vite-ignore */ urlModuleName)) as {
         fileURLToPath: (url: string) => string;
@@ -191,10 +195,7 @@ async function readLocalWasmFile(
   }
 }
 
-async function compileBytes(
-  bytes: Uint8Array,
-  runtime: WasmRuntime,
-): Promise<WebAssembly.Module> {
+async function compileBytes(bytes: Uint8Array, runtime: WasmRuntime): Promise<WebAssembly.Module> {
   if (!hasWasmMagicHeader(bytes)) {
     throw new WasmLoadError(
       "INVALID_SOURCE",
@@ -224,12 +225,7 @@ async function compileFromResponse(
   try {
     response = await responseOrPromise;
   } catch (err) {
-    throw new WasmLoadError(
-      "FETCH_FAILED",
-      "Failed to fetch WebAssembly response.",
-      runtime,
-      err,
-    );
+    throw new WasmLoadError("FETCH_FAILED", "Failed to fetch WebAssembly response.", runtime, err);
   }
 
   if (!response.ok) {
@@ -241,14 +237,10 @@ async function compileFromResponse(
   }
 
   const contentType = response.headers?.get("content-type") ?? "";
-  if (
-    isStreamingSupported() &&
-    contentType.toLowerCase().includes("application/wasm")
-  ) {
+  if (isStreamingSupported() && contentType.toLowerCase().includes("application/wasm")) {
     try {
       // Clone if available so we can fall back to arrayBuffer() if streaming fails.
-      const fallbackClone =
-        typeof response.clone === "function" ? response.clone() : null;
+      const fallbackClone = typeof response.clone === "function" ? response.clone() : null;
       try {
         return await WebAssembly.compileStreaming(response);
       } catch (streamErr) {
@@ -286,10 +278,7 @@ async function compileFromResponse(
   return compileBytes(new Uint8Array(buffer), runtime);
 }
 
-function resolveCacheKey(
-  source: WasmSource,
-  options: WasmInitOptions,
-): string | undefined {
+function resolveCacheKey(source: WasmSource, options: WasmInitOptions): string | undefined {
   if (options.cache === false) {
     return undefined;
   }
@@ -299,7 +288,7 @@ function resolveCacheKey(
   if (typeof source === "string") {
     return source;
   }
-  if (source instanceof URL) {
+  if (isUrl(source)) {
     return source.href;
   }
   return undefined;
@@ -338,15 +327,15 @@ export async function compileWasm(
     compiled = await compileBytes(toUint8Array(source), runtime);
   } else if (isResponse(source) || isPromiseLike<Response>(source)) {
     compiled = await compileFromResponse(source, runtime);
-  } else if (source instanceof URL || typeof source === "string") {
-    const str = source instanceof URL ? source.href : source;
+  } else if (isUrl(source) || typeof source === "string") {
+    const str = isUrl(source) ? source.href : source;
 
     if (isDataUrl(str)) {
       const commaIdx = str.indexOf(",");
       const bytes = decodeBase64ToBytes(str.slice(commaIdx + 1));
       compiled = await compileBytes(bytes, runtime);
     } else if (
-      (source instanceof URL && source.protocol === "file:") ||
+      (isUrl(source) && source.protocol === "file:") ||
       (!isHttpUrl(str) &&
         isLocalPath(str) &&
         (runtime === "node" || runtime === "bun" || Boolean(options.readFile)))
@@ -365,11 +354,7 @@ export async function compileWasm(
       compiled = await compileFromResponse(fetchFn(str), runtime);
     }
   } else {
-    throw new WasmLoadError(
-      "INVALID_SOURCE",
-      "Unsupported WebAssembly source type.",
-      runtime,
-    );
+    throw new WasmLoadError("INVALID_SOURCE", "Unsupported WebAssembly source type.", runtime);
   }
 
   if (cacheKey) {
@@ -383,20 +368,18 @@ export async function compileWasm(
  * Compiles and instantiates a WebAssembly module isomorphically across
  * Node.js (CJS & ESM), Bun, browsers, and edge runtimes.
  */
-export async function initWasm<
-  T extends WebAssembly.Exports = WebAssembly.Exports,
->(
+export async function initWasm<T extends WebAssembly.Exports = WebAssembly.Exports>(
   source: WasmSource,
   options: WasmInitOptions = {},
 ): Promise<WasmInstanceResult<T>> {
   const runtime = detectWasmRuntime();
-  const module = await compileWasm(source, options);
+  const wasmModule = await compileWasm(source, options);
 
   try {
-    const instance = await WebAssembly.instantiate(module, options.imports);
+    const instance = await WebAssembly.instantiate(wasmModule, options.imports);
     return {
       instance,
-      module,
+      module: wasmModule,
       exports: instance.exports as T,
       runtime,
     };

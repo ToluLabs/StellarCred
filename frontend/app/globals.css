@@ -13,25 +13,25 @@
   --card-hover: #10101a;
   --input: #090910;
 
-  /* Borders */
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.13);
+  /* Borders - Enhanced for better visibility */
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.36);
 
-  /* Text */
-  --text: #eeeef5;
-  --muted: #888899;
-  --faint: #4e4e60;
+  /* Text - WCAG AA compliant (4.5:1 minimum contrast) */
+  --text: #f5f5fa;
+  --muted: #a8a8b8;
+  --faint: #7d7d8f;
 
-  /* Accent - semantic green */
-  --accent: #3ecf8e;
-  --accent-dim: #2ba870;
-  --accent-soft: rgba(62, 207, 142, 0.1);
-  --accent-glow: rgba(62, 207, 142, 0.18);
+  /* Accent - semantic green - WCAG AA compliant */
+  --accent: #4aeaa4;
+  --accent-dim: #3ecf8e;
+  --accent-soft: rgba(74, 234, 164, 0.1);
+  --accent-glow: rgba(74, 234, 164, 0.18);
   --on-accent: #021a0c;
 
-  /* Semantic */
-  --warn: #e3b341;
-  --danger: #f0604d;
+  /* Semantic - WCAG AA compliant */
+  --warn: #fac558;
+  --danger: #ff7368;
 
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -113,7 +113,7 @@ body {
 
 ::selection {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--text);
 }
 
 a {
@@ -175,7 +175,7 @@ p {
 
 /* gradient text - applies to inline spans */
 .gradient-text {
-  background: linear-gradient(135deg, #3ecf8e 0%, #52e5a8 45%, #2bb57a 100%);
+  background: linear-gradient(135deg, #4aeaa4 0%, #5dffb8 45%, #3ecf8e 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -499,7 +499,7 @@ p {
 
 .seg-link.active {
   color: var(--accent);
-  background: rgba(62, 207, 142, 0.1);
+  background: rgba(74, 234, 164, 0.1);
 }
 
 /* ---- Card ------------------------------------------------------------------- */
@@ -547,12 +547,12 @@ p {
 }
 
 .protocol-card:hover {
-  border-color: rgba(62, 207, 142, 0.35);
+  border-color: rgba(74, 234, 164, 0.35);
   background: var(--card-hover);
   transform: translateY(-3px);
   box-shadow:
     0 12px 36px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(62, 207, 142, 0.1);
+    0 0 0 1px rgba(74, 234, 164, 0.1);
 }
 
 .protocol-card:active {
@@ -562,7 +562,7 @@ p {
 
 /* Glowing accent card */
 .card-accent {
-  border-color: rgba(62, 207, 142, 0.2);
+  border-color: rgba(74, 234, 164, 0.25);
   box-shadow: var(--shadow-glow);
 }
 
@@ -620,11 +620,11 @@ p {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #52e3a4;
-  border-color: #52e3a4;
+  background: #5dffb8;
+  border-color: #5dffb8;
   box-shadow:
-    0 0 0 3px rgba(62, 207, 142, 0.2),
-    0 2px 12px rgba(62, 207, 142, 0.25);
+    0 0 0 3px rgba(74, 234, 164, 0.2),
+    0 2px 12px rgba(74, 234, 164, 0.25);
 }
 
 .btn-secondary {
@@ -701,14 +701,14 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: rgba(62, 207, 142, 0.6);
-  box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.35);
+  border-color: rgba(74, 234, 164, 0.6);
+  box-shadow: 0 0 0 3px rgba(74, 234, 164, 0.35);
 }
 
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid rgba(62, 207, 142, 0.9);
+  outline: 2px solid rgba(74, 234, 164, 0.9);
   outline-offset: 1px;
 }
 
@@ -758,20 +758,20 @@ textarea:focus-visible {
 
 .badge-verified {
   color: var(--accent);
-  border-color: rgba(62, 207, 142, 0.28);
-  background: rgba(62, 207, 142, 0.08);
+  border-color: rgba(74, 234, 164, 0.32);
+  background: rgba(74, 234, 164, 0.1);
 }
 
 .badge-pending {
   color: var(--warn);
-  border-color: rgba(227, 179, 65, 0.28);
-  background: rgba(227, 179, 65, 0.07);
+  border-color: rgba(250, 197, 88, 0.32);
+  background: rgba(250, 197, 88, 0.1);
 }
 
 .badge-denied {
   color: var(--danger);
-  border-color: rgba(240, 96, 77, 0.28);
-  background: rgba(240, 96, 77, 0.07);
+  border-color: rgba(255, 115, 104, 0.32);
+  background: rgba(255, 115, 104, 0.1);
 }
 
 /* ---- Rows / list ------------------------------------------------------------ */
@@ -1563,7 +1563,7 @@ h3.cred-card__title {
 
 .nav-badge.active {
   color: var(--accent);
-  background: rgba(62, 207, 142, 0.1);
+  background: rgba(74, 234, 164, 0.1);
 }
 
 /* ===========================================================================

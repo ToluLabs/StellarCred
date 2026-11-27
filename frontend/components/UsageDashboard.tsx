@@ -207,8 +207,8 @@ export function UsageDashboard({ wallet }: { wallet?: string }) {
             margin: "0.6rem 0 0.4rem",
             padding: "0.6rem 0.8rem",
             borderRadius: "var(--radius)",
-            border: "1px solid rgba(240,96,77,0.35)",
-            background: "rgba(240,96,77,0.08)",
+            border: "1px solid rgba(255,115,104,0.35)",
+            background: "rgba(255,115,104,0.1)",
           }}
         >
           <div
