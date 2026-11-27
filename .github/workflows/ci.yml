@@ -201,9 +201,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install frontend dependencies
+      # TypeDoc follows the SDK's linked registry clients into sibling package
+      # sources. Install the parent graph so those sources can resolve their
+      # Stellar SDK dependency and the React entry point can resolve React.
+      - name: Install frontend dependency graph
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Install SDK dependencies
         working-directory: frontend/packages/sdk
@@ -706,7 +709,7 @@ jobs:
 
       - name: Build SDK distribution
         working-directory: frontend/packages/sdk
-        run: npx --yes -p tsup -p typescript@5 tsup src/index.ts src/server.ts src/testing.ts --format cjs,esm --dts --clean
+        run: npx --yes -p tsup -p typescript@5 tsup src/index.ts src/server.ts src/testing.ts --format cjs,esm --dts --clean --no-config
 
       # Issue #751: the TypeScript example is documentation, but it has to keep
       # compiling. A renamed export or changed type in the SDK breaks this step

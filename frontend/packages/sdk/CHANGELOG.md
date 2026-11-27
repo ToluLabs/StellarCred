@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Audited BIP-39 and SLIP-0010 Ed25519 key derivation helpers for SEP-5
+  Stellar paths, with deterministic buffer zeroization (#1068).
+
 - `@stellarcred/sdk/testing` entry point (#1065): `MockWalletProvider` (SEP-43 wallet backed by a real Ed25519 keypair), `CredentialFactory` (secp256k1-signed credential JSON that passes `validateCredential`), `MockProofRegistry` with `installMockRegistry` / `uninstallMockRegistry` (simulated proofs with the contract's expiry, revocation, trusted-issuer and threshold rules), and `verifyCredentialSignature`. Lets integrators unit-test without an RPC, a deployed registry or a Noir toolchain.
 - `BatchVerifierPool` and `verifyWalletSignaturesBatch` (#1063): verify batches of wallet-signed presentations in parallel on `worker_threads` without blocking the event loop. Node-only, exported from `@stellarcred/sdk/server`.
 - Configurable backoff for every RPC, indexer and polling call (#1056):
