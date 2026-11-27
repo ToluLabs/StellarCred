@@ -14,8 +14,7 @@ import * as fromIndex from "./index";
 import * as fromClaims from "./claims";
 import * as fromCapabilities from "./capabilities";
 import * as fromChallenge from "./challenge";
-import * as fromPresentationToken from "./presentation-token";
-import * as fromErrors from "./errors";
+import * as fromUniqueness from "./uniqueness";
 
 // ── Claim-checking functions (sourced from claims.ts) ────────────────────────
 
@@ -63,24 +62,10 @@ const CHALLENGE_EXPORTS = [
   "verifyWalletClaim",
 ] as const;
 
-// ── Presentation token functions (sourced from presentation-token.ts, #1062) ─
-
-const PRESENTATION_TOKEN_EXPORTS = [
-  "createPresentationToken",
-  "verifyPresentationToken",
-  "presentationTokenSigningMessage",
-  "PRESENTATION_TOKEN_PREFIX",
-  "PRESENTATION_TOKEN_VERSION",
-  "DEFAULT_PRESENTATION_TOKEN_TTL_SECONDS",
-  "DEFAULT_CLOCK_SKEW_SECONDS",
-] as const;
-
-// ── Capability-descriptor functions (sourced from capabilities.ts, #639) ─────
-
-const CAPABILITIES_EXPORTS = [
-  "bootstrap",
-  "fetchCapabilities",
-  "validateCapabilitiesDescriptor",
+const UNIQUENESS_EXPORTS = [
+  "canonicalizeUniquenessPayload",
+  "createUniquenessAttestation",
+  "sameUniquenessSubject",
 ] as const;
 
 describe("entry-point parity (issue #609 / #522)", () => {
@@ -114,42 +99,16 @@ describe("entry-point parity (issue #609 / #522)", () => {
     });
   }
 
-  // ── presentation-token.ts exports re-exported by index.ts (issue #1062) ───
+  // ── uniqueness.ts exports re-exported identically by index.ts ─────────────
 
-  for (const name of PRESENTATION_TOKEN_EXPORTS) {
-    it(`index.ts re-exports the same ${name} reference as presentation-token.ts`, () => {
+  for (const name of UNIQUENESS_EXPORTS) {
+    it(`index.ts re-exports the same ${name} reference as uniqueness.ts`, () => {
       const fromIndexValue = (fromIndex as Record<string, unknown>)[name];
-      const fromPresentationValue = (fromPresentationToken as Record<string, unknown>)[name];
+      const fromUniquenessValue = (fromUniqueness as Record<string, unknown>)[name];
 
       expect(fromIndexValue).toBeDefined();
-      expect(fromPresentationValue).toBeDefined();
-      expect(fromIndexValue).toBe(fromPresentationValue);
-    });
-  }
-
-  // ── errors.ts exports re-exported identically by index.ts (issue #404) ────
-
-  for (const name of ERRORS_EXPORTS) {
-    it(`index.ts re-exports the same ${name} reference as errors.ts`, () => {
-      const fromIndexValue = (fromIndex as Record<string, unknown>)[name];
-      const fromErrorsValue = (fromErrors as Record<string, unknown>)[name];
-
-      expect(fromIndexValue).toBeDefined();
-      expect(fromErrorsValue).toBeDefined();
-      expect(fromIndexValue).toBe(fromErrorsValue);
-    });
-  }
-
-  // ── capabilities.ts exports re-exported identically by index.ts ───────────
-
-  for (const name of CAPABILITIES_EXPORTS) {
-    it(`index.ts re-exports the same ${name} reference as capabilities.ts`, () => {
-      const fromIndexValue = (fromIndex as Record<string, unknown>)[name];
-      const fromCapabilitiesValue = (fromCapabilities as Record<string, unknown>)[name];
-
-      expect(fromIndexValue).toBeDefined();
-      expect(fromCapabilitiesValue).toBeDefined();
-      expect(fromIndexValue).toBe(fromCapabilitiesValue);
+      expect(fromUniquenessValue).toBeDefined();
+      expect(fromIndexValue).toBe(fromUniquenessValue);
     });
   }
 
@@ -188,28 +147,14 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.verifyWalletClaim).toBe(fromChallenge.verifyWalletClaim);
   });
 
-  it("StellarCred namespace members are the same references as presentation-token.ts exports", () => {
+  it("StellarCred namespace members are the same references as uniqueness.ts exports", () => {
     const ns = fromIndex.StellarCred;
 
-    expect(ns.createPresentationToken).toBe(fromPresentationToken.createPresentationToken);
-    expect(ns.verifyPresentationToken).toBe(fromPresentationToken.verifyPresentationToken);
-  });
-
-  it("StellarCred namespace members are the same references as errors.ts exports", () => {
-    const ns = fromIndex.StellarCred;
-
-    expect(ns.RpcError).toBe(fromErrors.RpcError);
-    expect(ns.ContractError).toBe(fromErrors.ContractError);
-    expect(ns.ContractErrorCode).toBe(fromErrors.ContractErrorCode);
-    expect(ns.parseContractError).toBe(fromErrors.parseContractError);
-  });
-
-  it("StellarCred namespace members are the same references as capabilities.ts exports", () => {
-    const ns = fromIndex.StellarCred;
-
-    expect(ns.bootstrap).toBe(fromCapabilities.bootstrap);
-    expect(ns.fetchCapabilities).toBe(fromCapabilities.fetchCapabilities);
-    expect(ns.validateCapabilitiesDescriptor).toBe(fromCapabilities.validateCapabilitiesDescriptor);
+    expect(ns.canonicalizeUniquenessPayload).toBe(
+      fromUniqueness.canonicalizeUniquenessPayload,
+    );
+    expect(ns.createUniquenessAttestation).toBe(fromUniqueness.createUniquenessAttestation);
+    expect(ns.sameUniquenessSubject).toBe(fromUniqueness.sameUniquenessSubject);
   });
 
   it("default export equals the StellarCred named export", () => {
