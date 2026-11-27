@@ -168,7 +168,8 @@ describe("GET /api/capabilities", () => {
   });
 
   it("reports sponsored submission only when account AND secret are set", async () => {
-    process.env.NEXT_PUBLIC_SPONSOR_ACCOUNT_ID = "GSPONSOR000000000000000000000000000000000000000000000000";
+    process.env.NEXT_PUBLIC_SPONSOR_ACCOUNT_ID =
+      "GSPONSOR000000000000000000000000000000000000000000000000";
     const { GET } = await loadRoute();
     expect((await (await GET()).json()).sponsored_submission).toEqual({ available: false });
 

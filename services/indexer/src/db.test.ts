@@ -146,7 +146,10 @@ function registerSuite(
       let rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBe(200_000);
 
-      await db.upsertClaim(makeClaim({ credential_type: "income", threshold: null }));
+      // A later ledger replaces the row; the #1004 guard ignores same-ledger replays.
+      await db.upsertClaim(
+        makeClaim({ credential_type: "income", threshold: null, ledger_sequence: 200 }),
+      );
       rows = await db.claimsByWallet("GALICE");
       expect(rows[0].threshold).toBeNull();
     });
@@ -187,7 +190,11 @@ function registerSuite(
       await db.enqueueWebhookEvent(event);
       await db.enqueueWebhookEvent(event);
 
-      const deliveries = await db.pendingWebhookDeliveries(1_724_000_000, 10, 8);
+      // On Postgres the conformance suite shares the database and runs in
+      // parallel, so only look at this subscription's deliveries.
+      const deliveries = (
+        await db.pendingWebhookDeliveries(1_724_000_000, 10, 8)
+      ).filter((d) => d.subscription_id === id);
       expect(deliveries).toHaveLength(1);
       expect(deliveries[0]).toMatchObject({
         subscription_id: id,

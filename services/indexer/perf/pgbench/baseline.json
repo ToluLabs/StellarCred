@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "workload": "pending — no committed measurement yet. Re-record with: DATABASE_URL=postgres://indexer:indexer@localhost:5432/indexer node scripts/pgbench-latency.mjs --clients 8 --seconds 15 --write-baseline",
+  "averageLatencyMs": 0.001,
+  "tps": null
+}

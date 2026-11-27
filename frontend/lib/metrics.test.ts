@@ -69,11 +69,13 @@ describe("recordIssuance", () => {
   });
 
   it("accumulates histogram sum correctly", () => {
-    recordIssuance("kyc", "success", 100);   // 0.1s
-    recordIssuance("kyc", "success", 200);   // 0.2s
+    recordIssuance("kyc", "success", 100); // 0.1s
+    recordIssuance("kyc", "success", 200); // 0.2s
     const output = renderMetrics();
     // Sum should be 0.3 (approximately)
-    const match = output.match(/sc_issuance_latency_seconds_sum\{type="kyc",outcome="success"\} ([0-9.]+)/);
+    const match = output.match(
+      /sc_issuance_latency_seconds_sum\{type="kyc",outcome="success"\} ([0-9.]+)/,
+    );
     expect(match).not.toBeNull();
     const sum = parseFloat(match![1]);
     expect(sum).toBeCloseTo(0.3, 4);
@@ -173,9 +175,7 @@ describe("renderMetrics", () => {
     recordIssuance("kyc", "failure", 50);
     const output = renderMetrics();
     // All numeric values on metric lines should be non-negative
-    const metricLines = output
-      .split("\n")
-      .filter((l) => !l.startsWith("#") && l.trim() !== "");
+    const metricLines = output.split("\n").filter((l) => !l.startsWith("#") && l.trim() !== "");
     for (const line of metricLines) {
       const parts = line.split(" ");
       const value = parseFloat(parts[parts.length - 1]);

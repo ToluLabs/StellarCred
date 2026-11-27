@@ -40,10 +40,7 @@ function writeMap(map: ConsumedMap): void {
   }
 }
 
-export function pruneConsumed(
-  map: ConsumedMap,
-  nowSeconds: number,
-): ConsumedMap {
+export function pruneConsumed(map: ConsumedMap, nowSeconds: number): ConsumedMap {
   const next: ConsumedMap = {};
   for (const [jti, entry] of Object.entries(map)) {
     if (entry.expiresAt === 0 || entry.expiresAt > nowSeconds) {

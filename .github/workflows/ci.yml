@@ -154,6 +154,92 @@ jobs:
       - name: Test the ownership checker
         run: node --test test/component-ownership.test.js
 
+  # ── Environment variable sync & deploy env smoke check (#621) ───────────────
+  # Fast static check verifying .env.example stays in sync with code and
+  # deploy env validation rejects unsafe configs. Consolidated from env-check.yml.
+  env-check:
+    name: Environment variable check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check environment variable documentation
+        working-directory: frontend
+        run: node scripts/check-env-sync.mjs
+
+      - name: Validate pre-deploy environment check
+        working-directory: frontend
+        run: node scripts/validate-deploy-env.mjs --smoke-test
+
+  # ── SDK Docs: build API reference and publish to GitHub Pages ─────────────
+  # Generates the browsable TypeDoc API reference from SDK TSDoc on every push
+  # and PR, and publishes to GitHub Pages on main.
+  sdk-docs:
+    name: SDK API reference (TypeDoc)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Install SDK dependencies
+        working-directory: frontend/packages/sdk
+        run: pnpm install --frozen-lockfile --ignore-workspace
+
+      - name: Build SDK API reference
+        working-directory: frontend/packages/sdk
+        run: pnpm docs:api
+
+      - name: Upload API reference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-api-reference
+          path: frontend/packages/sdk/docs/api
+          retention-days: 7
+
+      - name: Setup Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/packages/sdk/docs/api
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Deploy to gh-pages branch (fallback)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: frontend/packages/sdk/docs/api
+
   # ── Contracts: Rust / WASM / Clippy ────────────────────────────────────────
   # Runs in parallel with circuits, frontend, and indexer.
   contracts:
@@ -453,6 +539,22 @@ jobs:
           export PATH="$HOME/.nargo/bin:$PATH"
           node circuits/scripts/fuzz_circuits.js --iterations 10
 
+      # Deterministic edge-case vectors (#1039): zero values, u64 / field maxima,
+      # off-by-one thresholds, inverted windows, last list slot, last Merkle leaf.
+      # `check` fails when circuits/testvectors/edge/*.json is stale relative to
+      # the generator; `execute` runs every vector through nargo and fails when
+      # a circuit accepts or rejects something other than what the vector records.
+      - name: Unit-test edge-case vector generator
+        run: node --test circuits/scripts/edge_vectors.test.js
+
+      - name: Check edge-case vectors are current
+        run: node circuits/scripts/edge_vectors.js check
+
+      - name: Execute edge-case vectors against the circuits
+        run: |
+          export PATH="$HOME/.nargo/bin:$PATH"
+          node circuits/scripts/edge_vectors.js execute
+
   # ── Frontend: typecheck, lint, test, build (once) ──────────────────────────
   # Runs in parallel with contracts, circuits, and indexer.
   # Builds the frontend once and uploads the .next output as an artifact so
@@ -549,43 +651,6 @@ jobs:
             frontend/public
           retention-days: 1
 
-      # Bundle size gate (#737). Runs immediately after the build so any route
-      # or shared-chunk regression fails the frontend job with an actionable
-      # step name rather than being silently skipped (the a11y job is currently
-      # disabled). continue-on-error lets the PR still land while iterating on
-      # size budget values; remove continue-on-error once the baseline is set.
-      #
-      # size-limit 13 imports `glob` from node:fs/promises, which only exists on
-      # Node >= 22: on the job's Node 20 the CLI throws
-      # "SyntaxError: ... does not provide an export named 'glob'" before it
-      # measures a single byte, so this gate could never actually run. Give only
-      # these two steps a newer runtime and restore the CI Node version right
-      # after, so every later step still runs on the same Node as the rest of
-      # the job.
-      - name: Setup Node for bundle size check (#737)
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-
-      - name: Check bundle size budget (#737)
-        run: pnpm size
-        continue-on-error: true
-
-      - name: Report bundle size on PR (#737)
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        uses: andresz1/size-limit-action@94bc357df29c36c8f8d50ea497c3e225c3c95d1d
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          script: pnpm size --json
-          package_manager: pnpm
-          directory: frontend
-
-      - name: Restore CI Node version (#737)
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
       - name: Test frontend SDK
         run: pnpm test
 
@@ -663,6 +728,13 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Test TypeScript SDK example
+        working-directory: examples/typescript
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
       # Bundle size gate (#737). These steps run LAST, after every test and
       # every consumer of the build artifact, because size-limit-action's
       # base-branch measurement force-checkouts the base branch into the
@@ -697,12 +769,6 @@ jobs:
           script: pnpm size --json
           package_manager: pnpm
           directory: frontend
-      - name: Test TypeScript SDK example
-        working-directory: examples/typescript
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
 
   # ── Windows smoke: catch path-separator / install flakiness (#874) ────────
   # windows-latest runners are historically the flaky ones: pnpm install
@@ -835,7 +901,7 @@ jobs:
         env:
           PROOF_REGISTRY_CONTRACT_ID: C000000000000000000000000000000000000000000000000000000000000001
           RPC_URL: https://soroban-testnet.stellar.org
-      - name: Run tests with coverage
+
       # One jest run per job, with coverage. The Postgres leg shares a
       # single database across every test in the suite, and beforeEach only
       # clears claims/cursor — a second jest invocation in the same job would
@@ -853,6 +919,77 @@ jobs:
           name: indexer-coverage-${{ github.sha }}
           path: services/indexer/coverage
           retention-days: 7
+
+  # ── Indexer: PostgreSQL query-latency regression gate ──────────────────────
+  # Runs the indexer's real schema + hot statements through pgbench and fails
+  # when mean latency exceeds the committed baseline by more than the gate's
+  # tolerance. Guards the pool/index work of #1069: an index removed or a query
+  # made more expensive shows up here, not in production.
+  indexer-pgbench:
+    name: Indexer pgbench latency regression (Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/indexer
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: indexer
+          POSTGRES_PASSWORD: indexer
+          POSTGRES_DB: indexer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U indexer -d indexer"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: services/indexer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # pgbench ships with the PostgreSQL contrib tools; the runner image may
+      # already have it, so only install when it is missing.
+      - name: Locate pgbench
+        run: |
+          set -euo pipefail
+          if command -v pgbench >/dev/null 2>&1; then
+            echo "PGBENCH_BIN=$(command -v pgbench)" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y postgresql-contrib
+          PGBENCH=$(command -v pgbench || ls /usr/lib/postgresql/*/bin/pgbench | head -n 1)
+          echo "PGBENCH_BIN=$PGBENCH" >> "$GITHUB_ENV"
+
+      - name: Verify the latency gate logic
+        run: node scripts/pgbench-latency.mjs --self-test
+
+      - name: Run pgbench latency regression
+        run: node scripts/pgbench-latency.mjs --clients 8 --seconds 15
+        env:
+          DATABASE_URL: postgres://indexer:indexer@localhost:5432/indexer
+
+      - name: Upload pgbench report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: indexer-pgbench-${{ github.sha }}
+          path: services/indexer/perf/pgbench-report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   # ── SDK integration tests ───────────────────────────────────────────────────
   sdk-integration:

@@ -85,6 +85,27 @@ When intentionally upgrading the toolchain or changing circuit logic:
    ```
 4. Review git diff and commit the updated fixtures and test vectors. See [Circuit Versions](#circuit-versions).
 
+### Edge-Case Test Vectors
+
+`circuits/testvectors/edge/<circuit>.json` holds a fixed, deterministic set of boundary witnesses for every signed credential circuit (`kyc_proof`, `age_proof`, `income_proof`, `funds_proof`, `accreditation_proof`, `range_proof`, `date_range`, `jurisdiction_proof`, `employment_proof`, `set_membership`). Where `testvectors/<circuit>.json` pins one happy path and `fuzz_circuits.js` draws fresh random witnesses each run, these vectors are the same on every machine and cover the inputs most likely to hide an off-by-one:
+
+- **zero**: zero values, zero thresholds, zero padding in lists and Merkle trees
+- **max**: `2^64 - 1` for every `u64`, `2^64` (must fail input parsing), `p - 1` for `Field` inputs
+- **boundary**: threshold exactly met and missed by one, inclusive window ends, inverted windows, first and last list slot, first and last Merkle leaf
+- **salt / commitment / signature**: smallest and largest salt, zero salt, commitments off by one, zero and foreign-key signatures, a flipped issuer-key bit
+
+Each vector records `expect: "accept" | "reject"` and the constraint that decides it. A few `accept` vectors pin behaviour the contract or issuer must guard against rather than the circuit (zero salt where the circuit has no `salt != 0` assert, country `0` matching zero padding in an allowlist, value `0` proving membership through an empty Merkle leaf); their descriptions say so.
+
+```bash
+node circuits/scripts/edge_vectors.js check      # committed JSON matches a fresh generation (no nargo needed)
+node circuits/scripts/edge_vectors.js generate   # rewrite the JSON after changing a spec
+export PATH="$HOME/.nargo/bin:$PATH"
+node circuits/scripts/edge_vectors.js execute    # run every vector through nargo execute
+node --test circuits/scripts/edge_vectors.test.js
+```
+
+All three commands accept `--circuit <name>`. Signing needs `@noble/curves` from `pnpm install` in `frontend/`. The generator always signs with the fixed demo issuer key and ignores `ISSUER_PRIVATE_KEY`, so the output does not depend on the environment. CI runs all of the above in the `circuit-fuzz` job; a circuit change that flips any vector's outcome fails there and has to update the spec in `circuits/scripts/edge_vectors.js` on purpose.
+
 ---
 
 ## `attributeToValue` Mapping

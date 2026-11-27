@@ -7,26 +7,32 @@ import { OnboardingNudge } from "./OnboardingNudge";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const mockHolder = vi.hoisted(() => ({
-  onboardingState: {
-    state: { step: 4, dismissed: false, completed: false },
-    currentStep: "generate-proof" as string,
-    mounted: true,
-    resumeAt: vi.fn(),
+const mocks = vi.hoisted(() => ({
+  onboarding: {
+    current: {
+      state: { step: 4, dismissed: false, completed: false },
+      currentStep: "generate-proof" as string,
+      mounted: true,
+      resumeAt: vi.fn(),
+    },
   },
-  wallet: { address: "GTEST" as string | null },
+  wallet: { current: { address: "GTEST" as string | null } },
 }));
 
-vi.mock("@/lib/onboarding", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/onboarding")>();
-  return {
-    ...actual,
-    useOnboarding: () => mockHolder.onboardingState,
-  };
-});
+vi.mock("@/lib/onboarding", () => ({
+  useOnboarding: () => mocks.onboarding.current,
+  ONBOARDING_STEPS: [
+    "welcome",
+    "connect-wallet",
+    "get-credential",
+    "verify-trust",
+    "generate-proof",
+    "unlock",
+  ],
+}));
 
 vi.mock("@/lib/wallet-context", () => ({
-  useWallet: () => mockHolder.wallet,
+  useWallet: () => mocks.wallet.current,
 }));
 
 vi.mock("next-intl", () => ({
@@ -46,22 +52,28 @@ beforeEach(() => {
   store = {};
   vi.stubGlobal("localStorage", {
     getItem: vi.fn((k: string) => store[k] ?? null),
-    setItem: vi.fn((k: string, v: string) => { store[k] = v; }),
-    removeItem: vi.fn((k: string) => { delete store[k]; }),
-    clear: vi.fn(() => { store = {}; }),
+    setItem: vi.fn((k: string, v: string) => {
+      store[k] = v;
+    }),
+    removeItem: vi.fn((k: string) => {
+      delete store[k];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
   });
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
-  mockHolder.onboardingState = {
+  mocks.onboarding.current = {
     state: { step: 4, dismissed: false, completed: false },
     currentStep: "generate-proof",
     mounted: true,
     resumeAt: vi.fn(),
   };
-  mockHolder.wallet = { address: "GTEST" };
+  mocks.wallet.current = { address: "GTEST" };
 });
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -74,26 +86,26 @@ describe("OnboardingNudge — gating", () => {
   });
 
   it("returns null when not mounted yet", () => {
-    mockHolder.onboardingState.mounted = false;
+    mocks.onboarding.current.mounted = false;
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
 
   it("returns null when onboarding is completed", () => {
-    mockHolder.onboardingState.state = { step: 5, dismissed: false, completed: true };
+    mocks.onboarding.current.state = { step: 5, dismissed: false, completed: true };
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
 
   it("returns null when wallet is not connected", () => {
-    mockHolder.wallet.address = null;
+    mocks.wallet.current.address = null;
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
 
   it("returns null when the user has already passed step 4 (generate-proof)", () => {
-    mockHolder.onboardingState.currentStep = "unlock";
-    mockHolder.onboardingState.state = { step: 5, dismissed: false, completed: false };
+    mocks.onboarding.current.currentStep = "unlock";
+    mocks.onboarding.current.state = { step: 5, dismissed: false, completed: false };
     const { container } = render(<OnboardingNudge />);
     expect(container.firstChild).toBeNull();
   });
@@ -124,7 +136,7 @@ describe("OnboardingNudge — dismiss", () => {
 describe("OnboardingNudge — Continue setup", () => {
   it("calls resumeAt(4) when the Continue setup button is clicked", () => {
     const resumeAt = vi.fn();
-    mockHolder.onboardingState.resumeAt = resumeAt;
+    mocks.onboarding.current.resumeAt = resumeAt;
 
     render(<OnboardingNudge />);
     fireEvent.click(screen.getByText("Continue setup"));

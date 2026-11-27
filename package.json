@@ -12,7 +12,8 @@
     "check:component-ownership": "node .github/scripts/check-component-ownership.mjs",
     "verify:client-freshness": "bash scripts/verify-client-freshness.sh",
     "ci": "pnpm run check:page-client-size && pnpm run test",
-    "test:export": "vitest run src/tests/exportObservability.test.ts"
+    "test:export": "vitest run src/tests/exportObservability.test.ts",
+    "docs:sdk": "pnpm --dir frontend/packages/sdk docs:api"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

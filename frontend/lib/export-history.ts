@@ -54,7 +54,7 @@ function buildHistoryEntries(credentials: Credential[]): ProofHistoryEntry[] {
   const submissions = getSubmissions();
   for (const sub of submissions) {
     const alreadyExported = entries.some(
-      (e) => e.txHash === sub.txHash && e.claimType === sub.credentialType
+      (e) => e.txHash === sub.txHash && e.claimType === sub.credentialType,
     );
     if (!alreadyExported) {
       entries.push({
@@ -94,13 +94,7 @@ export function exportHistoryAsJson(credentials: Credential[]): string {
 
 export function exportHistoryAsCsv(credentials: Credential[]): string {
   const entries = buildHistoryEntries(credentials);
-  const headers = [
-    "claim_type",
-    "verified_at",
-    "expiry",
-    "tx_hash",
-    "issuer",
-  ];
+  const headers = ["claim_type", "verified_at", "expiry", "tx_hash", "issuer"];
 
   const rows = entries.map((entry) =>
     [
@@ -109,17 +103,13 @@ export function exportHistoryAsCsv(credentials: Credential[]): string {
       entry.expiry ? formatTimestamp(entry.expiry) : "",
       escapeCsvField(entry.txHash),
       escapeCsvField(entry.issuer),
-    ].join(",")
+    ].join(","),
   );
 
   return [headers.join(","), ...rows].join("\n");
 }
 
-export function downloadFile(
-  content: string,
-  filename: string,
-  mimeType: string
-): void {
+export function downloadFile(content: string, filename: string, mimeType: string): void {
   if (typeof window === "undefined") return;
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
