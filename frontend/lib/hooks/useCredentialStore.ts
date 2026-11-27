@@ -1,16 +1,5 @@
 "use client";
 
-/**
- * useCredentialStore — single source of truth for credential state.
- *
- * Combines:
- *   - initial load from localStorage
- *   - cross-tab sync via StorageEvent
- *   - imperative CRUD (save, remove, markProved, markAllProved)
- *
- * Every effect has a minimal, stable dependency set (no exhaustive-deps hacks).
- */
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type Credential,
@@ -23,80 +12,123 @@ import {
 import { isStorageAvailable } from "../safe-storage";
 
 const STORAGE_KEY = "stellarcred:credentials";
+const CROSS_TAB_DEBOUNCE_MS = 100;
 
 export function useCredentialStore() {
   const [creds, setCreds] = useState<Credential[]>([]);
-  // `creds` starts empty, which is indistinguishable from "no credentials yet".
-  // Consumers use this flag to render skeletons instead of the empty state
-  // until the initial hydration settles.
   const [loading, setLoading] = useState(true);
+  const requestIdRef = useRef(0);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Initial load ──────────────────────────────────────────────────────────
-  // The credential store is async, so hydrate on mount.
+  // Hydrate once. A later reload, mutation, or storage event invalidates this
+  // request so an older response cannot replace newer credential state.
   useEffect(() => {
     let cancelled = false;
+    const requestId = ++requestIdRef.current;
+
     loadCredentials()
       .then((loaded) => {
-        if (!cancelled) setCreds(loaded);
+        if (!cancelled && requestId === requestIdRef.current) {
+          setCreds(loaded);
+        }
       })
-      // A corrupt/undecryptable store should still end the loading state so the
-      // empty state renders instead of a skeleton that never resolves.
       .catch(() => {
-        if (!cancelled) setCreds([]);
+        if (!cancelled && requestId === requestIdRef.current) {
+          setCreds([]);
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && requestId === requestIdRef.current) {
+          setLoading(false);
+        }
       });
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // ── Cross-tab sync ────────────────────────────────────────────────────────
-  // When another tab writes to the credentials localStorage key, reload.
-  // Debounced (100 ms) to avoid thrash on rapid batch writes.
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  // A storage event is raised in other tabs, not in the tab that made the
+  // write. Invalidate in-flight reads immediately, before starting the debounce.
   useEffect(() => {
     if (!isStorageAvailable()) return;
 
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-          loadCredentials().then(setCreds);
-        }, 100);
-      }
+    let cancelled = false;
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY && event.key !== null) return;
+
+      const requestId = ++requestIdRef.current;
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+      timeoutRef.current = setTimeout(() => {
+        loadCredentials()
+          .then((loaded) => {
+            if (!cancelled && requestId === requestIdRef.current) {
+              setCreds(loaded);
+              setLoading(false);
+            }
+          })
+          .catch(() => {
+            if (!cancelled && requestId === requestIdRef.current) {
+              setCreds([]);
+              setLoading(false);
+            }
+          });
+      }, CROSS_TAB_DEBOUNCE_MS);
     };
 
     window.addEventListener("storage", handleStorage);
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", handleStorage);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, []); // mount-only: STORAGE_KEY is a module constant
-
-  // ── CRUD ───────────────────────────────────────────────────────────────────
+  }, []);
 
   const reload = useCallback(() => {
-    loadCredentials().then(setCreds);
+    const requestId = ++requestIdRef.current;
+    return loadCredentials().then((loaded) => {
+      if (requestId === requestIdRef.current) {
+        setCreds(loaded);
+        setLoading(false);
+      }
+      return loaded;
+    });
   }, []);
 
-  const save = useCallback((cred: Credential) => {
-    saveCredential(cred).then(setCreds);
+  // Each mutation invalidates every read started before it. Only the latest
+  // operation is allowed to publish its result to React state.
+  const runMutation = useCallback((operation: () => Promise<Credential[]>) => {
+    const requestId = ++requestIdRef.current;
+    return operation().then((updated) => {
+      if (requestId === requestIdRef.current) {
+        setCreds(updated);
+        setLoading(false);
+      }
+      return updated;
+    });
   }, []);
 
-  const remove = useCallback((commitment: string) => {
-    removeCredential(commitment).then(setCreds);
-  }, []);
+  const save = useCallback(
+    (credential: Credential) => runMutation(() => saveCredential(credential)),
+    [runMutation],
+  );
 
-  const markCredentialProved = useCallback((commitment: string, txHash: string) => {
-    _markProved(commitment, txHash).then(setCreds);
-  }, []);
+  const remove = useCallback(
+    (commitment: string) => runMutation(() => removeCredential(commitment)),
+    [runMutation],
+  );
 
-  const markCredentialsProved = useCallback((commitments: string[], txHash: string) => {
-    _markAllProved(commitments, txHash).then(setCreds);
-  }, []);
+  const markCredentialProved = useCallback(
+    (commitment: string, txHash: string) => runMutation(() => _markProved(commitment, txHash)),
+    [runMutation],
+  );
+
+  const markCredentialsProved = useCallback(
+    (commitments: string[], txHash: string) =>
+      runMutation(() => _markAllProved(commitments, txHash)),
+    [runMutation],
+  );
 
   return {
     creds,
