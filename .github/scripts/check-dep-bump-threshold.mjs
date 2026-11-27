@@ -24,7 +24,7 @@ export const MANIFEST_PATTERNS = [
   /^frontend\/pnpm-lock\.yaml$/,
   /^services\/[^/]+\/package\.json$/,
   /^services\/[^/]+\/package-lock\.json$/,
-  /^sdk\/package\.json$/,
+  /^frontend\/packages\/sdk\/package\.json$/,
   /^Cargo\.toml$/,
   /^Cargo\.lock$/,
   /^contracts\/[^/]+\/Cargo\.toml$/,

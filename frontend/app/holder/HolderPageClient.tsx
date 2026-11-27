@@ -14,6 +14,7 @@ import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings"
 import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
+import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
 import { removeCredential, type Credential } from "@/lib/credential";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
@@ -22,7 +23,7 @@ import { useProofApproval } from "@/lib/hooks/useProofApproval";
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
 import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
 import { useAccountPortfolio } from "@/lib/hooks/holder/useAccountPortfolio";
-import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
+import { useCredentialTriage } from "@/lib/hooks/holder/useCredentialTriage";
 
 // ── Components ────────────────────────────────────────────────────────────────
 import { CredCard, type BatchSelection } from "@/components/holder/CredCard";
@@ -44,9 +45,7 @@ import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSw
 
 import type { PageView, BulkAction } from "./types";
 
-// The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
-// rendering) and only needed when the user actually starts a transfer — load
-// them lazily so the holder route's 15 kB bundle budget stays intact.
+// Lazy-load encrypted-transfer modals to preserve the holder route's bundle budget.
 const TransferExportModal = dynamic(
   () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
   { ssr: false },
@@ -95,16 +94,32 @@ function HolderInner() {
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
-  // A transfer QR opened directly (native camera app -> /holder?import=...)
-  // lands here with the payload already in the URL — prompt for the
-  // passphrase immediately, and strip it from the URL so a refresh or the
-  // back button doesn't re-trigger the prompt or leave ciphertext in history.
+  // Prompt for transfer QR imports immediately and strip ciphertext from URL history.
   useTransferImportParam(setImportPayload);
 
   const rawCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
   const { portfolioAccounts, activeAccountFilter, displayCreds, handleSelectPortfolioAccount } =
     useAccountPortfolio(address, rawCreds);
-  const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
+  const anyModalOpen = [
+    detailCred,
+    transferCred,
+    importPayload,
+    showExportModal,
+    showShortcutsModal,
+    proofApproval.creds,
+    confirmBulkAction,
+  ].some(Boolean);
+  const triage = useCredentialTriage({
+    creds: displayCreds,
+    address,
+    isEnabled: view.kind === "list" && !anyModalOpen,
+    onBatchError: toast.error,
+    onInspect: setDetailCred,
+    onProve: (c) => proofApproval.request({ kind: "single", cred: c }),
+    onExport: () => setShowExportModal(true),
+    onOpenHelp: () => setShowShortcutsModal(true),
+  });
+  const { unproved, expiringSoon, activeProved, expired, batch } = triage;
 
   // Warm the UltraHonk backend for whatever credential types the user still
   // needs to prove, in the background, once the wallet is actually connected
@@ -127,14 +142,6 @@ function HolderInner() {
     selectEligible,
     clearSelection,
   } = batch;
-
-  // Warm the UltraHonk backend for whatever credential types the user still
-  // needs to prove, in the background, once the wallet is actually connected
-  // (never in preview mode — there's nothing real to prove yet). Only the
-  // types actually present in `unproved` are warmed, not all seven circuits,
-  // to avoid paying wasm-init cost for types the user has no credential for.
-  const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
-  useWarmProver(unprovedTypes, Boolean(address));
 
   // Bulk removal is sequential on purpose: removeCredential is a
   // read-modify-write of the whole list, so concurrent calls would race.
@@ -173,11 +180,11 @@ function HolderInner() {
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
         <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
-          {portfolio.accounts.length > 0 && (
+          {portfolioAccounts.length > 0 && (
             <AccountPortfolioSwitcher
-              accounts={portfolio.accounts}
-              activeAddress={portfolio.activeAddress}
-              onSelectAccount={portfolio.selectAccount}
+              accounts={portfolioAccounts}
+              activeAddress={activeAccountFilter}
+              onSelectAccount={handleSelectPortfolioAccount}
             />
           )}
           {/* Selective disclosure presets (#386): a named, shareable bundle
@@ -323,9 +330,6 @@ function HolderInner() {
                   )}
                   {/* Select up to MAX_BATCH_SIZE credentials of distinct types
                       and prove them in one transaction. */}
-
-                  {/* Select up to MAX_BATCH_SIZE credentials of distinct types and
-                  prove them in one transaction. */}
                   {canBatch && (
                     <BatchBar
                       selectedCount={selectedCreds.length}

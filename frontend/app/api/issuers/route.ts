@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { classifyVerificationError } from "@/packages/sdk/src/errors";
 import { fetchRegisteredIssuers } from "@/lib/issuer-registry";
 import { env } from "@/lib/env";
 
@@ -11,6 +12,19 @@ export async function GET() {
     const issuers = await fetchRegisteredIssuers(SIM_ACCOUNT);
     return NextResponse.json({ issuers });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message, issuers: [] }, { status: 500 });
+    const error = classifyVerificationError(e, {
+      fallbackCategory: "network_error",
+      fallbackCode: "issuer_read_failed",
+    });
+    return NextResponse.json(
+      {
+        error: error.message,
+        code: error.code,
+        category: error.category,
+        retryable: error.retryable,
+        issuers: [],
+      },
+      { status: 500 },
+    );
   }
 }

@@ -20,8 +20,9 @@
 import { Buffer } from "buffer";
 import { RPC_URL, NETWORK_PASSPHRASE, CONTRACTS } from "./stellar";
 import { signTx } from "./wallet";
-import { PROOF_REGISTRY_ERRORS, type PreflightResult, evaluateSimulation } from "./contract-errors";
+import { parseContractError, type PreflightResult, evaluateSimulation } from "./contract-errors";
 import { classifyRpcError, reportRpcHealthy, reportRpcIssue } from "./rpc-health";
+import { classifyVerificationError, VerificationError } from "../packages/sdk/src/errors";
 
 type SDK = typeof import("@stellar/stellar-sdk");
 
@@ -130,9 +131,10 @@ function buildSubmitProofsOp(
 
     // Convert s.publicInputs (Uint8Array) to an array of u32 (big-endian).
     if (s.publicInputs.length % 4 !== 0) {
-      throw new Error(
-        `publicInputs for credential "${s.credentialType}" has length ${s.publicInputs.length}, which is not a multiple of 4 bytes.`,
-      );
+      throw new VerificationError({
+        category: "invalid_input",
+        code: "invalid_public_inputs",
+      });
     }
     const u32s: number[] = [];
     for (let i = 0; i < s.publicInputs.length; i += 4) {
@@ -188,68 +190,110 @@ function buildSubmitProofsOp(
 async function sendAndConfirm(
   holder: string,
   buildOp: (contract: InstanceType<SDK["Contract"]>) => InstanceType<SDK["xdr"]["Operation"]>,
-  label: string,
+  timeoutSeconds = 60,
 ): Promise<string> {
   if (!CONTRACTS.proofRegistry) {
-    throw new Error(
-      "ProofRegistry contract id not set. Deploy the contracts and fill NEXT_PUBLIC_PROOF_REGISTRY_ID.",
-    );
+    throw new VerificationError({
+      category: "configuration_error",
+      code: "proof_registry_not_configured",
+    });
   }
 
-  const { Contract, TransactionBuilder, BASE_FEE } = await sdk();
-  const srv = await getServer();
-
-  const account = await srv.getAccount(holder);
-  const contract = new Contract(CONTRACTS.proofRegistry);
-  const op = buildOp(contract);
-
-  const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
-  const tx = new TransactionBuilder(account, {
-    fee: inclusionFee,
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(op)
-    .setTimeout(60)
-    .build();
-
-  const prepared = await srv.prepareTransaction(tx);
-  // Add 25% safety headroom buffer for nested contract calls and execution variance
-  const feeNum = BigInt(prepared.fee || 0);
-  prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
-
-  const signedXdr = await signTx(prepared.toXDR(), holder);
-  const sent = await srv.sendTransaction(TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE));
-
-  if (sent.status === "ERROR") {
-    const errHex =
-      sent.errorResult &&
-      typeof (sent.errorResult as { toXDR?: (f: string) => string }).toXDR === "function"
-        ? (sent.errorResult as { toXDR: (f: string) => string }).toXDR("hex")
-        : String(sent.errorResult);
-    throw new Error(`${label} rejected: ${errHex}`);
-  }
-
-  const start = Date.now();
-  let result;
   try {
-    result = await srv.getTransaction(sent.hash);
-  } catch (e) {
-    if (isBadUnionSwitch(e)) return sent.hash;
-    throw e;
-  }
-  while (result.status === "NOT_FOUND" && Date.now() - start < 65_000) {
-    await new Promise((r) => setTimeout(r, 1500));
+    const { Contract, TransactionBuilder, BASE_FEE } = await sdk();
+    const srv = await getServer();
+
+    const account = await srv.getAccount(holder);
+    const contract = new Contract(CONTRACTS.proofRegistry);
+    let op: InstanceType<SDK["xdr"]["Operation"]>;
+    try {
+      op = buildOp(contract);
+    } catch (e) {
+      throw classifyVerificationError(e, {
+        fallbackCategory: "invalid_input",
+        fallbackCode: "invalid_transaction",
+      });
+    }
+
+    const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
+    const tx = new TransactionBuilder(account, {
+      fee: inclusionFee,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(op)
+      .setTimeout(timeoutSeconds)
+      .build();
+
+    const prepared = await srv.prepareTransaction(tx);
+    // Add 25% safety headroom buffer for nested contract calls and execution variance
+    const feeNum = BigInt(prepared.fee || 0);
+    prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
+
+    let signedXdr: string;
+    try {
+      signedXdr = await signTx(prepared.toXDR(), holder);
+    } catch (e) {
+      throw classifyVerificationError(e, {
+        fallbackCategory: "authorization_error",
+        fallbackCode: "wallet_authorization",
+      });
+    }
+    const sent = await srv.sendTransaction(
+      TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE),
+    );
+
+    if (sent.status === "ERROR") {
+      const errHex =
+        sent.errorResult &&
+        typeof (sent.errorResult as { toXDR?: (f: string) => string }).toXDR === "function"
+          ? (sent.errorResult as { toXDR: (f: string) => string }).toXDR("hex")
+          : String(sent.errorResult);
+      throw classifyVerificationError(errHex, {
+        fallbackCategory: "policy_rejection",
+        fallbackCode: "transaction_rejected",
+      });
+    }
+
+    const start = Date.now();
+    let result;
     try {
       result = await srv.getTransaction(sent.hash);
     } catch (e) {
       if (isBadUnionSwitch(e)) return sent.hash;
-      throw e;
+      throw classifyVerificationError(e, {
+        fallbackCategory: "network_error",
+        fallbackCode: "rpc_unavailable",
+      });
     }
+    while (result.status === "NOT_FOUND" && Date.now() - start < 65_000) {
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        result = await srv.getTransaction(sent.hash);
+      } catch (e) {
+        if (isBadUnionSwitch(e)) return sent.hash;
+        throw classifyVerificationError(e, {
+          fallbackCategory: "network_error",
+          fallbackCode: "rpc_unavailable",
+        });
+      }
+    }
+    if (result.status !== "SUCCESS") {
+      const category = result.status === "FAILED" ? "policy_rejection" : "network_error";
+      throw new VerificationError({
+        category,
+        code:
+          category === "policy_rejection" ? "transaction_rejected" : "transaction_not_confirmed",
+        cause: result,
+      });
+    }
+    return sent.hash;
+  } catch (e) {
+    if (e instanceof VerificationError) throw e;
+    throw classifyVerificationError(e, {
+      fallbackCategory: "network_error",
+      fallbackCode: "rpc_unavailable",
+    });
   }
-  if (result.status !== "SUCCESS") {
-    throw new Error(`Transaction ${sent.hash} did not succeed (${result.status}).`);
-  }
-  return sent.hash;
 }
 
 // ── Preflight simulation ──────────────────────────────────────────────────────
@@ -272,15 +316,17 @@ async function runPreflight(
         code: null,
         friendly:
           "ProofRegistry contract id not set. Deploy the contracts and fill NEXT_PUBLIC_PROOF_REGISTRY_ID.",
-        raw: "NEXT_PUBLIC_PROOF_REGISTRY_ID missing",
+        raw: "proof_registry_not_configured",
+        category: "configuration_error",
+        retryable: false,
+        diagnosticCode: "proof_registry_not_configured",
       },
     };
   }
 
-  const { Contract, TransactionBuilder, rpc, BASE_FEE } = await sdk();
-  const srv = await getServer();
-
   try {
+    const { Contract, TransactionBuilder, rpc, BASE_FEE } = await sdk();
+    const srv = await getServer();
     const account = await srv.getAccount(holder);
     const contract = new Contract(CONTRACTS.proofRegistry);
     const op = buildOp(contract);
@@ -314,7 +360,10 @@ async function runPreflight(
     // indicator in lib/rpc-health.ts drives (#634).
     const issue = classifyRpcError(e);
     if (issue.kind === "rpc-unreachable") reportRpcIssue(issue);
-    throw e;
+    throw classifyVerificationError(e, {
+      fallbackCategory: "network_error",
+      fallbackCode: "rpc_unavailable",
+    });
   }
 }
 
@@ -372,17 +421,13 @@ export async function preflightSubmitProofs(params: {
   if (submissions.length === 0) {
     return {
       ok: false,
-      error: { code: 8, friendly: PROOF_REGISTRY_ERRORS[8], raw: "Batch is empty." },
+      error: parseContractError("Error(Contract, #8)"),
     };
   }
   if (submissions.length > MAX_BATCH_SIZE) {
     return {
       ok: false,
-      error: {
-        code: 7,
-        friendly: PROOF_REGISTRY_ERRORS[7],
-        raw: `Batch has ${submissions.length} submissions (max ${MAX_BATCH_SIZE}).`,
-      },
+      error: parseContractError("Error(Contract, #7)"),
     };
   }
   const types = new Set<string>();
@@ -390,11 +435,7 @@ export async function preflightSubmitProofs(params: {
     if (types.has(s.credentialType)) {
       return {
         ok: false,
-        error: {
-          code: 9,
-          friendly: PROOF_REGISTRY_ERRORS[9],
-          raw: `Duplicate credential type: ${s.credentialType}.`,
-        },
+        error: parseContractError("Error(Contract, #9)")!,
       };
     }
     types.add(s.credentialType);
@@ -425,19 +466,16 @@ export async function submitProof(params: {
 }): Promise<string> {
   const { holder, issuerId, credentialType, proof, publicInputs, ttlSecs, vkVersion } = params;
   const expiry = Math.floor(Date.now() / 1000) + ttlSecs;
-  return sendAndConfirm(
-    holder,
-    (contract) =>
-      buildSubmitProofOp(contract, {
-        holder,
-        issuerId,
-        credentialType,
-        proof,
-        publicInputs,
-        expiry,
-        vkVersion,
-      }),
-    "Submission",
+  return sendAndConfirm(holder, (contract) =>
+    buildSubmitProofOp(contract, {
+      holder,
+      issuerId,
+      credentialType,
+      proof,
+      publicInputs,
+      expiry,
+      vkVersion,
+    }),
   );
 }
 
@@ -460,84 +498,34 @@ export async function submitProofs(params: {
   // Both are contract-enforced; failing here costs the caller nothing, whereas
   // failing on-chain costs a signature and a fee for a transaction that reverts.
   if (submissions.length === 0) {
-    throw new Error("Batch submission requires at least one proof.");
+    throw new VerificationError({ category: "invalid_input", code: 8 });
   }
   if (submissions.length > MAX_BATCH_SIZE) {
-    throw new Error(
-      `Batch submission accepts at most ${MAX_BATCH_SIZE} proofs, received ${submissions.length}.`,
-    );
+    throw new VerificationError({ category: "invalid_input", code: 7 });
   }
   const types = new Set<string>();
   for (const s of submissions) {
     if (types.has(s.credentialType)) {
       // The registry stores one slot per (holder, credential_type), so a
       // duplicate type in one batch is rejected rather than overwritten.
-      throw new Error(`Batch submission contains two ${s.credentialType} proofs.`);
+      throw new VerificationError({ category: "invalid_input", code: 9 });
     }
     types.add(s.credentialType);
   }
 
   if (!CONTRACTS.proofRegistry) {
-    throw new Error(
-      "ProofRegistry contract id not set. Deploy the contracts and fill NEXT_PUBLIC_PROOF_REGISTRY_ID.",
-    );
+    throw new VerificationError({
+      category: "configuration_error",
+      code: "proof_registry_not_configured",
+    });
   }
 
-  const { Contract, TransactionBuilder, BASE_FEE } = await sdk();
-  const srv = await getServer();
-
-  const account = await srv.getAccount(holder);
-  const contract = new Contract(CONTRACTS.proofRegistry);
   const now = Math.floor(Date.now() / 1000);
-  const op = buildSubmitProofsOp(contract, holder, submissions, now);
-
-  const inclusionFee = (BigInt(BASE_FEE) * 2n).toString();
-  const tx = new TransactionBuilder(account, {
-    fee: inclusionFee,
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(op)
-    .setTimeout(90)
-    .build();
-
-  const prepared = await srv.prepareTransaction(tx);
-  // Add 25% safety headroom buffer for nested contract calls and execution variance
-  const feeNum = BigInt(prepared.fee || 0);
-  prepared.fee = ((feeNum * 125n) / 100n + 100n).toString();
-
-  const signedXdr = await signTx(prepared.toXDR(), holder);
-  const sent = await srv.sendTransaction(TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE));
-
-  if (sent.status === "ERROR") {
-    const errHex =
-      sent.errorResult &&
-      typeof (sent.errorResult as { toXDR?: (f: string) => string }).toXDR === "function"
-        ? (sent.errorResult as { toXDR: (f: string) => string }).toXDR("hex")
-        : String(sent.errorResult);
-    throw new Error(`Batch submission rejected: ${errHex}`);
-  }
-
-  const start = Date.now();
-  let result;
-  try {
-    result = await srv.getTransaction(sent.hash);
-  } catch (e) {
-    if (isBadUnionSwitch(e)) return sent.hash;
-    throw e;
-  }
-  while (result.status === "NOT_FOUND" && Date.now() - start < 65_000) {
-    await new Promise((r) => setTimeout(r, 1500));
-    try {
-      result = await srv.getTransaction(sent.hash);
-    } catch (e) {
-      if (isBadUnionSwitch(e)) return sent.hash;
-      throw e;
-    }
-  }
-  if (result.status !== "SUCCESS") {
-    throw new Error(`Batch transaction ${sent.hash} did not succeed (${result.status}).`);
-  }
-  return sent.hash;
+  return sendAndConfirm(
+    holder,
+    (contract) => buildSubmitProofsOp(contract, holder, submissions, now),
+    90,
+  );
 }
 
 /**
@@ -559,35 +547,32 @@ export async function submitAggregateProof(params: {
   const { holder, issuerIds, credentialTypes, proof, publicInputs, ttlSecsPerCredential } = params;
 
   if (ttlSecsPerCredential.length !== credentialTypes.length) {
-    throw new Error(
-      `Expected ${credentialTypes.length} TTL values (one per credential), received ${ttlSecsPerCredential.length}.`,
-    );
+    throw new VerificationError({
+      category: "invalid_input",
+      code: "invalid_ttl_values",
+    });
   }
 
   const now = Math.floor(Date.now() / 1000);
   const expiries = ttlSecsPerCredential.map((ttl) => now + ttl);
 
-  return sendAndConfirm(
-    holder,
-    (contract) => {
-      const { Address, nativeToScVal, xdr } = sdkSync();
-      const issuerScVec = xdr.ScVal.scvVec(issuerIds.map((id) => Address.fromString(id).toScVal()));
-      const typeScVec = xdr.ScVal.scvVec(
-        credentialTypes.map((t) => nativeToScVal(t, { type: "symbol" })),
-      );
-      const expiryScVec = xdr.ScVal.scvVec(
-        expiries.map((e) => nativeToScVal(BigInt(e), { type: "u64" })),
-      );
-      return contract.call(
-        "submit_aggregate_proof",
-        Address.fromString(holder).toScVal(),
-        issuerScVec,
-        typeScVec,
-        xdr.ScVal.scvBytes(Buffer.from(proof)),
-        xdr.ScVal.scvBytes(Buffer.from(publicInputs)),
-        expiryScVec,
-      );
-    },
-    "Aggregate submission",
-  );
+  return sendAndConfirm(holder, (contract) => {
+    const { Address, nativeToScVal, xdr } = sdkSync();
+    const issuerScVec = xdr.ScVal.scvVec(issuerIds.map((id) => Address.fromString(id).toScVal()));
+    const typeScVec = xdr.ScVal.scvVec(
+      credentialTypes.map((t) => nativeToScVal(t, { type: "symbol" })),
+    );
+    const expiryScVec = xdr.ScVal.scvVec(
+      expiries.map((e) => nativeToScVal(BigInt(e), { type: "u64" })),
+    );
+    return contract.call(
+      "submit_aggregate_proof",
+      Address.fromString(holder).toScVal(),
+      issuerScVec,
+      typeScVec,
+      xdr.ScVal.scvBytes(Buffer.from(proof)),
+      xdr.ScVal.scvBytes(Buffer.from(publicInputs)),
+      expiryScVec,
+    );
+  });
 }

@@ -13,6 +13,8 @@
 // `claims.ts`, keeping the module graph acyclic. Retry/timeout wrapping is
 // applied by the caller.
 
+import { verificationErrorFromApi, type VerificationErrorCode } from "./errors";
+
 /**
  * The raw wire shape returned by the indexer's claim-bearing endpoints
  * (`GET /claims`, `GET /recent`). Mirrors `SerializedClaim` in
@@ -62,15 +64,18 @@ export class IndexerError extends Error {
   cause?: unknown;
   /** HTTP status code when the indexer responded with an error status. */
   status?: number;
+  /** Stable diagnostic code; never contains response-body text. */
+  readonly code: VerificationErrorCode;
 
   constructor(
     message = "StellarCred indexer request failed",
-    options?: { cause?: unknown; status?: number },
+    options?: { cause?: unknown; status?: number; code?: VerificationErrorCode },
   ) {
     super(message);
     this.name = "IndexerError";
     this.cause = options?.cause;
     this.status = options?.status;
+    this.code = options?.code ?? "indexer_error";
   }
 }
 
@@ -106,34 +111,44 @@ export async function fetchWalletClaims(
   try {
     response = await fetch(url, { headers, method: "GET" });
   } catch (err) {
-    throw new IndexerError(`Indexer request to ${base}/claims failed`, {
+    throw new IndexerError("StellarCred indexer request failed", {
       cause: err,
+      code: "indexer_network_error",
     });
   }
 
   if (!response.ok) {
-    throw new IndexerError(
-      `Indexer responded ${response.status} for ${base}/claims`,
-      { status: response.status },
-    );
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      // The HTTP status remains available when the body is not JSON.
+    }
+    const normalized = verificationErrorFromApi(response.status, body);
+    throw new IndexerError("StellarCred indexer request failed", {
+      cause: normalized,
+      status: response.status,
+      code: normalized.code,
+    });
   }
 
   let body: unknown;
   try {
     body = await response.json();
   } catch (err) {
-    throw new IndexerError("Indexer response was not valid JSON", {
+    throw new IndexerError("StellarCred indexer response was not valid JSON", {
       cause: err,
       status: response.status,
+      code: "indexer_invalid_response",
     });
   }
 
   const claims = (body as ClaimsResponse | null)?.claims;
   if (!Array.isArray(claims)) {
-    throw new IndexerError(
-      "Indexer response was missing a `claims` array",
-      { status: response.status },
-    );
+    throw new IndexerError("StellarCred indexer response was missing a `claims` array", {
+      status: response.status,
+      code: "indexer_invalid_response",
+    });
   }
 
   return claims;
@@ -148,10 +163,7 @@ export async function fetchWalletClaims(
  *   list. A row with an empty issuer is rejected, matching the contract's
  *   `Option<Address>::None => false` branch for un-migrated legacy records.
  */
-export function issuerIsTrusted(
-  issuer: string,
-  trustedIssuers?: readonly string[],
-): boolean {
+export function issuerIsTrusted(issuer: string, trustedIssuers?: readonly string[]): boolean {
   if (trustedIssuers === undefined) return true;
   if (issuer === "") return false;
   return trustedIssuers.includes(issuer);
@@ -176,10 +188,7 @@ export interface EvaluateClaimOptions {
  * Clock skew between the two is the main source of disagreement near an expiry
  * boundary, and is one reason indexer reads must not gate access on their own.
  */
-export function evaluateClaimRow(
-  row: IndexerClaimRow,
-  opts: EvaluateClaimOptions,
-): boolean {
+export function evaluateClaimRow(row: IndexerClaimRow, opts: EvaluateClaimOptions): boolean {
   if (row.revoked !== 0) return false;
   if (!(row.expiry > opts.nowSeconds)) return false;
   if (!issuerIsTrusted(row.issuer, opts.trustedIssuers)) return false;

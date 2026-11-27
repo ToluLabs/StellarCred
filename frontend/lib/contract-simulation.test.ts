@@ -163,7 +163,13 @@ describe("health reporting", () => {
     const { checkClaim } = await loadModule();
     const { getRpcHealth, reportRpcIssue } = await import("./rpc-health");
 
-    reportRpcIssue({ kind: "rpc-unreachable", message: "node down" });
+    reportRpcIssue({
+      kind: "rpc-unreachable",
+      message: "node down",
+      category: "network_error",
+      code: "rpc_unreachable",
+      retryable: true,
+    });
     getAccount.mockResolvedValue({ id: "holder" });
     simulateTransaction.mockResolvedValue({ result: { retval: true } });
 

@@ -24,8 +24,12 @@ import { parseContractError, PROOF_REGISTRY_ERRORS } from "../contracts";
 //   AggregateLayoutInvalid  = 10
 //   SubmissionsPaused       = 11
 //   InvalidExpiry           = 12
+//   RoleNotHeld             = 13
+//   RoleHolderMismatch      = 14
+//   NoPendingAdmin          = 15
+//   NullifierAlreadyUsed    = 16
 
-const KNOWN_CODES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+const KNOWN_CODES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
 
 describe("PROOF_REGISTRY_ERRORS", () => {
   it("has a non-empty message for every known contract error code", () => {
@@ -52,7 +56,8 @@ describe("parseContractError", () => {
       const result = parseContractError(raw);
 
       expect(result.code).toBe(code);
-      expect(result.raw).toBe(raw);
+      expect(result.raw).toBe(String(code));
+      expect(result.diagnosticCode).toBe(code);
       expect(result.friendly).toBe(PROOF_REGISTRY_ERRORS[code]);
       // Friendly message must never fall back to the raw "Contract error #N." default.
       expect(result.friendly).not.toMatch(/^Contract error #\d+\.$/);
@@ -64,7 +69,7 @@ describe("parseContractError", () => {
 
       expect(result.code).toBe(99);
       expect(result.friendly).toBe("Contract error #99.");
-      expect(result.raw).toBe(raw);
+      expect(result.raw).toBe("99");
     });
   });
 
@@ -137,7 +142,7 @@ describe("parseContractError", () => {
 
       expect(result.code).toBeNull();
       expect(result.friendly).toMatch(/wallet authorisation/i);
-      expect(result.raw).toBe(raw);
+      expect(result.raw).toBe("wallet_authorization");
     });
 
     it("handles Error(WasmVm, ...) with an execution-failure message", () => {
@@ -145,23 +150,28 @@ describe("parseContractError", () => {
       const result = parseContractError(raw);
 
       expect(result.code).toBeNull();
-      expect(result.friendly).toMatch(/contract execution failed/i);
-      expect(result.raw).toBe(raw);
+      expect(result.friendly).toMatch(/credential data/i);
+      expect(result.raw).toBe("malformed_proof");
     });
 
-    it("passes through unrecognised error strings unchanged", () => {
-      const raw = "something completely unknown";
+    it("does not expose unrecognised error strings", () => {
+      const raw = "credential=secret salt=secret signature=secret witness=[secret]";
       const result = parseContractError(raw);
 
       expect(result.code).toBeNull();
-      expect(result.friendly).toBe(raw);
-      expect(result.raw).toBe(raw);
+      expect(result.friendly).toBe(
+        "The operation could not be completed. Try again or contact support with the diagnostic code.",
+      );
+      expect(result.raw).toBe("unknown");
     });
 
-    it("passes through an empty string", () => {
+    it("uses a safe non-empty message for an empty string", () => {
       const result = parseContractError("");
       expect(result.code).toBeNull();
-      expect(result.friendly).toBe("");
+      expect(result.friendly).toBe(
+        "The operation could not be completed. Try again or contact support with the diagnostic code.",
+      );
+      expect(result.raw).toBe("unknown");
     });
   });
 });

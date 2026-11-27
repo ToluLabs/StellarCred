@@ -101,15 +101,15 @@ describe("EventStream — validation", () => {
   it("rejects an invalid URL", () => {
     expect(
       () => new EventStream({ url: "nope", transport: "websocket", WebSocketImpl: Ctor }),
-    ).toThrow(/not a valid URL/);
+    ).toThrow(/URL is invalid/);
   });
 
   it("rejects a protocol that does not match the transport", () => {
     expect(
       () => new EventStream({ url: "https://x.io", transport: "websocket", WebSocketImpl: Ctor }),
-    ).toThrow(/ws:/);
+    ).toThrow(/URL is invalid/);
     expect(() => new EventStream({ url: WS_URL, transport: "sse", EventSourceImpl: Ctor })).toThrow(
-      /http:/,
+      /URL is invalid/,
     );
   });
 
@@ -119,7 +119,7 @@ describe("EventStream — validation", () => {
     g.WebSocket = undefined;
     try {
       const s = new EventStream({ url: WS_URL, transport: "websocket" });
-      expect(() => s.connect()).toThrow(/no WebSocket implementation/);
+      expect(() => s.connect()).toThrow(/WebSocket transport is unavailable/);
     } finally {
       g.WebSocket = saved;
     }
@@ -195,13 +195,16 @@ describe("EventStream — delivery", () => {
     const s = makeWs({ onError });
     const good = vi.fn();
     s.on("proof.submitted", () => {
-      throw new Error("boom");
+      throw new Error("boom credential=secret salt=secret signature=secret witness=[secret]");
     });
     s.on("proof.submitted", good);
     s.connect();
     FakeSocket.instances[0].message(JSON.stringify(submittedWire));
     expect(good).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledTimes(1);
+    const reported = onError.mock.calls[0][0] as Error & { cause?: unknown };
+    expect(reported.message).not.toMatch(/credential=secret|salt=secret|signature=secret|witness=/);
+    expect(reported.cause).toBeInstanceOf(Error);
   });
 
   it("works over the SSE transport", () => {
@@ -280,7 +283,11 @@ describe("EventStream — connection lifecycle", () => {
     expect(FakeSocket.instances).toHaveLength(3);
     expect(s.state).toBe("closed");
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: expect.stringContaining("gave up") }),
+      expect.objectContaining({
+        code: "event_stream_retries_exhausted",
+        category: "network_error",
+        retryable: true,
+      }),
     );
   });
 

@@ -9,6 +9,7 @@ import { savePersonaPending } from "@/lib/persona-pending";
 import { getOrCreateRequestId } from "@/lib/verify-session";
 import { performVerifyRedirect } from "@/lib/verify-redirect";
 import type { ClaimParamsFromUrl } from "./useVerifyParams";
+import { classifyVerificationError, verificationErrorFromApi } from "@/packages/sdk/src/errors";
 
 export const TYPES = Object.entries(TYPE_META) as [
   CredentialType,
@@ -235,17 +236,19 @@ export function useVerifyFlow({
         return; // don't clear busy — page is navigating away
       }
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(data?.error ?? "Issuing failed");
+        const data = (await res.json().catch(() => null)) as unknown;
+        throw verificationErrorFromApi(res.status, data);
       }
       const { credentials } = (await res.json()) as {
         credentials: Credential[];
       };
       await handleSuccess(credentials);
     } catch (e) {
-      const message = (e as Error).message;
+      const normalized = classifyVerificationError(e, {
+        fallbackCategory: "network_error",
+        fallbackCode: "issuance_failed",
+      });
+      const message = normalized.message;
       setError(`${message} (ref: ${requestId})`);
       toast.error(`Credential issuance failed: ${message}`);
     } finally {

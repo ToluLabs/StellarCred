@@ -16,6 +16,7 @@ import {
   type ClaimParams,
 } from "../../../lib/witness-input";
 import { witnessCircuitVersionMismatch } from "../../../lib/circuit-versions";
+import { classifyVerificationError, VerificationError } from "../../../packages/sdk/src/errors";
 import ageCircuit from "../../../public/circuits/age.json";
 import fundsCircuit from "../../../public/circuits/funds.json";
 import incomeCircuit from "../../../public/circuits/income.json";
@@ -38,7 +39,11 @@ async function resolveCurrentDate(): Promise<number> {
   const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
 
   if (!rpcUrl) {
-    throw new Error("NEXT_PUBLIC_RPC_URL is not configured");
+    throw new VerificationError({
+      category: "configuration_error",
+      code: "witness_rpc_not_configured",
+      httpStatus: 500,
+    });
   }
 
   // Add timeout to prevent hanging on RPC calls (5 seconds)
@@ -59,23 +64,57 @@ async function resolveCurrentDate(): Promise<number> {
     });
 
     if (!res.ok) {
-      throw new Error(`RPC error: ${res.status}`);
+      throw new VerificationError({
+        category: "network_error",
+        code: "witness_rpc_unavailable",
+        httpStatus: 502,
+        cause: new Error(`RPC status ${res.status}`),
+      });
     }
 
-    const data = await res.json();
-    const closedAt = data?.result?.closedAt || data?.result?.closeTime;
+    let data: { result?: { closedAt?: unknown; closeTime?: unknown } };
+    try {
+      data = (await res.json()) as typeof data;
+    } catch (error) {
+      throw new VerificationError({
+        category: "network_error",
+        code: "witness_rpc_invalid_response",
+        httpStatus: 502,
+        cause: error,
+      });
+    }
 
-    if (!closedAt) {
-      throw new Error("RPC response missing ledger close time");
+    const closedAt = data?.result?.closedAt || data?.result?.closeTime;
+    const closedAtMs =
+      typeof closedAt === "string" || typeof closedAt === "number"
+        ? new Date(closedAt).getTime()
+        : NaN;
+    if (!Number.isFinite(closedAtMs)) {
+      throw new VerificationError({
+        category: "network_error",
+        code: "witness_rpc_invalid_response",
+        httpStatus: 502,
+      });
     }
 
     // Convert ISO 8601 to UTC days since epoch
-    return Math.floor(new Date(closedAt).getTime() / 86_400_000);
-  } catch (error: any) {
-    if (error.name === "AbortError") {
-      throw new Error("Ledger time fetch timeout");
+    return Math.floor(closedAtMs / 86_400_000);
+  } catch (error: unknown) {
+    if (error instanceof VerificationError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new VerificationError({
+        category: "network_error",
+        code: "witness_rpc_timeout",
+        httpStatus: 504,
+        cause: error,
+      });
     }
-    throw error;
+    throw new VerificationError({
+      category: "network_error",
+      code: "witness_rpc_unavailable",
+      httpStatus: 502,
+      cause: error,
+    });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -208,6 +247,22 @@ function circuitFor(type: string) {
   }
 }
 
+function verificationErrorResponse(
+  error: VerificationError,
+  extra: Record<string, unknown> = {},
+): NextResponse {
+  return NextResponse.json(
+    {
+      error: error.message,
+      code: error.code,
+      category: error.category,
+      retryable: error.retryable,
+      ...extra,
+    },
+    { status: error.httpStatus ?? 500 },
+  );
+}
+
 export async function POST(req: NextRequest) {
   const requestId = resolveRequestId(req.headers.get("x-request-id"));
 
@@ -251,9 +306,12 @@ export async function POST(req: NextRequest) {
   const { type, credential } = parsed.body;
   if (!type || !credential) {
     return sendResponse(
-      NextResponse.json(
-        { error: "type and credential are required", code: "invalid_request" },
-        { status: 400 },
+      verificationErrorResponse(
+        new VerificationError({
+          category: "invalid_input",
+          code: "invalid_request",
+          httpStatus: 400,
+        }),
       ),
     );
   }
@@ -281,9 +339,12 @@ export async function POST(req: NextRequest) {
       }),
     );
     return sendResponse(
-      NextResponse.json(
-        { error: circuitMismatch, code: "circuit_version_mismatch" },
-        { status: 409 },
+      verificationErrorResponse(
+        new VerificationError({
+          category: "unsupported_credential",
+          code: "circuit_version_mismatch",
+          httpStatus: 409,
+        }),
       ),
     );
   }
@@ -301,13 +362,13 @@ export async function POST(req: NextRequest) {
       }),
     );
     return sendResponse(
-      NextResponse.json(
-        {
-          error: `${invalid.field} ${invalid.message}`,
+      verificationErrorResponse(
+        new VerificationError({
+          category: "invalid_input",
           code: "invalid_credential",
-          field: invalid.field,
-        },
-        { status: 400 },
+          httpStatus: 400,
+        }),
+        { field: invalid.field },
       ),
     );
   }
@@ -342,54 +403,35 @@ export async function POST(req: NextRequest) {
     });
     return sendResponse(response);
   } catch (e) {
-    const err = e as Error;
-
+    const err = e instanceof Error ? e : new Error("Witness generation failed");
     // #803 — a large credential payload can exhaust the prover's WASM memory
     // during witness generation. That is a size problem, not a server bug: map
     // it to a 413 so the holder gets a legible "input too large" instead of an
     // opaque 500. The upstream u64/field validation in lib/witness-input.ts
     // rejects oversized values before Noir is ever invoked; this is the
     // graceful backstop for anything that still overruns the prover itself.
-    if (isProverResourceExhaustion(err.message)) {
-      logger.warn(
-        stripSensitiveFields({
-          event: "witness_response_sent",
-          credentialType: type,
-          outcome: "resource_exhausted",
-          requestId,
-        }),
-      );
-      return sendResponse(
-        NextResponse.json(
-          {
-            error:
-              "The credential payload is too large to generate a witness in the available prover memory. Use a smaller payload.",
-            code: "input_too_large",
-          },
-          { status: 413 },
-        ),
-      );
-    }
-
-    // Map errors to appropriate HTTP status codes
-    const status =
-      err.message === "Ledger time fetch timeout"
-        ? 504
-        : err.message === "NEXT_PUBLIC_RPC_URL is not configured"
-          ? 500
-          : err.message.startsWith("RPC error")
-            ? 502
-            : 500;
+    const error = isProverResourceExhaustion(err.message)
+      ? new VerificationError({
+          category: "invalid_input",
+          code: "input_too_large",
+          httpStatus: 413,
+          cause: e,
+        })
+      : e instanceof VerificationError
+        ? e
+        : classifyVerificationError(e, {
+            fallbackCategory: "unknown",
+            fallbackCode: "witness_generation_failed",
+          });
 
     logger.error(
       stripSensitiveFields({
         event: "witness_response_sent",
         credentialType: type,
-        outcome: "failure",
-        error: err.message,
+        outcome: error.code,
         requestId,
       }),
     );
-    return sendResponse(NextResponse.json({ error: err.message }, { status }));
+    return sendResponse(verificationErrorResponse(error));
   }
 }

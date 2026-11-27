@@ -53,6 +53,10 @@ const ERRORS_EXPORTS = [
   "ContractError",
   "ContractErrorCode",
   "parseContractError",
+  "VerificationError",
+  "classifyVerificationError",
+  "verificationErrorFromApi",
+  "safeVerificationMessage",
 ] as const;
 
 // ── Challenge functions (sourced from challenge.ts) ──────────────────────────
@@ -202,6 +206,10 @@ describe("entry-point parity (issue #609 / #522)", () => {
     expect(ns.ContractError).toBe(fromErrors.ContractError);
     expect(ns.ContractErrorCode).toBe(fromErrors.ContractErrorCode);
     expect(ns.parseContractError).toBe(fromErrors.parseContractError);
+    expect(ns.VerificationError).toBe(fromErrors.VerificationError);
+    expect(ns.classifyVerificationError).toBe(fromErrors.classifyVerificationError);
+    expect(ns.verificationErrorFromApi).toBe(fromErrors.verificationErrorFromApi);
+    expect(ns.safeVerificationMessage).toBe(fromErrors.safeVerificationMessage);
   });
 
   it("StellarCred namespace members are the same references as capabilities.ts exports", () => {

@@ -53,7 +53,9 @@ describe("classifyRpcError", () => {
     const { classifyRpcError } = await loadModule();
     const issue = classifyRpcError(new Error("unexpected sim response shape"));
     expect(issue.kind).toBe("read-failed");
-    expect(issue.message).toContain("unexpected sim response shape");
+    expect(issue.message).not.toContain("unexpected sim response shape");
+    expect(issue.category).toBe("network_error");
+    expect(issue.code).toBe("claim_read_failed");
   });
 
   it("never throws on non-Error input", async () => {
@@ -84,7 +86,13 @@ describe("shared health store", () => {
     reportRpcHealthy();
     expect(getRpcHealth().status).toBe("ok");
 
-    reportRpcIssue({ kind: "rpc-unreachable", message: "node down" });
+    reportRpcIssue({
+      kind: "rpc-unreachable",
+      message: "node down",
+      category: "network_error",
+      code: "rpc_unreachable",
+      retryable: true,
+    });
     expect(getRpcHealth()).toMatchObject({
       status: "degraded",
       issue: { kind: "rpc-unreachable", message: "node down" },

@@ -4,6 +4,10 @@ Read-only client for [StellarCred](https://github.com/Psalmuel01/StellarCred) â€
 
 Protocols call one function. No API key, no backend, no personal data handling â€” the only thing you trust is the on-chain ProofRegistry.
 
+This directory is the repository's canonical and only SDK package. The former
+private root `sdk/` package was unpublished, unused, and removed; CI rejects a
+second SDK manifest or implementation.
+
 ## Install
 
 ```bash

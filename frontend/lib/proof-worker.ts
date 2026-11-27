@@ -57,6 +57,7 @@ import type {
   ProofWorkerEvent,
 } from "./proof-protocol";
 import { PROOF_PERF_TARGETS } from "./proof-perf";
+import { classifyVerificationError } from "../packages/sdk/src/errors";
 
 /**
  * The slice of `DedicatedWorkerGlobalScope` this module uses. Typed locally
@@ -89,18 +90,21 @@ function transferable(bytes: Uint8Array): Uint8Array {
     : bytes.slice();
 }
 
-function errorName(err: unknown): string {
-  return err instanceof Error ? err.name : "Error";
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err) ?? String(err);
-  } catch {
-    return String(err);
-  }
+function postError(
+  scope: Pick<ProverWorkerScope, "postMessage">,
+  jobId: number,
+  err: unknown,
+): void {
+  const error = classifyVerificationError(err);
+  scope.postMessage({
+    event: "error",
+    jobId,
+    name: error.code === "circuit_version_mismatch" ? "CircuitVersionMismatchError" : error.name,
+    message: error.message,
+    category: error.category,
+    code: error.code,
+    retryable: error.retryable,
+  });
 }
 
 /**
@@ -208,7 +212,7 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
       // reaches the main thread as a structured error, never as an uncaught
       // rejection that would silently strand a pending promise over there.
       clearStageTimer(jobId);
-      post({ event: "error", jobId, name: errorName(err), message: errorMessage(err) });
+      postError(scope, jobId, err);
     } finally {
       clearStageTimer(jobId);
       witness = new Uint8Array(0);
@@ -223,7 +227,7 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
       warmBackend(credentialType);
       post({ event: "done", jobId });
     } catch (err) {
-      post({ event: "error", jobId, name: errorName(err), message: errorMessage(err) });
+      postError(scope, jobId, err);
     }
   }
 
@@ -239,7 +243,7 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
       }
       post({ event: "done", jobId });
     } catch (err) {
-      post({ event: "error", jobId, name: errorName(err), message: errorMessage(err) });
+      postError(scope, jobId, err);
     }
   }
 

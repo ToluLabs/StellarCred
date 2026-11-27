@@ -47,6 +47,7 @@ import type { Credential } from "@/lib/credential";
 import { checkIssuerStatus } from "@/lib/issuer-registry";
 import type { IssuerStatus } from "@/lib/issuer-registry";
 import { useToast } from "@/components/Toast";
+import { classifyVerificationError, verificationErrorFromApi } from "@/packages/sdk/src/errors";
 
 const ACCENT = "var(--accent)";
 
@@ -429,15 +430,19 @@ function GetCredentialStep({
         return;
       }
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error ?? "Issuing failed");
+        const data = (await res.json().catch(() => null)) as unknown;
+        throw verificationErrorFromApi(res.status, data);
       }
       const { credentials } = (await res.json()) as { credentials: Credential[] };
       credentials.forEach((c) => saveCredential(c));
       onIssued();
       toast.success("Demo credential issued!");
     } catch (e) {
-      const message = (e as Error).message;
+      const error = classifyVerificationError(e, {
+        fallbackCategory: "network_error",
+        fallbackCode: "issuance_failed",
+      });
+      const message = error.message;
       setError(message);
       toast.error(`Issuance failed: ${message}`);
     } finally {

@@ -18,6 +18,11 @@ import {
   type CredentialFailureReason,
   type CredentialStatusResult,
 } from "./claims";
+import {
+  classifyVerificationError,
+  type VerificationErrorCategory,
+  type VerificationErrorCode,
+} from "./errors";
 
 /**
  * A challenge payload presented to a user's wallet for cryptographic signing.
@@ -233,10 +238,13 @@ export interface VerifyWalletClaimResult {
   claimStatus?: CredentialStatusResult;
   /** Specific machine-readable failure reason if verification failed. */
   failureReason?: WalletClaimFailureReason;
-  /** Human-readable explanation if verification failed. */
+  /** Human-readable explanation if verification failed; never contains raw exception text. */
   error?: string;
+  /** Typed failure category for programmatic recovery. */
+  errorCategory?: VerificationErrorCategory;
+  /** Stable diagnostic identifier preserved from the original failure. */
+  errorCode?: VerificationErrorCode;
 }
-
 
 /**
  * Verifies a wallet-signed challenge proving control of the address, then verifies
@@ -280,6 +288,8 @@ export async function verifyWalletClaim(
       claimValid: false,
       failureReason: "invalid_wallet",
       error: "Invalid Stellar wallet public address.",
+      errorCategory: "invalid_input",
+      errorCode: "invalid_wallet",
     };
   }
 
@@ -291,6 +301,8 @@ export async function verifyWalletClaim(
       claimValid: false,
       failureReason: "malformed_challenge",
       error: "Invalid or malformed challenge object.",
+      errorCategory: "invalid_input",
+      errorCode: "malformed_challenge",
     };
   }
 
@@ -304,6 +316,8 @@ export async function verifyWalletClaim(
       claimValid: false,
       failureReason: "challenge_replayed",
       error: "Challenge has expired or has already been used (replay attack prevented).",
+      errorCategory: "authorization_error",
+      errorCode: "challenge_replayed",
     };
   }
 
@@ -315,6 +329,8 @@ export async function verifyWalletClaim(
       claimValid: false,
       failureReason: "challenge_expired",
       error: "Challenge has expired.",
+      errorCategory: "authorization_error",
+      errorCode: "challenge_expired",
     };
   }
 
@@ -328,6 +344,8 @@ export async function verifyWalletClaim(
       claimValid: false,
       failureReason: "invalid_signature",
       error: "Invalid signature: caller does not control the claimed wallet address.",
+      errorCategory: "authorization_error",
+      errorCode: "invalid_signature",
     };
   }
 
@@ -363,21 +381,25 @@ export async function verifyWalletClaim(
       }
     }
   } catch (e) {
+    const error = classifyVerificationError(e, {
+      fallbackCategory: "network_error",
+      fallbackCode: "claim_read_failed",
+    });
     return {
       ok: false,
       wallet,
       signatureValid: true,
       claimValid: false,
       failureReason: "on_chain_error",
-      error: `On-chain claim verification error: ${(e as Error).message}`,
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
     };
   }
 
   if (!claimValid) {
     const failureReason =
-      claimStatus && claimStatus.status !== "verified"
-        ? claimStatus.status
-        : "not_verified";
+      claimStatus && claimStatus.status !== "verified" ? claimStatus.status : "not_verified";
     const detailMsg = claimStatus?.error ? ` (${claimStatus.error})` : "";
     return {
       ok: false,
@@ -386,7 +408,9 @@ export async function verifyWalletClaim(
       claimValid: false,
       claimStatus,
       failureReason,
-      error: `Wallet does not possess an active on-chain '${claim}' credential.${detailMsg}`,
+      error: `Wallet does not possess an active on-chain credential.${detailMsg}`,
+      errorCategory: claimStatus?.errorCategory ?? "policy_rejection",
+      errorCode: claimStatus?.errorCode ?? "not_verified",
     };
   }
 
@@ -399,5 +423,3 @@ export async function verifyWalletClaim(
     claimStatus,
   };
 }
-
-

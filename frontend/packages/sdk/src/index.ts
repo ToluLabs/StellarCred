@@ -1,3 +1,4 @@
+// @stellarcred/sdk — see README.md for setup, security guarantees, and configuration.
 // @stellarcred/sdk — read-only client for protocols integrating StellarCred.
 // The on-chain ProofRegistry is the default source of truth; the optional
 // indexer fast path trusts its operator and must not be the sole basis for a
@@ -7,7 +8,7 @@ export * from "./claims";
 export * from "./issuers"; // IssuerRegistry reads
 export * from "./capabilities";
 export * from "./challenge";
-export * from "./presentation-token"; // Server-side presentation tokens (#1062)
+export * from "./presentation-token";
 export * from "./subscriptions";
 export * from "./errors"; // Typed error taxonomy (#404)
 export * from "./telemetry"; // Opt-in, zero-PII telemetry (#1064)

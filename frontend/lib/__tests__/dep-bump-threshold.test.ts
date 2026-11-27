@@ -54,6 +54,9 @@ describe("check-dep-bump-threshold", () => {
     it("allows package.json and lockfile modifications", () => {
       expect(areFilesManifestOnly(["frontend/package.json", "frontend/pnpm-lock.yaml"])).toBe(true);
       expect(areFilesManifestOnly(["Cargo.toml", "Cargo.lock"])).toBe(true);
+      expect(
+        areFilesManifestOnly(["frontend/packages/sdk/package.json", "frontend/pnpm-lock.yaml"]),
+      ).toBe(true);
       expect(areFilesManifestOnly([".github/workflows/ci.yml"])).toBe(true);
     });
 
@@ -62,6 +65,7 @@ describe("check-dep-bump-threshold", () => {
         false,
       );
       expect(areFilesManifestOnly(["contracts/proof_registry/src/lib.rs"])).toBe(false);
+      expect(areFilesManifestOnly(["sdk/package.json"])).toBe(false);
     });
   });
 

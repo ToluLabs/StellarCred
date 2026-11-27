@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   IconArrowLeft,
   IconExternalLink,
@@ -33,7 +33,6 @@ export function BatchProofFlowView({
 }) {
   const { networkMismatch } = useWallet();
   const toast = useToast();
-  const [showRaw, setShowRaw] = useState(false);
   const networkMismatchRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -280,37 +279,6 @@ export function BatchProofFlowView({
             >
               {batchError.friendly}
             </div>
-            {batchError.raw !== batchError.friendly && (
-              <div style={{ marginTop: "0.6rem" }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowRaw((v) => !v)}
-                  style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem", color: "var(--faint)" }}
-                >
-                  {showRaw ? "Hide" : "Show"} raw error
-                </button>
-                {showRaw && (
-                  <pre
-                    className="mono"
-                    style={{
-                      marginTop: "0.5rem",
-                      fontSize: "0.68rem",
-                      color: "var(--faint)",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-all",
-                      lineHeight: 1.5,
-                      maxHeight: 180,
-                      overflowY: "auto",
-                      background: "rgba(0,0,0,0.2)",
-                      padding: "0.6rem",
-                      borderRadius: "calc(var(--radius) - 2px)",
-                    }}
-                  >
-                    {batchError.raw}
-                  </pre>
-                )}
-              </div>
-            )}
           </div>
         )}
 

@@ -35,6 +35,11 @@ import { validateTenantCredentialTypes } from "@/lib/tenancy";
 import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
 import { normalizeAttributes } from "@/lib/attribute-normalizer";
 import { equals } from "@/lib/crypto";
+import {
+  classifyVerificationError,
+  type VerificationErrorCategory,
+  type VerificationErrorCode,
+} from "@/packages/sdk/src/errors";
 
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -66,6 +71,9 @@ export type BatchItemResult =
       success: false;
       holder?: string;
       error: string;
+      category?: VerificationErrorCategory;
+      code?: VerificationErrorCode;
+      retryable?: boolean;
     };
 
 export interface BatchIssueResponse {
@@ -427,11 +435,18 @@ async function executeBatchRequest(
       });
       successful++;
     } catch (err) {
+      const error = classifyVerificationError(err, {
+        fallbackCategory: "network_error",
+        fallbackCode: "issuance_failed",
+      });
       results.push({
         index,
         success: false,
         holder,
-        error: (err as Error).message || "Signing failed",
+        error: error.message,
+        category: error.category,
+        code: error.code,
+        retryable: error.retryable,
       });
       failed++;
       break;
@@ -450,8 +465,10 @@ async function executeBatchRequest(
   );
 
   if (failed > 0) {
-    const failure = results.find((result) => !result.success);
-    const message = failure && !failure.success ? failure.error : "Batch issuance failed.";
+    const failure = results.find(
+      (result): result is Extract<BatchItemResult, { success: false }> => !result.success,
+    );
+    const message = failure?.error ?? "Batch issuance failed.";
     const payload: BatchIssueResponse = {
       total: items.length,
       successful: 0,
@@ -461,6 +478,9 @@ async function executeBatchRequest(
         success: false,
         error:
           index === (failure?.index ?? -1) ? message : "Batch aborted because another item failed.",
+        category: index === (failure?.index ?? -1) ? failure?.category : "invalid_input",
+        code: index === (failure?.index ?? -1) ? failure?.code : "batch_aborted",
+        retryable: index === (failure?.index ?? -1) ? failure?.retryable : false,
       })),
     };
     return sendResponse(NextResponse.json(payload, { status: 422 }));

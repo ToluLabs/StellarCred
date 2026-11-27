@@ -200,7 +200,10 @@ describe("Persona gate", () => {
       kind: "error",
       status: 500,
       body: {
-        error: "PERSONA_KYC_TEMPLATE_ID is required when PERSONA_API_KEY is set",
+        error: "Identity verification is not configured. Contact the app operator.",
+        code: "persona_not_configured",
+        category: "configuration_error",
+        retryable: false,
       },
     });
     expect(createPersonaInquiry).not.toHaveBeenCalled();
@@ -212,7 +215,9 @@ describe("Persona gate", () => {
     mockEnv.PERSONA_KYC_TEMPLATE_ID = TEMPLATE_ID;
     vi.mocked(resolvePersonaKYC).mockResolvedValue({
       ok: false,
-      error: "Persona KYC inquiry status: declined",
+      error: "Identity verification was declined.",
+      errorCategory: "policy_rejection",
+      errorCode: "persona_declined",
     });
 
     const result = await runIssuanceFlow(request({ personaInquiryId: INQUIRY_ID }), CTX);
@@ -220,7 +225,12 @@ describe("Persona gate", () => {
     expect(result).toEqual({
       kind: "error",
       status: 403,
-      body: { error: "Persona KYC inquiry status: declined" },
+      body: {
+        error: "Identity verification was declined.",
+        code: "persona_declined",
+        category: "policy_rejection",
+        retryable: false,
+      },
     });
     expect(issueAndAuditCredentials).not.toHaveBeenCalled();
   });
@@ -268,7 +278,10 @@ describe("Persona gate", () => {
       kind: "error",
       status: 502,
       body: {
-        error: "Identity verification service is unavailable. Please try again.",
+        error: "Identity verification is temporarily unavailable. Please try again.",
+        code: "persona_unavailable",
+        category: "network_error",
+        retryable: true,
       },
     });
 
@@ -303,7 +316,7 @@ describe("Plaid attestation", () => {
     );
   });
 
-  it("propagates a provider failure verbatim and never signs", async () => {
+  it("returns a typed provider failure and never signs", async () => {
     vi.mocked(fetchPlaidBalance).mockResolvedValue({
       ok: false,
       status: 502,
@@ -316,7 +329,12 @@ describe("Plaid attestation", () => {
     expect(result).toEqual({
       kind: "error",
       status: 502,
-      body: { error: "Balance verification failed.", code: "PLAID_ERROR" },
+      body: {
+        error: "Balance verification failed. Try again or contact support.",
+        code: "PLAID_ERROR",
+        category: "network_error",
+        retryable: true,
+      },
     });
     expect(issueAndAuditCredentials).not.toHaveBeenCalled();
   });
@@ -372,9 +390,9 @@ describe("issuance and stamping", () => {
     });
   });
 
-  it("returns a 500 with the signing error and reports it, per credential type", async () => {
+  it("returns a safe 500 and reports it per credential type", async () => {
     vi.mocked(issueAndAuditCredentials).mockRejectedValue(
-      new Error("commitment computation rejected"),
+      new Error("credential=secret salt=secret signature=secret witness=[secret]"),
     );
     const events = captureLogs();
 
@@ -383,11 +401,26 @@ describe("issuance and stamping", () => {
     expect(result).toEqual({
       kind: "error",
       status: 500,
-      body: { error: "commitment computation rejected" },
+      body: {
+        error:
+          "Credential issuance could not be completed. Try again or contact support with the diagnostic code.",
+        code: "issuance_failed",
+        category: "network_error",
+        retryable: true,
+      },
     });
 
     const failures = events.filter((event) => event.event === "signing_failed");
     expect(failures.map((event) => event.credentialType)).toEqual(["kyc", "age"]);
+    const stream = JSON.stringify(result) + JSON.stringify(events);
+    for (const secret of [
+      "credential=secret",
+      "salt=secret",
+      "signature=secret",
+      "witness=[secret]",
+    ]) {
+      expect(stream).not.toContain(secret);
+    }
 
     expect(reportError).toHaveBeenCalledWith(
       expect.objectContaining({

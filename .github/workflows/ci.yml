@@ -107,6 +107,23 @@ jobs:
       - name: Check API reference against contract source
         run: node .github/scripts/check-api-reference.mjs
 
+  # ── SDK: one canonical package (issue #970) ──────────────────────────────
+  sdk-layout:
+    name: Canonical SDK layout check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Check for duplicate SDK packages
+        run: node .github/scripts/check-sdk-layout.mjs
+      - name: Test the SDK layout guard
+        run: node --test test/sdk-layout.test.js
+
   # ── Docs: no new process artifacts (issue #684) ──────────────────────────
   # Implementation summaries, status reports and PR descriptions document how a
   # change was made rather than how the system works, go stale at merge, and bury

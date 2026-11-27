@@ -7,6 +7,8 @@
 //   { "contract": "proof_reg", "action": "submitted" | "revoked" | "self_rev",
 //     "credential_type": "kyc", "ledger": 123, "data": { ...payload fields } }
 
+import { classifyVerificationError, VerificationError } from "./errors";
+
 interface BaseEvent {
   claim: string;
   holder: string;
@@ -129,14 +131,19 @@ export class EventStream {
     let parsed: URL;
     try {
       parsed = new URL(opts.url);
-    } catch {
-      throw new Error(`EventStream: "${opts.url}" is not a valid URL`);
+    } catch (cause) {
+      throw new VerificationError({
+        category: "configuration_error",
+        code: "event_stream_invalid_url",
+        cause,
+      });
     }
     const allowed = opts.transport === "websocket" ? ["ws:", "wss:"] : ["http:", "https:"];
     if (!allowed.includes(parsed.protocol)) {
-      throw new Error(
-        `EventStream: ${opts.transport} transport needs a ${allowed.join(" or ")} URL, got "${parsed.protocol}"`,
-      );
+      throw new VerificationError({
+        category: "configuration_error",
+        code: "event_stream_invalid_url",
+      });
     }
   }
 
@@ -192,12 +199,23 @@ export class EventStream {
       : (this.opts.EventSourceImpl ?? g.EventSource);
     if (!Ctor) {
       this.current = "closed";
-      throw new Error(
-        `EventStream: no ${isWs ? "WebSocket" : "EventSource"} implementation available`,
-      );
+      throw new VerificationError({
+        category: "configuration_error",
+        code: `event_stream_${isWs ? "websocket" : "sse"}_unavailable`,
+      });
     }
 
-    const socket = new Ctor(this.opts.url);
+    let socket: SocketLike;
+    try {
+      socket = new Ctor(this.opts.url);
+    } catch (cause) {
+      this.current = "closed";
+      throw new VerificationError({
+        category: "network_error",
+        code: "event_stream_connection_failed",
+        cause,
+      });
+    }
     this.socket = socket;
 
     socket.onopen = () => {
@@ -234,7 +252,12 @@ export class EventStream {
     const max = this.opts.maxRetries ?? 5;
     if (this.retries >= max) {
       this.current = "closed";
-      this.report(new Error(`EventStream gave up after ${max} reconnect attempts`));
+      this.report(
+        new VerificationError({
+          category: "network_error",
+          code: "event_stream_retries_exhausted",
+        }),
+      );
       return;
     }
     const base = this.opts.baseDelayMs ?? 1000;
@@ -271,10 +294,14 @@ export class EventStream {
   }
 
   private report(error: unknown): void {
+    const normalized = classifyVerificationError(error, {
+      fallbackCategory: "network_error",
+      fallbackCode: "event_stream_failed",
+    });
     try {
-      this.opts.onError?.(error);
+      this.opts.onError?.(normalized);
     } catch {
-      /* never let onError break the stream */
+      // A reporting callback must not break the stream.
     }
   }
 

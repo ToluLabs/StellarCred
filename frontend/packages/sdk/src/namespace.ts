@@ -43,6 +43,10 @@ import {
   ContractErrorCode,
   parseContractError,
   TransactionSubmissionError,
+  VerificationError,
+  classifyVerificationError,
+  verificationErrorFromApi,
+  safeVerificationMessage,
 } from "./errors";
 import { submitTransaction } from "./submit";
 import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
@@ -155,6 +159,10 @@ export const StellarCred = {
   ContractError,
   ContractErrorCode,
   TransactionSubmissionError,
+  VerificationError,
+  classifyVerificationError,
+  verificationErrorFromApi,
+  safeVerificationMessage,
   CredentialValidationError,
   parseContractError,
   telemetry,

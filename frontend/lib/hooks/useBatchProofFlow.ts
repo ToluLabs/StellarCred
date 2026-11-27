@@ -109,7 +109,7 @@ export function useBatchProofFlow(
       } catch (e) {
         if (!(e instanceof ProofResourceError)) throw e;
         setBatchStage("error");
-        setBatchError({ code: null, friendly: e.friendly, raw: e.message });
+        setBatchError({ ...parseContractError(e), friendly: e.friendly });
         toast.error(e.friendly);
         return;
       }
@@ -166,18 +166,16 @@ export function useBatchProofFlow(
             // A guard rejection names the real limit; show that, not the raw
             // "Proof request refused: …" form (issue #943).
             const guardRefusal = e instanceof ProofResourceError ? e : null;
+            const parsed = parseContractError(e);
             setCredStates((prev) => {
               const next = [...prev];
               next[i] = {
                 status: "error",
-                message: guardRefusal?.friendly ?? (e as Error).message,
+                message: guardRefusal?.friendly ?? parsed.friendly,
               };
               return next;
             });
             setBatchStage("error");
-            const parsed = guardRefusal
-              ? { code: null, friendly: guardRefusal.friendly, raw: guardRefusal.message }
-              : parseContractError((e as Error).message);
             setBatchError(parsed);
             toast.error(`Proof generation failed for ${cred.title}: ${parsed.friendly}`);
             return;
@@ -213,9 +211,8 @@ export function useBatchProofFlow(
       if (issue) {
         setRpcIssue(issue);
         setBatchError({
-          code: null,
+          ...parseContractError({ code: "network_error" }),
           friendly: `${issue.message} Proof generation was deferred: the batch would only fail at submission.`,
-          raw: issue.message,
         });
         setBatchStage("blocked");
         return;
@@ -289,17 +286,16 @@ export function useBatchProofFlow(
     setBatchFee(null);
     toast.info(`Simulating batch of ${currentCreds.length} proofs…`);
     (async () => {
-      const preflight = await preflightSubmitProofs({ holder: currentHolder, submissions });
-      if (!preflight.ok) {
-        setBatchError(preflight.error);
-        setBatchStage("error");
-        toast.error(`Batch submission blocked — ${preflight.error.friendly}`);
-        return;
-      }
-      setBatchFee(preflight.fee);
-
-      // Stage 2 — simulation succeeded, sign and submit.
       try {
+        const preflight = await preflightSubmitProofs({ holder: currentHolder, submissions });
+        if (!preflight.ok) {
+          setBatchError(preflight.error);
+          setBatchStage("error");
+          toast.error(`Batch submission blocked — ${preflight.error.friendly}`);
+          return;
+        }
+        setBatchFee(preflight.fee);
+
         const hash = await submitProofs({ holder: currentHolder, submissions });
         setTxHash(hash);
         const commitments = currentCreds.map((c) => c.commitment);
@@ -310,7 +306,7 @@ export function useBatchProofFlow(
         );
         toast.success(`Confirmed ${currentCreds.length} proofs on-chain`, { txHash: hash });
       } catch (e) {
-        const parsed = parseContractError((e as Error).message);
+        const parsed = parseContractError(e);
         setBatchError(parsed);
         setBatchStage("error");
         toast.error(`Batch submission failed: ${parsed.friendly}`);

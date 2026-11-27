@@ -8,6 +8,7 @@ if (typeof window !== "undefined") {
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Credential, CredentialType, ClaimParams } from "@stellarcred/issuer";
 import { stripPiiKeys } from "./pii";
+import type { VerificationErrorCategory, VerificationErrorCode } from "../packages/sdk/src/errors";
 
 // ---------------------------------------------------------------------------
 // Security & PII Protection
@@ -39,6 +40,9 @@ export interface InquiryResult {
   status: "completed" | "failed";
   credentials?: Credential[];
   error?: string;
+  errorCategory?: VerificationErrorCategory;
+  errorCode?: VerificationErrorCode;
+  retryable?: boolean;
   createdAt: number;
 }
 

@@ -18,7 +18,18 @@ import {
   type IndexerClaimRow,
 } from "./indexer";
 // RpcError has been moved to ./errors.ts (issue #404)
-import { RpcError, ContractError, ContractErrorCode, parseContractError } from "./errors";
+import {
+  RpcError,
+  ContractError,
+  ContractErrorCode,
+  parseContractError,
+  TransactionSubmissionError,
+  classifyVerificationError,
+  safeVerificationMessage,
+  VerificationError,
+  type VerificationErrorCategory,
+  type VerificationErrorCode,
+} from "./errors";
 import { ClaimCache, claimCacheKey, type ClaimCacheKey } from "./claim-cache";
 import {
   abortReason,
@@ -518,9 +529,29 @@ export class TimeoutError extends Error {
  * `registryId`). Only surfaces when `{ throwOnError: true }` is passed.
  */
 export class ConfigError extends Error {
-  constructor(message = "StellarCred is not configured: missing registryId") {
+  readonly category: VerificationErrorCategory;
+  readonly code: VerificationErrorCode;
+  readonly retryable: boolean;
+  readonly httpStatus?: number;
+  readonly cause?: unknown;
+
+  constructor(
+    message = "StellarCred is not configured: missing registryId",
+    options: {
+      category?: VerificationErrorCategory;
+      code?: VerificationErrorCode;
+      retryable?: boolean;
+      httpStatus?: number;
+      cause?: unknown;
+    } = {},
+  ) {
     super(message);
     this.name = "ConfigError";
+    this.category = options.category ?? "configuration_error";
+    this.code = options.code ?? "configuration_error";
+    this.retryable = options.retryable ?? this.category === "network_error";
+    this.httpStatus = options.httpStatus;
+    this.cause = options.cause;
   }
 }
 
@@ -584,7 +615,7 @@ export function isValidClaimType(value: string): value is ClaimType {
 export function assertValidClaimType(value: string): asserts value is ClaimType {
   if (!isValidClaimType(value)) {
     throw new InvalidClaimTypeError(
-      `Invalid claim type: "${value}". Expected one of: ${CLAIM_TYPES.join(", ")}`,
+      `Invalid claim type. Expected one of: ${CLAIM_TYPES.join(", ")}`,
     );
   }
 }
@@ -679,6 +710,8 @@ export interface CredentialStatusResult {
   status: ClaimOutcomeState;
   record?: ProofRecordDetails | null;
   error?: string;
+  errorCategory?: VerificationErrorCategory;
+  errorCode?: VerificationErrorCode;
   cause?: unknown;
 }
 
@@ -718,7 +751,7 @@ export async function validateIssuer(issuer: string): Promise<string> {
   }
   const { StrKey } = await getSdk();
   if (!StrKey.isValidEd25519PublicKey(normalized)) {
-    throw new InvalidIssuerError(`Invalid issuer address: "${normalized}"`);
+    throw new InvalidIssuerError("Invalid issuer address");
   }
   return normalized;
 }
@@ -865,6 +898,9 @@ async function fanOut<T, R>(
 }
 
 function isRetryable(error: any): boolean {
+  if (error instanceof VerificationError || error instanceof TransactionSubmissionError) {
+    return error.retryable;
+  }
   if (
     error instanceof ConfigError ||
     error instanceof InvalidAddressError ||
@@ -873,6 +909,18 @@ function isRetryable(error: any): boolean {
     error instanceof InvalidThresholdError
   ) {
     return false;
+  }
+  // Transient RPC/transport failures: HTTP 429/5xx, network timeouts, and
+  // unknown error shapes that are not obviously terminal.
+  if (error instanceof RpcError) {
+    if (error.contractError) return error.contractError.isRetryable();
+    const status = error.status;
+    if (status === undefined) return true;
+    if (status === 429 || (status >= 500 && status < 600)) return true;
+    return false;
+  }
+  if (error instanceof ContractError) {
+    return error.isRetryable();
   }
   if (error && typeof error.message === "string") {
     const msg = error.message.toLowerCase();
@@ -884,17 +932,6 @@ function isRetryable(error: any): boolean {
     ) {
       return false;
     }
-  }
-  // Transient RPC/transport failures: HTTP 429/5xx, network timeouts, and
-  // unknown error shapes that are not obviously terminal.
-  if (error instanceof RpcError) {
-    const status = error.status;
-    if (status === undefined) return true;
-    if (status === 429 || (status >= 500 && status < 600)) return true;
-    return false;
-  }
-  if (error instanceof ContractError) {
-    return error.isRetryable();
   }
   return true;
 }
@@ -914,7 +951,12 @@ class ReadTimeoutError extends Error {
 export type TransientFailureKind =
   | { kind: "rate_limited"; statusCode: number; retryAfterMs?: number }
   | { kind: "server_error"; statusCode: number }
-  | { kind: "network_error"; message: string };
+  | {
+      kind: "network_error";
+      message: string;
+      category: "network_error";
+      code: VerificationErrorCode;
+    };
 
 /**
  * Inspect a thrown error from a submission or RPC path and return a structured
@@ -923,6 +965,10 @@ export type TransientFailureKind =
  */
 export function classifyTransientFailure(error: unknown): TransientFailureKind | null {
   if (!isRetryable(error)) return null;
+  const normalized = classifyVerificationError(error, {
+    fallbackCategory: "network_error",
+    fallbackCode: "network_error",
+  });
 
   if (error instanceof RpcError) {
     const status = error.status;
@@ -933,7 +979,12 @@ export function classifyTransientFailure(error: unknown): TransientFailureKind |
       return { kind: "server_error", statusCode: status };
     }
     // An unknown/unset RpcError still counts as transient.
-    return { kind: "network_error", message: error.message };
+    return {
+      kind: "network_error",
+      message: normalized.message,
+      category: "network_error",
+      code: normalized.code,
+    };
   }
 
   if (error instanceof ContractError) {
@@ -943,11 +994,16 @@ export function classifyTransientFailure(error: unknown): TransientFailureKind |
     return null;
   }
 
-  if (error instanceof Error) {
-    return { kind: "network_error", message: error.message };
+  if (normalized.code === ContractErrorCode.SubmissionsPaused) {
+    return { kind: "server_error", statusCode: 503 };
   }
 
-  return { kind: "network_error", message: String(error) };
+  return {
+    kind: "network_error",
+    message: normalized.message,
+    category: "network_error",
+    code: normalized.code,
+  };
 }
 
 function withRequestTimeout<T>(operation: () => Promise<T>, timeoutMs: number): Promise<T> {
@@ -1194,8 +1250,14 @@ async function readIndexerRows(
     if (throwOnError) {
       if (err instanceof ConfigError) throw err;
       if (err instanceof IndexerError) throw err;
-      throw new IndexerError(`Indexer read failed for wallet "${wallet}"`, {
+      const normalized = classifyVerificationError(err, {
+        fallbackCategory: "network_error",
+        fallbackCode: "indexer_read_failed",
+      });
+      throw new IndexerError(normalized.message, {
         cause: err,
+        status: normalized.httpStatus,
+        code: normalized.code,
       });
     }
     return null;
@@ -1374,7 +1436,7 @@ async function readIsVerifiedFromChain(
   } catch (err) {
     if (throwOnError) {
       if (err instanceof ConfigError) throw err;
-      throw new RpcError(`is_verified RPC failed for claim "${claimType}"`, {
+      throw new RpcError("is_verified RPC failed", {
         cause: err,
       });
     }
@@ -1414,7 +1476,7 @@ async function readCheckClaimFromChain(
   } catch (err) {
     if (throwOnError) {
       if (err instanceof ConfigError) throw err;
-      throw new RpcError(`check_claim RPC failed for claim "${claimType}"`, {
+      throw new RpcError("check_claim RPC failed", {
         cause: err,
       });
     }
@@ -1488,7 +1550,7 @@ async function readRecordWithStatus(
   } catch (err) {
     if (throwOnError) {
       if (err instanceof ConfigError) throw err;
-      throw new RpcError(`get_record RPC failed for claim "${claimType}"`, {
+      throw new RpcError("get_record RPC failed", {
         cause: err,
       });
     }
@@ -1784,36 +1846,62 @@ export async function checkClaimStatus(
         valid: false,
         status: "not_verified",
         record: null,
-        error: "Invalid Stellar address",
+        error: safeVerificationMessage("invalid_input", "invalid_address"),
+        errorCategory: "invalid_input",
+        errorCode: "invalid_address",
       };
     }
     if (throwOnError) {
       throw new RpcError("Failed to validate Stellar address", { cause: err });
     }
+    const error = classifyVerificationError(err, {
+      fallbackCategory: "network_error",
+      fallbackCode: "address_validation_failed",
+    });
     return {
       valid: false,
       status: "not_verified",
       record: null,
-      error: "Failed to validate Stellar address",
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
     };
   }
 
   if (!isValidClaimType(claimType)) {
     if (throwOnError) {
       throw new InvalidClaimTypeError(
-        `Invalid claim type: "${claimType}". Expected one of: ${CLAIM_TYPES.join(", ")}`,
+        `Invalid claim type. Expected one of: ${CLAIM_TYPES.join(", ")}`,
       );
     }
     return {
       valid: false,
       status: "unsupported",
       record: null,
-      error: `Claim type "${claimType}" is unsupported. Supported types: ${CLAIM_TYPES.join(", ")}`,
+      error: safeVerificationMessage("unsupported_credential", "unsupported_credential"),
+      errorCategory: "unsupported_credential",
+      errorCode: "unsupported_credential",
     };
   }
 
   if (opts?.minThreshold !== undefined) {
-    validateThreshold(opts.minThreshold);
+    try {
+      validateThreshold(opts.minThreshold);
+    } catch (err) {
+      if (throwOnError) throw err;
+      const error = classifyVerificationError(err, {
+        fallbackCategory: "invalid_input",
+        fallbackCode: "invalid_threshold",
+      });
+      return {
+        valid: false,
+        status: "unsupported",
+        record: null,
+        error: error.message,
+        errorCategory: error.category,
+        errorCode: error.code,
+      };
+    }
   }
 
   const {
@@ -1829,15 +1917,17 @@ export async function checkClaimStatus(
   );
 
   if (unavailable) {
-    const errorMsg =
-      readError instanceof Error
-        ? readError.message
-        : `RPC or network unavailable while checking claim "${claimType}".`;
+    const error = classifyVerificationError(readError, {
+      fallbackCategory: "network_error",
+      fallbackCode: "claim_read_failed",
+    });
     return {
       valid: false,
       status: "unavailable",
       record: null,
-      error: errorMsg,
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
       cause: readError,
     };
   }
@@ -1847,7 +1937,9 @@ export async function checkClaimStatus(
       valid: false,
       status: "not_verified",
       record: null,
-      error: `Wallet has no on-chain proof for "${claimType}".`,
+      error: safeVerificationMessage("policy_rejection", "proof_not_found"),
+      errorCategory: "policy_rejection",
+      errorCode: "proof_not_found",
     };
   }
 
@@ -1856,7 +1948,9 @@ export async function checkClaimStatus(
       valid: false,
       status: "revoked",
       record,
-      error: `Credential "${claimType}" was revoked by issuer.`,
+      error: safeVerificationMessage("policy_rejection", "proof_revoked"),
+      errorCategory: "policy_rejection",
+      errorCode: "proof_revoked",
     };
   }
 
@@ -1866,7 +1960,9 @@ export async function checkClaimStatus(
       valid: false,
       status: "expired",
       record,
-      error: `Credential "${claimType}" expired at ${new Date(record.expiry * 1000).toISOString()}.`,
+      error: safeVerificationMessage("expired_proof", "expired_proof"),
+      errorCategory: "expired_proof",
+      errorCode: "expired_proof",
     };
   }
 
@@ -1876,7 +1972,9 @@ export async function checkClaimStatus(
         valid: false,
         status: "wrong_issuer",
         record,
-        error: `Credential issuer "${record.issuer ?? "unknown"}" is not in trusted issuers list.`,
+        error: safeVerificationMessage("policy_rejection", "issuer_not_trusted"),
+        errorCategory: "policy_rejection",
+        errorCode: "issuer_not_trusted",
       };
     }
   }
@@ -1888,7 +1986,9 @@ export async function checkClaimStatus(
         valid: false,
         status: "unmet_threshold",
         record,
-        error: `Proven threshold (${proventhreshold}) is less than required minimum (${opts.minThreshold}).`,
+        error: safeVerificationMessage("policy_rejection", "threshold_not_met"),
+        errorCategory: "policy_rejection",
+        errorCode: "threshold_not_met",
       };
     }
   }
@@ -1940,10 +2040,14 @@ export interface ClaimReadResult {
   verifiedAt?: number;
   expiry?: number;
   record?: ProofRecordDetails | null;
+  /** Safe display message; never contains raw transport or credential data. */
   error?: string;
+  /** Typed failure category for programmatic recovery. */
+  errorCategory?: VerificationErrorCategory;
+  /** Stable diagnostic identifier preserved from the original failure. */
+  errorCode?: VerificationErrorCode;
 }
 
-/** Backwards-friendly aliases for the result type. */
 /** Backwards-friendly alias for the detailed read result type. */
 export type ClaimReadOutcomeResult = ClaimReadResult;
 
@@ -1956,11 +2060,17 @@ async function _performClaimRead(
 
   // Validate claim type first.
   if (!isValidClaimType(claimType)) {
+    const error = classifyVerificationError(new InvalidClaimTypeError(claimType), {
+      fallbackCategory: "unsupported_credential",
+      fallbackCode: "unsupported_credential",
+    });
     return {
       outcome: "unsupported",
       status: "unsupported",
       valid: false,
-      error: `Unsupported claim type: "${claimType}".`,
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
     };
   }
 
@@ -1974,17 +2084,25 @@ async function _performClaimRead(
         outcome: "unsupported",
         status: "unsupported",
         valid: false,
-        error: "Invalid Stellar address",
+        error: safeVerificationMessage("invalid_input", "invalid_address"),
+        errorCategory: "invalid_input",
+        errorCode: "invalid_address",
       };
     }
     if (throwOnError) {
       throw new RpcError("Failed to validate Stellar address", { cause: err });
     }
+    const error = classifyVerificationError(err, {
+      fallbackCategory: "network_error",
+      fallbackCode: "address_validation_failed",
+    });
     return {
       outcome: "unavailable",
       status: "unavailable",
       valid: false,
-      error: "Failed to validate Stellar address",
+      error: error.message,
+      errorCategory: error.category,
+      errorCode: error.code,
     };
   }
 
@@ -1994,11 +2112,17 @@ async function _performClaimRead(
       validateThreshold(minThreshold);
     } catch (err) {
       if (throwOnError) throw err;
+      const error = classifyVerificationError(err, {
+        fallbackCategory: "invalid_input",
+        fallbackCode: "invalid_threshold",
+      });
       return {
         outcome: "unsupported",
         status: "unsupported",
         valid: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: error.message,
+        errorCategory: error.category,
+        errorCode: error.code,
       };
     }
   }
@@ -2014,7 +2138,9 @@ async function _performClaimRead(
       outcome: "unavailable",
       status: "unavailable",
       valid: false,
-      error: "StellarCred is not configured: missing registryId",
+      error: safeVerificationMessage("configuration_error", "configuration_error"),
+      errorCategory: "configuration_error",
+      errorCode: "configuration_error",
     };
   }
 
@@ -2028,7 +2154,9 @@ async function _performClaimRead(
         outcome: "unavailable",
         status: "unavailable",
         valid: false,
-        error: "StellarCred is not configured for indexer reads: missing indexerUrl",
+        error: safeVerificationMessage("configuration_error", "configuration_error"),
+        errorCategory: "configuration_error",
+        errorCode: "configuration_error",
       };
     }
   }
@@ -2081,6 +2209,9 @@ async function _performClaimRead(
           verifiedAt: record.verifiedAt,
           expiry: record.expiry,
           record,
+          error: safeVerificationMessage("expired_proof", "expired_proof"),
+          errorCategory: "expired_proof",
+          errorCode: "expired_proof",
         };
       }
       return {
@@ -2089,6 +2220,9 @@ async function _performClaimRead(
         valid: false,
         verifiedAt,
         expiry,
+        error: safeVerificationMessage("policy_rejection", "proof_not_found"),
+        errorCategory: "policy_rejection",
+        errorCode: "proof_not_found",
       };
     }
 
@@ -2101,6 +2235,9 @@ async function _performClaimRead(
         valid: false,
         verifiedAt,
         expiry,
+        error: safeVerificationMessage("expired_proof", "expired_proof"),
+        errorCategory: "expired_proof",
+        errorCode: "expired_proof",
       };
     }
 
@@ -2112,17 +2249,31 @@ async function _performClaimRead(
       expiry,
     };
   } catch (err) {
+    const normalized = classifyVerificationError(err, {
+      fallbackCategory: "unknown",
+      fallbackCode: "claim_read_failed",
+    });
     if (throwOnError) {
-      if (err instanceof ConfigError) throw err;
-      if (err instanceof InvalidAddressError) throw err;
-      if (err instanceof InvalidClaimTypeError) throw err;
-      throw new RpcError(`Claim read failed for "${claimType}"`, { cause: err });
+      if (
+        err instanceof ConfigError ||
+        err instanceof InvalidAddressError ||
+        err instanceof InvalidClaimTypeError ||
+        err instanceof RpcError ||
+        err instanceof ContractError ||
+        err instanceof IndexerError ||
+        err instanceof VerificationError
+      ) {
+        throw err;
+      }
+      throw normalized;
     }
     return {
       outcome: "unavailable",
       status: "unavailable",
       valid: false,
-      error: err instanceof Error ? err.message : String(err),
+      error: normalized.message,
+      errorCategory: normalized.category,
+      errorCode: normalized.code,
     };
   }
 }
@@ -2137,7 +2288,7 @@ export async function getClaimOutcome(
   wallet: string,
   claimType: string,
   opts?: ClaimOptions,
-): Promise<ClaimOutcomeResult> {
+): Promise<CredentialStatusResult> {
   return checkClaimStatus(wallet, claimType, opts);
 }
 
@@ -2562,7 +2713,7 @@ export async function isNullifierUsed(
   } catch (err) {
     if (throwOnError) {
       if (err instanceof ConfigError) throw err;
-      throw new RpcError(`Failed to check nullifier for context "${appContext}"`, {
+      throw new RpcError("Failed to check nullifier usage", {
         cause: err,
       });
     }

@@ -17,7 +17,7 @@ BB_VERSION      := 0.87.0
 NODE_MAJOR      := 20
 PNPM_MAJOR      := 9
 
-.PHONY: help all build test lint fmt clean check-api-reference doctor \
+.PHONY: help all build test lint fmt clean check-api-reference check-sdk-layout doctor \
         verify-deployment \
         build-contracts test-contracts lint-contracts \
         ci-cache-setup ci-cache-save build-contracts-fast \
@@ -46,6 +46,7 @@ help:
 	@echo "  make fmt             - Check or apply formatting across Rust and TS"
 	@echo "  make clean           - Remove build artifacts and caches"
 	@echo "  make check-api-reference - Check docs/PROOF_REGISTRY_API.md against the contract source (issue #525)"
+	@echo "  make check-sdk-layout  - Ensure frontend/packages/sdk remains the only SDK package"
 	@echo ""
 	@echo "Focused Workspace Targets:"
 	@echo "  make build-contracts - Compile Soroban contracts to wasm32v1-none"
@@ -86,6 +87,11 @@ fmt:
 ## check-api-reference: Verify the ProofRegistry API reference matches the contract source
 check-api-reference:
 	node .github/scripts/check-api-reference.mjs
+
+## check-sdk-layout: Verify frontend/packages/sdk is the only SDK package
+check-sdk-layout:
+	node .github/scripts/check-sdk-layout.mjs
+	node --test test/sdk-layout.test.js
 
 ## verify-deployment: Verify contract IDs, versions, WASM hashes, and VKs end to end for a network
 NETWORK ?= testnet
@@ -223,7 +229,7 @@ build-contracts-fast:
 
 ## test-contracts: Run contract test suite
 test-contracts:
-	cargo test --locked
+	cargo test --workspace --locked
 
 ## lint-contracts: Run clippy on contract crates with warnings as errors
 # --workspace so the host-only test harness crate is linted too: a bare build
@@ -265,7 +271,7 @@ lint-frontend:
 	cd frontend && pnpm lint && pnpm exec tsc --noEmit
 
 ## test-sdk: Run SDK standalone integration tests
-test-sdk:
+test-sdk: check-sdk-layout
 	cd frontend/packages/sdk && pnpm typecheck && pnpm test:integration
 
 ## docs-sdk: Generate the SDK TypeDoc API reference

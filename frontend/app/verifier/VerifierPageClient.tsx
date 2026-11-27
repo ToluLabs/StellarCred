@@ -16,7 +16,7 @@ import { useWallet } from "@/lib/wallet-context";
 import { Badge } from "@/components/Badge";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { checkClaim, type ReadStatus } from "@/lib/contracts";
-import type { RpcIssue } from "@/lib/rpc-health";
+import { classifyRpcError, type RpcIssue } from "@/lib/rpc-health";
 
 interface Requirement {
   label: string;
@@ -74,11 +74,11 @@ function VerifierInner() {
         setReqs((rs) => rs.map((r, i) => ({ ...r, status: results[i].status as ReadStatus })));
         const unreadable = results.find((r) => r.status === "unknown");
         setIssue(unreadable && unreadable.status === "unknown" ? unreadable.issue : null);
-      } catch {
+      } catch (e) {
         // A throw (not a read result) also means "cannot determine", so the
         // rows stay unknown rather than flipping to "Needed".
         setReqs((rs) => rs.map((r) => ({ ...r, status: "unknown" as ReadStatus })));
-        setIssue({ kind: "read-failed", message: "The eligibility read failed." });
+        setIssue(classifyRpcError(e));
       } finally {
         if (!cancelled) setChecked(true);
       }

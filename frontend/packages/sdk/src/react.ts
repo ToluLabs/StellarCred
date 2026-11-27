@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { hasClaims, type ClaimType } from "./claims";
+import { classifyVerificationError, type VerificationError } from "./errors";
 
 /**
  * Configuration options for the `useStellarCred` React hook.
@@ -37,7 +38,7 @@ export interface UseStellarCredOptions {
 export interface UseStellarCredResult {
   claims: Partial<Record<ClaimType, boolean>> | null;
   loading: boolean;
-  error: Error | null;
+  error: VerificationError | null;
   refetch: () => void;
 }
 
@@ -65,7 +66,7 @@ export function useStellarCred(
 ): UseStellarCredResult {
   const [claims, setClaims] = useState<Partial<Record<ClaimType, boolean>> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<VerificationError | null>(null);
   const mountedRef = useRef(true);
 
   // Callers usually pass inline arrays/objects, so depend on their serialised
@@ -110,7 +111,12 @@ export function useStellarCred(
         }
       } catch (err) {
         if (mountedRef.current) {
-          setError(err instanceof Error ? err : new Error("Failed to check claims"));
+          setError(
+            classifyVerificationError(err, {
+              fallbackCategory: "unknown",
+              fallbackCode: "claim_check_failed",
+            }),
+          );
         }
       } finally {
         if (mountedRef.current) {

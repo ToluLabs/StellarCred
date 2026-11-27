@@ -18,10 +18,7 @@ export interface CapabilitiesContractEntry {
 }
 
 export type CapabilitiesContractKey =
-  | "issuer_registry"
-  | "credential_verifier"
-  | "proof_registry"
-  | "gated_pool";
+  "issuer_registry" | "credential_verifier" | "proof_registry" | "gated_pool";
 
 /** Shape of GET {base}/api/capabilities. Only fields the SDK uses are required. */
 export interface CapabilitiesDescriptor {
@@ -99,20 +96,28 @@ export async function fetchCapabilities(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    throw new ConfigError(
-      `Failed to fetch capability descriptor at ${url}: ${(e as Error).message}`,
-    );
+    throw new ConfigError("Deployment capabilities are temporarily unavailable.", {
+      category: "network_error",
+      code: "capabilities_unavailable",
+      cause: e,
+    });
   }
   if (!res.ok) {
-    throw new ConfigError(`Capability descriptor at ${url} returned HTTP ${res.status}`);
+    throw new ConfigError(`The deployment capability request failed (HTTP ${res.status}).`, {
+      category: res.status >= 500 ? "network_error" : "configuration_error",
+      code: `capabilities_http_${res.status}`,
+      httpStatus: res.status,
+    });
   }
   let raw: unknown;
   try {
     raw = await res.json();
   } catch (e) {
-    throw new ConfigError(
-      `Capability descriptor at ${url} is not valid JSON: ${(e as Error).message}`,
-    );
+    throw new ConfigError("The deployment returned an invalid capability descriptor.", {
+      category: "configuration_error",
+      code: "capabilities_invalid_response",
+      cause: e,
+    });
   }
   return validateCapabilitiesDescriptor(raw);
 }

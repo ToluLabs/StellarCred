@@ -12,6 +12,7 @@
 //   // later: gate.destroy();
 
 import { hasClaims, type ClaimType } from "./claims";
+import { classifyVerificationError, type VerificationError } from "./errors";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export interface ClaimGateState {
   loading: boolean;
 
   /** Set on errors; cleared on refetch. */
-  error: Error | null;
+  error: VerificationError | null;
 }
 
 export type ClaimGateListener = (state: ClaimGateState) => void;
@@ -179,7 +180,10 @@ export function createClaimGate(config: ClaimGateConfig): ClaimGate {
       setState({
         claims: null,
         loading: false,
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: classifyVerificationError(error, {
+          fallbackCategory: "unknown",
+          fallbackCode: "claim_gate_failed",
+        }),
       });
     }
   }

@@ -12,10 +12,9 @@
  *
  * Two invariants this module is responsible for:
  *
- * 1. **Provider error text never escapes.** `lib/persona.ts` embeds Persona's
- *    response body in the thrown error, and Persona's bodies echo the identity
- *    fields it holds. The catch below therefore drops the message entirely:
- *    not logged, not reported, not returned.
+ * 1. **Provider error text never escapes.** Provider exceptions and response
+ *    bodies can echo identity fields. They are classified at the boundary and
+ *    only fixed safe messages and diagnostic codes leave this module.
  * 2. **Plaid is the source of truth for `balance`.** A caller-supplied value is
  *    overwritten with the verified aggregate. Only that aggregate is signed;
  *    per-source account detail never leaves this function.
@@ -33,6 +32,16 @@ import { env } from "@/lib/env";
 import { logger, stripSensitiveFields } from "@/lib/logger";
 import { recordError } from "@/lib/metrics";
 import type { IssueRequest } from "./validate";
+import { classifyVerificationError, VerificationError } from "../../../../packages/sdk/src/errors";
+
+function errorBody(error: VerificationError): Record<string, unknown> {
+  return {
+    error: error.message,
+    code: error.code,
+    category: error.category,
+    retryable: error.retryable,
+  };
+}
 
 export interface IssuanceContext {
   requestId: string;
@@ -99,9 +108,13 @@ export async function runIssuanceFlow(
         return {
           kind: "error",
           status: 500,
-          body: {
-            error: "PERSONA_KYC_TEMPLATE_ID is required when PERSONA_API_KEY is set",
-          },
+          body: errorBody(
+            new VerificationError({
+              category: "configuration_error",
+              code: "persona_not_configured",
+              httpStatus: 500,
+            }),
+          ),
         };
       }
       const baseUrl = env.NEXT_PUBLIC_STELLARCRED_BASE_URL ?? origin;
@@ -149,10 +162,15 @@ export async function runIssuanceFlow(
               requestId,
             }),
           );
+          const error = new VerificationError({
+            category: kyc.errorCategory ?? "policy_rejection",
+            code: kyc.errorCode ?? "persona_incomplete",
+            httpStatus: 403,
+          });
           return {
             kind: "error",
             status: 403,
-            body: { error: kyc.error ?? "Identity verification failed" },
+            body: errorBody(error),
           };
         }
 
@@ -168,23 +186,25 @@ export async function runIssuanceFlow(
         );
         if (kyc.dob) attributes.date_of_birth = kyc.dob;
         if (kyc.countryNumeric) attributes.country_code = kyc.countryNumeric;
-      } catch {
+      } catch (e) {
+        const error = classifyVerificationError(e, {
+          fallbackCategory: "network_error",
+          fallbackCode: "persona_unavailable",
+        });
         logger.error(
           stripSensitiveFields({
             event: "provider_call",
             credentialType: "kyc",
             issuerId,
             walletAddress: holder,
-            outcome: "provider_unavailable",
+            outcome: error.code,
             requestId,
           }),
         );
         return {
           kind: "error",
-          status: 502,
-          body: {
-            error: "Identity verification service is unavailable. Please try again.",
-          },
+          status: error.httpStatus ?? 502,
+          body: errorBody(error),
         };
       }
     }
@@ -206,10 +226,15 @@ export async function runIssuanceFlow(
           requestId,
         }),
       );
+      const error = new VerificationError({
+        category: "network_error",
+        code: plaid.code,
+        httpStatus: plaid.status,
+      });
       return {
         kind: "error",
         status: plaid.status,
-        body: { error: plaid.error, code: plaid.code },
+        body: errorBody(error),
       };
     }
 
@@ -255,6 +280,10 @@ export async function runIssuanceFlow(
 
     return { kind: "issued", credentials };
   } catch (e) {
+    const error = classifyVerificationError(e, {
+      fallbackCategory: "network_error",
+      fallbackCode: "issuance_failed",
+    });
     for (const type of credentialTypes) {
       logger.error(
         stripSensitiveFields({
@@ -262,26 +291,23 @@ export async function runIssuanceFlow(
           credentialType: type,
           issuerId,
           walletAddress: holder,
-          error: (e as Error).message,
+          error: error.code,
           requestId,
         }),
       );
     }
-    // Report the error to the webhook with the exception forwarded so that
-    // safeErrorMessage can strip stack frames and PII patterns before any
-    // data leaves the process (issue #553).
     void reportError({
       method: "POST",
       path: "/api/issue",
       requestId,
       status: 500,
-      exception: e,
+      exception: error,
     });
     recordError("issue", "signing_error");
     return {
       kind: "error",
       status: 500,
-      body: { error: (e as Error).message },
+      body: errorBody(error),
     };
   }
 }

@@ -72,6 +72,9 @@ export type VerificationResult =
 const NOT_CONFIGURED: RpcIssue = {
   kind: "not-configured",
   message: "This build has no ProofRegistry configured, so no claim status can be read.",
+  category: "configuration_error",
+  code: "rpc_not_configured",
+  retryable: false,
 };
 
 const unknownClaim = (issue: RpcIssue): ClaimResult => {

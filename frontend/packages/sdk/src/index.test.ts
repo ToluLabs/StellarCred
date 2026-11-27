@@ -591,7 +591,8 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     expect(res.valid).toBe(false);
     expect(res.status).toBe("not_verified");
     expect(res.record).toBeNull();
-    expect(res.error).toContain("no on-chain proof");
+    expect(res.error).toContain("No on-chain proof");
+    expect(res).toMatchObject({ errorCategory: "policy_rejection", errorCode: "proof_not_found" });
   });
 
   it("evaluates 'revoked' when record.revoked is true", async () => {
@@ -610,6 +611,7 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     expect(res.status).toBe("revoked");
     expect(res.record?.revoked).toBe(true);
     expect(res.error).toContain("revoked");
+    expect(res).toMatchObject({ errorCategory: "policy_rejection", errorCode: "proof_revoked" });
   });
 
   it("evaluates 'expired' when expiry is in the past", async () => {
@@ -627,6 +629,7 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     expect(res.valid).toBe(false);
     expect(res.status).toBe("expired");
     expect(res.error).toContain("expired");
+    expect(res).toMatchObject({ errorCategory: "expired_proof", errorCode: "expired_proof" });
   });
 
   it("evaluates 'wrong_issuer' when issuer is not in trustedIssuers list", async () => {
@@ -645,7 +648,11 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     });
     expect(res.valid).toBe(false);
     expect(res.status).toBe("wrong_issuer");
-    expect(res.error).toContain("not in trusted issuers list");
+    expect(res.error).toContain("trusted issuers list");
+    expect(res).toMatchObject({
+      errorCategory: "policy_rejection",
+      errorCode: "issuer_not_trusted",
+    });
   });
 
   it("evaluates 'unmet_threshold' when threshold is below required minimum", async () => {
@@ -664,7 +671,11 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     });
     expect(res.valid).toBe(false);
     expect(res.status).toBe("unmet_threshold");
-    expect(res.error).toContain("less than required minimum");
+    expect(res.error).toContain("lower than");
+    expect(res).toMatchObject({
+      errorCategory: "policy_rejection",
+      errorCode: "threshold_not_met",
+    });
   });
 
   it("evaluates 'verified' when all requirements are met", async () => {
@@ -713,7 +724,11 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     const res = await checkClaimStatus(WALLET, "unsupported_claim_type");
     expect(res.valid).toBe(false);
     expect(res.status).toBe("unsupported");
-    expect(res.error).toContain("unsupported");
+    expect(res.error).toContain("not supported");
+    expect(res).toMatchObject({
+      errorCategory: "unsupported_credential",
+      errorCode: "unsupported_credential",
+    });
     expect(getRecord).not.toHaveBeenCalled();
   });
 
@@ -729,7 +744,9 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     expect(res.valid).toBe(false);
     expect(res.status).toBe("unavailable");
     expect(res.record).toBeNull();
-    expect(res.error).toContain("RPC timeout or network connection reset");
+    expect(res.error).toBe("The Stellar network did not respond in time. Try again.");
+    expect(res.error).not.toContain("connection reset");
+    expect(res).toMatchObject({ errorCategory: "network_error", errorCode: "rpc_timeout" });
   });
 
   it("evaluates 'unavailable' when ProofRegistry client is not configured (#1007)", async () => {
@@ -737,7 +754,11 @@ describe("checkClaimStatus and getClaimRecord â€” failure state handling", 
     const res = await checkClaimStatus(WALLET, "kyc");
     expect(res.valid).toBe(false);
     expect(res.status).toBe("unavailable");
-    expect(res.error).toContain("missing registryId");
+    expect(res.error).toBe("StellarCred is not configured correctly. Contact the app operator.");
+    expect(res).toMatchObject({
+      errorCategory: "configuration_error",
+      errorCode: "configuration_error",
+    });
   });
 
   it("throws RpcError when RPC throws and throwOnError is true (#1007)", async () => {
@@ -823,7 +844,8 @@ describe("proof expiry versus contract storage TTL agreement (#1006)", () => {
     expect(status.status).toBe("expired");
     expect(status.record).not.toBeNull();
     expect(status.record?.expiry).toBe(now - 3600);
-    expect(status.error).toContain("expired at");
+    expect(status.error).toContain("proof has expired");
+    expect(status).toMatchObject({ errorCategory: "expired_proof", errorCode: "expired_proof" });
   });
 
   it("agrees with contract on archived / lapsed storage entry (TTL == 0)", async () => {
@@ -841,7 +863,7 @@ describe("proof expiry versus contract storage TTL agreement (#1006)", () => {
     expect(status.valid).toBe(false);
     expect(status.status).toBe("not_verified");
     expect(status.record).toBeNull();
-    expect(status.error).toContain("no on-chain proof");
+    expect(status.error).toContain("No on-chain proof");
   });
 });
 describe("buildVerifyUrl expiry + single-use", () => {

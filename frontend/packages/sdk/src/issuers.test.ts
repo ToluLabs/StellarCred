@@ -155,8 +155,26 @@ describe("IssuerRegistry reads", () => {
     expect(chain.calls).toEqual([]);
   });
 
-  it("rejects malformed issuer addresses", async () => {
-    await expect(getIssuer("not-an-address")).rejects.toThrow(/Invalid issuer address/);
+  it("rejects malformed issuer addresses without echoing the input", async () => {
+    const error = await getIssuer("not-an-address credential=secret").catch((caught) => caught);
+    expect(error.message).toBe("Invalid issuer address");
+    expect(error.message).not.toMatch(/not-an-address|credential=secret/);
+  });
+
+  it("keeps raw simulation failures only in the typed error cause", async () => {
+    chain.answers.set(
+      "get_issuers_page",
+      () => new Error("HostError credential=secret salt=secret signature=secret witness=[secret]"),
+    );
+
+    const error = await listIssuerIds({ throwOnError: true }).catch((caught) => caught);
+    expect(error).toMatchObject({
+      name: "VerificationError",
+      code: "issuer_read_failed",
+      category: "network_error",
+    });
+    expect(error.message).not.toMatch(/credential=secret|salt=secret|signature=secret|witness=/);
+    expect(error.cause).toEqual(expect.stringContaining("credential=secret"));
   });
 
   it("is exported from the package entry point", () => {

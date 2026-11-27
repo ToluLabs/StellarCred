@@ -99,13 +99,16 @@ describe("evaluateSimulation", () => {
     }
   });
 
-  it("passes through the raw message when the failure has no known code", () => {
-    const result = evaluateSimulation({ success: false, error: "boom" });
+  it("uses a safe message and diagnostic code when the failure has no known code", () => {
+    const result = evaluateSimulation({ success: false, error: "boom salt=private" });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBeNull();
-      expect(result.error.raw).toBe("boom");
-      expect(result.error.friendly).toBe("boom");
+      expect(result.error.raw).toBe("unknown");
+      expect(result.error.diagnosticCode).toBe("unknown");
+      expect(result.error.friendly).not.toContain("boom");
+      expect(result.error.friendly).not.toContain("private");
+      expect(result.error.category).toBe("unknown");
     }
   });
 });

@@ -149,7 +149,10 @@ describe("usePersonaResume and Persona pending session handling", () => {
         json: async () => ({
           ready: false,
           status: "failed",
-          error: "Identity verification was declined",
+          error: "credential=secret salt=secret signature=secret witness=[secret]",
+          category: "policy_rejection",
+          code: "persona_declined",
+          retryable: false,
         }),
       } as unknown as Response);
 
@@ -165,9 +168,18 @@ describe("usePersonaResume and Persona pending session handling", () => {
 
       await waitFor(() => {
         expect(onError).toHaveBeenCalledWith(
-          expect.stringContaining("Identity verification was declined"),
+          expect.stringContaining("Identity verification was declined."),
         );
       });
+      const message = vi.mocked(onError).mock.calls[0]?.[0] ?? "";
+      for (const secret of [
+        "credential=secret",
+        "salt=secret",
+        "signature=secret",
+        "witness=[secret]",
+      ]) {
+        expect(message).not.toContain(secret);
+      }
       expect(onSuccess).not.toHaveBeenCalled();
     });
 

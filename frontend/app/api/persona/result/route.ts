@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInquiryResult, getPendingInquiry } from "@/lib/persona-webhook";
+import { classifyVerificationError } from "@/packages/sdk/src/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +24,25 @@ export async function GET(req: NextRequest) {
         { status: 200 },
       );
     }
+    const error = classifyVerificationError(
+      {
+        category: result.errorCategory,
+        code: result.errorCode,
+        message: result.error,
+      },
+      {
+        fallbackCategory: "policy_rejection",
+        fallbackCode: "persona_incomplete",
+      },
+    );
     return NextResponse.json(
       {
         ready: false,
         status: "failed",
-        error: result.error ?? "Identity verification failed",
+        error: error.message,
+        category: error.category,
+        code: error.code,
+        retryable: error.retryable,
       },
       { status: 200 },
     );
