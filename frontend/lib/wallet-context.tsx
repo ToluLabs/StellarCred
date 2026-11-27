@@ -221,7 +221,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         address,
         restoring,
         walletId,
-        restoring,
         connecting,
         error,
         networkMismatch,
