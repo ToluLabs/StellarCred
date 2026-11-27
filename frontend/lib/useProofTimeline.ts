@@ -5,12 +5,7 @@ import type { Credential } from "./credential";
 import { isStorageAvailable } from "./safe-storage";
 
 export type TimelineEventStage =
-  | "issued"
-  | "generated"
-  | "preflight"
-  | "submitted"
-  | "verified"
-  | "expired";
+  "issued" | "generated" | "preflight" | "submitted" | "verified" | "expired";
 
 export interface TimelineEvent {
   stage: TimelineEventStage;
@@ -72,7 +67,9 @@ export function useProofTimeline(cred: Credential | null) {
     // 30 days is the default as implemented in page.tsx
     const match = cred.expiry?.match(/(\d+)/);
     const ttlSecs = (match ? parseInt(match[1]) : 30) * 86_400;
-    const isExpired = cred.provedAt ? cred.provedAt + ttlSecs <= Math.floor(Date.now() / 1000) : false;
+    const isExpired = cred.provedAt
+      ? cred.provedAt + ttlSecs <= Math.floor(Date.now() / 1000)
+      : false;
 
     if (isExpired && !data.events.some((e) => e.stage === "expired")) {
       data.events.push({ stage: "expired", timestamp: cred.provedAt! + ttlSecs });
@@ -125,7 +122,7 @@ export function useProofTimeline(cred: Credential | null) {
       if (!cred) return;
       const { commitment } = cred;
       const timelineData = loadTimeline(commitment);
-      
+
       const newEvent: TimelineEvent = {
         stage,
         timestamp: data?.timestamp || Math.floor(Date.now() / 1000),
@@ -144,7 +141,7 @@ export function useProofTimeline(cred: Credential | null) {
       saveTimeline(commitment, timelineData);
       setEvents(timelineData.events);
     },
-    [cred, loadTimeline, saveTimeline]
+    [cred, loadTimeline, saveTimeline],
   );
 
   return { events, addEvent, loading };
@@ -154,7 +151,7 @@ export function useProofTimeline(cred: Credential | null) {
 export function addTimelineEvent(
   commitment: string,
   stage: TimelineEventStage,
-  data?: { txHash?: string; timestamp?: number }
+  data?: { txHash?: string; timestamp?: number },
 ) {
   try {
     const stored = localStorage.getItem(`${TIMELINE_PREFIX}${commitment}`);

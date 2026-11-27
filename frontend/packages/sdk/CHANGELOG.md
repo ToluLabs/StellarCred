@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Audited BIP-39 and SLIP-0010 Ed25519 key derivation helpers for SEP-5
+  Stellar paths, with deterministic buffer zeroization (#1068).
+
 - `@stellarcred/sdk/testing` entry point (#1065): `MockWalletProvider` (SEP-43 wallet backed by a real Ed25519 keypair), `CredentialFactory` (secp256k1-signed credential JSON that passes `validateCredential`), `MockProofRegistry` with `installMockRegistry` / `uninstallMockRegistry` (simulated proofs with the contract's expiry, revocation, trusted-issuer and threshold rules), and `verifyCredentialSignature`. Lets integrators unit-test without an RPC, a deployed registry or a Noir toolchain.
 - `BatchVerifierPool` and `verifyWalletSignaturesBatch` (#1063): verify batches of wallet-signed presentations in parallel on `worker_threads` without blocking the event loop. Node-only, exported from `@stellarcred/sdk/server`.
 - Configurable backoff for every RPC, indexer and polling call (#1056):
@@ -38,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   context, since it is a secret with no `NEXT_PUBLIC_` alias.
 - `subscribeClaims()` real-time subscription helper (#392): push-style `gained`/`lost` claim change notifications for a set of wallets and claim types, backed by the indexer (`GET /recent` cursor feed + `GET /claims` snapshot reconciliation), delivered via callbacks or a registered webhook with retry.
 
+- `createOfflineVerifier()` / `verifyOfflinePresentation()` for air-gapped
+  terminal verification (#1059). Verifies a zero-knowledge presentation against
+  a locally cached verifier key and state snapshot with no I/O, and fails closed
+  on stale snapshots, revoked/expired records, issuer or commitment mismatches,
+  replayed nullifiers, and missing proof backends. `createBbJsProofVerifier()`
+  wraps the optional local `@aztec/bb.js` package; a custom `proofVerifier` can
+  be supplied for native or vendored verifiers.
+
 ### Changed
 
 - `jitter: true` (the default) now uses full jitter, a random delay from zero up
@@ -50,6 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- New "Offline / air-gapped verification" section covering the cache format,
+  check order, stable failure codes and local proof backends.
 - New "Indexer fast path (optional)" section covering the trust tradeoff, the
   three sources, contract-parity of the evaluation predicates, and the known
   divergences (wall clock vs. ledger timestamp, indexer lag, operator trust).

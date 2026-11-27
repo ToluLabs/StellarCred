@@ -33,10 +33,7 @@ export type RevokeResult =
  * chain, and return the refreshed audit log so the UI updates in one round
  * trip. Revalidates the page path so any other open admin view also refreshes.
  */
-export async function revokeExportAction(
-  id: string,
-  revokedBy: string,
-): Promise<RevokeResult> {
+export async function revokeExportAction(id: string, revokedBy: string): Promise<RevokeResult> {
   if (!revokedBy || !revokedBy.trim()) {
     return { success: false, error: "revokedBy is required" };
   }

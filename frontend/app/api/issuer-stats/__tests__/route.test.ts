@@ -57,9 +57,9 @@ describe("GET /api/issuer-stats", () => {
       credential_types: ["age", "kyc"],
       first_seen: 1000,
     };
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(stats), { status: 200 }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(stats), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const { GET } = await loadRoute();
 

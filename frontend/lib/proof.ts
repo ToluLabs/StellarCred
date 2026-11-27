@@ -98,6 +98,15 @@ async function loadBb(): Promise<BbModule> {
 
 type Backend = InstanceType<BbModule["UltraHonkBackend"]>;
 
+interface CircuitArtifactCacheEntry {
+  promise: Promise<CircuitArtifact>;
+}
+
+// A fetched and parsed circuit is shared by all concurrent backend builds for
+// the same type. This keeps bytecode JSON out of the repeated fetch/json/parse
+// path and, importantly, avoids two copies of the same artifact in the worker.
+const circuitArtifactCache = new Map<ProverCircuit, CircuitArtifactCacheEntry>();
+
 // Constructed (or in-flight) UltraHonkBackend instances, keyed by circuit
 // type, for this browser tab's session. Construction is the expensive part
 // (bytecode fetch + wasm init), so once a backend exists for a type we keep
@@ -126,28 +135,60 @@ const backendCache = new Map<ProverCircuit, Promise<Backend>>();
 // check internally before choosing its thread count.)
 let loggedIsolation = false;
 
-function backendOptions(): { threads?: number } {
+export function backendOptions(): { threads?: number } {
   const isolated = Boolean(globalThis.crossOriginIsolated);
   if (!loggedIsolation) {
     loggedIsolation = true;
     console.info(`[proof] crossOriginIsolated=${isolated}`);
   }
   if (isolated) {
-    return {};
+    const nav = globalThis.navigator as (Navigator & { deviceMemory?: number }) | undefined;
+    const cores = nav?.hardwareConcurrency ?? 0;
+    const deviceMemory = nav?.deviceMemory ?? 0;
+    const ua = nav?.userAgent ?? "";
+    const resourceConstrained =
+      (deviceMemory > 0 && deviceMemory <= 4) ||
+      (cores > 0 && cores <= 4) ||
+      /Android|iPhone|iPad|Mobile/i.test(ua);
+
+    // bb.js may otherwise create one worker per hardware thread. Capping
+    // small/mobile devices to one thread avoids multiple WASM heaps retaining
+    // large linear memories while preserving the existing desktop pool.
+    return resourceConstrained ? { threads: 1 } : {};
   }
   return { threads: 1 };
 }
 
 async function buildBackend(type: ProverCircuit): Promise<Backend> {
-  const circuitRes = await fetch(`/circuits/${type}.json`);
-  if (!circuitRes.ok) {
-    throw new Error(
-      `Compiled circuit "${type}" not found. Run the circuit build to emit /public/circuits/${type}.json.`,
-    );
+  let entry = circuitArtifactCache.get(type);
+  if (!entry) {
+    entry = {
+      promise: (async () => {
+        const circuitRes = await fetch(`/circuits/${type}.json`);
+        if (!circuitRes.ok) {
+          throw new Error(
+            `Compiled circuit "${type}" not found. Run the circuit build to emit /public/circuits/${type}.json.`,
+          );
+        }
+        return (await circuitRes.json()) as CircuitArtifact;
+      })(),
+    };
+    circuitArtifactCache.set(type, entry);
   }
-  const circuit = (await circuitRes.json()) as CircuitArtifact;
-  const { UltraHonkBackend } = await loadBb();
-  return new UltraHonkBackend(circuit.bytecode, backendOptions());
+
+  try {
+    const circuit = await entry.promise;
+    const { UltraHonkBackend } = await loadBb();
+    return new UltraHonkBackend(circuit.bytecode, backendOptions());
+  } catch (err) {
+    if (circuitArtifactCache.get(type) === entry) circuitArtifactCache.delete(type);
+    throw err;
+  }
+}
+
+/** Test/runtime hook: evicts parsed circuit artifacts without touching backends. */
+export function clearCircuitArtifactCache(): void {
+  circuitArtifactCache.clear();
 }
 
 // Returns the cached (or in-flight) backend for `type`, constructing one if
@@ -291,6 +332,10 @@ export async function computeWitness(
     }
     throw new Error(`Witness generation failed: ${msg}`);
   }
+  if (res.headers?.get?.("content-type")?.includes("application/octet-stream")) {
+    return new Uint8Array(await res.arrayBuffer());
+  }
+  // Compatibility fallback for rolling deployments that still return hex.
   const { witness: hex } = (await res.json()) as { witness: string };
   return decodeWitnessHex(hex);
 }
@@ -330,6 +375,10 @@ export async function proveWithBackend(
     return { proof, publicInputs: fieldsToBytes(publicInputs) };
   } finally {
     signal?.removeEventListener("abort", abort);
+    // The witness is not reusable after generateProof completes or fails.
+    // Drop the worker-local reference at the cleanup checkpoint; no forced GC
+    // is used because it is neither portable nor a substitute for WASM cleanup.
+    witness = new Uint8Array(0);
   }
 }
 
@@ -449,6 +498,9 @@ export async function computeAggregateWitness(
       throw new CircuitVersionMismatchError(detail);
     }
     throw new Error(`Aggregate witness generation failed: ${msg}`);
+  }
+  if (res.headers?.get?.("content-type")?.includes("application/octet-stream")) {
+    return new Uint8Array(await res.arrayBuffer());
   }
   const { witness: hex } = (await res.json()) as { witness: string };
   return decodeWitnessHex(hex);

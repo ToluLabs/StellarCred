@@ -2,10 +2,7 @@
 
 import { useState } from "react";
 import { parseCredential, type Credential } from "@/lib/credential";
-import {
-  validateImportPayload,
-  BUNDLE_FORMAT_VERSION,
-} from "@/lib/credential-import-bounds";
+import { validateImportPayload, BUNDLE_FORMAT_VERSION } from "@/lib/credential-import-bounds";
 
 /**
  * Verifies an exported credential file before it is applied.
@@ -46,12 +43,7 @@ function canonicalize(value: unknown): string {
     return (
       "{" +
       keys
-        .map(
-          (k) =>
-            JSON.stringify(k) +
-            ":" +
-            canonicalize((value as Record<string, unknown>)[k])
-        )
+        .map((k) => JSON.stringify(k) + ":" + canonicalize((value as Record<string, unknown>)[k]))
         .join(",") +
       "}"
     );
@@ -79,28 +71,28 @@ export async function verifyBundle(raw: string): Promise<Credential> {
     // Legacy bare credentials carry no integrity check. Accept them, but
     // callers should surface that the file is unverified.
     console.warn(
-      "Imported a legacy credential without an integrity checksum. Re-export it to enable tamper detection."
+      "Imported a legacy credential without an integrity checksum. Re-export it to enable tamper detection.",
     );
     return parseCredential(raw);
   }
 
   if (typeof envelope.version !== "number" || envelope.version > BUNDLE_FORMAT_VERSION) {
     throw new Error(
-      `Unsupported bundle version (${String(envelope.version)}). Update the app before importing this file.`
+      `Unsupported bundle version (${String(envelope.version)}). Update the app before importing this file.`,
     );
   }
 
   const checksum = envelope.checksum.toLowerCase();
   if (!HEX_SHA256.test(checksum)) {
     throw new Error(
-      "Bundle checksum is malformed. The file may be corrupted. Re-export it from the source and try again."
+      "Bundle checksum is malformed. The file may be corrupted. Re-export it from the source and try again.",
     );
   }
 
   const actual = await sha256Hex(canonicalize(envelope.payload));
   if (actual !== checksum) {
     throw new Error(
-      "Integrity check failed: the file was modified or corrupted after export. Re-export it from the source and try again."
+      "Integrity check failed: the file was modified or corrupted after export. Re-export it from the source and try again.",
     );
   }
 
@@ -108,7 +100,7 @@ export async function verifyBundle(raw: string): Promise<Credential> {
     return parseCredential(JSON.stringify(envelope.payload));
   } catch (e) {
     throw new Error(
-      `The bundle is authentic but its credential data is invalid: ${(e as Error).message}`
+      `The bundle is authentic but its credential data is invalid: ${(e as Error).message}`,
     );
   }
 }
@@ -156,11 +148,7 @@ export function ImportPanel({
         </p>
       )}
       <div className="row" style={{ marginTop: "1rem", gap: "0.6rem" }}>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={onAdd}
-          disabled={!json.trim() || busy}
-        >
+        <button className="btn btn-primary btn-sm" onClick={onAdd} disabled={!json.trim() || busy}>
           {busy ? "Verifying..." : "Add credential"}
         </button>
         <button className="btn btn-ghost btn-sm" onClick={onCancel}>

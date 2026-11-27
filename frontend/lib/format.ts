@@ -23,12 +23,7 @@ export function truncatePubkey(hex: string): string {
  * keeps `head` leading + `tail` trailing characters separated by `separator`
  * ("…" by default). Values that fit whole are returned unchanged.
  */
-export function truncateMiddle(
-  value: string,
-  head: number,
-  tail: number,
-  separator = "…",
-): string {
+export function truncateMiddle(value: string, head: number, tail: number, separator = "…"): string {
   if (!value || value.length <= head + tail + separator.length) return value;
   return `${value.slice(0, head)}${separator}${value.slice(-tail)}`;
 }

@@ -55,7 +55,9 @@ export function parseDeploymentRef(value: unknown): DeploymentRef | null {
   const c = contracts as Record<string, unknown>;
   const asId = (x: unknown) => (isNonEmptyString(x) ? x : "");
   return {
-    network: isNonEmptyString(v.network) ? (v.network as StellarNetwork) : ("unknown" as StellarNetwork),
+    network: isNonEmptyString(v.network)
+      ? (v.network as StellarNetwork)
+      : ("unknown" as StellarNetwork),
     networkPassphrase: v.networkPassphrase,
     contracts: {
       issuerRegistry: asId(c.issuerRegistry),
@@ -101,7 +103,9 @@ export function deploymentMismatchMessage(
   const differing = (Object.keys(CONTRACT_LABELS) as Array<keyof DeploymentRef["contracts"]>)
     .filter(
       (key) =>
-        origin.contracts[key] && current.contracts[key] && origin.contracts[key] !== current.contracts[key],
+        origin.contracts[key] &&
+        current.contracts[key] &&
+        origin.contracts[key] !== current.contracts[key],
     )
     .map((key) => CONTRACT_LABELS[key]);
 

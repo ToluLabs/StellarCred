@@ -38,7 +38,9 @@ describe("PROOF_REGISTRY_ERRORS", () => {
   });
 
   it("contains no extra codes beyond the known enum range", () => {
-    const mappedCodes = Object.keys(PROOF_REGISTRY_ERRORS).map(Number).sort((a, b) => a - b);
+    const mappedCodes = Object.keys(PROOF_REGISTRY_ERRORS)
+      .map(Number)
+      .sort((a, b) => a - b);
     expect(mappedCodes).toEqual([...KNOWN_CODES]);
   });
 });

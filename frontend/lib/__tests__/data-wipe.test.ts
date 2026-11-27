@@ -102,7 +102,7 @@ describe("data-wipe", () => {
 
       expect(result.success).toBe(true);
       expect(result.keysRemoved).toBeGreaterThan(0);
-      
+
       // StellarCred keys should be removed
       expect(localStorage.getItem(STORAGE_KEYS.CREDENTIALS)).toBeNull();
       expect(localStorage.getItem(STORAGE_KEYS.PROOF_CACHE)).toBeNull();
@@ -111,7 +111,7 @@ describe("data-wipe", () => {
       expect(localStorage.getItem(STORAGE_KEYS.ONBOARDING)).toBeNull();
       expect(localStorage.getItem(STORAGE_KEYS.WALLET_ID)).toBeNull();
       expect(localStorage.getItem(STORAGE_KEYS.THEME)).toBeNull();
-      
+
       // Unrelated keys should remain
       expect(localStorage.getItem("unrelated-key")).toBe("should-remain");
     });
@@ -132,14 +132,14 @@ describe("data-wipe", () => {
 
     it("handles empty storage gracefully", async () => {
       const result = await wipeAllData({ skipBackupPrompt: true });
-      
+
       expect(result.success).toBe(true);
       expect(result.keysRemoved).toBe(0);
     });
 
     it("clears credentials and locks store even without backup", async () => {
       await unlockCredentialStore("test-pass");
-      
+
       const cred: Credential = {
         type: "kyc",
         title: "Test",
@@ -156,14 +156,14 @@ describe("data-wipe", () => {
         issuedAt: 1700000000,
         expiry: "30 days",
       };
-      
+
       await saveCredential(cred);
-      
+
       // Verify credential was saved
       expect(localStorage.getItem(STORAGE_KEYS.CREDENTIALS)).toBeTruthy();
-      
+
       const result = await wipeAllData({ skipBackupPrompt: true });
-      
+
       expect(result.success).toBe(true);
       expect(localStorage.getItem(STORAGE_KEYS.CREDENTIALS)).toBeNull();
     });
@@ -172,17 +172,17 @@ describe("data-wipe", () => {
       // Add StellarCred keys
       localStorage.setItem(STORAGE_KEYS.CREDENTIALS, "data");
       localStorage.setItem(STORAGE_KEYS.THEME, "dark");
-      
+
       // Add keys from other apps/features
       localStorage.setItem("other-app-data", "preserve-me");
       localStorage.setItem("random-key", "keep-this");
-      
+
       await wipeAllData({ skipBackupPrompt: true });
-      
+
       // StellarCred keys removed
       expect(localStorage.getItem(STORAGE_KEYS.CREDENTIALS)).toBeNull();
       expect(localStorage.getItem(STORAGE_KEYS.THEME)).toBeNull();
-      
+
       // Other keys preserved
       expect(localStorage.getItem("other-app-data")).toBe("preserve-me");
       expect(localStorage.getItem("random-key")).toBe("keep-this");

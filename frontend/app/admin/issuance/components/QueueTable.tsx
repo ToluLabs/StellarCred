@@ -49,13 +49,20 @@ export function QueueTable({ initialRecords }: { initialRecords: IssuanceQueueRe
           </caption>
           <thead>
             <tr>
-              {["Event", "Provider", "Credential", "Status", "Error", "Retries", "Received", "Actions"].map(
-                (c) => (
-                  <th key={c} scope="col" style={{ padding: "0.75rem 1rem", textAlign: "left" }}>
-                    {c}
-                  </th>
-                ),
-              )}
+              {[
+                "Event",
+                "Provider",
+                "Credential",
+                "Status",
+                "Error",
+                "Retries",
+                "Received",
+                "Actions",
+              ].map((c) => (
+                <th key={c} scope="col" style={{ padding: "0.75rem 1rem", textAlign: "left" }}>
+                  {c}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -74,12 +81,20 @@ export function QueueTable({ initialRecords }: { initialRecords: IssuanceQueueRe
                     {r.retryCount}
                     {r.lastRetryAt ? ` (last ${fmt(r.lastRetryAt)})` : ""}
                   </td>
-                  <td style={{ padding: "0.75rem 1rem", whiteSpace: "nowrap" }}>{fmt(r.timestamp)}</td>
                   <td style={{ padding: "0.75rem 1rem", whiteSpace: "nowrap" }}>
-                    <button disabled={done || busy === r.eventId} onClick={() => act(r.eventId, "retry")}>
+                    {fmt(r.timestamp)}
+                  </td>
+                  <td style={{ padding: "0.75rem 1rem", whiteSpace: "nowrap" }}>
+                    <button
+                      disabled={done || busy === r.eventId}
+                      onClick={() => act(r.eventId, "retry")}
+                    >
                       Retry
                     </button>{" "}
-                    <button disabled={done || busy === r.eventId} onClick={() => act(r.eventId, "resolve")}>
+                    <button
+                      disabled={done || busy === r.eventId}
+                      onClick={() => act(r.eventId, "resolve")}
+                    >
                       Mark resolved
                     </button>
                   </td>

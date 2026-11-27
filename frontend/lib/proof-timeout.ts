@@ -41,10 +41,7 @@ export function withTimeout<T>(
   fn: (signal: AbortSignal) => Promise<T>,
   opts: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<T> {
-  const {
-    timeoutMs = DEFAULT_PROOF_TIMEOUT_MS,
-    signal: callerSignal,
-  } = opts;
+  const { timeoutMs = DEFAULT_PROOF_TIMEOUT_MS, signal: callerSignal } = opts;
 
   // Short-circuit: caller already cancelled.
   if (callerSignal?.aborted) {

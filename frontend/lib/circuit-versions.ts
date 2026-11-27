@@ -90,9 +90,7 @@ export function circuitVersionFor(type: string): CircuitVersion | null {
 /** The version to stamp on a newly issued `type` credential, or null if unknown. */
 export function circuitVersionStampFor(type: string): CircuitVersionStamp {
   const declared = circuitVersionFor(type);
-  return declared
-    ? { circuitVersion: declared.version, circuitVkVersion: declared.vkVersion }
-    : {};
+  return declared ? { circuitVersion: declared.version, circuitVkVersion: declared.vkVersion } : {};
 }
 
 /** Holder-facing name for a circuit type, e.g. `kyc` → "KYC". */
@@ -120,10 +118,7 @@ function typeLabel(type: string): string {
  * instead of each inventing its own. Messages name the credential type, both
  * versions, and what the holder can actually do about it.
  */
-export function circuitVersionMismatchMessage(
-  type: string,
-  recorded: unknown,
-): string | null {
+export function circuitVersionMismatchMessage(type: string, recorded: unknown): string | null {
   // A credential with no recorded version predates circuit versioning. It is
   // not a mismatch: the proof simply has to be attempted, as it always was.
   if (typeof recorded !== "string" || recorded.length === 0) return null;

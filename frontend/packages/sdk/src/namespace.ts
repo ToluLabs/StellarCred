@@ -1,0 +1,172 @@
+// @stellarcred/sdk — the `StellarCred` namespace object.
+//
+// The named exports live in their own modules; this file only assembles them
+// into the convenience object that `import StellarCred from "@stellarcred/sdk"`
+// returns. Keeping it out of `index.ts` lets the package entry point stay a
+// lean barrel (see `consolidation.test.ts`).
+
+import {
+  configure,
+  healthCheck,
+  isConfigured,
+  hasClaim,
+  getClaim,
+  getClaimRecord,
+  checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
+  hasClaims,
+  getClaims,
+  verifyPreset,
+  buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
+  parseReturnParams,
+  watchClaim,
+  withRetry,
+  normalizeRpcError,
+  classifyTransientFailure,
+  CLAIM_TYPES,
+  deriveNullifier,
+  isNullifierUsed,
+  verifyUniquePersonhood,
+  invalidateClaimCache,
+  clearClaimCache,
+  TimeoutError,
+  ConfigError,
+  InvalidAddressError,
+} from "./claims";
+import {
+  RpcError,
+  IndexerError,
+  ContractError,
+  ContractErrorCode,
+  parseContractError,
+  TransactionSubmissionError,
+} from "./errors";
+import { submitTransaction } from "./submit";
+import { bootstrap, fetchCapabilities, validateCapabilitiesDescriptor } from "./capabilities";
+import { createWalletChallenge, verifyWalletSignature, verifyWalletClaim } from "./challenge";
+import { subscribeClaims } from "./subscriptions";
+import { createPresentationToken, verifyPresentationToken } from "./presentation-token";
+import {
+  createOfflineVerifier,
+  verifyOfflinePresentation,
+  createBbJsProofVerifier,
+  OfflineVerificationError,
+  ULTRAHONK_PROOF_BYTES,
+  OFFLINE_FIELD_BYTES,
+  OFFLINE_SNAPSHOT_VERSION,
+  DEFAULT_MAX_SNAPSHOT_AGE_SECONDS,
+  DEFAULT_MAX_CLOCK_SKEW_SECONDS,
+} from "./offline";
+import {
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
+} from "./version";
+import {
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
+  CredentialValidationError,
+} from "./validateCredential";
+import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
+import { telemetry } from "./telemetry";
+import {
+  clearWasmCache,
+  compileWasm,
+  detectWasmRuntime,
+  getWasmCacheSize,
+  initWasm,
+  isStreamingSupported,
+  isWasmSupported,
+  WasmLoadError,
+} from "./wasm";
+
+export const StellarCred = {
+  configure,
+  bootstrap,
+  fetchCapabilities,
+  validateCapabilitiesDescriptor,
+  healthCheck,
+  isConfigured,
+  hasClaim,
+  getClaim,
+  getClaimRecord,
+  checkClaimStatus,
+  getClaimOutcome,
+  checkClaimOutcome,
+  hasClaims,
+  getClaims,
+  verifyPreset,
+  buildVerifyUrl,
+  buildBadgeUrl,
+  buildBadgeEmbedCode,
+  parseReturnParams,
+  watchClaim,
+  /** Drop cached claim reads for a wallet (see `configure({ claimCache })`). */
+  invalidate: invalidateClaimCache,
+  invalidateClaimCache,
+  clearClaimCache,
+  withRetry,
+  normalizeRpcError,
+  classifyTransientFailure,
+  submitTransaction,
+  createOfflineVerifier,
+  verifyOfflinePresentation,
+  createBbJsProofVerifier,
+  OfflineVerificationError,
+  ULTRAHONK_PROOF_BYTES,
+  OFFLINE_FIELD_BYTES,
+  OFFLINE_SNAPSHOT_VERSION,
+  DEFAULT_MAX_SNAPSHOT_AGE_SECONDS,
+  DEFAULT_MAX_CLOCK_SKEW_SECONDS,
+  validateCredential,
+  parseCredentialJson,
+  assertValidCredential,
+  subscribeClaims,
+  listIssuers,
+  listIssuerIds,
+  getIssuer,
+  isValidIssuer,
+  createWalletChallenge,
+  verifyWalletSignature,
+  verifyWalletClaim,
+  createPresentationToken,
+  verifyPresentationToken,
+  CLAIM_TYPES,
+  deriveNullifier,
+  isNullifierUsed,
+  verifyUniquePersonhood,
+  TimeoutError,
+  ConfigError,
+  InvalidAddressError,
+  RpcError,
+  // Version helpers (#841)
+  getCredentialCircuitVersion,
+  isCompatibleCredential,
+  getCredentialVersionStatus,
+  getDeploymentCircuitVersion,
+  KNOWN_CIRCUIT_VERSIONS,
+  IndexerError,
+  ContractError,
+  ContractErrorCode,
+  TransactionSubmissionError,
+  CredentialValidationError,
+  parseContractError,
+  telemetry,
+  // Universal WASM helpers
+  initWasm,
+  compileWasm,
+  detectWasmRuntime,
+  isWasmSupported,
+  isStreamingSupported,
+  clearWasmCache,
+  getWasmCacheSize,
+  WasmLoadError,
+};
+
+export default StellarCred;

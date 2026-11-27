@@ -176,11 +176,12 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
     const controller = new AbortController();
     jobs.set(jobId, controller);
     const { signal } = controller;
+    let witness: Uint8Array | undefined;
     try {
       // Stage 1 — witness. The fetch (and the hex→bytes decode of its response)
       // happens in here, which is the point: both used to run on the UI thread.
       postStageStart(jobId, "witness");
-      const witness = request.aggregate
+      witness = request.aggregate
         ? await computeAggregateWitness(request.aggregate, signal)
         : await computeWitness(request.credentialType, request.credential ?? {}, signal);
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
@@ -198,10 +199,10 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
       clearStageTimer(jobId);
       const proof = transferable(result.proof);
       const publicInputs = transferable(result.publicInputs);
-      post(
-        { event: "result", jobId, proof, publicInputs },
-        [proof.buffer as ArrayBuffer, publicInputs.buffer as ArrayBuffer],
-      );
+      post({ event: "result", jobId, proof, publicInputs }, [
+        proof.buffer as ArrayBuffer,
+        publicInputs.buffer as ArrayBuffer,
+      ]);
     } catch (err) {
       // Every failure — witness error, circuit-not-found, abort, wasm crash —
       // reaches the main thread as a structured error, never as an uncaught
@@ -210,6 +211,7 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
       post({ event: "error", jobId, name: errorName(err), message: errorMessage(err) });
     } finally {
       clearStageTimer(jobId);
+      witness = new Uint8Array(0);
       jobs.delete(jobId);
     }
   }
@@ -225,7 +227,10 @@ export function createProverWorker(scope: Pick<ProverWorkerScope, "postMessage">
     }
   }
 
-  async function runDestroy(jobId: number, credentialType?: ProofJobRequest["credentialType"]): Promise<void> {
+  async function runDestroy(
+    jobId: number,
+    credentialType?: ProofJobRequest["credentialType"],
+  ): Promise<void> {
     try {
       if (credentialType) {
         await destroyBackend(credentialType);
