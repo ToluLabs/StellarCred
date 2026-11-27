@@ -46,7 +46,8 @@
   "dependencies": {
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
-    "@noir-lang/noir_js": "1.0.0-beta.9"
+    "@noir-lang/noir_js": "1.0.0-beta.9",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
