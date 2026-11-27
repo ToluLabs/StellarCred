@@ -30,7 +30,9 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
     Bytes, BytesN, Env, Map, Symbol, Vec,
 };
-use ultrahonk_soroban_verifier::{UltraHonkVerifier, PROOF_BYTES};
+use ultrahonk_soroban_verifier::UltraHonkVerifier;
+
+pub mod witness_validation;
 
 // ── Event types ──────────────────────────────────────────────────────────────
 // Topics follow the convention: (contract, action, credential_type).
@@ -470,8 +472,9 @@ impl CredentialVerifier {
         public_inputs: Bytes,
         vk_version: Option<u32>,
     ) -> bool {
-        // Proofs are fixed-length; reject early before touching the verifier.
-        if proof.len() as usize != PROOF_BYTES {
+        // Pre-flight validation: reject wrong-length proofs, unaligned public
+        // inputs, or out-of-range BN254 field elements before touching the verifier.
+        if witness_validation::validate_proof_and_public_inputs(&proof, &public_inputs).is_err() {
             return false;
         }
 

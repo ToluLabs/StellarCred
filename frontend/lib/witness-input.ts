@@ -13,7 +13,7 @@
 export const RESTRICTED_LEN = 8;
 
 /** BN254 scalar field modulus — every Noir `Field` input must be below this. */
-const FIELD_MODULUS =
+export const FIELD_MODULUS =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 /** Largest value a Noir `u64` circuit input can hold. #803 — most credential
@@ -42,8 +42,35 @@ const MAX_FIELD_CHARS = 78;
 
 /** Decimal (`"1234"`) or hex (`"0x1a2b"`) — both are accepted by Noir. */
 const FIELD_STRING_RE = /^(0x[0-9a-fA-F]+|[0-9]+)$/;
+/** Signed decimal (`"-1234"`, `"1234"`) or unsigned hex (`"0x1a2b"`). */
+const SIGNED_INT_STRING_RE = /^(-?[0-9]+|0x[0-9a-fA-F]+)$/;
 
 const DIGITS_RE = /^[0-9]+$/;
+
+// ── Noir Circuit ABI types ───────────────────────────────────────────────────
+// Mirrors the `abi` section emitted by `nargo compile` into public/circuits/*.json.
+
+export type AbiType =
+  | { kind: "field" }
+  | { kind: "boolean" }
+  | { kind: "integer"; sign: "unsigned" | "signed"; width: number }
+  | { kind: "array"; length: number; type: AbiType }
+  | { kind: "string"; length: number }
+  | { kind: "struct"; path: string; fields: { name: string; type: AbiType }[] }
+  | { kind: "tuple"; fields: AbiType[] };
+
+export interface AbiParameter {
+  name: string;
+  type: AbiType;
+  visibility?: "private" | "public";
+}
+
+export interface CircuitAbi {
+  parameters: AbiParameter[];
+}
+
+export type PreparedAcvmInputs =
+  { ok: true; inputs: Record<string, unknown> } | { ok: false; errors: WitnessValidationError[] };
 
 export interface ClaimParams {
   threshold_years?: string;
@@ -95,8 +122,8 @@ function checkField(value: unknown, field: string): WitnessValidationError | nul
   if (value === undefined || value === null) return err(field, "is required");
 
   if (typeof value === "number") {
-    if (!Number.isInteger(value) || value < 0) {
-      return err(field, "must be a non-negative integer");
+    if (!Number.isSafeInteger(value) || value < 0) {
+      return err(field, "must be a non-negative safe integer");
     }
     return null;
   }
@@ -134,6 +161,9 @@ function checkU64(value: unknown, field: string): WitnessValidationError | null 
     if (!Number.isInteger(value) || value < 0) {
       return err(field, "must be a non-negative integer");
     }
+    if (!Number.isSafeInteger(value)) {
+      return err(field, "exceeds JavaScript safe integer precision; pass as a decimal string");
+    }
     if (BigInt(value) > U64_MAX) return oversized;
     return null;
   }
@@ -144,6 +174,22 @@ function checkU64(value: unknown, field: string): WitnessValidationError | null 
     return err(field, "must be a non-negative integer");
   }
   if (BigInt(value) > U64_MAX) return oversized;
+  return null;
+}
+
+/** Required `u64`-typed circuit input (rejects `undefined` and `null`). */
+function checkRequiredU64(value: unknown, field: string): WitnessValidationError | null {
+  if (value === undefined || value === null) return err(field, "is required");
+  return checkU64(value, field);
+}
+
+/** Jurisdiction mode: optional, must be "0" (denylist) or "1" (allowlist). */
+function checkJurisdictionMode(value: unknown): WitnessValidationError | null {
+  if (value === undefined || value === null) return null;
+  const asString = typeof value === "number" ? String(value) : value;
+  if (asString !== "0" && asString !== "1") {
+    return err("credential.claimParams.mode", 'must be "0" (denylist) or "1" (allowlist)');
+  }
   return null;
 }
 
@@ -223,7 +269,7 @@ export function validateWitnessCredential(
       checkField(cred.kyc_commitment, "credential.kyc_commitment") ??
       checkByteArray(cred.kyc_issuer_x, "credential.kyc_issuer_x", PUBKEY_COORD_LEN) ??
       checkByteArray(cred.kyc_issuer_y, "credential.kyc_issuer_y", PUBKEY_COORD_LEN) ??
-      checkU64(cred.age_date_of_birth, "credential.age_date_of_birth") ??
+      checkRequiredU64(cred.age_date_of_birth, "credential.age_date_of_birth") ??
       checkField(cred.age_salt, "credential.age_salt") ??
       checkByteArray(cred.age_sig, "credential.age_sig", SIG_LEN) ??
       checkField(cred.age_commitment, "credential.age_commitment") ??
@@ -232,7 +278,7 @@ export function validateWitnessCredential(
       // age_current_date is deliberately NOT required here: the route derives
       // it server-side (like the single-proof age path), so a client-supplied
       // value would only ever be discarded.
-      checkU64(cred.age_threshold_years, "credential.age_threshold_years") ??
+      checkRequiredU64(cred.age_threshold_years, "credential.age_threshold_years") ??
       checkField(cred.num_credentials, "credential.num_credentials") ??
       checkAggregateCount(cred.num_credentials)
     );
@@ -277,7 +323,11 @@ export function validateWitnessCredential(
         checkU64(params.threshold, "credential.claimParams.threshold")
       );
     case "jurisdiction": // country_code: u64
-      return checkU64(cred.value, "credential.value") ?? checkRestricted(params.restricted);
+      return (
+        checkU64(cred.value, "credential.value") ??
+        checkRestricted(params.restricted) ??
+        checkJurisdictionMode(params.mode)
+      );
     case "employment": // employment_status: u64, seniority: u64, min_seniority: u64
       return (
         checkU64(cred.value, "credential.value") ??
@@ -287,4 +337,269 @@ export function validateWitnessCredential(
     default:
       return null;
   }
+}
+
+// ── ABI-driven input sanitation & pre-flight validation ──────────────────────
+//
+// Runs directly against the compiled Noir circuit's `abi.parameters` right
+// before `noir.execute(inputs)` (ACVM witness generation). This guarantees that
+// every input's type, numeric bounds, and array dimensions match what ACVM
+// expects, turning silent failures or opaque WASM/native panics into
+// structured, actionable validation errors without ever echoing secret values.
+
+/**
+ * Sanitizes a scalar string input by trimming surrounding whitespace and
+ * normalizing an uppercase `0X` hex prefix to lowercase `0x`.
+ */
+export function sanitizeScalarString(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("0X")) {
+    return "0x" + trimmed.slice(2);
+  }
+  return trimmed;
+}
+
+function validateAndSanitizeInteger(
+  value: unknown,
+  field: string,
+  sign: "unsigned" | "signed",
+  width: number,
+  errors: WitnessValidationError[],
+): unknown {
+  if (value === undefined || value === null) {
+    errors.push(err(field, "is required"));
+    return value;
+  }
+
+  if (!Number.isInteger(width) || width <= 0 || width > 256) {
+    errors.push(err(field, `has unsupported integer width ${width}`));
+    return value;
+  }
+
+  const min = sign === "unsigned" ? 0n : -(1n << BigInt(width - 1));
+  const max = sign === "unsigned" ? (1n << BigInt(width)) - 1n : (1n << BigInt(width - 1)) - 1n;
+  const typeLabel = `${sign === "unsigned" ? "u" : "i"}${width}`;
+
+  let parsed: bigint;
+
+  if (typeof value === "number") {
+    if (!Number.isInteger(value)) {
+      errors.push(err(field, `must be an integer (${typeLabel})`));
+      return value;
+    }
+    if (!Number.isSafeInteger(value)) {
+      errors.push(
+        err(field, `exceeds JavaScript safe integer precision for ${typeLabel}; pass as a string`),
+      );
+      return value;
+    }
+    parsed = BigInt(value);
+  } else if (typeof value === "string") {
+    const clean = sanitizeScalarString(value);
+    if (clean.length === 0) {
+      errors.push(err(field, `must be a valid ${typeLabel} integer`));
+      return value;
+    }
+    if (clean.length > MAX_FIELD_CHARS + 1) {
+      errors.push(err(field, `out of range for ${typeLabel} ([${min}, ${max}])`));
+      return value;
+    }
+    const re = sign === "unsigned" ? FIELD_STRING_RE : SIGNED_INT_STRING_RE;
+    if (!re.test(clean)) {
+      errors.push(err(field, `must be a valid ${typeLabel} integer`));
+      return value;
+    }
+    parsed = BigInt(clean);
+  } else {
+    errors.push(err(field, `must be a number or numeric string (${typeLabel})`));
+    return value;
+  }
+
+  if (parsed < min || parsed > max) {
+    errors.push(err(field, `out of range for ${typeLabel} ([${min}, ${max}])`));
+    return value;
+  }
+
+  // Keep u8 values as numbers when already numbers (e.g. byte arrays like sig/issuer_x),
+  // otherwise canonicalize to decimal string for ACVM.
+  if (sign === "unsigned" && width === 8 && typeof value === "number") {
+    return Number(parsed);
+  }
+  return parsed.toString();
+}
+
+function validateAndSanitizeField(
+  value: unknown,
+  field: string,
+  errors: WitnessValidationError[],
+): unknown {
+  if (value === undefined || value === null) {
+    errors.push(err(field, "is required"));
+    return value;
+  }
+
+  let parsed: bigint;
+
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      errors.push(err(field, "must be a non-negative safe integer"));
+      return value;
+    }
+    parsed = BigInt(value);
+  } else if (typeof value === "string") {
+    const clean = sanitizeScalarString(value);
+    if (clean.length > MAX_FIELD_CHARS) {
+      errors.push(err(field, "exceeds the BN254 field modulus"));
+      return value;
+    }
+    if (!FIELD_STRING_RE.test(clean)) {
+      errors.push(err(field, "must be a decimal or 0x-prefixed hex numeric string"));
+      return value;
+    }
+    parsed = BigInt(clean);
+  } else {
+    errors.push(err(field, "must be a numeric string or safe integer"));
+    return value;
+  }
+
+  if (parsed < 0n || parsed >= FIELD_MODULUS) {
+    errors.push(err(field, "exceeds the BN254 field modulus"));
+    return value;
+  }
+
+  return parsed.toString();
+}
+
+function validateAndSanitizeValue(
+  value: unknown,
+  abiType: AbiType,
+  field: string,
+  errors: WitnessValidationError[],
+): unknown {
+  switch (abiType.kind) {
+    case "field":
+      return validateAndSanitizeField(value, field, errors);
+
+    case "integer":
+      return validateAndSanitizeInteger(value, field, abiType.sign, abiType.width, errors);
+
+    case "boolean": {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "string") {
+        const clean = value.trim().toLowerCase();
+        if (clean === "true") return true;
+        if (clean === "false") return false;
+      }
+      errors.push(err(field, "must be a boolean"));
+      return value;
+    }
+
+    case "array": {
+      if (!Array.isArray(value)) {
+        errors.push(err(field, `must be an array of length ${abiType.length}`));
+        return value;
+      }
+      if (value.length !== abiType.length) {
+        errors.push(err(field, `must have length ${abiType.length}, received ${value.length}`));
+        return value;
+      }
+      return value.map((item, idx) =>
+        validateAndSanitizeValue(item, abiType.type, `${field}[${idx}]`, errors),
+      );
+    }
+
+    case "string": {
+      if (typeof value !== "string") {
+        errors.push(err(field, `must be a string of length ${abiType.length}`));
+        return value;
+      }
+      const byteLen = new TextEncoder().encode(value).length;
+      if (byteLen !== abiType.length) {
+        errors.push(err(field, `must be a string of ${abiType.length} bytes, received ${byteLen}`));
+        return value;
+      }
+      return value;
+    }
+
+    case "struct": {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        errors.push(err(field, "must be an object"));
+        return value;
+      }
+      const record = value as Record<string, unknown>;
+      const sanitized: Record<string, unknown> = {};
+      for (const f of abiType.fields) {
+        sanitized[f.name] = validateAndSanitizeValue(
+          record[f.name],
+          f.type,
+          `${field}.${f.name}`,
+          errors,
+        );
+      }
+      return sanitized;
+    }
+
+    case "tuple": {
+      if (!Array.isArray(value)) {
+        errors.push(err(field, `must be a tuple of length ${abiType.fields.length}`));
+        return value;
+      }
+      if (value.length !== abiType.fields.length) {
+        errors.push(
+          err(field, `must have length ${abiType.fields.length}, received ${value.length}`),
+        );
+        return value;
+      }
+      return abiType.fields.map((ft, idx) =>
+        validateAndSanitizeValue(value[idx], ft, `${field}[${idx}]`, errors),
+      );
+    }
+  }
+}
+
+/**
+ * Validates a Noir `InputMap` against the circuit's compiled ABI without
+ * mutating the input. Returns all discovered validation errors (empty when valid).
+ */
+export function validateCircuitInputs(
+  abi: CircuitAbi,
+  inputs: Record<string, unknown>,
+): WitnessValidationError[] {
+  const result = prepareAcvmInputs(abi, inputs);
+  return result.ok ? [] : result.errors;
+}
+
+/**
+ * Sanitizes and validates a Noir `InputMap` against the circuit's compiled ABI
+ * before invoking the ACVM witness generator (`noir.execute`).
+ *
+ * - Strips any extra keys not declared in `abi.parameters`.
+ * - Trims whitespace and normalizes scalar strings (`0X` → `0x`, canonical decimal).
+ * - Verifies every parameter's type, bit-width / field bounds, and array dimensions.
+ */
+export function prepareAcvmInputs(
+  abi: CircuitAbi,
+  inputs: Record<string, unknown>,
+): PreparedAcvmInputs {
+  if (typeof inputs !== "object" || inputs === null || Array.isArray(inputs)) {
+    return { ok: false, errors: [err("inputs", "must be a non-null object")] };
+  }
+
+  const errors: WitnessValidationError[] = [];
+  const sanitized: Record<string, unknown> = {};
+
+  for (const param of abi.parameters) {
+    sanitized[param.name] = validateAndSanitizeValue(
+      inputs[param.name],
+      param.type,
+      param.name,
+      errors,
+    );
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  return { ok: true, inputs: sanitized };
 }
