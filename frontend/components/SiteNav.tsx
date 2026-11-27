@@ -12,8 +12,20 @@ import { resetOnboarding } from "@/lib/onboarding";
 function ShieldIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden>
-      <path d="M11 2.5L4 5.5v5.25c0 4.97 3.253 9.63 7 10.75 3.747-1.12 7-5.78 7-10.75V5.5L11 2.5z" fill="rgba(62,207,142,0.12)" stroke="#3ecf8e" strokeWidth="1.4" strokeLinejoin="round" />
-      <path d="M8 11.2l2.1 2.1 4-4" stroke="#3ecf8e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M11 2.5L4 5.5v5.25c0 4.97 3.253 9.63 7 10.75 3.747-1.12 7-5.78 7-10.75V5.5L11 2.5z"
+        fill="rgba(62,207,142,0.12)"
+        stroke="#3ecf8e"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 11.2l2.1 2.1 4-4"
+        stroke="#3ecf8e"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -26,11 +38,11 @@ export function SiteNav() {
 
   // Build LINKS inside the component so labels are reactive to locale changes
   const LINKS = [
-    { href: "/holder",  label: t("nav.wallet"),  id: "nav-holder" },
-    { href: "/verify",  label: t("nav.verify"),  id: "nav-verify" },
-    { href: "/issuer",  label: t("nav.issuer") },
-    { href: "/apps",    label: t("nav.apps"),    id: "nav-apps" },
-    { href: "/login",   label: t("nav.login"),   id: "nav-login" },
+    { href: "/holder", label: t("nav.wallet"), id: "nav-holder" },
+    { href: "/verify", label: t("nav.verify"), id: "nav-verify" },
+    { href: "/issuer", label: t("nav.issuer") },
+    { href: "/apps", label: t("nav.apps"), id: "nav-apps" },
+    { href: "/login", label: t("nav.login"), id: "nav-login" },
   ];
 
   useEffect(() => setMenuOpen(false), [pathname]);
@@ -101,10 +113,7 @@ export function SiteNav() {
             <IconHelp size={14} stroke={1.8} />
             {t("nav.tour")}
           </button>
-          <Link
-            href="/docs"
-            className={`seg-link${pathname.startsWith("/docs") ? " active" : ""}`}
-          >
+          <Link href="/docs" className={`seg-link${pathname.startsWith("/docs") ? " active" : ""}`}>
             <IconBook2 size={14} stroke={1.8} />
             {t("nav.docs")}
           </Link>

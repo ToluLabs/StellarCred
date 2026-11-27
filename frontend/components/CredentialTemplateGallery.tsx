@@ -2,10 +2,7 @@
 
 import { useState } from "react";
 import { IconSparkles, IconCheck } from "@tabler/icons-react";
-import {
-  CREDENTIAL_TEMPLATES,
-  type CredentialTemplate,
-} from "@/lib/credential-templates";
+import { CREDENTIAL_TEMPLATES, type CredentialTemplate } from "@/lib/credential-templates";
 import type { CredentialType } from "@/lib/stellar";
 
 interface CredentialTemplateGalleryProps {
@@ -70,36 +67,28 @@ export function CredentialTemplateGallery({
 
         {/* Category filters */}
         <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-          {(["all", "finance", "compliance", "identity", "work"] as const).map(
-            (cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                style={{
-                  fontSize: "0.75rem",
-                  padding: "0.25rem 0.6rem",
-                  borderRadius: "var(--radius)",
-                  border:
-                    selectedCategory === cat
-                      ? "1px solid var(--accent)"
-                      : "1px solid rgba(255, 255, 255, 0.08)",
-                  background:
-                    selectedCategory === cat
-                      ? "rgba(100, 200, 255, 0.12)"
-                      : "transparent",
-                  color:
-                    selectedCategory === cat
-                      ? "var(--text)"
-                      : "var(--muted)",
-                  cursor: "pointer",
-                  textTransform: "capitalize",
-                }}
-              >
-                {cat}
-              </button>
-            ),
-          )}
+          {(["all", "finance", "compliance", "identity", "work"] as const).map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategory(cat)}
+              style={{
+                fontSize: "0.75rem",
+                padding: "0.25rem 0.6rem",
+                borderRadius: "var(--radius)",
+                border:
+                  selectedCategory === cat
+                    ? "1px solid var(--accent)"
+                    : "1px solid rgba(255, 255, 255, 0.08)",
+                background: selectedCategory === cat ? "rgba(100, 200, 255, 0.12)" : "transparent",
+                color: selectedCategory === cat ? "var(--text)" : "var(--muted)",
+                cursor: "pointer",
+                textTransform: "capitalize",
+              }}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -111,7 +100,8 @@ export function CredentialTemplateGallery({
           marginBottom: "1rem",
         }}
       >
-        Pick a pre-configured template to automatically prefill claim type, thresholds, and default params. All values remain fully editable before issuance.
+        Pick a pre-configured template to automatically prefill claim type, thresholds, and default
+        params. All values remain fully editable before issuance.
       </p>
 
       {filteredTemplates.length === 0 ? (
@@ -142,9 +132,7 @@ export function CredentialTemplateGallery({
                 style={{
                   padding: "0.85rem 1rem",
                   borderRadius: "var(--radius)",
-                  border: isSelected
-                    ? "1px solid var(--accent)"
-                    : "1px solid var(--border)",
+                  border: isSelected ? "1px solid var(--accent)" : "1px solid var(--border)",
                   background: isSelected
                     ? "rgba(100, 200, 255, 0.07)"
                     : "rgba(255, 255, 255, 0.03)",
@@ -225,7 +213,9 @@ export function CredentialTemplateGallery({
                     paddingTop: "0.5rem",
                   }}
                 >
-                  <span>Type: <strong style={{ color: "var(--text)" }}>{template.type}</strong></span>
+                  <span>
+                    Type: <strong style={{ color: "var(--text)" }}>{template.type}</strong>
+                  </span>
                   <span>Expiry: {template.defaultExpiry}</span>
                 </div>
               </div>

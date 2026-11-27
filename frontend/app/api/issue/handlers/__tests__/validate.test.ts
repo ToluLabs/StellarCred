@@ -140,12 +140,12 @@ describe("normalizeIssueRequest", () => {
     expect(normalizeIssueRequest({ type: "income", attribute: "90000" }).attributes).toEqual({
       income: "90000",
     });
-    expect(
-      normalizeIssueRequest({ type: "jurisdiction", attribute: "566" }).attributes,
-    ).toEqual({ country_code: "566" });
-    expect(
-      normalizeIssueRequest({ type: "employment", attribute: "senior" }).attributes,
-    ).toEqual({ seniority: "senior" });
+    expect(normalizeIssueRequest({ type: "jurisdiction", attribute: "566" }).attributes).toEqual({
+      country_code: "566",
+    });
+    expect(normalizeIssueRequest({ type: "employment", attribute: "senior" }).attributes).toEqual({
+      seniority: "senior",
+    });
   });
 
   it("does not overwrite an explicitly supplied attribute with the legacy field", () => {
@@ -224,9 +224,9 @@ describe("validateIssueRequest", () => {
       (call) => (call[0] as { event?: string }).event === "validation_result",
     );
     expect(verdicts).toHaveLength(2);
-    expect(verdicts.every((call) => (call[0] as { outcome: string }).outcome === "invalid_type")).toBe(
-      true,
-    );
+    expect(
+      verdicts.every((call) => (call[0] as { outcome: string }).outcome === "invalid_type"),
+    ).toBe(true);
   });
 
   it("rejects a request missing the holder address", () => {

@@ -12,7 +12,8 @@
  * Endpoints:
  *
  *   GET /health
- *     â†’ { status, lastLedger, headLedger, lag, lastError, lastErrorTime,
+ *     â†’ { status, ready, service, version, uptimeSeconds, timestamp,
+ *         lastLedger, headLedger, lag, lastError, lastErrorTime,
  *         consecutiveErrors, fetchAttempts, fetchFailures }
  *
  *   GET /claims?wallet=Gâ€¦
@@ -112,6 +113,16 @@ import { isIP } from "net";
 import { StrKey } from "@stellar/stellar-sdk";
 import { MAX_WEBHOOK_DELIVERY_ATTEMPTS } from "./webhooks";
 import { createGraphQLHandler } from "./graphql";
+import { logger } from "./logging";
+import { createTraceMiddleware } from "./trace-middleware";
+import {
+  buildHealthResponse,
+  buildHealthzResponse,
+  buildLivenessResponse,
+  buildReadinessResponse,
+  checkDatabase,
+  HealthThresholds,
+} from "./health";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -197,20 +208,39 @@ export function serializeClaim(
 // keyset boundary of the last row on the page. It is opaque to clients: they
 // must echo it back verbatim, never construct or interpret it.
 
-function encodeCursor(cursor: RecentCursor): string {
+export function encodeCursor(cursor: RecentCursor): string {
   return Buffer.from(`${cursor.ledgerSequence}:${cursor.id}`, "utf8").toString(
     "base64url"
   );
 }
 
-function decodeCursor(raw: string): RecentCursor {
-  const decoded = Buffer.from(raw, "base64url").toString("utf8");
-  const [ledgerRaw, idRaw] = decoded.split(":");
+export function decodeCursor(raw: string): RecentCursor {
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new Error("invalid cursor");
+  }
+  const trimmed = raw.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) {
+    throw new Error("invalid cursor");
+  }
+  let decoded: string;
+  try {
+    decoded = Buffer.from(trimmed, "base64url").toString("utf8");
+  } catch {
+    throw new Error("invalid cursor");
+  }
+  const parts = decoded.split(":");
+  if (parts.length !== 2) {
+    throw new Error("invalid cursor");
+  }
+  const [ledgerRaw, idRaw] = parts;
+  if (!/^\d+$/.test(ledgerRaw) || !/^\d+$/.test(idRaw)) {
+    throw new Error("invalid cursor");
+  }
   const ledgerSequence = Number(ledgerRaw);
   const id = Number(idRaw);
   if (
-    !Number.isInteger(ledgerSequence) ||
-    !Number.isInteger(id) ||
+    !Number.isSafeInteger(ledgerSequence) ||
+    !Number.isSafeInteger(id) ||
     ledgerSequence < 0 ||
     id < 1
   ) {
@@ -235,6 +265,10 @@ export function buildApp(
   integrity?: IntegrityChecker
 ): express.Application {
   const app = express();
+
+  // Trace context and one JSON request line per call, mounted before every
+  // route so all downstream logging is correlated with the request's span.
+  app.use(createTraceMiddleware(logger));
 
   // Trust reverse proxies (e.g. AWS ALB, Cloudflare, Nginx) so client IP extraction is accurate.
   app.set("trust proxy", true);
@@ -309,30 +343,64 @@ export function buildApp(
   app.get(
     "/health",
     asyncHandler(async (_req, res) => {
+      // Shape and status semantics live in health.ts (docs/HEALTHCHECKS.md).
       const lastLedger = await db.getLastLedger();
-      const h = ingester.getHealth();
+      const thresholds: HealthThresholds = {
+        maxLedgerLag: config?.maxLedgerLag,
+        warnLedgerLag: config?.warnLedgerLag,
+      };
+      res.json(buildHealthResponse(lastLedger, ingester.getHealth(), { thresholds }));
+    })
+  );
 
-      let status: "ok" | "degraded" | "error";
-      if (h.consecutiveErrors === 0) {
-        status = "ok";
-      } else if (h.consecutiveErrors < 3) {
-        status = "degraded";
-      } else {
-        status = "error";
+  // Dedicated readiness probe for load balancers and orchestrators (#1001).
+  // Returns HTTP 200 when ready, HTTP 503 when degraded to error / stalled.
+  app.get(
+    "/ready",
+    asyncHandler(async (_req, res) => {
+      const lastLedger = await db.getLastLedger();
+      const thresholds: HealthThresholds = {
+        maxLedgerLag: config?.maxLedgerLag,
+        warnLedgerLag: config?.warnLedgerLag,
+      };
+      const health = buildHealthResponse(lastLedger, ingester.getHealth(), { thresholds });
+      if (!health.ready) {
+        res.status(503).json(health);
+        return;
       }
+      res.status(200).json(health);
+    })
+  );
 
-      res.json({
-        status,
-        lastLedger,
-        headLedger: h.headLedger,
-        lag: h.lag,
-        lastSuccessLedger: h.lastSuccessLedger,
-        lastError: h.lastError,
-        lastErrorTime: h.lastErrorTime,
-        consecutiveErrors: h.consecutiveErrors,
-        fetchAttempts: h.fetchAttempts,
-        fetchFailures: h.fetchFailures,
-      });
+  // ── GET /livez ────────────────────────────────────────────────────────────
+  // Kubernetes liveness probe: process is alive and able to serve HTTP.
+  // Intentionally does NOT query external dependencies (DB or Horizon).
+  app.get("/livez", (_req, res) => {
+    res.status(200).json(buildLivenessResponse());
+  });
+
+  // ── GET /readyz ───────────────────────────────────────────────────────────
+  // Kubernetes readiness probe: verifies DB connectivity and Stellar Horizon
+  // sync within 5 ledgers. Returns 200 when ready, 503 otherwise.
+  app.get(
+    "/readyz",
+    asyncHandler(async (_req, res) => {
+      const dbCheck = await checkDatabase(() => db.getLastLedger());
+      const body = buildReadinessResponse(dbCheck, ingester.getHealth());
+      res.status(body.ready ? 200 : 503).json(body);
+    })
+  );
+
+  // ── GET /healthz ──────────────────────────────────────────────────────────
+  // Combined deep health probe: reports liveness, deep dependency checks
+  // (database + Horizon sync), and ingester telemetry. Returns 200 when ready,
+  // 503 when any critical dependency is unhealthy.
+  app.get(
+    "/healthz",
+    asyncHandler(async (_req, res) => {
+      const dbCheck = await checkDatabase(() => db.getLastLedger());
+      const body = buildHealthzResponse(dbCheck, ingester.getHealth());
+      res.status(body.ready ? 200 : 503).json(body);
     })
   );
 
@@ -635,8 +703,9 @@ export function buildApp(
     })
   );
 
-  // â”€â”€ GET /issuers/:issuer/credentials â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Returns all credentials issued by this issuer, for the revocation dashboard (#540).
+  // ── GET /issuers/:issuer/credentials?limit= ───────────────────────────────
+  // Returns credentials issued by this issuer, for the revocation dashboard (#540).
+  // `limit` is optional and capped at MAX_LIMIT; omit it for the full set.
   app.get(
     "/issuers/:issuer/credentials",
     asyncHandler(async (req, res) => {
@@ -645,7 +714,17 @@ export function buildApp(
         res.status(400).json({ error: "issuer path parameter is required" });
         return;
       }
-      const rawClaims = await db.claimsByIssuer(issuer.trim());
+      const rawLimit = req.query["limit"];
+      let limit: number | undefined;
+      if (rawLimit != null && String(rawLimit).trim() !== "") {
+        const parsed = parseInt(String(rawLimit), 10);
+        if (isNaN(parsed) || parsed < 1) {
+          res.status(400).json({ error: "limit must be a positive integer" });
+          return;
+        }
+        limit = Math.min(parsed, MAX_LIMIT);
+      }
+      const rawClaims = await db.claimsByIssuer(issuer.trim(), limit);
       res.json({
         issuer: issuer.trim(),
         credentials: rawClaims.map((row) => serializeClaim(row)),
@@ -959,7 +1038,12 @@ export function buildApp(
 
   // â”€â”€ Error handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error("[indexer/api] unhandled error:", err);
+    logger.error("http_unhandled_error", {
+      event: "http_unhandled_error",
+      method: _req.method,
+      path: _req.path,
+      error: err,
+    });
     res.status(500).json({ error: "internal server error" });
   });
 

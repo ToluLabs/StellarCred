@@ -40,10 +40,7 @@ const envSchema = z
       .enum(["testnet", "mainnet", "futurenet", "standalone"])
       .default("testnet"),
     NEXT_PUBLIC_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
-    NEXT_PUBLIC_NETWORK_PASSPHRASE: z
-      .string()
-      .min(1)
-      .default("Test SDF Network ; September 2015"),
+    NEXT_PUBLIC_NETWORK_PASSPHRASE: z.string().min(1).default("Test SDF Network ; September 2015"),
 
     // --- Issuer --------------------------------------------------------------
     // Registered issuer's Stellar address. Optional: unset only disables the
@@ -82,18 +79,12 @@ const envSchema = z
     // Base URL of services/indexer's HTTP API. Server-only: only
     // app/api/issuer-stats/route.ts reads it, so it never needs a
     // NEXT_PUBLIC_ prefix. Defaults to the indexer's own default PORT (3001).
-    INDEXER_URL: z.preprocess(
-      emptyToUndefined,
-      z.string().url().optional(),
-    ),
+    INDEXER_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
     // Public indexer URL — included in the /api/capabilities descriptor
     // (issue #639) so integrators can discover the indexer. Only set this
     // when the indexer is safe to expose publicly; INDEXER_URL above may
     // point at a private URL and is never published.
-    NEXT_PUBLIC_INDEXER_URL: z.preprocess(
-      emptyToUndefined,
-      z.string().url().optional(),
-    ),
+    NEXT_PUBLIC_INDEXER_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
 
     // Server-only issuer signing key. Optional: absence runs the public demo
     // issuer key (logged loudly on every boot) instead of a real one.
@@ -160,6 +151,23 @@ const envSchema = z
       z.coerce.number().int().positive().optional(),
     ),
 
+    // --- Redis (optional; enables shared rate-limit store) --------------------
+    // When set, lib/redis-rate-limit.ts stores fixed-window counters in Redis
+    // so limits are enforced consistently across all application instances.
+    // Without this, each instance uses the in-process Map store (lib/rate-limit.ts),
+    // which is correct for single-replica deployments.
+    // See docker-compose.redis.yml for local development setup.
+    REDIS_URL: z.preprocess(emptyToUndefined, z.string().optional()),
+    REDIS_KEY_PREFIX: z.preprocess(emptyToUndefined, z.string().optional()),
+    REDIS_TLS: z.preprocess(emptyToUndefined, z.string().optional()),
+
+    // --- Metrics --------------------------------------------------------------
+    // Optional static token to gate GET /api/metrics. When unset the endpoint
+    // is publicly accessible (exposes only aggregate counters, no PII).
+    // When set, requests must supply it as: Authorization: Bearer <token>
+    // or X-Metrics-Token: <token>.
+    METRICS_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
+
     // --- Ops -------------------------------------------------------------------
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
     APP_ORIGIN: z.preprocess(emptyToUndefined, z.string().url().optional()),
@@ -195,8 +203,7 @@ const envSchema = z
       PLAID_SECRET: val.PLAID_SECRET,
     };
     const hasPlaidToken = Boolean(val.PLAID_ACCESS_TOKEN || val.PLAID_ACCESS_TOKENS);
-    const plaidConfigured =
-      hasPlaidToken || Object.values(plaidCredentials).some(Boolean);
+    const plaidConfigured = hasPlaidToken || Object.values(plaidCredentials).some(Boolean);
     if (plaidConfigured) {
       for (const [key, value] of Object.entries(plaidCredentials)) {
         if (!value) {

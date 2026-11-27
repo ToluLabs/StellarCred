@@ -19,8 +19,19 @@ import {
 } from "./indexer";
 // RpcError has been moved to ./errors.ts (issue #404)
 import { RpcError, ContractError, ContractErrorCode, parseContractError } from "./errors";
+import { ClaimCache, claimCacheKey, type ClaimCacheKey } from "./claim-cache";
+import {
+  abortReason,
+  computeBackoffDelay,
+  isJitterOption,
+  resolveJitter,
+  sleep,
+  type JitterOption,
+} from "./backoff";
 
 export { IndexerError };
+export { computeBackoffDelay } from "./backoff";
+export type { BackoffPolicy, JitterOption, JitterStrategy } from "./backoff";
 export type { IndexerClaimRow };
 
 // ---------------------------------------------------------------------------
@@ -176,11 +187,60 @@ function parseNetwork(raw: string | undefined): StellarNetwork {
 const _preset =
   NETWORK_PRESETS[parseNetwork(env("STELLARCRED_NETWORK", "NEXT_PUBLIC_STELLAR_NETWORK"))];
 
+/** Passed to the operation on every attempt made by {@link withRetry}. */
+export interface RetryContext {
+  /** Number of retries made so far: 0 on the first call, 1 on the first retry. */
+  attempt: number;
+  /** The caller's abort signal, if any. Forward it to `fetch` and friends. */
+  signal?: AbortSignal;
+}
+
+/** Details of a retry that {@link withRetry} is about to make. */
+export interface RetryAttemptInfo {
+  /** 1-based retry number (1 is the first retry). */
+  attempt: number;
+  /** Exact delay in milliseconds before this retry. */
+  delayMs: number;
+  /** The error that caused the retry. */
+  error: unknown;
+  /** Milliseconds spent since the first attempt started. */
+  elapsedMs: number;
+}
+
+/**
+ * Per-call retry settings. Omitted fields fall back to {@link configure}.
+ *
+ * Ceilings: `retries` caps the number of retries, `maxDelayMs` caps any single
+ * delay, and `maxElapsedMs` caps the total time spent retrying.
+ */
 export interface RetryOptions {
+  /** Maximum number of retries after the first attempt. Default 3. */
   retries?: number;
+  /** Smallest delay, and the starting point of the backoff curve. Default 500 ms. */
   baseDelayMs?: number;
+  /** Largest single delay between attempts. Default 5000 ms. */
   maxDelayMs?: number;
-  jitter?: boolean;
+  /**
+   * Total retry budget in milliseconds, measured from the first attempt. A
+   * retry whose delay would end past the budget is not made; the last error is
+   * thrown instead. Default: no budget.
+   */
+  maxElapsedMs?: number;
+  /**
+   * How delays are randomised. `true` (default) is `"full"`, `false` is
+   * `"none"`. See {@link JitterStrategy}.
+   */
+  jitter?: JitterOption;
+  /**
+   * Stops retrying when aborted: a pending delay is cancelled and the abort
+   * reason is thrown. Also passed to the operation through {@link RetryContext}.
+   */
+  signal?: AbortSignal;
+  /**
+   * Called before each retry with the exact delay. Exceptions thrown by this
+   * hook are ignored so a logging hook cannot break the retry loop.
+   */
+  onRetry?: (info: RetryAttemptInfo) => void;
 }
 
 /**
@@ -206,10 +266,22 @@ export interface SDKConfig {
   networkPassphrase?: string;
   baseUrl?: string;
   requestTimeoutMs?: number;
+  /** Default retry ceiling for every RPC and indexer call. See {@link RetryOptions.retries}. */
   retries?: number;
+  /** See {@link RetryOptions.baseDelayMs}. */
   baseDelayMs?: number;
+  /** See {@link RetryOptions.maxDelayMs}. */
   maxDelayMs?: number;
-  jitter?: boolean;
+  /** See {@link RetryOptions.maxElapsedMs}. Default `Infinity` (no budget). */
+  maxElapsedMs?: number;
+  /** See {@link RetryOptions.jitter}. Default `true` (full jitter). */
+  jitter?: JitterOption;
+  /**
+   * IssuerRegistry contract id. Only needed for the issuer reads in
+   * `issuers.ts` (`listIssuers`, `getIssuer`, `isValidIssuer`); claim checks
+   * never read it.
+   */
+  issuerRegistryId?: string;
   /**
    * Base URL of a StellarCred indexer, e.g. `https://indexer.example.com`.
    * Required before any read can use `source: "indexer"` or
@@ -228,9 +300,31 @@ export interface SDKConfig {
    * so a `getClaims`/`hasClaims` fan-out over N credential types issues one
    * HTTP request instead of N. Set to `0` to disable. Only ever affects
    * `source: "indexer"` and `source: "indexer-verified"` reads — chain reads
-   * are never cached.
+   * are only ever cached by the opt-in {@link SDKConfig.claimCache}.
    */
   indexerCacheMs?: number;
+  /**
+   * Opt-in in-memory cache for `hasClaim` / `hasClaims` / `getClaim` /
+   * `verifyPreset` results. When `true`, a repeated read of the same wallet,
+   * credential type, threshold, trusted-issuer set and source is answered
+   * locally for {@link SDKConfig.claimCacheTtlMs} instead of hitting the RPC
+   * (or indexer) again. Disabled by default.
+   *
+   * Only successful reads are cached — a fail-soft `false` caused by an RPC
+   * error or missing configuration never is. A cached `valid` answer never
+   * outlives the credential's own on-chain expiry. After a submission you know
+   * about, call {@link invalidateClaimCache}; pass `fresh: true` on a read to
+   * skip the cache for that call.
+   */
+  claimCache?: boolean;
+  /** How long a cached claim read is reused, in milliseconds. Default 30 000. */
+  claimCacheTtlMs?: number;
+  /**
+   * Upper bound on cached entries; the oldest are evicted first. Default 1000.
+   * Keeps a long-running server that checks many wallets from growing without
+   * bound.
+   */
+  claimCacheMaxEntries?: number;
 }
 
 const DEFAULT_CONFIG: Required<SDKConfig> = {
@@ -244,14 +338,69 @@ const DEFAULT_CONFIG: Required<SDKConfig> = {
   requestTimeoutMs: 10_000,
   retries: 3,
   baseDelayMs: 500,
+  issuerRegistryId: env("STELLARCRED_ISSUER_REGISTRY_ID", "NEXT_PUBLIC_ISSUER_REGISTRY_ID"),
   maxDelayMs: 5000,
+  maxElapsedMs: Number.POSITIVE_INFINITY,
   jitter: true,
   indexerUrl: env("STELLARCRED_INDEXER_URL", "NEXT_PUBLIC_INDEXER_URL"),
   indexerApiKey: env("STELLARCRED_INDEXER_API_KEY"),
   indexerCacheMs: 2000,
+  claimCache: false,
+  claimCacheTtlMs: 30_000,
+  claimCacheMaxEntries: 1000,
 };
 
+function assertValidClaimCacheConfig(opts: SDKConfig): void {
+  if (
+    opts.claimCacheTtlMs !== undefined &&
+    !(Number.isFinite(opts.claimCacheTtlMs) && opts.claimCacheTtlMs > 0)
+  ) {
+    throw new ConfigError(
+      `claimCacheTtlMs must be a positive number of milliseconds, got ${opts.claimCacheTtlMs}`,
+    );
+  }
+  if (
+    opts.claimCacheMaxEntries !== undefined &&
+    !(Number.isInteger(opts.claimCacheMaxEntries) && opts.claimCacheMaxEntries > 0)
+  ) {
+    throw new ConfigError(
+      `claimCacheMaxEntries must be a positive integer, got ${opts.claimCacheMaxEntries}`,
+    );
+  }
+}
+
+/**
+ * Reject retry settings that would make `withRetry` spin or never return:
+ * negative or fractional retry counts, negative or non-finite delays, a
+ * non-positive budget, or an unknown jitter strategy.
+ */
+function assertValidRetryConfig(opts: Omit<RetryOptions, "signal" | "onRetry">): void {
+  if (opts.retries !== undefined && !(Number.isInteger(opts.retries) && opts.retries >= 0)) {
+    throw new ConfigError(`retries must be a non-negative integer, got ${opts.retries}`);
+  }
+  for (const key of ["baseDelayMs", "maxDelayMs"] as const) {
+    const value = opts[key];
+    if (value !== undefined && !(Number.isFinite(value) && value >= 0)) {
+      throw new ConfigError(`${key} must be a non-negative number of milliseconds, got ${value}`);
+    }
+  }
+  if (
+    opts.maxElapsedMs !== undefined &&
+    !(typeof opts.maxElapsedMs === "number" && opts.maxElapsedMs > 0)
+  ) {
+    throw new ConfigError(
+      `maxElapsedMs must be a positive number of milliseconds (or Infinity), got ${opts.maxElapsedMs}`,
+    );
+  }
+  if (opts.jitter !== undefined && !isJitterOption(opts.jitter)) {
+    throw new ConfigError(
+      `jitter must be true, false, "decorrelated", "full", "equal" or "none", got ${String(opts.jitter)}`,
+    );
+  }
+}
+
 let _config: Required<SDKConfig> = { ...DEFAULT_CONFIG };
+const _claimCache = new ClaimCache();
 
 /**
  * Override SDK defaults at runtime. Call this once at app startup before any
@@ -264,7 +413,11 @@ export function configure(opts: SDKConfig): void {
     rpcUrl: opts.rpcUrl,
   });
   warnOnIndexerKeyInBrowser(opts.indexerApiKey);
+  assertValidClaimCacheConfig(opts);
+  assertValidRetryConfig(opts);
   _config = { ..._config, ...opts };
+  // Cached answers may have come from another registry, RPC or network.
+  _claimCache.clear();
   // The cached client is bound to the old config â€” drop it so the next read
   // rebuilds against the new one.
   _client = null;
@@ -291,6 +444,7 @@ export function resetConfig(): void {
   _warnedBoundaryViolation = false;
   _warnedIndexerKeyInBrowser = false;
   clearIndexerCache();
+  _claimCache.clear();
 }
 
 /**
@@ -328,7 +482,7 @@ export function isConfigured(): boolean {
 
 let _warnedMissingRegistryId = false;
 function warnIfMissingRegistryIdOnce(): void {
-  if (_config.registryId) {
+  if (_config.registryId || registryOverride()) {
     _warnedMissingRegistryId = false;
     return;
   }
@@ -493,6 +647,7 @@ export interface CredentialStatusResult {
   status: "verified" | "rpc_failure" | CredentialFailureReason;
   record?: ProofRecordDetails | null;
   error?: string;
+  cause?: unknown;
 }
 
 export type DryRunClaimState = CredentialStatusResult["status"];
@@ -673,7 +828,88 @@ export function resetClientForTesting(): void {
   _sdk = null;
 }
 
+/**
+ * The ProofRegistry reads the SDK's claim checks make, as a structural type.
+ * The generated client satisfies it; so does the in-memory test double in
+ * `@stellarcred/sdk/testing`.
+ */
+export interface ProofRegistryReader {
+  is_verified(args: {
+    holder: string;
+    credential_type: string;
+    trusted_issuers?: string[] | null;
+  }): Promise<{ result: readonly [boolean, bigint | number, bigint | number] }>;
+  check_claim(args: {
+    holder: string;
+    credential_type: string;
+    min_threshold?: bigint | number | null;
+    trusted_issuers?: string[] | null;
+  }): Promise<{ result: boolean }>;
+  get_record(args: { holder: string; credential_type: string }): Promise<{
+    result:
+      | {
+          verified_at: bigint | number;
+          expiry: bigint | number;
+          revoked: boolean;
+          issuer?: string | null;
+          threshold?: bigint | number | null;
+          vk_version: number;
+          reason?: number;
+        }
+      | null
+      | undefined;
+  }>;
+}
+
+// Kept on globalThis under a registered symbol rather than in a module
+// variable: bundlers can give each entry point (`@stellarcred/sdk`,
+// `@stellarcred/sdk/testing`) its own copy of this module, notably in CJS
+// builds, and an override set through one copy must reach reads made
+// through the other.
+const REGISTRY_OVERRIDE = Symbol.for("@stellarcred/sdk:proof-registry-override");
+
+interface RegistryOverrideSlot {
+  client: ProofRegistryReader | null;
+  generation: number;
+}
+
+function registryOverrideSlot(): RegistryOverrideSlot {
+  const g = globalThis as unknown as Record<symbol, RegistryOverrideSlot | undefined>;
+  let slot = g[REGISTRY_OVERRIDE];
+  if (!slot) {
+    slot = { client: null, generation: 0 };
+    g[REGISTRY_OVERRIDE] = slot;
+  }
+  return slot;
+}
+
+let _seenOverrideGeneration = 0;
+
+/** The installed test double, if any. Drops cached claim reads when it changed. */
+function registryOverride(): ProofRegistryReader | null {
+  const slot = registryOverrideSlot();
+  if (slot.generation !== _seenOverrideGeneration) {
+    _seenOverrideGeneration = slot.generation;
+    _claimCache.clear();
+  }
+  return slot.client;
+}
+
+/**
+ * @internal Route every ProofRegistry read to `client` instead of a live RPC
+ * client built from `configure()`. Pass `null` to go back to the real client.
+ * Used by `@stellarcred/sdk/testing` (`installMockRegistry`); not part of the
+ * supported public API.
+ */
+export function __setProofRegistryClientForTesting(client: ProofRegistryReader | null): void {
+  const slot = registryOverrideSlot();
+  slot.client = client;
+  slot.generation += 1;
+}
+
 async function getClient(throwOnError = false): Promise<ProofRegistryClient | null> {
+  const override = registryOverride();
+  if (override) return override as unknown as ProofRegistryClient;
   const { registryId, rpcUrl, networkPassphrase } = _config;
   if (!registryId) {
     if (throwOnError) {
@@ -861,26 +1097,60 @@ export function normalizeRpcError(raw: unknown, opts: NormalizedRpcErrorOptions)
   });
 }
 
-export async function withRetry<T>(operation: () => Promise<T>, opts?: RetryOptions): Promise<T> {
+/**
+ * Run `operation`, retrying transient failures (HTTP 429/5xx, timeouts,
+ * network errors) with jittered exponential backoff (#1056). Terminal errors
+ * such as invalid input, 4xx responses and contract panics are thrown at once.
+ *
+ * Retries stop at the first of: `retries` reached, a terminal error, the
+ * `maxElapsedMs` budget, or `signal` aborting. Delays default to full jitter
+ * over the exponential curve from `baseDelayMs` to `maxDelayMs`; see
+ * {@link RetryOptions}.
+ */
+export async function withRetry<T>(
+  operation: (context: RetryContext) => Promise<T>,
+  opts?: RetryOptions,
+): Promise<T> {
+  if (opts) assertValidRetryConfig(opts);
   const retries = opts?.retries ?? _config.retries;
   const baseDelayMs = opts?.baseDelayMs ?? _config.baseDelayMs;
   const maxDelayMs = opts?.maxDelayMs ?? _config.maxDelayMs;
-  const jitter = opts?.jitter ?? _config.jitter;
+  const maxElapsedMs = opts?.maxElapsedMs ?? _config.maxElapsedMs;
+  const jitter = resolveJitter(opts?.jitter ?? _config.jitter);
+  const signal = opts?.signal;
+  const startedAt = Date.now();
 
   let attempt = 0;
+  let previousDelayMs = 0;
   while (true) {
+    if (signal?.aborted) throw abortReason(signal);
     try {
-      return await operation();
-    } catch (error: any) {
+      return await operation({ attempt, signal });
+    } catch (error: unknown) {
+      // An abort is the caller's decision, not a transient failure: never retry it.
+      if (signal?.aborted) throw abortReason(signal);
       if (attempt >= retries || !isRetryable(error)) {
         throw error;
       }
-      attempt++;
-      let delay = Math.min(baseDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
-      if (jitter) {
-        delay = delay / 2 + Math.random() * (delay / 2);
+      const delayMs = computeBackoffDelay(attempt + 1, previousDelayMs, {
+        baseDelayMs,
+        maxDelayMs,
+        jitter,
+      });
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs + delayMs > maxElapsedMs) {
+        throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      attempt++;
+      previousDelayMs = delayMs;
+      if (opts?.onRetry) {
+        try {
+          opts.onRetry({ attempt, delayMs, error, elapsedMs });
+        } catch {
+          // A failing logging hook must not change retry behaviour.
+        }
+      }
+      await sleep(delayMs, signal);
     }
   }
 }
@@ -1053,9 +1323,10 @@ async function readCheckClaimFromIndexer(
   throwOnError = false,
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
-): Promise<boolean> {
+): Promise<boolean | null> {
   const rows = await readIndexerRows(wallet, throwOnError, requestTimeoutMs, retryOptions);
-  if (!rows) return false;
+  // null = the read failed (fail-soft), as opposed to a definitive `false`.
+  if (!rows) return null;
 
   const row = findClaimRow(rows, claimType);
   if (!row) return false;
@@ -1121,7 +1392,7 @@ async function readCheckClaim(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
   source: ClaimSource = "chain",
-): Promise<boolean> {
+): Promise<boolean | null> {
   if (source === "chain") {
     return readCheckClaimFromChain(
       wallet,
@@ -1206,9 +1477,10 @@ async function readCheckClaimFromChain(
   throwOnError = false,
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
-): Promise<boolean> {
+): Promise<boolean | null> {
   const client = await getClient(throwOnError);
-  if (!client) return false;
+  // null = unconfigured or failed (fail-soft), as opposed to a definitive `false`.
+  if (!client) return null;
 
   try {
     const { result } = await withRequestTimeout(
@@ -1225,7 +1497,7 @@ async function readCheckClaimFromChain(
         ),
       requestTimeoutMs,
     );
-    return result ?? false;
+    return typeof result === "boolean" ? result : null;
   } catch (err) {
     if (throwOnError) {
       if (err instanceof ConfigError) throw err;
@@ -1233,7 +1505,81 @@ async function readCheckClaimFromChain(
         cause: err,
       });
     }
-    return false;
+    return null;
+  }
+}
+
+export interface RecordFetchOutcome {
+  record: ProofRecordDetails | null;
+  unavailable: boolean;
+  error?: unknown;
+}
+
+async function readRecordWithStatus(
+  wallet: string,
+  claimType: string,
+  throwOnError = false,
+  requestTimeoutMs = _config.requestTimeoutMs,
+  retryOptions?: RetryOptions,
+): Promise<RecordFetchOutcome> {
+  let client: ProofRegistryClient | null;
+  try {
+    client = await getClient(throwOnError);
+  } catch (err) {
+    if (throwOnError) throw err;
+    return { record: null, unavailable: true, error: err };
+  }
+  if (!client) {
+    const err = new ConfigError("StellarCred is not configured: missing registryId");
+    if (throwOnError) throw err;
+    return { record: null, unavailable: true, error: err };
+  }
+
+  try {
+    const { result } = await withRequestTimeout(
+      () =>
+        withRetry(
+          () =>
+            client!.get_record({
+              holder: wallet,
+              credential_type: claimType,
+            }),
+          retryOptions,
+        ),
+      requestTimeoutMs,
+    );
+    if (!result) return { record: null, unavailable: false };
+    const reasonMap: Record<number, string> = {
+      0: "expired",
+      1: "superseded",
+      2: "fraud",
+      3: "user_request",
+      4: "other",
+    };
+    return {
+      record: {
+        verifiedAt: Number(result.verified_at),
+        expiry: Number(result.expiry),
+        revoked: Boolean(result.revoked),
+        issuer: result.issuer ? String(result.issuer) : undefined,
+        threshold:
+          result.threshold !== undefined && result.threshold !== null
+            ? Number(result.threshold)
+            : undefined,
+        vkVersion: Number(result.vk_version),
+        reason:
+          result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
+      },
+      unavailable: false,
+    };
+  } catch (err) {
+    if (throwOnError) {
+      if (err instanceof ConfigError) throw err;
+      throw new RpcError(`get_record RPC failed for claim "${claimType}"`, {
+        cause: err,
+      });
+    }
+    return { record: null, unavailable: true, error: err };
   }
 }
 
@@ -1244,51 +1590,151 @@ async function readRecord(
   requestTimeoutMs = _config.requestTimeoutMs,
   retryOptions?: RetryOptions,
 ): Promise<ProofRecordDetails | null> {
-  const client = await getClient(throwOnError);
-  if (!client) return null;
+  const outcome = await readRecordWithStatus(
+    wallet,
+    claimType,
+    throwOnError,
+    requestTimeoutMs,
+    retryOptions,
+  );
+  return outcome.record;
+}
 
-  try {
-    const { result } = await withRequestTimeout(
-      () =>
-        withRetry(
-          () =>
-            client.get_record({
-              holder: wallet,
-              credential_type: claimType,
-            }),
-          retryOptions,
-        ),
-      requestTimeoutMs,
-    );
-    if (!result) return null;
-    const reasonMap: Record<number, string> = {
-      0: "expired",
-      1: "superseded",
-      2: "fraud",
-      3: "user_request",
-      4: "other",
-    };
-    return {
-      verifiedAt: Number(result.verified_at),
-      expiry: Number(result.expiry),
-      revoked: Boolean(result.revoked),
-      issuer: result.issuer ? String(result.issuer) : undefined,
-      threshold:
-        result.threshold !== undefined && result.threshold !== null
-          ? Number(result.threshold)
-          : undefined,
-      vkVersion: Number(result.vk_version),
-      reason: result.reason !== undefined ? reasonMap[Number(result.reason)] || "other" : undefined,
-    };
-  } catch (err) {
-    if (throwOnError) {
-      if (err instanceof ConfigError) throw err;
-      throw new RpcError(`get_record RPC failed for claim "${claimType}"`, {
-        cause: err,
-      });
-    }
-    return null;
+// ---------------------------------------------------------------------------
+// Opt-in claim cache (see SDKConfig.claimCache)
+// ---------------------------------------------------------------------------
+
+type IsVerifiedResult = { valid: boolean; verifiedAt: number; expiry: number };
+
+const copyOf = <T>(value: T): T =>
+  value !== null && typeof value === "object" ? ({ ...value } as T) : value;
+
+/**
+ * Runs `read` through the claim cache when it is enabled. Only non-null
+ * results are stored: `null` is how the low-level reads report a fail-soft
+ * error or missing configuration, and caching that would turn a transient RPC
+ * blip into a 30-second false negative. Thrown errors propagate uncached.
+ */
+async function cachedRead<T extends IsVerifiedResult | boolean>(
+  key: ClaimCacheKey,
+  fresh: boolean | undefined,
+  read: () => Promise<T | null>,
+  credentialExpiryMs?: (value: T) => number | undefined,
+): Promise<T | null> {
+  const { claimCache, claimCacheTtlMs, claimCacheMaxEntries } = _config;
+  if (!claimCache) return read();
+  // Installing or removing a test registry invalidates what was cached.
+  registryOverride();
+
+  const k = claimCacheKey(key);
+  if (!fresh) {
+    const hit = _claimCache.get<T>(k);
+    // Copies, so a caller mutating a returned record cannot poison the cache.
+    if (hit) return copyOf(hit.value);
   }
+
+  const generation = _claimCache.generation;
+  const value = await read();
+  if (value !== null) {
+    const now = Date.now();
+    let expiresAt = now + claimCacheTtlMs;
+    const cap = credentialExpiryMs?.(value);
+    if (cap !== undefined) expiresAt = Math.min(expiresAt, cap);
+    _claimCache.set(k, key, copyOf(value), expiresAt, claimCacheMaxEntries, generation, now);
+  }
+  return value;
+}
+
+/** A cached `valid: true` must not outlive the credential itself. */
+const isVerifiedExpiryMs = (r: IsVerifiedResult): number | undefined =>
+  r.valid && r.expiry > 0 ? r.expiry * 1000 : undefined;
+
+function readIsVerifiedCached(
+  wallet: string,
+  claimType: string,
+  opts: Pick<
+    ClaimOptions,
+    "trustedIssuers" | "requestTimeoutMs" | "retryOptions" | "source" | "fresh"
+  > & { throwOnError: boolean },
+): Promise<IsVerifiedResult | null> {
+  return cachedRead<IsVerifiedResult>(
+    { wallet, claimType, trustedIssuers: opts.trustedIssuers, source: opts.source ?? "chain" },
+    opts.fresh,
+    () =>
+      readIsVerified(
+        wallet,
+        claimType,
+        opts.trustedIssuers,
+        opts.throwOnError,
+        opts.requestTimeoutMs,
+        opts.retryOptions,
+        opts.source,
+      ),
+    isVerifiedExpiryMs,
+  );
+}
+
+async function readCheckClaimCached(
+  wallet: string,
+  claimType: string,
+  minThreshold: number,
+  opts: Pick<
+    ClaimOptions,
+    "trustedIssuers" | "requestTimeoutMs" | "retryOptions" | "source" | "fresh"
+  > & { throwOnError: boolean },
+): Promise<boolean> {
+  const result = await cachedRead<boolean>(
+    {
+      wallet,
+      claimType,
+      minThreshold,
+      trustedIssuers: opts.trustedIssuers,
+      source: opts.source ?? "chain",
+    },
+    opts.fresh,
+    () =>
+      readCheckClaim(
+        wallet,
+        claimType,
+        minThreshold,
+        opts.trustedIssuers,
+        opts.throwOnError,
+        opts.requestTimeoutMs,
+        opts.retryOptions,
+        opts.source,
+      ),
+  );
+  return result ?? false;
+}
+
+/**
+ * Drops cached claim reads for `wallet` — every credential type, or only
+ * `credentialType` when given. Call it after a submission you know about
+ * (a proof was just verified or revoked) so the next read goes to the chain.
+ * Also drops the wallet's short-lived indexer rows. Returns how many cached
+ * claim reads were removed; a no-op when `claimCache` is off.
+ *
+ * A read that was already in flight when this is called is not cached.
+ */
+export function invalidateClaimCache(wallet: string, credentialType?: string): number {
+  const normalized = wallet.trim();
+  for (const key of Array.from(_indexerCache.keys())) {
+    if (key.endsWith(`|${normalized}`)) _indexerCache.delete(key);
+  }
+  return _claimCache.invalidate(normalized, credentialType);
+}
+
+/** Empties the claim cache for every wallet. */
+export function clearClaimCache(): void {
+  _claimCache.clear();
+}
+
+/**
+ * Number of entries the claim cache holds (diagnostics and tests). Expired
+ * entries are dropped lazily, so this can include some that would miss.
+ */
+export function getClaimCacheSize(): number {
+  return _claimCache.size;
 }
 
 // ---------------------------------------------------------------------------
@@ -1333,29 +1779,21 @@ export async function hasClaim(
     return false;
   }
 
+  const readOpts = {
+    trustedIssuers: opts?.trustedIssuers,
+    throwOnError,
+    requestTimeoutMs: opts?.requestTimeoutMs,
+    retryOptions: opts?.retryOptions,
+    source: opts?.source,
+    fresh: opts?.fresh,
+  };
+
   if (opts?.minThreshold !== undefined) {
     validateThreshold(opts.minThreshold);
-    return readCheckClaim(
-      normalizedWallet,
-      claimType,
-      opts.minThreshold,
-      opts.trustedIssuers,
-      throwOnError,
-      opts.requestTimeoutMs,
-      opts.retryOptions,
-      opts.source,
-    );
+    return readCheckClaimCached(normalizedWallet, claimType, opts.minThreshold, readOpts);
   }
 
-  const r = await readIsVerified(
-    normalizedWallet,
-    claimType,
-    opts?.trustedIssuers,
-    throwOnError,
-    opts?.requestTimeoutMs,
-    opts?.retryOptions,
-    opts?.source,
-  );
+  const r = await readIsVerifiedCached(normalizedWallet, claimType, readOpts);
   return !!r && r.valid;
 }
 
@@ -1392,15 +1830,14 @@ export async function getClaim(
     return null;
   }
 
-  const r = await readIsVerified(
-    normalizedWallet,
-    claimType,
-    opts?.trustedIssuers,
-    opts?.throwOnError === true,
-    opts?.requestTimeoutMs,
-    opts?.retryOptions,
-    opts?.source,
-  );
+  const r = await readIsVerifiedCached(normalizedWallet, claimType, {
+    trustedIssuers: opts?.trustedIssuers,
+    throwOnError: opts?.throwOnError === true,
+    requestTimeoutMs: opts?.requestTimeoutMs,
+    retryOptions: opts?.retryOptions,
+    source: opts?.source,
+    fresh: opts?.fresh,
+  });
   return r && r.valid ? r : null;
 }
 
@@ -1439,7 +1876,7 @@ export async function getClaimRecord(
 /**
  * Inspects a wallet's credential claim on-chain and returns a detailed status result,
  * evaluating failure states: "not_verified", "expired", "revoked", "wrong_issuer",
- * "unmet_threshold", or "verified".
+ * "unmet_threshold", "unsupported", "unavailable", or "verified".
  */
 export async function checkClaimStatus(
   wallet: string,
@@ -1492,17 +1929,49 @@ export async function checkClaimStatus(
     };
   }
 
+  if (!isValidClaimType(claimType)) {
+    if (throwOnError) {
+      throw new InvalidClaimTypeError(
+        `Invalid claim type: "${claimType}". Expected one of: ${CLAIM_TYPES.join(", ")}`,
+      );
+    }
+    return {
+      valid: false,
+      status: "unsupported",
+      record: null,
+      error: `Claim type "${claimType}" is unsupported. Supported types: ${CLAIM_TYPES.join(", ")}`,
+    };
+  }
+
   if (opts?.minThreshold !== undefined) {
     validateThreshold(opts.minThreshold);
   }
 
-  const record = await readRecord(
+  const {
+    record,
+    unavailable,
+    error: readError,
+  } = await readRecordWithStatus(
     normalizedWallet,
     claimType,
     throwOnError,
     opts?.requestTimeoutMs,
     opts?.retryOptions,
   );
+
+  if (unavailable) {
+    const errorMsg =
+      readError instanceof Error
+        ? readError.message
+        : `RPC or network unavailable while checking claim "${claimType}".`;
+    return {
+      valid: false,
+      status: "unavailable",
+      record: null,
+      error: errorMsg,
+      cause: readError,
+    };
+  }
 
   if (!record) {
     return {
@@ -1562,6 +2031,256 @@ export async function checkClaimStatus(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Typed claim-read outcomes (issue #979)
+//
+// Protocols need to distinguish a claim that is absent from a claim that
+// cannot be checked because the RPC, contract, or network is unavailable.
+// Mapping transport failures to `false` (the fail-soft default of `hasClaim`)
+// can incorrectly deny valid users, while treating them as `true` would violate
+// the security model. The functions below expose a detailed, typed result.
+// ---------------------------------------------------------------------------
+
+/**
+ * Typed outcome of a single claim read.
+ *
+ * - `"verified"`     â€” the wallet holds a currently-valid, unexpired proof.
+ * - `"not_verified"` â€” the wallet has no (or an invalid) proof; the check
+ *                      completed successfully.
+ * - `"expired"`      â€” a proof exists but has expired.
+ * - `"unsupported"`  â€” the claim type is not recognised, or the read could
+ *                      not be performed because of invalid input.
+ * - `"unavailable"`  â€” the RPC, contract, or network is unavailable, so the
+ *                      claim could not be checked at all.
+ */
+export type ClaimReadOutcome =
+  "verified" | "not_verified" | "expired" | "unsupported" | "unavailable";
+
+/** Backwards-friendly alias. */
+export type ClaimOutcome = ClaimReadOutcome;
+export type ClaimReadStatus = ClaimReadOutcome;
+export type ClaimStatus = ClaimReadOutcome;
+
+export interface ClaimReadResult {
+  /** Typed outcome of the read. */
+  outcome: ClaimReadOutcome;
+  /** Backwards-friendly alias for `outcome`. */
+  status: ClaimReadOutcome;
+  /** Whether the claim is currently valid. */
+  valid: boolean;
+  verifiedAt?: number;
+  expiry?: number;
+  record?: ProofRecordDetails | null;
+  error?: string;
+}
+
+/** Backwards-friendly aliases for the result type. */
+/** Backwards-friendly alias for the detailed read result type. */
+export type ClaimReadOutcomeResult = ClaimReadResult;
+
+async function _performClaimRead(
+  wallet: string,
+  claimType: string,
+  opts?: ClaimOptions,
+): Promise<ClaimReadResult> {
+  const throwOnError = opts?.throwOnError === true;
+
+  // Validate claim type first.
+  if (!isValidClaimType(claimType)) {
+    return {
+      outcome: "unsupported",
+      status: "unsupported",
+      valid: false,
+      error: `Unsupported claim type: "${claimType}".`,
+    };
+  }
+
+  let normalizedWallet: string;
+  try {
+    normalizedWallet = await normalizeAndValidateWallet(wallet);
+  } catch (err) {
+    if (err instanceof InvalidAddressError) {
+      if (throwOnError) throw err;
+      return {
+        outcome: "unsupported",
+        status: "unsupported",
+        valid: false,
+        error: "Invalid Stellar address",
+      };
+    }
+    if (throwOnError) {
+      throw new RpcError("Failed to validate Stellar address", { cause: err });
+    }
+    return {
+      outcome: "unavailable",
+      status: "unavailable",
+      valid: false,
+      error: "Failed to validate Stellar address",
+    };
+  }
+
+  const minThreshold = opts?.minThreshold;
+  if (minThreshold !== undefined) {
+    try {
+      validateThreshold(minThreshold);
+    } catch (err) {
+      if (throwOnError) throw err;
+      return {
+        outcome: "unsupported",
+        status: "unsupported",
+        valid: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  const source = opts?.source ?? "chain";
+
+  // Unconfigured registry (chain reads only).
+  if (source !== "indexer" && !_config.registryId) {
+    if (throwOnError) {
+      throw new ConfigError("StellarCred is not configured: missing registryId");
+    }
+    return {
+      outcome: "unavailable",
+      status: "unavailable",
+      valid: false,
+      error: "StellarCred is not configured: missing registryId",
+    };
+  }
+
+  // Indexer source without indexerUrl.
+  if ((source === "indexer" || source === "indexer-verified") && !_config.indexerUrl) {
+    if (throwOnError && source === "indexer") {
+      throw new ConfigError("StellarCred is not configured for indexer reads: missing indexerUrl");
+    }
+    if (source === "indexer") {
+      return {
+        outcome: "unavailable",
+        status: "unavailable",
+        valid: false,
+        error: "StellarCred is not configured for indexer reads: missing indexerUrl",
+      };
+    }
+  }
+
+  try {
+    let verifiedAt = 0;
+    let expiry = 0;
+    let valid = false;
+
+    if (minThreshold !== undefined) {
+      const r = await readCheckClaimCached(normalizedWallet, claimType, minThreshold, {
+        trustedIssuers: opts?.trustedIssuers,
+        throwOnError: true,
+        requestTimeoutMs: opts?.requestTimeoutMs,
+        retryOptions: opts?.retryOptions,
+        source,
+        fresh: opts?.fresh,
+      });
+      valid = !!r;
+    } else {
+      const r = await readIsVerifiedCached(normalizedWallet, claimType, {
+        trustedIssuers: opts?.trustedIssuers,
+        throwOnError: true,
+        requestTimeoutMs: opts?.requestTimeoutMs,
+        retryOptions: opts?.retryOptions,
+        source,
+        fresh: opts?.fresh,
+      });
+      if (r) {
+        valid = !!r.valid;
+        verifiedAt = r.verifiedAt;
+        expiry = r.expiry;
+      }
+    }
+
+    if (!valid) {
+      // Distinguish expired from not_verified when we have a record.
+      const record = await readRecord(
+        normalizedWallet,
+        claimType,
+        false,
+        opts?.requestTimeoutMs,
+        opts?.retryOptions,
+      ).catch(() => null);
+      if (record && record.expiry > 0 && record.expiry <= Math.floor(Date.now() / 1000)) {
+        return {
+          outcome: "expired",
+          status: "expired",
+          valid: false,
+          verifiedAt: record.verifiedAt,
+          expiry: record.expiry,
+          record,
+        };
+      }
+      return {
+        outcome: "not_verified",
+        status: "not_verified",
+        valid: false,
+        verifiedAt,
+        expiry,
+      };
+    }
+
+    // verified true but double-check expiry
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (expiry > 0 && expiry <= nowSeconds) {
+      return {
+        outcome: "expired",
+        status: "expired",
+        valid: false,
+        verifiedAt,
+        expiry,
+      };
+    }
+
+    return {
+      outcome: "verified",
+      status: "verified",
+      valid: true,
+      verifiedAt,
+      expiry,
+    };
+  } catch (err) {
+    if (throwOnError) {
+      if (err instanceof ConfigError) throw err;
+      if (err instanceof InvalidAddressError) throw err;
+      if (err instanceof InvalidClaimTypeError) throw err;
+      throw new RpcError(`Claim read failed for "${claimType}"`, { cause: err });
+    }
+    return {
+      outcome: "unavailable",
+      status: "unavailable",
+      valid: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Reads a wallet's credential claim and returns a granular, typed outcome
+ * ("verified", "not_verified", "expired", "unsupported", "unavailable",
+ * "revoked", "wrong_issuer", "unmet_threshold") without conflating
+ * transport/RPC failures with absent proofs (#1007).
+ */
+export async function getClaimOutcome(
+  wallet: string,
+  claimType: string,
+  opts?: ClaimOptions,
+): Promise<ClaimOutcomeResult> {
+  return checkClaimStatus(wallet, claimType, opts);
+}
+
+export const checkClaimOutcome = getClaimOutcome;
+export const readClaim = getClaimOutcome;
+export const readClaimOutcome = getClaimOutcome;
+export const getClaimReadOutcome = getClaimOutcome;
+export const getClaimReadResult = getClaimOutcome;
+export const readClaimResult = getClaimOutcome;
+export const getClaimStatusOutcome = getClaimOutcome;
+export const readClaimStatus = getClaimOutcome;
+
 /**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.
  */
@@ -1610,30 +2329,21 @@ export async function hasClaims(
     unique,
     async (t) => {
       try {
+        const readOpts = {
+          trustedIssuers: opts?.trustedIssuers,
+          throwOnError: opts?.throwOnError === true,
+          requestTimeoutMs: opts?.requestTimeoutMs,
+          retryOptions: opts?.retryOptions,
+          source: opts?.source,
+          fresh: opts?.fresh,
+        };
         const minThreshold = opts?.minThresholds?.[t];
         if (minThreshold !== undefined) {
           validateThreshold(minThreshold);
-          results[t] = await readCheckClaim(
-            normalizedWallet,
-            t,
-            minThreshold,
-            opts?.trustedIssuers,
-            opts?.throwOnError === true,
-            opts?.requestTimeoutMs,
-            opts?.retryOptions,
-            opts?.source,
-          );
+          results[t] = await readCheckClaimCached(normalizedWallet, t, minThreshold, readOpts);
           return;
         }
-        const r = await readIsVerified(
-          normalizedWallet,
-          t,
-          opts?.trustedIssuers,
-          opts?.throwOnError === true,
-          opts?.requestTimeoutMs,
-          opts?.retryOptions,
-          opts?.source,
-        );
+        const r = await readIsVerifiedCached(normalizedWallet, t, readOpts);
         results[t] = !!r && r.valid;
       } catch (err) {
         if (opts?.throwOnError) throw err;
@@ -1654,7 +2364,7 @@ export async function verifyPreset(
   claims: readonly PresetClaim[],
   opts?: Pick<
     BatchClaimOptions,
-    "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source"
+    "trustedIssuers" | "requestTimeoutMs" | "throwOnError" | "retryOptions" | "source" | "fresh"
   >,
 ): Promise<PresetVerificationResult> {
   const types = claims.map((c) => c.type);
@@ -1670,6 +2380,7 @@ export async function verifyPreset(
     throwOnError: opts?.throwOnError,
     retryOptions: opts?.retryOptions,
     source: opts?.source,
+    fresh: opts?.fresh,
   });
   const allValid = types.length > 0 && types.every((t) => results[t] === true);
   return { results, allValid };
@@ -1739,83 +2450,15 @@ export async function getClaims(
 // URL builders & helpers
 // ---------------------------------------------------------------------------
 
-export function buildVerifyUrl(opts: {
-  returnUrl: string;
-  claim?: ClaimType;
-  claims?: ClaimType[];
-  wallet?: string;
-  state?: string;
-  baseUrl?: string;
-  expiresInMinutes?: number;
-  /**
-   * When true, generate a URL-safe single-use token id (`jti`) and embed it
-   * in the link. The verify page consumes it on first successful use and
-   * rejects subsequent visits in the same browser session.
-   */
-  singleUse?: boolean;
-  claimParams?: {
-    threshold?: string;
-    threshold_years?: string;
-    restricted?: string | string[];
-  };
-}): string {
-  const base = opts.baseUrl ?? _config.baseUrl;
-  const url = new URL("/verify", base);
-  url.searchParams.set("return_url", opts.returnUrl);
-
-  if (opts.claim) {
-    url.searchParams.set("claim", opts.claim);
-  }
-  if (opts.claims && opts.claims.length > 0) {
-    url.searchParams.set("claims", opts.claims.join(","));
-  }
-  if (opts.wallet) {
-    url.searchParams.set("wallet", opts.wallet);
-  }
-  if (opts.state) {
-    url.searchParams.set("state", opts.state);
-  }
-  if (opts.claimParams) {
-    if (opts.claimParams.threshold) {
-      url.searchParams.set("param_threshold", opts.claimParams.threshold);
-    }
-    if (opts.claimParams.threshold_years) {
-      url.searchParams.set("param_threshold_years", opts.claimParams.threshold_years);
-    }
-    if (opts.claimParams.restricted) {
-      const restricted = Array.isArray(opts.claimParams.restricted)
-        ? opts.claimParams.restricted.join(",")
-        : opts.claimParams.restricted;
-      url.searchParams.set("param_restricted", restricted);
-    }
-  }
-
-  if (opts.expiresInMinutes !== undefined) {
-    if (!Number.isFinite(opts.expiresInMinutes) || opts.expiresInMinutes <= 0) {
-      throw new Error("expiresInMinutes must be a positive number");
-    }
-    const exp = Math.floor(Date.now() / 1000) + Math.floor(opts.expiresInMinutes * 60);
-    url.searchParams.set("exp", String(exp));
-  }
-
-  if (opts.singleUse) {
-    let jti: string;
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      jti = crypto.randomUUID().replace(/-/g, "");
-    } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-      const bytes = new Uint8Array(16);
-      crypto.getRandomValues(bytes);
-      jti = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    } else {
-      throw new Error(
-        "singleUse requires a crypto implementation with randomUUID or getRandomValues",
-      );
-    }
-    url.searchParams.set("jti", jti);
-  }
-
-  return url.toString();
-}
+export { buildVerifyUrl } from "./buildVerifyUrl";
+export type {
+  BuildVerifyUrlOptions,
+  BuildVerifyUrlClaimParams,
+  KycVerifyUrlOptions,
+  AgeVerifyUrlOptions,
+  ThresholdVerifyUrlOptions,
+  JurisdictionVerifyUrlOptions,
+} from "./buildVerifyUrl";
 
 export function buildIssuerUrl(opts: {
   returnUrl: string;
@@ -1901,6 +2544,12 @@ export interface WatchClaimOptions {
    * {@link TimeoutError} may reflect indexer lag rather than a missing claim.
    */
   source?: ClaimSource;
+  /**
+   * Retry settings for each poll's read. Stopping the watch (the returned
+   * function, a resolved claim, or the timeout) also cancels any retry still
+   * waiting, so a stopped watch sends no further RPC requests (#1056).
+   */
+  retryOptions?: Omit<RetryOptions, "signal">;
 }
 
 export interface WatchClaimCallbackOptions extends WatchClaimOptions {
@@ -1935,11 +2584,15 @@ export function watchClaim(
   let isStopped = false;
   let lastState = false;
   let isPolling = false;
+  // Aborted on stop so a poll that is waiting between retries gives up at once.
+  const lifecycle = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+  const retryOptions: RetryOptions = { ...opts?.retryOptions, signal: lifecycle?.signal };
 
   const stop = () => {
     isStopped = true;
     clearInterval(intervalId);
     clearTimeout(timeoutId);
+    lifecycle?.abort();
   };
 
   if (onChange) {
@@ -1950,7 +2603,11 @@ export function watchClaim(
         const verified = await hasClaim(wallet, claimType, {
           minThreshold,
           requestTimeoutMs: opts?.requestTimeoutMs,
+          retryOptions,
           source,
+          // Watching is about noticing a change, so never answer from the
+          // claim cache; the fresh result still refreshes it for other callers.
+          fresh: true,
         });
         if (isStopped) return;
         if (verified !== lastState) {
@@ -1975,7 +2632,9 @@ export function watchClaim(
           const verified = await hasClaim(wallet, claimType, {
             minThreshold,
             requestTimeoutMs: opts?.requestTimeoutMs,
+            retryOptions,
             source,
+            fresh: true,
           });
           if (isStopped) return;
           if (verified) {

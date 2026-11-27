@@ -51,7 +51,7 @@ export default function SubmitAppPageClient() {
 
   function toggleClaim(claim: string) {
     setRequiredClaims((prev) =>
-      prev.includes(claim) ? prev.filter((c) => c !== claim) : [...prev, claim]
+      prev.includes(claim) ? prev.filter((c) => c !== claim) : [...prev, claim],
     );
   }
 
@@ -165,17 +165,14 @@ export default function SubmitAppPageClient() {
           >
             <IconCheck size={24} color="var(--accent)" stroke={2.5} />
           </div>
-          <h2 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>
-            Submission received
-          </h2>
+          <h2 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>Submission received</h2>
           <p
             className="muted"
             style={{ fontSize: "0.875rem", lineHeight: 1.7, marginBottom: "2rem" }}
           >
-            Your app <strong>{appName}</strong> has been submitted for review.
-            Our team will review the submission and verify the integration before
-            listing it in the gallery. You&apos;ll be notified at{" "}
-            <span className="mono">{contactEmail}</span>.
+            Your app <strong>{appName}</strong> has been submitted for review. Our team will review
+            the submission and verify the integration before listing it in the gallery. You&apos;ll
+            be notified at <span className="mono">{contactEmail}</span>.
           </p>
           <div className="row" style={{ gap: "0.75rem", justifyContent: "center" }}>
             <Link href="/apps" className="btn btn-primary">
@@ -203,30 +200,53 @@ export default function SubmitAppPageClient() {
           <IconArrowLeft size={13} /> Apps
         </Link>
         <h1 style={{ fontSize: "2rem" }}>Submit an App</h1>
-        <p
-          className="muted"
-          style={{ fontSize: "0.875rem", marginTop: "0.5rem", lineHeight: 1.6 }}
-        >
-          List your StellarCred integration in the Apps gallery. Submissions are
-          reviewed before being published.
+        <p className="muted" style={{ fontSize: "0.875rem", marginTop: "0.5rem", lineHeight: 1.6 }}>
+          List your StellarCred integration in the Apps gallery. Submissions are reviewed before
+          being published.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="card" style={{ padding: "2rem" }}>
         <div style={{ marginBottom: "1.5rem" }}>
-          <label className="field-label" htmlFor="app-name" style={{ display: "block", marginBottom: "0.4rem" }}>
+          <label
+            className="field-label"
+            htmlFor="app-name"
+            style={{ display: "block", marginBottom: "0.4rem" }}
+          >
             App name *
           </label>
-          <input id="app-name" value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="e.g. LendFi" maxLength={120} style={fieldStyle} />
+          <input
+            id="app-name"
+            value={appName}
+            onChange={(e) => setAppName(e.target.value)}
+            placeholder="e.g. LendFi"
+            maxLength={120}
+            style={fieldStyle}
+          />
           {errors.appName && <p style={errorStyle}>{errors.appName}</p>}
         </div>
 
         <div style={{ marginBottom: "1.5rem" }}>
-          <label className="field-label" htmlFor="app-description" style={{ display: "block", marginBottom: "0.4rem" }}>
+          <label
+            className="field-label"
+            htmlFor="app-description"
+            style={{ display: "block", marginBottom: "0.4rem" }}
+          >
             Description *
           </label>
-          <textarea id="app-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe what your app does and how it uses StellarCred credentials..." rows={4} maxLength={2000} style={{ ...fieldStyle, resize: "vertical", minHeight: "5rem" }} />
-          <div className="faint" style={{ fontSize: "0.72rem", marginTop: "0.3rem", textAlign: "right" }}>
+          <textarea
+            id="app-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe what your app does and how it uses StellarCred credentials..."
+            rows={4}
+            maxLength={2000}
+            style={{ ...fieldStyle, resize: "vertical", minHeight: "5rem" }}
+          />
+          <div
+            className="faint"
+            style={{ fontSize: "0.72rem", marginTop: "0.3rem", textAlign: "right" }}
+          >
             {description.length}/2000
           </div>
           {errors.description && <p style={errorStyle}>{errors.description}</p>}
@@ -236,7 +256,10 @@ export default function SubmitAppPageClient() {
           <label className="field-label" style={{ display: "block", marginBottom: "0.5rem" }}>
             Required claims *
           </label>
-          <p className="faint" style={{ fontSize: "0.8125rem", marginBottom: "0.75rem", lineHeight: 1.5 }}>
+          <p
+            className="faint"
+            style={{ fontSize: "0.8125rem", marginBottom: "0.75rem", lineHeight: 1.5 }}
+          >
             Which StellarCred credential types does your app gate access on?
           </p>
           <div className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
@@ -281,22 +304,49 @@ export default function SubmitAppPageClient() {
         </div>
 
         <div style={{ marginBottom: "1.5rem" }}>
-          <label className="field-label" htmlFor="verify-url" style={{ display: "block", marginBottom: "0.4rem" }}>
+          <label
+            className="field-label"
+            htmlFor="verify-url"
+            style={{ display: "block", marginBottom: "0.4rem" }}
+          >
             Verify URL *
           </label>
-          <input id="verify-url" value={verifyUrl} onChange={(e) => setVerifyUrl(e.target.value)} placeholder="https://yourapp.example.com/verify" style={fieldStyle} />
-          <p className="faint" style={{ fontSize: "0.75rem", marginTop: "0.3rem", lineHeight: 1.5 }}>
+          <input
+            id="verify-url"
+            value={verifyUrl}
+            onChange={(e) => setVerifyUrl(e.target.value)}
+            placeholder="https://yourapp.example.com/verify"
+            style={fieldStyle}
+          />
+          <p
+            className="faint"
+            style={{ fontSize: "0.75rem", marginTop: "0.3rem", lineHeight: 1.5 }}
+          >
             Users will be redirected here to verify credentials. Must be a valid http or https URL.
           </p>
           {errors.verifyUrl && <p style={errorStyle}>{errors.verifyUrl}</p>}
         </div>
 
         <div style={{ marginBottom: "2rem" }}>
-          <label className="field-label" htmlFor="contact-email" style={{ display: "block", marginBottom: "0.4rem" }}>
+          <label
+            className="field-label"
+            htmlFor="contact-email"
+            style={{ display: "block", marginBottom: "0.4rem" }}
+          >
             Contact email *
           </label>
-          <input id="contact-email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="integrations@yourapp.example.com" style={fieldStyle} />
-          <p className="faint" style={{ fontSize: "0.75rem", marginTop: "0.3rem", lineHeight: 1.5 }}>
+          <input
+            id="contact-email"
+            type="email"
+            value={contactEmail}
+            onChange={(e) => setContactEmail(e.target.value)}
+            placeholder="integrations@yourapp.example.com"
+            style={fieldStyle}
+          />
+          <p
+            className="faint"
+            style={{ fontSize: "0.75rem", marginTop: "0.3rem", lineHeight: 1.5 }}
+          >
             We&apos;ll use this to notify you about your submission status.
           </p>
           {errors.contactEmail && <p style={errorStyle}>{errors.contactEmail}</p>}

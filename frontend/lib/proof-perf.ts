@@ -218,11 +218,7 @@ export class ProofRunTracker {
   }
 
   /** Time `fn`, recording `stage` in a finally block. Returns fn's result. */
-  async measure<T>(
-    stage: ProofStageName,
-    fn: () => Promise<T>,
-    warm?: boolean,
-  ): Promise<T> {
+  async measure<T>(stage: ProofStageName, fn: () => Promise<T>, warm?: boolean): Promise<T> {
     this.begin();
     try {
       return await fn();
@@ -311,8 +307,7 @@ export class ProofRunTracker {
       stages,
       totalMs,
       exceededBudget:
-        totalMs > PROOF_PERF_TARGETS.timeToFirstProofMs ||
-        stages.some((s) => s.overBudget),
+        totalMs > PROOF_PERF_TARGETS.timeToFirstProofMs || stages.some((s) => s.overBudget),
     });
   }
 }

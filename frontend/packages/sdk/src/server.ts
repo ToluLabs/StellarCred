@@ -45,3 +45,6 @@
  */
 export * from "./index";
 export { default } from "./index";
+
+// Node-only: worker_threads batch verification (#1063). Kept out of the browser entry point.
+export * from "./batch-verify";

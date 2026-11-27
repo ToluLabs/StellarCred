@@ -43,6 +43,9 @@ reusable proofs instead of re-submitting personal data to every app.
 - **Drop-in integration.** The [`@stellarcred/sdk`](frontend/packages/sdk) gives
   protocols `hasClaim`, `getClaims`, and `buildVerifyUrl`, plus a return-URL
   redirect flow so users verify and bounce straight back.
+- **Scriptable from the command line.** [`npx stellarcred`](frontend/packages/cli)
+  checks credentials, lists issuers, builds verify links and prepares issuer
+  registration for CI, ops and issuer tooling — built on the same SDK.
 
 ---
 
@@ -81,6 +84,7 @@ proof once and caches the result; every protocol afterwards reads
 ## Architecture & Overview
 
 For a detailed architectural description with diagrams, see the [Architecture Documentation](docs/ARCHITECTURE.md).
+For supported wallets, browsers, and network environments, see the [Wallet and Network Compatibility Matrix](docs/wallet-network-compatibility.md).
 For the authoritative specification of contract events, topic schemas, and indexer integration, see [docs/EVENTS.md](docs/EVENTS.md).
 
 ---
@@ -115,6 +119,7 @@ scripts/deploy.sh       deploy + wire + register issuer + install all VKs on tes
 scripts/benchmark.sh    measure instruction budget for every public function on testnet
 BENCHMARKS.md           per-function instruction counts, ledger I/O, and fee estimates
 docs/EVENTS.md          authoritative contract event topic & payload schemas
+docs/BACKFILL.md        when and how to backfill the indexer (ranges, resume, timing)
 docs/STORAGE_TTL.md     contract storage lifetime model, rent fees, and archival behavior
 ```
 
@@ -133,7 +138,7 @@ Install the SDK:
 npm install @stellarcred/sdk
 ```
 
-> Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
+> Full SDK docs: [`frontend/packages/sdk/README.md`](frontend/packages/sdk/README.md) · [API Reference](https://psalmuel01.github.io/StellarCred/) · [npm](https://www.npmjs.com/package/@stellarcred/sdk)
 >
 > **Canonical Integration Example**: Looking for a complete, runnable end-to-end integration with wallet control challenge proof and server-side route gating? See [`examples/canonical-integration`](examples/canonical-integration).
 >
@@ -322,6 +327,100 @@ cd frontend && pnpm install && pnpm dev
 
 ---
 
+## Local development setup
+
+Step-by-step for running the whole stack locally. For the full contract
+deployment walkthrough, see **Run it end to end (testnet)** below.
+
+### 1. Install prerequisites
+
+```bash
+rustup target add wasm32v1-none
+# Stellar CLI v26+ (verified on 27.0.0): https://developers.stellar.org/docs/tools/cli
+node --version   # 20+
+corepack enable && corepack prepare pnpm@9 --activate
+```
+
+### 2. Configure environment variables
+
+Copy the sample env file and fill in what you need. Every variable is
+documented inline in the sample — required vs optional, public vs server-only:
+
+```bash
+cp frontend/.env.example frontend/.env.local
+```
+
+The minimum to boot the frontend against a deployed set of contracts:
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_PROOF_REGISTRY_ID` | yes | ProofRegistry contract id |
+| `NEXT_PUBLIC_ISSUER_REGISTRY_ID` | yes | IssuerRegistry contract id |
+| `NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID` | yes | CredentialVerifier contract id |
+| `NEXT_PUBLIC_GATED_POOL_ID` | demo | GatedPool contract id (demo pool) |
+| `NEXT_PUBLIC_STELLAR_NETWORK` | no | `testnet` (default) / `mainnet` / `futurenet` |
+| `NEXT_PUBLIC_RPC_URL` | no | Soroban RPC (defaults to testnet) |
+| `ISSUER_PRIVATE_KEY` | server | secp256k1 hex key for mock issuance |
+| `NEXT_PUBLIC_ISSUER_ADDRESS` | no | G-address of the registered issuer |
+
+Contract ids are printed by `./scripts/deploy.sh` and written into
+`frontend/.env.local` automatically. See `frontend/.env.example` for the full
+list (WalletConnect, Persona, Plaid, webhooks, Sentry — all optional).
+
+### 3. Run the frontend
+
+```bash
+cd frontend
+pnpm install          # also builds @stellarcred/issuer via postinstall
+pnpm dev              # http://localhost:3000
+```
+
+### 4. (Optional) Run the indexer
+
+The indexer service serves the claims/apps API used by the gallery and
+revocation dashboard. It is not required for the core prove/verify flow.
+
+```bash
+cd services/indexer
+npm install
+npm run build
+npm start             # http://localhost:3001
+```
+
+**Database & migrations.** No manual migration step: `loadConfig()` creates the
+schema on startup. Pick a backend with `DB_DRIVER`:
+
+| `DB_DRIVER` | Engine | Config | Best for |
+|---|---|---|---|
+| `sqlite` (default) | better-sqlite3 | file on disk | local development |
+| `postgres` | node-postgres | `DATABASE_URL` | production / multi-instance |
+
+### Ports
+
+| Service | Default port | Override |
+|---|---|---|
+| Frontend (Next.js) | `3000` | `pnpm dev -- -p <port>` |
+| Indexer API | `3001` | `PORT` env var |
+| Playwright e2e | `3100` | `PORT` / `PLAYWRIGHT_BASE_URL` |
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `pnpm dev` fails on missing contract ids | Deploy with `./scripts/deploy.sh` (or copy ids from `DEPLOYMENTS.md`) into `frontend/.env.local` |
+| Circuit/proof errors mention VK mismatch | `nargo` must be `1.0.0-beta.9` and `bb` must be `0.87.0` — re-run `noirup`/`bbup` with those exact versions, then `./circuits/scripts/build.sh` |
+| Wallet connects but shows the wrong network | Switch the wallet extension to the same network as `NEXT_PUBLIC_STELLAR_NETWORK` (default `testnet`) |
+| In-browser proving hangs or is single-threaded | The app needs cross-origin isolation (COOP/COEP headers set in `next.config.mjs`). Hard-refresh after `pnpm dev`; check DevTools → Application → Cross-origin Isolation |
+| Testnet reset wiped the contracts | Run `ISSUER_PRIVATE_KEY=<hex> SOURCE=deployer ./scripts/reset-testnet.sh` to redeploy and rewrite `frontend/.env.local` |
+| Indexer `DATABASE_URL must be set` | Set `DB_DRIVER=postgres` only when `DATABASE_URL` points at a live Postgres; leave `DB_DRIVER` unset for SQLite |
+| `playwright test` can't reach the app | Build first (`pnpm build`), or set `PLAYWRIGHT_BASE_URL` to an already-running server |
+| Frontend tests fail after switching branches | `pnpm install` again — the `postinstall` rebuilds `@stellarcred/issuer` |
+
+More detail: [`SETUP.md`](./SETUP.md) · [`QUICK_START.md`](./QUICK_START.md) ·
+[`services/indexer/README.md`](./services/indexer/README.md)
+
+---
+
 ## Contract Deployments
 
 See [`DEPLOYMENTS.md`](./DEPLOYMENTS.md) for the authoritative list of live
@@ -394,6 +493,7 @@ StellarCred spans four toolchains (Rust contracts, Noir zk-circuits, Next.js fro
 
 | Command | Workspace | Description |
 |---|---|---|
+| `make verify-deployment` | Verification | End-to-end verification of contract IDs, on-chain versions, reproducible WASM hashes, and VKs (`NETWORK=testnet|mainnet`). |
 | `make all` | All | Runs `build`, `test`, and `lint` across all workspaces (mirrors CI). |
 | `make build` | All | Builds Soroban contracts, frontend bundles, and indexer service. |
 | `make test` | All | Runs contract unit/snapshot tests, frontend/SDK tests, and indexer tests. |

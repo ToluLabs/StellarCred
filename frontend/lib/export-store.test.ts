@@ -36,7 +36,10 @@ describe("export-store", () => {
 
   it("createExportRecord twice produces two records with different ids", async () => {
     const r1 = await createExportRecord(base);
-    const r2 = await createExportRecord({ ...base, requestedAt: new Date(Date.now() + 1).toISOString() });
+    const r2 = await createExportRecord({
+      ...base,
+      requestedAt: new Date(Date.now() + 1).toISOString(),
+    });
     expect(r1.id).not.toBe(r2.id);
   });
 

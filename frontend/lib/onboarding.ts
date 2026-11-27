@@ -103,13 +103,9 @@ export function useOnboarding() {
 
   const nextStep = useCallback(() => {
     setState((prev) => {
-      const nextStep = prev.step + 1;
-      if (nextStep >= ONBOARDING_STEPS.length) {
-        const next = { ...prev, step: ONBOARDING_STEPS.length - 1, completed: true };
-        saveState(next);
-        return next;
-      }
-      const next = { ...prev, step: nextStep };
+      const lastStep = ONBOARDING_STEPS.length - 1;
+      const nextStep = Math.min(prev.step + 1, lastStep);
+      const next = { ...prev, step: nextStep, completed: nextStep === lastStep };
       saveState(next);
       return next;
     });
@@ -140,6 +136,23 @@ export function useOnboarding() {
     saveState(DEFAULT_STATE);
   }, []);
 
+  // Un-dismiss and jump to a specific step — used by the contextual nudge
+  // to re-open the wizard at a specific point after the user dismissed it.
+  const resumeAt = useCallback((index: number) => {
+    setState((_prev) => {
+      const next: OnboardingState = {
+        step: Math.max(0, Math.min(index, ONBOARDING_STEPS.length - 1)),
+        dismissed: false,
+        completed: false,
+      };
+      saveState(next);
+      return next;
+    });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(RESET_EVENT));
+    }
+  }, []);
+
   return {
     state,
     currentStep,
@@ -152,5 +165,6 @@ export function useOnboarding() {
     dismiss,
     complete,
     reset,
+    resumeAt,
   };
 }

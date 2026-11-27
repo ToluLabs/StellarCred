@@ -27,7 +27,8 @@ export function CredentialCard({
   validity,
 }: Props) {
   return (
-    <div
+    <article
+      aria-label={`${type} credential issued by ${issuer}`}
       style={{
         position: "relative",
         maxWidth: 400,
@@ -35,12 +36,15 @@ export function CredentialCard({
         /* gradient border via background on wrapper */
         padding: "1px",
         borderRadius: "20px",
-        background: "linear-gradient(145deg, color-mix(in srgb, var(--accent) 35%, transparent) 0%, var(--border-strong) 40%, color-mix(in srgb, var(--accent) 15%, transparent) 100%)",
-        boxShadow: "0 0 60px color-mix(in srgb, var(--accent) 8%, transparent), 0 24px 64px rgba(0,0,0,0.15)",
+        background:
+          "linear-gradient(145deg, color-mix(in srgb, var(--accent) 35%, transparent) 0%, var(--border-strong) 40%, color-mix(in srgb, var(--accent) 15%, transparent) 100%)",
+        boxShadow:
+          "0 0 60px color-mix(in srgb, var(--accent) 8%, transparent), 0 24px 64px rgba(0,0,0,0.15)",
       }}
     >
       {/* glow orb behind card */}
       <div
+        aria-hidden="true"
         style={{
           position: "absolute",
           top: "30%",
@@ -49,7 +53,8 @@ export function CredentialCard({
           width: 200,
           height: 200,
           borderRadius: "50%",
-          background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 70%)",
+          background:
+            "radial-gradient(circle, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 70%)",
           pointerEvents: "none",
           filter: "blur(20px)",
           zIndex: 0,
@@ -68,20 +73,22 @@ export function CredentialCard({
       >
         {/* top shimmer strip */}
         <div
+          aria-hidden="true"
           style={{
             position: "absolute",
             top: 0,
             left: 0,
             right: 0,
             height: "1px",
-            background: "linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 40%, transparent) 40%, var(--border-strong) 60%, transparent)",
+            background:
+              "linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 40%, transparent) 40%, var(--border-strong) 60%, transparent)",
           }}
         />
 
         {/* header */}
         <div className="between" style={{ marginBottom: "1.25rem" }}>
           <div className="row" style={{ gap: "0.5rem" }}>
-            <IconShieldCheck size={16} color="var(--accent)" stroke={1.8} />
+            <IconShieldCheck size={16} color="var(--accent)" stroke={1.8} aria-hidden="true" />
             <span
               style={{
                 fontSize: "0.72rem",
@@ -94,7 +101,9 @@ export function CredentialCard({
               {issuer}
             </span>
           </div>
-          <Badge variant="verified" dot={false}>Verified</Badge>
+          <Badge variant="verified" dot={false}>
+            Verified
+          </Badge>
         </div>
 
         <h2 style={{ marginBottom: "0.35rem", fontSize: "1.35rem" }}>{type}</h2>
@@ -102,8 +111,9 @@ export function CredentialCard({
           {holder} · {network}
         </div>
 
-        <div
+        <dl
           style={{
+            margin: 0,
             background: "var(--bg-soft)",
             border: "1px solid var(--border)",
             borderRadius: "var(--radius)",
@@ -121,21 +131,21 @@ export function CredentialCard({
                 borderTop: i === 0 ? "none" : "1px solid var(--border)",
               }}
             >
-              <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{f.label}</span>
+              <dt style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{f.label}</dt>
               {f.value ? (
-                <span className="mono accent" style={{ fontSize: "0.8rem" }}>{f.value}</span>
+                <dd className="mono accent" style={{ margin: 0, fontSize: "0.8rem" }}>
+                  {f.value}
+                </dd>
               ) : (
-                <span
-                  className="row faint"
-                  style={{ gap: "0.3rem", fontSize: "0.75rem" }}
-                >
-                  <IconLock size={11} />
+                <dd className="row faint" style={{ margin: 0, gap: "0.3rem", fontSize: "0.75rem" }}>
+                  <IconLock size={11} aria-hidden="true" />
                   Private
-                </span>
+                  <span className="sr-only"> (not disclosed by the proof)</span>
+                </dd>
               )}
             </div>
           ))}
-        </div>
+        </dl>
 
         {(proofHash || validity) && (
           <div
@@ -147,7 +157,9 @@ export function CredentialCard({
             }}
           >
             <span className="mono faint" style={{ fontSize: "0.72rem" }}>
-              π {proofHash ? truncateHash(proofHash) : "—"}
+              <span aria-hidden="true">π </span>
+              <span className="sr-only">Proof hash: </span>
+              {proofHash ? truncateHash(proofHash) : "—"}
             </span>
             {validity && (
               <span
@@ -155,8 +167,8 @@ export function CredentialCard({
                 style={{
                   fontSize: "0.72rem",
                   color: "var(--accent)",
-                  background: "rgba(62,207,142,0.1)",
-                  border: "1px solid rgba(62,207,142,0.2)",
+                  background: "rgba(74,234,164,0.1)",
+                  border: "1px solid rgba(74,234,164,0.25)",
                   padding: "0.15rem 0.5rem",
                   borderRadius: "999px",
                 }}
@@ -167,6 +179,6 @@ export function CredentialCard({
           </div>
         )}
       </div>
-    </div>
+    </article>
   );
 }

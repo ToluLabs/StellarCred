@@ -28,6 +28,13 @@ import type { Db } from "./db-types";
 export * from "./db-types";
 export { createSqliteDb } from "./db-sqlite";
 export { createPostgresDb } from "./db-postgres";
+export {
+  createReadReplicaRouter,
+  isReadOnlyQuery,
+  type ReadReplicaRouter,
+  type ReadReplicaRouterOptions,
+  type ReadReplicaRouterStats,
+} from "./db-router";
 
 // ── Factory ────────────────────────────────────────────────────────────────
 

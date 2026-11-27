@@ -67,7 +67,9 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import type { Config } from "./config";
+import { createHttpClient, optionsFromConfig } from "./http-client";
 import type { ClaimRow, Db } from "./db-types";
+import { logger, withSpan } from "./logging";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -381,16 +383,21 @@ export function createSorobanContractReader(config: Config): ContractReader {
  * Horizon is used rather than Soroban RPC because `getLatestLedger` reports the
  * sequence but not the close time, and `GET /ledgers?order=desc&limit=1` is
  * already this service's source of truth for head-ledger sequencing.
+ *
+ * Goes through the shared HTTP client (#761): Horizon answers 429 when it is
+ * rate-limiting us and 5xx when it is briefly unhealthy, and a raw fetch
+ * treated the first such answer as a permanent clock failure. Now transient
+ * answers are retried with backoff, and a Horizon that stays down opens the
+ * circuit breaker so checks fail fast instead of queueing doomed requests.
  */
 export function createHorizonChainClock(config: Config): ChainClock {
+  const http = createHttpClient(optionsFromConfig(config.httpClient));
   return {
     async now() {
       const url = new URL("/ledgers", config.horizonUrl);
       url.searchParams.set("order", "desc");
       url.searchParams.set("limit", "1");
-      const res = await fetch(url.toString(), {
-        signal: AbortSignal.timeout(5_000),
-      });
+      const res = await http.fetch(url.toString());
       if (!res.ok) throw new Error(`Horizon /ledgers responded ${res.status}`);
       const body = (await res.json()) as {
         _embedded?: { records?: Array<{ closed_at?: string }> };
@@ -486,6 +493,14 @@ export function createIntegrityChecker(
   let inFlight: Promise<IntegrityReport> | null = null;
 
   async function runPass(sampleSize: number): Promise<IntegrityReport> {
+    return withSpan(
+      "indexer.integrity_check",
+      () => runPassOnce(sampleSize),
+      { "sample.size": sampleSize }
+    );
+  }
+
+  async function runPassOnce(sampleSize: number): Promise<IntegrityReport> {
     const startedAt = Date.now();
 
     // Read the chain's own clock for the expiry decision. `is_verified`
@@ -575,30 +590,31 @@ export function createIntegrityChecker(
       void run()
         .then((report) => {
           if (report.mismatchCount > 0) {
-            console.warn(
-              `[indexer] integrity check found ${report.mismatchCount} mismatch(es) ` +
-                `in ${report.checked} sampled claim(s)`,
-            );
+            logger.warn("integrity_mismatches", {
+              mismatch_count: report.mismatchCount,
+              checked: report.checked,
+            });
             for (const m of report.mismatches.slice(0, MAX_LOGGED_MISMATCHES)) {
-              console.warn(
-                `[indexer]   ${m.wallet}/${m.credential_type}: ${m.kinds.join(", ")}`,
-              );
+              logger.warn("integrity_mismatch", {
+                wallet: m.wallet,
+                credential_type: m.credential_type,
+                kinds: m.kinds,
+              });
             }
             if (report.mismatches.length > MAX_LOGGED_MISMATCHES) {
-              console.warn(
-                `[indexer]   …and ${report.mismatches.length - MAX_LOGGED_MISMATCHES} more ` +
-                  `(see /integrity/status for the full report)`,
-              );
+              logger.warn("integrity_mismatches_truncated", {
+                omitted: report.mismatches.length - MAX_LOGGED_MISMATCHES,
+              });
             }
           } else if (!report.complete) {
-            console.warn(
-              `[indexer] integrity check incomplete: ${report.unreadable} claim(s) could not be read` +
-                (metrics.lastError ? ` (${metrics.lastError})` : ""),
-            );
+            logger.warn("integrity_check_incomplete", {
+              unreadable: report.unreadable,
+              error: metrics.lastError ?? undefined,
+            });
           }
         })
         .catch((err: unknown) => {
-          console.error("[indexer] integrity check failed:", err);
+          logger.error("integrity_check_failed", { error: err });
         })
         .finally(() => {
           if (running) schedule();
@@ -625,11 +641,10 @@ export function createIntegrityChecker(
     start() {
       if (running || !config.integrityCheckEnabled) return;
       running = true;
-      console.log(
-        `[indexer] integrity checks enabled — every ` +
-          `${config.integrityCheckIntervalMs / 1000}s, sampling ` +
-          `${sampleSizeDefault()} claim(s) per run against contract state`,
-      );
+      logger.info("integrity_check_enabled", {
+        interval_ms: config.integrityCheckIntervalMs,
+        sample_size: sampleSizeDefault(),
+      });
       schedule();
     },
 

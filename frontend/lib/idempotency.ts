@@ -1,13 +1,13 @@
-import { createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { getSharedStore, checkMultiInstanceStoreWarning } from "./shared-store";
 
 /**
  * Idempotency records for issuance endpoints.
  *
  * Privacy and retention:
- * - Completed issuance is represented only by a SHA-256 response hash and a
- *   completion marker. Response bodies, headers, credentials, commitments,
- *   salts, and attribute values are never cached.
+ * - Single issuance is represented only by a SHA-256 response hash. Successful
+ *   batch responses are AES-GCM encrypted before caching so credential material
+ *   is not readable in the process map or shared-store records.
  * - Persona redirects retain only the inquiry ID and provider URL needed to
  *   resume that redirect; no request attributes are retained.
  * - Records expire after IDEMPOTENCY_TTL_SECONDS (60 seconds by default). This
@@ -15,9 +15,9 @@ import { getSharedStore, checkMultiInstanceStoreWarning } from "./shared-store";
  *   store such as Redis. Keep the TTL short when configuring a shared store.
  *   During rollout, purge existing `idem:*` shared-store entries from versions
  *   that stored full responses; a legacy record is scrubbed when it is read.
- * - The response necessarily exists while an issuance request is running and
- *   is returned to its caller, but it is not retained for retry replay. A
- *   retried completed issuance receives a redacted marker instead.
+ * - Batch replay encryption requires IDEMPOTENCY_REPLAY_ENCRYPTION_KEY. Keep
+ *   it secret, stable across replicas, and separate from the shared-store key.
+ *   Rotate it only after cached records expire or retries will return 503.
  *
  * Scope / known limitation:
  * - The in-flight sentinel de-duplicates only within one server instance.
@@ -34,6 +34,16 @@ export interface CompletedIdempotencyRecord {
   createdAt: number;
 }
 
+export interface EncryptedResponseIdempotencyRecord {
+  version: 1;
+  kind: "encrypted_response";
+  status: number;
+  nonce: string;
+  authTag: string;
+  ciphertext: string;
+  createdAt: number;
+}
+
 export interface PersonaPendingIdempotencyRecord {
   version: 1;
   kind: "persona_pending";
@@ -43,8 +53,62 @@ export interface PersonaPendingIdempotencyRecord {
 }
 
 export type IdempotencyRecord =
-  | CompletedIdempotencyRecord
-  | PersonaPendingIdempotencyRecord;
+  CompletedIdempotencyRecord | EncryptedResponseIdempotencyRecord | PersonaPendingIdempotencyRecord;
+
+function replayEncryptionKey(): Buffer {
+  const value = process.env.IDEMPOTENCY_REPLAY_ENCRYPTION_KEY ?? "";
+  if (!/^[a-f0-9]{64}$/i.test(value)) {
+    throw new Error("IDEMPOTENCY_REPLAY_ENCRYPTION_KEY must be 64 hexadecimal characters");
+  }
+  return Buffer.from(value, "hex");
+}
+
+export function hasReplayEncryptionKey(): boolean {
+  try {
+    replayEncryptionKey();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Encrypts a successful batch response before it enters the idempotency cache. */
+export function encryptedResponseIdempotencyRecord(
+  status: number,
+  body: string,
+): EncryptedResponseIdempotencyRecord {
+  const createdAt = Date.now();
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", replayEncryptionKey(), nonce);
+  cipher.setAAD(Buffer.from(`${status}\n${createdAt}`));
+  const ciphertext = Buffer.concat([cipher.update(body, "utf8"), cipher.final()]);
+  return {
+    version: 1,
+    kind: "encrypted_response",
+    status,
+    nonce: nonce.toString("base64url"),
+    authTag: cipher.getAuthTag().toString("base64url"),
+    ciphertext: ciphertext.toString("base64url"),
+    createdAt,
+  };
+}
+
+/** Decrypts a successful batch response after authenticating its cache record. */
+export function decryptEncryptedResponseIdempotencyRecord(
+  record: EncryptedResponseIdempotencyRecord,
+): string {
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    replayEncryptionKey(),
+    Buffer.from(record.nonce, "base64url"),
+  );
+  decipher.setAAD(Buffer.from(`${record.status}\n${record.createdAt}`));
+  decipher.setAuthTag(Buffer.from(record.authTag, "base64url"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(record.ciphertext, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
+}
 
 /**
  * Maximum accepted Idempotency-Key length in bytes. Guards against memory
@@ -156,16 +220,36 @@ function parseStoredRecord(raw: string): {
   const value = parsed as Record<string, unknown>;
   if (typeof value.createdAt !== "number") return null;
 
-  if (
-    value.version === 1 &&
-    value.kind === "completed" &&
-    typeof value.responseHash === "string"
-  ) {
+  if (value.version === 1 && value.kind === "completed" && typeof value.responseHash === "string") {
     return {
       record: {
         version: 1,
         kind: "completed",
         responseHash: value.responseHash,
+        createdAt: value.createdAt,
+      },
+      legacy: false,
+    };
+  }
+
+  if (
+    value.version === 1 &&
+    value.kind === "encrypted_response" &&
+    typeof value.status === "number" &&
+    value.status >= 200 &&
+    value.status < 300 &&
+    typeof value.nonce === "string" &&
+    typeof value.authTag === "string" &&
+    typeof value.ciphertext === "string"
+  ) {
+    return {
+      record: {
+        version: 1,
+        kind: "encrypted_response",
+        status: value.status,
+        nonce: value.nonce,
+        authTag: value.authTag,
+        ciphertext: value.ciphertext,
         createdAt: value.createdAt,
       },
       legacy: false,
@@ -213,10 +297,7 @@ function persistLocal(key: string, record: IdempotencyRecord): void {
   enforceCap();
 }
 
-async function persistShared(
-  key: string,
-  record: IdempotencyRecord,
-): Promise<void> {
+async function persistShared(key: string, record: IdempotencyRecord): Promise<void> {
   await getSharedStore()
     .set(`idem:${key}`, JSON.stringify(record), remainingTtlSeconds(record.createdAt))
     .catch(() => null);
@@ -246,9 +327,7 @@ export function idempotencyGet(key: string): IdempotencyRecord | null {
  * Legacy full-response records are immediately overwritten with a redacted
  * completion marker and are never replayed.
  */
-export async function idempotencyGetAsync(
-  key: string,
-): Promise<IdempotencyRecord | null> {
+export async function idempotencyGetAsync(key: string): Promise<IdempotencyRecord | null> {
   checkMultiInstanceStoreWarning();
   if (!isValidIdempotencyKey(key)) return null;
 
@@ -262,7 +341,9 @@ export async function idempotencyGetAsync(
     const parsed = parseStoredRecord(raw);
     if (!parsed) return null;
     if (isExpired(parsed.record)) {
-      await getSharedStore().del(`idem:${key}`).catch(() => null);
+      await getSharedStore()
+        .del(`idem:${key}`)
+        .catch(() => null);
       return null;
     }
 
@@ -275,7 +356,8 @@ export async function idempotencyGetAsync(
 }
 
 /**
- * Store a minimal idempotency record under a key. Invalid keys are ignored.
+ * Store an idempotency record under a key. Batch response records contain only
+ * authenticated ciphertext; invalid keys are ignored.
  */
 export function idempotencySet(key: string, record: IdempotencyRecord): void {
   if (!isValidIdempotencyKey(key)) return;
@@ -285,12 +367,9 @@ export function idempotencySet(key: string, record: IdempotencyRecord): void {
 }
 
 /**
- * Store a minimal idempotency record in the configured shared store.
+ * Store an idempotency record in the configured shared store.
  */
-export async function idempotencySetAsync(
-  key: string,
-  record: IdempotencyRecord,
-): Promise<void> {
+export async function idempotencySetAsync(key: string, record: IdempotencyRecord): Promise<void> {
   if (!isValidIdempotencyKey(key)) return;
 
   persistLocal(key, record);
@@ -355,13 +434,10 @@ function pruneStaleInFlight(now: number, ttl: number): void {
 /**
  * Begin — or join — an in-flight slot for `key`.
  *
- * The slot resolves only with a minimal idempotency record. Concurrent
- * duplicates therefore receive the same redacted retry response as later
- * requests and never retain a credential body in this cache.
+ * The slot resolves with an idempotency record. Batch response bodies are
+ * encrypted before being placed here; single-issuance records remain hashes.
  */
-export function idempotencyInFlightBegin(
-  key: string,
-): Promise<IdempotencyRecord> | null {
+export function idempotencyInFlightBegin(key: string): Promise<IdempotencyRecord> | null {
   if (!isValidIdempotencyKey(key)) return null;
 
   const now = Date.now();
@@ -386,10 +462,7 @@ export function idempotencyInFlightBegin(
 /**
  * Resolve the in-flight slot for `key` with a minimal record.
  */
-export function idempotencyInFlightSettle(
-  key: string,
-  record: IdempotencyRecord,
-): void {
+export function idempotencyInFlightSettle(key: string, record: IdempotencyRecord): void {
   const entry = inFlight.get(key);
   if (!entry) return;
   inFlight.delete(key);

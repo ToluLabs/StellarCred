@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  auditLogBootstrap,
-  auditLogEntries,
-  auditLogVerify,
-} from "@/lib/audit-log";
-import { checkAdminAuth, UNAUTHORIZED } from "@/lib/admin-auth";
+import { auditLogBootstrap, auditLogEntries, auditLogVerify } from "@/lib/audit-log";
+import { requireAdmin } from "@/app/api/_middleware";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  if (!checkAdminAuth(req)) {
-    return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  }
+  const denied = requireAdmin(req);
+  if (denied) return denied;
 
   try {
     await auditLogBootstrap();
@@ -34,9 +29,7 @@ export async function GET(req: NextRequest) {
     let filtered = allEntries;
     if (issuerFilter) {
       const lower = issuerFilter.toLowerCase();
-      filtered = allEntries.filter((e) =>
-        e.issuer.toLowerCase().includes(lower),
-      );
+      filtered = allEntries.filter((e) => e.issuer.toLowerCase().includes(lower));
     }
 
     // Take the most recent N after filtering

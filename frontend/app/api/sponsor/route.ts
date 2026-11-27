@@ -14,12 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import {
-  checkLimit,
-  extractIp,
-  LIMITS,
-  tooManyRequestsResponse,
-} from "@/lib/rate-limit";
+import { checkLimit, extractIp, LIMITS, tooManyRequestsResponse } from "@/lib/rate-limit";
 
 // Read the sponsor secret once at module load.
 const SPONSOR_SECRET = process.env.SPONSOR_SECRET ?? "";
@@ -68,25 +63,16 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.text();
     if (raw.length > MAX_BODY_BYTES) {
-      return NextResponse.json(
-        { ok: false, error: "Request body too large." },
-        { status: 413 },
-      );
+      return NextResponse.json({ ok: false, error: "Request body too large." }, { status: 413 });
     }
     body = JSON.parse(raw);
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Invalid JSON body." },
-      { status: 400 },
-    );
+    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
   const { signedXdr, holder } = body;
   if (!signedXdr || !holder) {
-    return NextResponse.json(
-      { ok: false, error: "Missing signedXdr or holder." },
-      { status: 400 },
-    );
+    return NextResponse.json({ ok: false, error: "Missing signedXdr or holder." }, { status: 400 });
   }
 
   // Per-wallet rate limit (using the holder address the client provided).

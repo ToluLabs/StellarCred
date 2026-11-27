@@ -103,9 +103,7 @@ describe("circuit version registry", () => {
     for (const [type, artifact] of Object.entries(ARTIFACTS)) {
       const declared = CIRCUIT_VERSIONS[type as keyof typeof CIRCUIT_VERSIONS];
       expect(artifact.bytecode, `${type} bytecode`).toBeTruthy();
-      expect(artifact.circuit_version, `${type} artifact circuit_version`).toBe(
-        declared.version,
-      );
+      expect(artifact.circuit_version, `${type} artifact circuit_version`).toBe(declared.version);
       expect(artifact.circuit_vk_version, `${type} artifact circuit_vk_version`).toBe(
         declared.vkVersion,
       );
@@ -195,9 +193,9 @@ describe("assertCredentialCircuitCompatible", () => {
   it("uses an explicit type over the payload's own when given one", () => {
     // The aggregate path passes the inner type, since the merged payload is
     // keyed kyc_*/age_* and carries no `type`.
-    expect(() =>
-      assertCredentialCircuitCompatible({ circuitVersion: "0.9.0" }, "kyc"),
-    ).toThrow(CircuitVersionMismatchError);
+    expect(() => assertCredentialCircuitCompatible({ circuitVersion: "0.9.0" }, "kyc")).toThrow(
+      CircuitVersionMismatchError,
+    );
   });
 });
 
@@ -233,9 +231,7 @@ describe("parseCredential circuit-version guard", () => {
   });
 
   it("rejects a credential issued against a superseded circuit", () => {
-    expect(() => parseCredential(credentialJson({ circuitVersion: "0.9.0" }))).toThrow(
-      /0\.9\.0/,
-    );
+    expect(() => parseCredential(credentialJson({ circuitVersion: "0.9.0" }))).toThrow(/0\.9\.0/);
   });
 
   it("rejects a corrupted VK version", () => {
@@ -256,6 +252,23 @@ describe("parseCredential circuit-version guard", () => {
 // --------------------------------------------------------------------------- //
 
 describe("computeWitness circuit-version gate", () => {
+  it("accepts the binary witness response without hex decoding", async () => {
+    const bytes = new Uint8Array([0, 255, 16, 171]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { get: () => "application/octet-stream" },
+        arrayBuffer: async () => bytes.buffer,
+      }),
+    );
+
+    await expect(computeWitness("kyc", { type: "kyc", circuitVersion: "1.0.0" })).resolves.toEqual(
+      bytes,
+    );
+    vi.unstubAllGlobals();
+  });
+
   it("does not ask the server for a witness it cannot use", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -300,7 +313,8 @@ describe("computeWitness circuit-version gate", () => {
         statusText: "Conflict",
         text: async () =>
           JSON.stringify({
-            error: "This KYC credential was issued against circuit version 0.9.0, but this app proves with circuit version 2.0.0.",
+            error:
+              "This KYC credential was issued against circuit version 0.9.0, but this app proves with circuit version 2.0.0.",
             code: "circuit_version_mismatch",
           }),
       }),

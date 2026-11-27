@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
 import { useState } from "react";
 
 type CopyButtonProps = {
   value: string;
-}
+};
 
 export default function CopyButton({ value }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
@@ -12,7 +12,7 @@ export default function CopyButton({ value }: CopyButtonProps) {
   const handleCopyString = async () => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(value)
+        await navigator.clipboard.writeText(value);
       } else {
         const textArea = document.createElement("textarea");
         textArea.value = value;
@@ -28,10 +28,10 @@ export default function CopyButton({ value }: CopyButtonProps) {
       setTimeout(() => {
         setCopied(false);
       }, 1500);
-    } catch(error) {
+    } catch (error) {
       console.error("Failed to copy: ", error);
     }
-  }
+  };
 
   return (
     <button
@@ -72,5 +72,5 @@ export default function CopyButton({ value }: CopyButtonProps) {
         </svg>
       )}
     </button>
-  )
+  );
 }

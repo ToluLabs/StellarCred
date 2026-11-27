@@ -1,21 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revokeExportRecord } from "@/lib/export-store";
-import {
-  auditLogBootstrap,
-  auditLogAppend,
-  auditLogPersist,
-} from "@/lib/audit-log";
-import { checkAdminAuth, UNAUTHORIZED } from "@/lib/admin-auth";
+import { auditLogBootstrap, auditLogAppend, auditLogPersist } from "@/lib/audit-log";
+import { requireAdmin } from "@/app/api/_middleware";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  if (!checkAdminAuth(req)) {
-    return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  }
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
 
   try {
     const { id } = await params;
@@ -24,18 +16,12 @@ export async function POST(
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json(
-        { error: "request body must be valid JSON" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "request body must be valid JSON" }, { status: 400 });
     }
 
     const { revokedBy } = body ?? {};
     if (!revokedBy || typeof revokedBy !== "string" || !revokedBy.trim()) {
-      return NextResponse.json(
-        { error: "revokedBy is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "revokedBy is required" }, { status: 400 });
     }
 
     const record = await revokeExportRecord(id, revokedBy.trim());
