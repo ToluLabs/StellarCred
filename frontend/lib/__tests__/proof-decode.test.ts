@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { computeWitness, decodeWitnessHex } from "../proof";
+import { computeWitness, decodeWitnessHex, backendOptions } from "../proof";
 import { CircuitVersionMismatchError } from "../circuit-versions";
-import { describe, it, expect, vi } from "vitest";
-import { decodeWitnessHex, backendOptions } from "../proof";
 
 describe("mobile WASM memory policy", () => {
   it("caps mobile and resource-constrained realms to a one-thread backend", () => {

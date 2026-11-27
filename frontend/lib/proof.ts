@@ -360,25 +360,6 @@ export async function computeWitness(
 
   const res = await postWitness({ type, credential }, signal);
   if (!res.ok) throw await witnessResponseError(res, type);
-  const res = await fetch("/api/witness", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, credential }),
-    signal,
-  });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    // The server owns the compiled circuits, so its verdict is authoritative
-    // when it disagrees with this build's registry (a deploy skewed between the
-    // two, or an older client that does not carry the check). Surface its
-    // explanation as a CircuitVersionMismatchError rather than burying it in a
-    // generic "witness generation failed" string.
-    if (/circuit_version_mismatch/.test(msg)) {
-      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
-      throw new CircuitVersionMismatchError(detail);
-    }
-    throw new Error(`Witness generation failed: ${msg}`);
-  }
   if (res.headers?.get?.("content-type")?.includes("application/octet-stream")) {
     return new Uint8Array(await res.arrayBuffer());
   }
@@ -534,20 +515,6 @@ export async function computeAggregateWitness(
 
   const res = await postWitness({ type: "aggregate", credential: aggregateCredential }, signal);
   if (!res.ok) throw await witnessResponseError(res, "aggregate");
-  const res = await fetch("/api/witness", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "aggregate", credential: aggregateCredential }),
-    signal,
-  });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    if (/circuit_version_mismatch/.test(msg)) {
-      const detail = extractErrorMessage(msg) ?? "the circuit version is not supported";
-      throw new CircuitVersionMismatchError(detail);
-    }
-    throw new Error(`Aggregate witness generation failed: ${msg}`);
-  }
   if (res.headers?.get?.("content-type")?.includes("application/octet-stream")) {
     return new Uint8Array(await res.arrayBuffer());
   }

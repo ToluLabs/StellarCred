@@ -14,8 +14,6 @@ export * from "./errors"; // Typed error taxonomy (#404)
 export * from "./telemetry"; // Opt-in, zero-PII telemetry (#1064)
 export * from "./validateCredential"; // Credential JSON validation (#27)
 export * from "./buildVerifyUrl";
-export * from "./offline";
-export { submitTransaction } from "./submit";
 export * from "./key-derivation"; // BIP-39 / SEP-5 key derivation (#1068)
 export * from "./offline"; // Air-gapped presentation verification (#1059)
 export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
