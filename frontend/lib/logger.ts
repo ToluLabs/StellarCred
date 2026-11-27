@@ -84,3 +84,32 @@ export function stripSensitiveFields<T extends Record<string, unknown>>(obj: T):
   }
   return result;
 }
+
+/**
+ * Safe logging wrappers. Each automatically scrubs the payload with
+ * `stripSensitiveFields` before handing it to pino, so call sites cannot
+ * accidentally leak non-allowlisted fields.
+ */
+export function safeInfo<T extends Record<string, unknown>>(obj: T, msg?: string): void {
+  if (msg === undefined) {
+    logger.info(stripSensitiveFields(obj));
+  } else {
+    logger.info(stripSensitiveFields(obj), msg);
+  }
+}
+
+export function safeWarn<T extends Record<string, unknown>>(obj: T, msg?: string): void {
+  if (msg === undefined) {
+    logger.warn(stripSensitiveFields(obj));
+  } else {
+    logger.warn(stripSensitiveFields(obj), msg);
+  }
+}
+
+export function safeError<T extends Record<string, unknown>>(obj: T, msg?: string): void {
+  if (msg === undefined) {
+    logger.error(stripSensitiveFields(obj));
+  } else {
+    logger.error(stripSensitiveFields(obj), msg);
+  }
+}

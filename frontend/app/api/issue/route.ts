@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { previewCredential, type CredentialType } from "@stellarcred/issuer";
 import { bodyErrorResponse } from "@/lib/request-limits";
-import { logger, stripSensitiveFields, resolveRequestId } from "@/lib/logger";
+import { safeInfo, safeWarn, resolveRequestId } from "@/lib/logger";
 import { recordIssuance } from "@/lib/metrics";
 import {
   completedIdempotencyRecord,
@@ -49,28 +49,26 @@ export async function POST(req: NextRequest) {
   const rawKey = req.headers.get("Idempotency-Key")?.trim() || undefined;
   const idempotencyKey = rawKey && isValidIdempotencyKey(rawKey) ? rawKey : undefined;
   if (rawKey && !idempotencyKey) {
-    logger.warn(
-      stripSensitiveFields({
-        event: "idempotency_key_rejected",
-        requestId,
-        reason:
-          new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES ? "too_long" : "invalid",
-      }),
-    );
+    safeWarn({
+      event: "idempotency_key_rejected",
+      requestId,
+      reason:
+        new TextEncoder().encode(rawKey).length > MAX_KEY_LENGTH_BYTES ? "too_long" : "invalid",
+    });
   }
 
   if (idempotencyKey) {
     while (true) {
       const record = await idempotencyGetAsync(idempotencyKey);
       if (record) {
-        logger.info(stripSensitiveFields({ event: "idempotency_hit", requestId }));
+        safeInfo({ event: "idempotency_hit", requestId });
         return replayIdempotencyRecord(record, requestId);
       }
 
       const inFlight = idempotencyInFlightBegin(idempotencyKey);
       if (!inFlight) break;
 
-      logger.info(stripSensitiveFields({ event: "idempotency_inflight_hit", requestId }));
+      safeInfo({ event: "idempotency_inflight_hit", requestId });
       try {
         return replayIdempotencyRecord(await inFlight, requestId);
       } catch {
@@ -197,17 +195,15 @@ async function executeRequest(
     }
 
     for (const type of credentialTypes) {
-      logger.info(
-        stripSensitiveFields({
-          event: "response_sent",
-          credentialType: type,
-          issuerId,
-          walletAddress,
-          outcome,
-          durationMs,
-          requestId,
-        }),
-      );
+      safeInfo({
+        event: "response_sent",
+        credentialType: type,
+        issuerId,
+        walletAddress,
+        outcome,
+        durationMs,
+        requestId,
+      });
       // Record metrics for every completed issuance request.
       recordIssuance(type || "unknown", outcome === "success" ? "success" : "failure", durationMs);
     }
