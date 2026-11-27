@@ -3,8 +3,16 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   IconX,
+  IconDownload,
+  IconClock,
+  IconLoader2,
   IconCheck,
   IconAlertTriangle,
+  IconLock,
+  IconRefresh,
+  IconFileText,
+  IconFileSpreadsheet,
+  IconShield,
   IconFileExport,
 } from "@tabler/icons-react";
 import type { ExportJob, ExportScope, ExportFormat, ScopeDefinition } from "@/lib/export-jobs";

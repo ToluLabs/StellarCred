@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
@@ -16,7 +15,6 @@ import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
 import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
-import { IMPORT_PARAM } from "@/lib/transfer";
 import { removeCredential, type Credential } from "@/lib/credential";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
