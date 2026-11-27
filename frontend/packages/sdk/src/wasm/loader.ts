@@ -119,6 +119,17 @@ function isFileUrl(value: string): boolean {
   return /^file:\/\//i.test(value);
 }
 
+function isUrl(value: unknown): value is URL {
+  if (typeof value === "string") return false;
+  if (typeof URL !== "undefined" && value instanceof URL) return true;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { href?: unknown }).href === "string" &&
+    typeof (value as { protocol?: unknown }).protocol === "string"
+  );
+}
+
 function isLocalPath(value: string): boolean {
   return (
     isFileUrl(value) ||
@@ -165,11 +176,11 @@ async function readLocalWasmFile(
     };
 
     let filePath: string;
-    if (pathOrUrl instanceof URL) {
+    if (isUrl(pathOrUrl)) {
       const urlMod = (await import(/* @vite-ignore */ urlModuleName)) as {
-        fileURLToPath: (url: URL) => string;
+        fileURLToPath: (url: string | URL) => string;
       };
-      filePath = urlMod.fileURLToPath(pathOrUrl);
+      filePath = urlMod.fileURLToPath(pathOrUrl.href);
     } else if (isFileUrl(pathOrUrl)) {
       const urlMod = (await import(/* @vite-ignore */ urlModuleName)) as {
         fileURLToPath: (url: string) => string;
@@ -299,7 +310,7 @@ function resolveCacheKey(
   if (typeof source === "string") {
     return source;
   }
-  if (source instanceof URL) {
+  if (isUrl(source)) {
     return source.href;
   }
   return undefined;
@@ -338,15 +349,15 @@ export async function compileWasm(
     compiled = await compileBytes(toUint8Array(source), runtime);
   } else if (isResponse(source) || isPromiseLike<Response>(source)) {
     compiled = await compileFromResponse(source, runtime);
-  } else if (source instanceof URL || typeof source === "string") {
-    const str = source instanceof URL ? source.href : source;
+  } else if (isUrl(source) || typeof source === "string") {
+    const str = isUrl(source) ? source.href : source;
 
     if (isDataUrl(str)) {
       const commaIdx = str.indexOf(",");
       const bytes = decodeBase64ToBytes(str.slice(commaIdx + 1));
       compiled = await compileBytes(bytes, runtime);
     } else if (
-      (source instanceof URL && source.protocol === "file:") ||
+      (isUrl(source) && source.protocol === "file:") ||
       (!isHttpUrl(str) &&
         isLocalPath(str) &&
         (runtime === "node" || runtime === "bun" || Boolean(options.readFile)))
