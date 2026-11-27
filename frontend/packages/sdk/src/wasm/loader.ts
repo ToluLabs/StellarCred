@@ -78,7 +78,7 @@ export function decodeBase64ToBytes(base64: string): Uint8Array {
   );
 }
 
-function toUint8Array(source: BufferSource): Uint8Array {
+function toUint8Array(source: any): Uint8Array {
   if (source instanceof Uint8Array) {
     return source;
   }

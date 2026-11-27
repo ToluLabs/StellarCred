@@ -13,7 +13,7 @@
 <h1>Interface BatchClaimOptions</h1></div>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">BatchClaimOptions</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#fresh">fresh</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#minthresholds">minThresholds</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><br/>        <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><br/>            <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>            <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">,</span><br/>            <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#requesttimeoutms">requestTimeoutMs</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#retryoptions">retryOptions</a><span class="tsd-signature-symbol">?:</span> <a href="index.RetryOptions.html" class="tsd-signature-type tsd-kind-interface">RetryOptions</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#source">source</a><span class="tsd-signature-symbol">?:</span> <a href="../types/index.ClaimSource.html" class="tsd-signature-type tsd-kind-type-alias">ClaimSource</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#throwonerror">throwOnError</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#trustedissuers">trustedIssuers</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:630</li></ul></aside>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L630">src/claims.ts:630</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -38,39 +38,39 @@
 <div class="tsd-comment tsd-typography"><p>See <a href="index.ClaimOptions.html#fresh" class="tsd-kind-property">ClaimOptions.fresh</a>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:639</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L639">src/claims.ts:639</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="minthresholds"><code class="tsd-tag">Optional</code><span>min<wbr/>Thresholds</span><a href="#minthresholds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">minThresholds</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">Partial</span><span class="tsd-signature-symbol">&lt;</span><br/>    <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><span class="tsd-signature-symbol">,</span><br/>        <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">&gt;</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:631</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L631">src/claims.ts:631</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="requesttimeoutms"><code class="tsd-tag">Optional</code><span>request<wbr/>Timeout<wbr/>Ms</span><a href="#requesttimeoutms" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">requestTimeoutMs</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:633</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L633">src/claims.ts:633</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="retryoptions"><code class="tsd-tag">Optional</code><span>retry<wbr/>Options</span><a href="#retryoptions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">retryOptions</span><span class="tsd-signature-symbol">?:</span> <a href="index.RetryOptions.html" class="tsd-signature-type tsd-kind-interface">RetryOptions</a></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:635</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L635">src/claims.ts:635</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="source"><code class="tsd-tag">Optional</code><span>source</span><a href="#source" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">source</span><span class="tsd-signature-symbol">?:</span> <a href="../types/index.ClaimSource.html" class="tsd-signature-type tsd-kind-type-alias">ClaimSource</a></div>
 <div class="tsd-comment tsd-typography"><p>See the warning on <a href="index.ClaimOptions.html#source" class="tsd-kind-property">ClaimOptions.source</a>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:637</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L637">src/claims.ts:637</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="throwonerror"><code class="tsd-tag">Optional</code><span>throw<wbr/>On<wbr/>Error</span><a href="#throwonerror" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">throwOnError</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:634</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L634">src/claims.ts:634</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="trustedissuers"><code class="tsd-tag">Optional</code><span>trusted<wbr/>Issuers</span><a href="#trustedissuers" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">trustedIssuers</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">[]</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/claims.ts:632</li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/2cf415c33f47cca6d3ab0127d62d4d7b4a3a4e73/frontend/packages/sdk/src/claims.ts#L632">src/claims.ts:632</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
