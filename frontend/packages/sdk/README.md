@@ -818,6 +818,37 @@ Requires `@stellar/stellar-sdk >= 13.0.0` as a peer dependency.
 npm install @stellar/stellar-sdk
 ```
 
+## Deterministic Stellar keys (BIP-39 / SEP-5)
+
+Derive issuer keys or holder identities with Stellar's standard SEP-5 path.
+The default is the primary account, `m/44'/148'/0'`; set `accountIndex` to
+derive `m/44'/148'/x'`.
+
+```ts
+import { deriveStellarKeypairFromMnemonic } from "@stellarcred/sdk";
+
+const keypair = deriveStellarKeypairFromMnemonic(recoveryPhrase, {
+  accountIndex: 0,
+  passphrase: optionalBip39Passphrase,
+});
+
+// keypair.publicKey is the deterministic G-address.
+// Keep keypair.secretKey server-side and never log it.
+```
+
+Mnemonic validation and BIP-39 seed generation use audited `@scure/bip39`;
+HMAC-SHA512 and Ed25519 operations use the audited `@noble` libraries already
+used by StellarCred. The SDK overwrites every mutable BIP-39 seed, SLIP-0010
+chain code, derived private key, and temporary public-key buffer before return.
+
+For callers that already hold a binary seed,
+`deriveStellarKeypairFromSeed(seed, path)` supports hardened SLIP-0010 Ed25519
+paths. It **consumes and zeroes the supplied seed buffer**, even if derivation
+throws. Pass a copy if that buffer must be retained. Returned Stellar
+S-addresses are immutable JavaScript strings and cannot be zeroed; minimize
+their lifetime and never place mnemonics, passphrases, seeds, or secret keys in
+logs, telemetry, URLs, or browser storage.
+
 ## Trust boundary
 
 The SDK is designed to work in both browsers and Node.js, but there is an

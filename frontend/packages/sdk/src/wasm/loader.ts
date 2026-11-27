@@ -1,8 +1,4 @@
-import {
-  detectWasmRuntime,
-  isStreamingSupported,
-  isWasmSupported,
-} from "./runtime";
+import { detectWasmRuntime, isStreamingSupported, isWasmSupported } from "./runtime";
 import {
   WasmLoadError,
   type WasmInitOptions,
@@ -78,7 +74,7 @@ export function decodeBase64ToBytes(base64: string): Uint8Array {
   );
 }
 
-function toUint8Array(source: BufferSource): Uint8Array {
+function toUint8Array(source: ArrayBuffer | ArrayBufferView<ArrayBufferLike>): Uint8Array {
   if (source instanceof Uint8Array) {
     return source;
   }
@@ -88,15 +84,12 @@ function toUint8Array(source: BufferSource): Uint8Array {
   return new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
 }
 
-function isBufferSource(value: unknown): value is BufferSource {
+function isBufferSource(value: unknown): value is ArrayBuffer | ArrayBufferView<ArrayBufferLike> {
   return value instanceof ArrayBuffer || ArrayBuffer.isView(value);
 }
 
 function isResponse(value: unknown): value is Response {
-  return (
-    typeof Response !== "undefined" &&
-    value instanceof Response
-  );
+  return typeof Response !== "undefined" && value instanceof Response;
 }
 
 function isPromiseLike<T>(value: unknown): value is PromiseLike<T> {
@@ -191,10 +184,7 @@ async function readLocalWasmFile(
   }
 }
 
-async function compileBytes(
-  bytes: Uint8Array,
-  runtime: WasmRuntime,
-): Promise<WebAssembly.Module> {
+async function compileBytes(bytes: Uint8Array, runtime: WasmRuntime): Promise<WebAssembly.Module> {
   if (!hasWasmMagicHeader(bytes)) {
     throw new WasmLoadError(
       "INVALID_SOURCE",
@@ -224,12 +214,7 @@ async function compileFromResponse(
   try {
     response = await responseOrPromise;
   } catch (err) {
-    throw new WasmLoadError(
-      "FETCH_FAILED",
-      "Failed to fetch WebAssembly response.",
-      runtime,
-      err,
-    );
+    throw new WasmLoadError("FETCH_FAILED", "Failed to fetch WebAssembly response.", runtime, err);
   }
 
   if (!response.ok) {
@@ -241,14 +226,10 @@ async function compileFromResponse(
   }
 
   const contentType = response.headers?.get("content-type") ?? "";
-  if (
-    isStreamingSupported() &&
-    contentType.toLowerCase().includes("application/wasm")
-  ) {
+  if (isStreamingSupported() && contentType.toLowerCase().includes("application/wasm")) {
     try {
       // Clone if available so we can fall back to arrayBuffer() if streaming fails.
-      const fallbackClone =
-        typeof response.clone === "function" ? response.clone() : null;
+      const fallbackClone = typeof response.clone === "function" ? response.clone() : null;
       try {
         return await WebAssembly.compileStreaming(response);
       } catch (streamErr) {
@@ -286,10 +267,7 @@ async function compileFromResponse(
   return compileBytes(new Uint8Array(buffer), runtime);
 }
 
-function resolveCacheKey(
-  source: WasmSource,
-  options: WasmInitOptions,
-): string | undefined {
+function resolveCacheKey(source: WasmSource, options: WasmInitOptions): string | undefined {
   if (options.cache === false) {
     return undefined;
   }
@@ -365,11 +343,7 @@ export async function compileWasm(
       compiled = await compileFromResponse(fetchFn(str), runtime);
     }
   } else {
-    throw new WasmLoadError(
-      "INVALID_SOURCE",
-      "Unsupported WebAssembly source type.",
-      runtime,
-    );
+    throw new WasmLoadError("INVALID_SOURCE", "Unsupported WebAssembly source type.", runtime);
   }
 
   if (cacheKey) {
@@ -383,20 +357,18 @@ export async function compileWasm(
  * Compiles and instantiates a WebAssembly module isomorphically across
  * Node.js (CJS & ESM), Bun, browsers, and edge runtimes.
  */
-export async function initWasm<
-  T extends WebAssembly.Exports = WebAssembly.Exports,
->(
+export async function initWasm<T extends WebAssembly.Exports = WebAssembly.Exports>(
   source: WasmSource,
   options: WasmInitOptions = {},
 ): Promise<WasmInstanceResult<T>> {
   const runtime = detectWasmRuntime();
-  const module = await compileWasm(source, options);
+  const wasmModule = await compileWasm(source, options);
 
   try {
-    const instance = await WebAssembly.instantiate(module, options.imports);
+    const instance = await WebAssembly.instantiate(wasmModule, options.imports);
     return {
       instance,
-      module,
+      module: wasmModule,
       exports: instance.exports as T,
       runtime,
     };
