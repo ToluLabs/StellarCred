@@ -106,6 +106,41 @@ pub struct EventProofRevoked {
     pub reason: RevocationReason,
 }
 
+/// Individual entry in the on-chain revocation registry.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevocationEntry {
+    pub holder: Address,
+    pub credential_type: Symbol,
+    pub issuer: Address,
+    pub revoked_at: u64,
+    pub reason: RevocationReason,
+}
+
+/// Paginated result returned to clients.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RevocationPage {
+    pub items: Vec<RevocationEntry>,
+    pub start: u32,
+    pub limit: u32,
+    pub total: u32,
+    pub next_cursor: Option<u32>,
+    pub has_more: bool,
+}
+
+/// Payload emitted when a paginated revocation query is executed.
+/// Topics: ("proof_reg", "rev_page")
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventRevocationPageQueried {
+    pub start: u32,
+    pub limit: u32,
+    pub count: u32,
+    pub total: u32,
+    pub next_cursor: Option<u32>,
+}
+
 /// Payload emitted when a holder revokes their own cached proof.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -193,6 +228,9 @@ const MAX_CREDENTIAL_TTL_SECS: u64 = 365 * 86_400; // 1 year, in seconds
 
 /// Maximum number of submissions accepted by `submit_proofs_batch`.
 const MAX_BATCH_SIZE: u32 = 5;
+
+/// Maximum number of revocations returned in a single page.
+pub const MAX_REVOCATION_PAGE_SIZE: u32 = 20;
 
 // ── Aggregate proof public-input layout (N=2: KYC + age) ────────────────────
 // The aggregate_proof circuit packs N credential public inputs sequentially,
@@ -299,6 +337,12 @@ pub enum DataKey {
     /// (app_context, nullifier) -> bool. Stores whether a nullifier has been
     /// consumed within an application context to enforce Sybil resistance (#395).
     Nullifier(BytesN<32>, BytesN<32>),
+    /// Total number of unique revocations recorded.
+    RevocationCount,
+    /// Revocation record by sequential 0-based index.
+    RevocationEntry(u32),
+    /// Index mapping for idempotent revocation updates: (holder, credential_type) -> index.
+    RevocationIndex(Address, Symbol),
 }
 
 #[contracterror]
@@ -1116,6 +1160,40 @@ impl ProofRegistry {
             .persistent()
             .extend_ttl(&key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
 
+        let revoked_at = env.ledger().timestamp();
+        let reason_val = record.reason;
+
+        // Maintain indexed revocation list for bounded pagination
+        let revoc_idx_key = DataKey::RevocationIndex(holder.clone(), credential_type.clone());
+        let index = if let Some(idx) = env.storage().persistent().get::<_, u32>(&revoc_idx_key) {
+            idx
+        } else {
+            let count_key = DataKey::RevocationCount;
+            let count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0u32);
+            env.storage().persistent().set(&count_key, &(count + 1));
+            env.storage()
+                .persistent()
+                .extend_ttl(&count_key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
+            env.storage().persistent().set(&revoc_idx_key, &count);
+            env.storage()
+                .persistent()
+                .extend_ttl(&revoc_idx_key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
+            count
+        };
+
+        let entry = RevocationEntry {
+            holder: holder.clone(),
+            credential_type: credential_type.clone(),
+            issuer: issuer.clone(),
+            revoked_at,
+            reason: reason_val,
+        };
+        let entry_key = DataKey::RevocationEntry(index);
+        env.storage().persistent().set(&entry_key, &entry);
+        env.storage()
+            .persistent()
+            .extend_ttl(&entry_key, PROOF_BUMP_THRESHOLD, PROOF_TTL);
+
         // Emit: topics = ("proof_reg", "revoked", credential_type)
         //       data   = EventProofRevoked { holder, issuer, revoked_at, reason }
         env.events().publish(
@@ -1127,10 +1205,103 @@ impl ProofRegistry {
             EventProofRevoked {
                 holder,
                 issuer,
-                revoked_at: env.ledger().timestamp(),
-                reason: record.reason,
+                revoked_at,
+                reason: reason_val,
             },
         );
+    }
+
+    /// Paginated read of revoked credentials in the on-chain revocation registry.
+    ///
+    /// Returns up to `limit` entries starting at zero-based index `start`.
+    /// `limit` is capped at `MAX_REVOCATION_PAGE_SIZE` (20) to bound the per-call read footprint;
+    /// passing a larger value silently uses 20 instead.
+    ///
+    /// Clients can deterministically walk large revocation sets using `next_cursor`
+    /// until `has_more` is false.
+    #[allow(deprecated)]
+    pub fn get_revocations_page(env: Env, start: u32, limit: u32) -> RevocationPage {
+        let effective_limit = limit.min(MAX_REVOCATION_PAGE_SIZE);
+        let total: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RevocationCount)
+            .unwrap_or(0u32);
+
+        if start >= total || effective_limit == 0 {
+            let empty_page = RevocationPage {
+                items: Vec::new(&env),
+                start,
+                limit: effective_limit,
+                total,
+                next_cursor: None,
+                has_more: false,
+            };
+            env.events().publish(
+                (symbol_short!("proof_reg"), symbol_short!("rev_page")),
+                EventRevocationPageQueried {
+                    start,
+                    limit: effective_limit,
+                    count: 0,
+                    total,
+                    next_cursor: None,
+                },
+            );
+            return empty_page;
+        }
+
+        let end = total.min(start + effective_limit);
+        let mut items = Vec::new(&env);
+        for i in start..end {
+            if let Some(entry) = env
+                .storage()
+                .persistent()
+                .get::<_, RevocationEntry>(&DataKey::RevocationEntry(i))
+            {
+                items.push_back(entry);
+            }
+        }
+
+        let has_more = end < total;
+        let next_cursor = if has_more { Some(end) } else { None };
+        let count = items.len();
+
+        env.events().publish(
+            (symbol_short!("proof_reg"), symbol_short!("rev_page")),
+            EventRevocationPageQueried {
+                start,
+                limit: effective_limit,
+                count,
+                total,
+                next_cursor,
+            },
+        );
+
+        RevocationPage {
+            items,
+            start,
+            limit: effective_limit,
+            total,
+            next_cursor,
+            has_more,
+        }
+    }
+
+    /// Total number of unique revoked credentials in the revocation registry.
+    pub fn revocation_count(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::RevocationCount)
+            .unwrap_or(0u32)
+    }
+
+    /// Check if a holder's credential has been revoked.
+    pub fn is_revoked(env: Env, holder: Address, credential_type: Symbol) -> bool {
+        let key = DataKey::Proof(holder, credential_type);
+        match env.storage().persistent().get::<_, ProofRecord>(&key) {
+            Some(record) => record.revoked,
+            None => false,
+        }
     }
 
     /// Admin-role only. Migration from the legacy 4-field `ProofRecord` layout (no

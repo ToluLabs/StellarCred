@@ -2912,3 +2912,294 @@ fn test_submit_proof_with_nullifier_rejects_sybil_reuse() {
     );
     assert!(second_attempt.is_err(), "Second submission with same nullifier in same context must revert");
 }
+
+// ── Revocation registry pagination & bounded query tests (#1010) ─────────────
+
+#[test]
+fn empty_revocation_registry_returns_empty_page() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+
+    assert_eq!(h.registry.revocation_count(), 0);
+
+    let holder = Address::generate(&env);
+    assert!(!h.registry.is_revoked(&holder, &symbol_short!("kyc")));
+
+    let page = h.registry.get_revocations_page(&0, &10);
+    assert_eq!(page.items.len(), 0);
+    assert_eq!(page.start, 0);
+    assert_eq!(page.limit, 10);
+    assert_eq!(page.total, 0);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
+}
+
+#[test]
+fn revocation_page_zero_limit_returns_empty_page() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 9999);
+    h.registry.revoke(
+        &h.issuer,
+        &holder,
+        &symbol_short!("kyc"),
+        &Some(RevocationReason::Fraud),
+    );
+
+    assert_eq!(h.registry.revocation_count(), 1);
+    assert!(h.registry.is_revoked(&holder, &symbol_short!("kyc")));
+
+    let page = h.registry.get_revocations_page(&0, &0);
+    assert_eq!(page.items.len(), 0);
+    assert_eq!(page.start, 0);
+    assert_eq!(page.limit, 0);
+    assert_eq!(page.total, 1);
+    assert_eq!(page.next_cursor, None);
+    assert!(!page.has_more);
+}
+
+#[test]
+fn revocation_page_start_out_of_bounds_returns_empty_page() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 9999);
+    h.registry.revoke(
+        &h.issuer,
+        &holder,
+        &symbol_short!("kyc"),
+        &Some(RevocationReason::Fraud),
+    );
+
+    // start == total (1 >= 1)
+    let page_at_end = h.registry.get_revocations_page(&1, &10);
+    assert_eq!(page_at_end.items.len(), 0);
+    assert_eq!(page_at_end.start, 1);
+    assert_eq!(page_at_end.total, 1);
+    assert_eq!(page_at_end.next_cursor, None);
+    assert!(!page_at_end.has_more);
+
+    // start > total (5 > 1)
+    let page_past_end = h.registry.get_revocations_page(&5, &10);
+    assert_eq!(page_past_end.items.len(), 0);
+    assert_eq!(page_past_end.start, 5);
+    assert_eq!(page_past_end.total, 1);
+    assert_eq!(page_past_end.next_cursor, None);
+    assert!(!page_past_end.has_more);
+}
+
+#[test]
+fn revocation_page_limit_cap_is_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+
+    // Create 25 revocations to exceed MAX_REVOCATION_PAGE_SIZE (20)
+    for _ in 0..25 {
+        let holder = Address::generate(&env);
+        submit(&env, &h, &holder, 9999);
+        h.registry.revoke(
+            &h.issuer,
+            &holder,
+            &symbol_short!("kyc"),
+            &Some(RevocationReason::Expired),
+        );
+    }
+
+    assert_eq!(h.registry.revocation_count(), 25);
+
+    // Request limit 100 — must be clamped to 20
+    let page = h.registry.get_revocations_page(&0, &100);
+    assert_eq!(page.items.len(), 20);
+    assert_eq!(page.limit, 20);
+    assert_eq!(page.total, 25);
+    assert_eq!(page.next_cursor, Some(20));
+    assert!(page.has_more);
+}
+
+#[test]
+fn multi_page_retrieval_walks_entire_registry_deterministically() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+
+    let mut holders = std::vec::Vec::new();
+    let count = 7;
+    for _ in 0..count {
+        let holder = Address::generate(&env);
+        submit(&env, &h, &holder, 9999);
+        h.registry.revoke(
+            &h.issuer,
+            &holder,
+            &symbol_short!("kyc"),
+            &Some(RevocationReason::Fraud),
+        );
+        holders.push(holder);
+    }
+
+    assert_eq!(h.registry.revocation_count(), count as u32);
+
+    // Page 0: start 0, limit 3 -> items [0, 1, 2]
+    let p0 = h.registry.get_revocations_page(&0, &3);
+    assert_eq!(p0.items.len(), 3);
+    assert_eq!(p0.start, 0);
+    assert_eq!(p0.limit, 3);
+    assert_eq!(p0.total, 7);
+    assert_eq!(p0.next_cursor, Some(3));
+    assert!(p0.has_more);
+    assert_eq!(p0.items.get(0).unwrap().holder, holders[0]);
+    assert_eq!(p0.items.get(1).unwrap().holder, holders[1]);
+    assert_eq!(p0.items.get(2).unwrap().holder, holders[2]);
+
+    // Page 1: start 3, limit 3 -> items [3, 4, 5]
+    let cursor1 = p0.next_cursor.unwrap();
+    let p1 = h.registry.get_revocations_page(&cursor1, &3);
+    assert_eq!(p1.items.len(), 3);
+    assert_eq!(p1.start, 3);
+    assert_eq!(p1.limit, 3);
+    assert_eq!(p1.total, 7);
+    assert_eq!(p1.next_cursor, Some(6));
+    assert!(p1.has_more);
+    assert_eq!(p1.items.get(0).unwrap().holder, holders[3]);
+    assert_eq!(p1.items.get(1).unwrap().holder, holders[4]);
+    assert_eq!(p1.items.get(2).unwrap().holder, holders[5]);
+
+    // Page 2: start 6, limit 3 -> items [6]
+    let cursor2 = p1.next_cursor.unwrap();
+    let p2 = h.registry.get_revocations_page(&cursor2, &3);
+    assert_eq!(p2.items.len(), 1);
+    assert_eq!(p2.start, 6);
+    assert_eq!(p2.limit, 3);
+    assert_eq!(p2.total, 7);
+    assert_eq!(p2.next_cursor, None);
+    assert!(!p2.has_more);
+    assert_eq!(p2.items.get(0).unwrap().holder, holders[6]);
+}
+
+#[test]
+fn exact_page_boundary_behavior() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+
+    let mut holders = std::vec::Vec::new();
+    for _ in 0..4 {
+        let holder = Address::generate(&env);
+        submit(&env, &h, &holder, 9999);
+        h.registry.revoke(
+            &h.issuer,
+            &holder,
+            &symbol_short!("kyc"),
+            &Some(RevocationReason::UserRequest),
+        );
+        holders.push(holder);
+    }
+
+    assert_eq!(h.registry.revocation_count(), 4);
+
+    // Page 1: 2 items
+    let p0 = h.registry.get_revocations_page(&0, &2);
+    assert_eq!(p0.items.len(), 2);
+    assert_eq!(p0.next_cursor, Some(2));
+    assert!(p0.has_more);
+
+    // Page 2: exact boundary (remaining 2 items)
+    let p1 = h.registry.get_revocations_page(&p0.next_cursor.unwrap(), &2);
+    assert_eq!(p1.items.len(), 2);
+    assert_eq!(p1.next_cursor, None);
+    assert!(!p1.has_more);
+
+    // Attempting to query past the exact boundary returns empty
+    let p2 = h.registry.get_revocations_page(&4, &2);
+    assert_eq!(p2.items.len(), 0);
+    assert_eq!(p2.next_cursor, None);
+    assert!(!p2.has_more);
+}
+
+#[test]
+fn idempotent_revocation_does_not_inflate_count_or_duplicate_entries() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 9999);
+
+    // First revocation
+    h.registry.revoke(
+        &h.issuer,
+        &holder,
+        &symbol_short!("kyc"),
+        &Some(RevocationReason::Other),
+    );
+    assert_eq!(h.registry.revocation_count(), 1);
+    assert!(h.registry.is_revoked(&holder, &symbol_short!("kyc")));
+
+    let page1 = h.registry.get_revocations_page(&0, &10);
+    assert_eq!(page1.items.len(), 1);
+    assert_eq!(page1.items.get(0).unwrap().reason, RevocationReason::Other);
+
+    // Second revocation of the same holder and credential type with updated reason
+    h.registry.revoke(
+        &h.issuer,
+        &holder,
+        &symbol_short!("kyc"),
+        &Some(RevocationReason::Fraud),
+    );
+    // Count must not increase
+    assert_eq!(h.registry.revocation_count(), 1);
+    assert!(h.registry.is_revoked(&holder, &symbol_short!("kyc")));
+
+    let page2 = h.registry.get_revocations_page(&0, &10);
+    assert_eq!(page2.items.len(), 1);
+    assert_eq!(page2.items.get(0).unwrap().reason, RevocationReason::Fraud);
+}
+
+#[test]
+fn get_revocations_page_emits_expected_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let holder = Address::generate(&env);
+
+    submit(&env, &h, &holder, 9999);
+    h.registry.revoke(
+        &h.issuer,
+        &holder,
+        &symbol_short!("kyc"),
+        &Some(RevocationReason::Fraud),
+    );
+
+    let _ = env.events().all();
+    let _page = h.registry.get_revocations_page(&0, &5);
+
+    let all_events = env.events().all().filter_by_contract(&h.registry_id);
+    assert_eq!(
+        all_events,
+        vec![
+            &env,
+            (
+                h.registry_id.clone(),
+                (
+                    symbol_short!("proof_reg"),
+                    symbol_short!("rev_page"),
+                )
+                    .into_val(&env),
+                EventRevocationPageQueried {
+                    start: 0,
+                    limit: 5,
+                    count: 1,
+                    total: 1,
+                    next_cursor: None,
+                }
+                .into_val(&env),
+            ),
+        ]
+    );
+}

@@ -418,6 +418,54 @@ fn revoke(env, issuer: Address, holder: Address, credential_type: Symbol)
   tombstone stays readable); the record's TTL is extended so the revocation
   itself remains visible. Read functions treat revoked records as invalid.
 
+### `get_revocations_page`
+
+```rust
+fn get_revocations_page(env, start: u32, limit: u32) -> RevocationPage
+```
+
+- **Audience:** Integrator
+- **Auth:** None (read-only query).
+- **Stability:** Stable
+- **Returns:** `RevocationPage { items, start, limit, total, next_cursor, has_more }`
+- **Panics:** none.
+- **Events:** `("proof_reg", "rev_page")` →
+  `EventRevocationPageQueried { start, limit, count, total, next_cursor }`.
+- **Notes:** reads a bounded slice of revoked credentials starting at zero-based
+  index `start`. `limit` is capped at `MAX_REVOCATION_PAGE_SIZE` (20) to bound transaction
+  CPU and memory overhead. Clients can deterministically walk large revocation sets
+  using `next_cursor` until `has_more` is false.
+
+### `revocation_count`
+
+```rust
+fn revocation_count(env) -> u32
+```
+
+- **Audience:** Integrator
+- **Auth:** None (read-only query).
+- **Stability:** Stable
+- **Returns:** total number of revoked credentials in the on-chain revocation registry (`u32`).
+- **Panics:** none.
+- **Events:** none.
+- **Notes:** returns the length of the on-chain revocation registry. Use this to determine
+  how many pages are needed or to monitor registry growth.
+
+### `is_revoked`
+
+```rust
+fn is_revoked(env, holder: Address, credential_type: Symbol) -> bool
+```
+
+- **Audience:** Integrator
+- **Auth:** None (read-only query).
+- **Stability:** Stable
+- **Returns:** `true` if the holder's credential has been revoked, `false` otherwise.
+- **Panics:** none.
+- **Events:** none.
+- **Notes:** fast direct lookup on whether a specific holder and credential type have been
+  marked revoked. Returns `false` if no record exists or if the record is active and unrevoked.
+
 ## 6. Governance & operations (Admin operations)
 
 ### `upgrade`
@@ -735,6 +783,7 @@ fn last_migration_timestamp(env) -> u64
 | Verify a claim | `is_verified`, `check_claim`, `get_record`, `claim_expiry` | Integrator |
 | Consent-scoped reads | `grant_verification`, `revoke_verification`, `check_delegated_verification` | Holder / Integrator |
 | Revoke | `revoke_proof`, `revoke_all` (holder), `revoke` (issuer) | Holder / Issuer |
+| Revocation queries | `get_revocations_page`, `revocation_count`, `is_revoked` | Integrator |
 
 **Operational / governance — may evolve between minor versions:**
 
@@ -750,6 +799,7 @@ introspection views in §7.
 | `("proof_reg", "submitted", credential_type)` | `EventProofSubmitted { holder, issuer, verified_at, expiry }` | `submit_proof`, `submit_proof_with_nullifier`, `submit_proofs`, `submit_aggregate_proof` |
 | `("proof_reg", "nullifier")` | `EventNullifierUsed { app_context, nullifier, recorded_at }` | `record_nullifier`, `submit_proof_with_nullifier` |
 | `("proof_reg", "revoked", credential_type)` | `EventProofRevoked { holder, issuer, revoked_at }` | `revoke` |
+| `("proof_reg", "rev_page")` | `EventRevocationPageQueried { start, limit, count, total, next_cursor }` | `get_revocations_page` |
 | `("proof_reg", "paused")` | `EventPaused { admin, paused_at }` | `pause` |
 | `("proof_reg", "unpaused")` | `EventUnpaused { admin, unpaused_at }` | `unpause` |
 | `("proof_reg", "upgraded")` | `EventContractUpgraded { admin, new_wasm_hash, upgraded_at, from_version, to_version }` | `upgrade` |
