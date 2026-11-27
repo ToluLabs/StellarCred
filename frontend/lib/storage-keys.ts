@@ -46,6 +46,10 @@ export const STORAGE_KEYS = {
 
   /** Dismissal flag for the onboarding re-entry nudge banner on /holder (#899) */
   ONBOARDING_NUDGE_DISMISSED: "stellarcred:onboarding-nudge-dismissed",
+
+  /** Known connected accounts and active account switcher (lib/account-portfolio.ts) */
+  PORTFOLIO_ACCOUNTS: "stellarcred:portfolio-accounts",
+  ACTIVE_PORTFOLIO_ACCOUNT: "stellarcred:active-portfolio-account",
 } as const;
 
 /**
@@ -82,6 +86,8 @@ export function getAllStorageKeys(): string[] {
     STORAGE_KEYS.WALLET_ID,
     STORAGE_KEYS.THEME,
     STORAGE_KEYS.ONBOARDING_NUDGE_DISMISSED,
+    STORAGE_KEYS.PORTFOLIO_ACCOUNTS,
+    STORAGE_KEYS.ACTIVE_PORTFOLIO_ACCOUNT,
     ...getTimelineKeys(),
   ];
 }

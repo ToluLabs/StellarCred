@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CONTRACTS } from "@/lib/stellar";
 import CopyButton from "@/components/CopyButton";
 import SDKPlayground from "@/components/SDKPlaygroundLazy";
+import CredentialSchemaPlayground from "@/components/CredentialSchemaPlaygroundLazy";
 
 export const metadata: Metadata = {
   title: "StellarCred — Developers",
@@ -88,6 +89,25 @@ export default function DevelopersPage() {
 
       <Section title="Installation">
         <Code>{`npm install @stellarcred/sdk`}</Code>
+      </Section>
+
+      <Section title="API Reference">
+        <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>
+          Browse the complete, always-current TypeScript API reference generated from the SDK TSDoc:{" "}
+          <a
+            href="https://psalmuel01.github.io/StellarCred/"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "var(--accent)" }}
+          >
+            SDK API Reference (TypeDoc)
+          </a>
+          .
+        </p>
+        <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7, marginTop: "0.5rem" }}>
+          Full documentation covering all methods, signatures, types, parameters, return values,
+          error hierarchies, and React hooks.
+        </p>
       </Section>
 
       <Section title="Checking a claim">
@@ -413,6 +433,8 @@ require!(kyc_ok, Error::KycRequired);`}</Code>
       </Section>
 
       <SDKPlayground />
+
+      <CredentialSchemaPlayground />
 
       <Section title="Credential version compatibility">
         <p className="muted" style={{ fontSize: "0.95rem", lineHeight: 1.7 }}>

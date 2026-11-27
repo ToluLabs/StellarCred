@@ -91,6 +91,7 @@ describe("issuer key compromise runbook (#1090)", () => {
 
   it("states the batch issuance limit the route enforces", () => {
     expect(batchRoute).toContain("const MAX_BATCH_SIZE = 50;");
-    expect(runbook).toContain("at most **50\n  items**");
+    const normalizedRunbook = runbook.replace(/\r\n/g, "\n");
+    expect(normalizedRunbook).toContain("at most **50\n  items**");
   });
 });
