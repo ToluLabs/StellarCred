@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">VerifyPresentationTokenOptions</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#audience">audience</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#claimoptions">claimOptions</a><span class="tsd-signature-symbol">?:</span> <a href="index.ClaimOptions.html" class="tsd-signature-type tsd-kind-interface">ClaimOptions</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#clockskewseconds">clockSkewSeconds</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#requiredclaims">requiredClaims</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> (<br/>        <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>        <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><br/>    )<span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#requireexpiry">requireExpiry</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#verifyclaims">verifyClaims</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#wallet">wallet</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:154</li></ul></aside>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L154">src/presentation-token.ts:154</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -41,7 +41,7 @@
 <div class="tsd-comment tsd-typography"><p>Expected audience. When set, the signed <code>audience</code> must match exactly.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:160</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L160">src/presentation-token.ts:160</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="claimoptions"><code class="tsd-tag">Optional</code><span>claim<wbr/>Options</span><a href="#claimoptions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">claimOptions</span><span class="tsd-signature-symbol">?:</span> <a href="index.ClaimOptions.html" class="tsd-signature-type tsd-kind-interface">ClaimOptions</a></div>
@@ -50,28 +50,28 @@
 source for access-control decisions.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:176</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L176">src/presentation-token.ts:176</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="clockskewseconds"><code class="tsd-tag">Optional</code><span>clock<wbr/>Skew<wbr/>Seconds</span><a href="#clockskewseconds" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">clockSkewSeconds</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Clock skew tolerated when checking <code>issuedAt</code> / <code>expiresAt</code>. Defaults to 60.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:162</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L162">src/presentation-token.ts:162</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="requiredclaims"><code class="tsd-tag">Optional</code><span>required<wbr/>Claims</span><a href="#requiredclaims" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">requiredClaims</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> (<br/>    <span class="tsd-signature-type">&quot;kyc&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;age&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;income&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;jurisdiction&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;funds&quot;</span><br/>    <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;accreditation&quot;</span><br/>)<span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Claim types the caller requires. The token must present all of them.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:156</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L156">src/presentation-token.ts:156</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="requireexpiry"><code class="tsd-tag">Optional</code><span>require<wbr/>Expiry</span><a href="#requireexpiry" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">requireExpiry</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>Require <code>expiresAt</code> in the payload. Defaults to <code>true</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:164</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L164">src/presentation-token.ts:164</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="verifyclaims"><code class="tsd-tag">Optional</code><span>verify<wbr/>Claims</span><a href="#verifyclaims" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">verifyClaims</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
@@ -80,14 +80,14 @@ failures with <code>checkClaimStatus</code>. Defaults to <code>true</code>; only
 the token's signature alone is the intended check.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:170</li></ul></aside></section>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L170">src/presentation-token.ts:170</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="wallet"><code class="tsd-tag">Optional</code><span>wallet</span><a href="#wallet" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">wallet</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Expected holder. When set, tokens signed by any other wallet are rejected.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in src/presentation-token.ts:158</li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/El-Khaleefa01/StellarCred/blob/1daf77d854eb42ddd396c86efbf28d3b29f7a84c/frontend/packages/sdk/src/presentation-token.ts#L158">src/presentation-token.ts:158</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

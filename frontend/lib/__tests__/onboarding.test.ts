@@ -32,6 +32,7 @@ beforeEach(() => {
   ls = mockStorage();
   vi.stubGlobal("localStorage", ls);
   vi.stubGlobal("window", {
+    localStorage: ls,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
@@ -143,7 +144,7 @@ describe("useOnboarding — core navigation", () => {
 
     act(() => result.current.nextStep());
 
-    expect(result.current.state.step).toBe(5);
+    expect(result.current.state.step).toBe(ONBOARDING_STEPS.length - 1);
     expect(result.current.state.completed).toBe(true);
   });
 

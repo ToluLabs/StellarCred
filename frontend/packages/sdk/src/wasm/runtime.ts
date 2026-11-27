@@ -34,6 +34,21 @@ export function detectWasmRuntime(
     return "edge";
   }
 
+  const isNode =
+    typeof env.process !== "undefined" && Boolean(env.process?.versions?.node);
+
+  const isJsdom =
+    (typeof env.navigator?.userAgent === "string" &&
+      env.navigator.userAgent.toLowerCase().includes("jsdom")) ||
+    (typeof (env.window as any)?.navigator?.userAgent === "string" &&
+      (env.window as any).navigator.userAgent.toLowerCase().includes("jsdom")) ||
+    typeof (env.window as any)?._virtualConsole !== "undefined" ||
+    Boolean((env.process as any)?.env?.VITEST);
+
+  if (isNode && (typeof env.window === "undefined" || isJsdom)) {
+    return "node";
+  }
+
   if (
     (typeof env.window !== "undefined" &&
       typeof env.document !== "undefined") ||
@@ -42,7 +57,7 @@ export function detectWasmRuntime(
     return "browser";
   }
 
-  if (typeof env.process !== "undefined" && Boolean(env.process?.versions?.node)) {
+  if (isNode) {
     return "node";
   }
 

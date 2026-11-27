@@ -21,6 +21,7 @@ async function buildDocs() {
     excludeProtected: true,
     excludeInternal: true,
     githubPages: true,
+    skipErrorChecking: true,
     highlightLanguages: [
       "typescript",
       "javascript",

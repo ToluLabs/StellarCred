@@ -167,8 +167,8 @@ export function CredentialCard({
                 style={{
                   fontSize: "0.72rem",
                   color: "var(--accent)",
-                  background: "rgba(62,207,142,0.1)",
-                  border: "1px solid rgba(62,207,142,0.2)",
+                  background: "rgba(74,234,164,0.1)",
+                  border: "1px solid rgba(74,234,164,0.25)",
                   padding: "0.15rem 0.5rem",
                   borderRadius: "999px",
                 }}

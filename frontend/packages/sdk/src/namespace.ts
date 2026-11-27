@@ -158,6 +158,7 @@ export const StellarCred = {
   CredentialValidationError,
   parseContractError,
   telemetry,
+  // Universal WASM helpers
   initWasm,
   compileWasm,
   detectWasmRuntime,
