@@ -41,8 +41,12 @@ import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
 import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
 import {
-  getPortfolioAccounts, recordConnectedAccount, getActivePortfolioAccount,
-  setActivePortfolioAccount, filterCredentialsByAccount, type PortfolioAccount,
+  getPortfolioAccounts,
+  recordConnectedAccount,
+  getActivePortfolioAccount,
+  setActivePortfolioAccount,
+  filterCredentialsByAccount,
+  type PortfolioAccount,
 } from "@/lib/account-portfolio";
 
 import type { PageView, BulkAction } from "./types";
@@ -50,10 +54,22 @@ import type { PageView, BulkAction } from "./types";
 // The encrypted-transfer modals are heavy (crypto.ts PBKDF2/AES-GCM, QR
 // rendering) and only needed when the user actually starts a transfer — load
 // them lazily so the holder route's 15 kB bundle budget stays intact.
-const TransferExportModal = dynamic(() => import("@/components/TransferExportModal").then((m) => m.TransferExportModal), { ssr: false });
-const TransferImportModal = dynamic(() => import("@/components/TransferImportModal").then((m) => m.TransferImportModal), { ssr: false });
-const ExportDataModal = dynamic(() => import("@/components/ExportDataModal").then((m) => m.ExportDataModal), { ssr: false });
-const DisclosurePreviewModal = dynamic(() => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal), { ssr: false });
+const TransferExportModal = dynamic(
+  () => import("@/components/TransferExportModal").then((m) => m.TransferExportModal),
+  { ssr: false },
+);
+const TransferImportModal = dynamic(
+  () => import("@/components/TransferImportModal").then((m) => m.TransferImportModal),
+  { ssr: false },
+);
+const ExportDataModal = dynamic(
+  () => import("@/components/ExportDataModal").then((m) => m.ExportDataModal),
+  { ssr: false },
+);
+const DisclosurePreviewModal = dynamic(
+  () => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal),
+  { ssr: false },
+);
 
 function HolderInner() {
   const { address, walletId, connect, restoring } = useWallet();
@@ -475,7 +491,12 @@ function HolderInner() {
       />
 
       {proofApproval.creds && (
-        <DisclosurePreviewModal creds={proofApproval.creds} holder={address} onApprove={proofApproval.approve} onCancel={proofApproval.cancel} />
+        <DisclosurePreviewModal
+          creds={proofApproval.creds}
+          holder={address}
+          onApprove={proofApproval.approve}
+          onCancel={proofApproval.cancel}
+        />
       )}
 
       {confirmBulkAction && (
