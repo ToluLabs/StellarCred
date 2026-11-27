@@ -256,7 +256,7 @@ async function executeRequest(
       outcome = "success";
       const response = NextResponse.json({ preview: true, credentials: previews }, { status: 200 });
       response.headers.set("x-request-id", requestId);
-      return sendResponse(response, undefined, { skipIdempotency: true });
+      return sendResponse(response);
     } catch (e) {
       return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 400 }));
     }

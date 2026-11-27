@@ -157,7 +157,7 @@ export function validateIssueRequest(
   requestId: string,
   tenant?: Tenant | null,
 ): ValidationResult {
-  const { credentialTypes, holder, issuerId } = request;
+  const { credentialTypes, holder, issuerId, preview } = request;
 
   for (const type of credentialTypes) {
     logger.info(
@@ -167,6 +167,7 @@ export function validateIssueRequest(
         issuerId,
         walletAddress: holder,
         requestId,
+        preview: preview === true,
       }),
     );
   }

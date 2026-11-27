@@ -334,11 +334,11 @@ export async function previewCredential(params: IssueParams): Promise<PreviewCre
   const issuedAt = Math.floor(Date.now() / 1000);
   const value = attributeToValue(type, attribute);
   const salt = randomField();
+  const seniority = type === "employment" ? (attribute.seniority ?? "0") : undefined;
   const commitment =
     type === "employment"
-      ? await poseidonCommit3(value, attribute.seniority ?? "0", salt)
+      ? await poseidonCommit3(value, seniority as string, salt)
       : await poseidonCommit(value, salt);
-  const expiryStr = normalizeExpiry(expiry, issuedAt);
   return {
     type,
     title: TYPE_TITLE[type],
@@ -350,8 +350,8 @@ export async function previewCredential(params: IssueParams): Promise<PreviewCre
     salt,
     commitment,
     issuedAt,
-    expiry: expiryStr,
-    ...(type === "employment" && attribute.seniority ? { seniority: attribute.seniority } : {}),
+    expiry: normalizeExpiry(expiry, issuedAt),
+    ...(seniority !== undefined ? { seniority } : {}),
     ...(claimParams && Object.values(claimParams).some((v) => v !== undefined)
       ? { claimParams }
       : {}),
