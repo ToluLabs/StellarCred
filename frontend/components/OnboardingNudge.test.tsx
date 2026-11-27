@@ -4,7 +4,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { OnboardingNudge } from "./OnboardingNudge";
-import { ONBOARDING_STEPS } from "@/lib/onboarding";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 

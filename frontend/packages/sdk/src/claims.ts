@@ -2145,22 +2145,6 @@ export const getClaimStatusOutcome = getClaimOutcome;
 export const readClaimStatus = getClaimOutcome;
 
 /**
- * Reads a wallet's credential claim and returns a granular, typed outcome
- * ("verified", "not_verified", "expired", "unsupported", "unavailable",
- * "revoked", "wrong_issuer", "unmet_threshold") without conflating
- * transport/RPC failures with absent proofs (#1007).
- */
-export async function getClaimOutcome(
-  wallet: string,
-  claimType: string,
-  opts?: ClaimOptions,
-): Promise<ClaimOutcomeResult> {
-  return checkClaimStatus(wallet, claimType, opts);
-}
-
-export const checkClaimOutcome = getClaimOutcome;
-
-/**
  * Batched form of {@link hasClaim}: checks several claim types for one wallet.
  */
 export async function hasClaims(

@@ -3,16 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   IconX,
-  IconDownload,
-  IconClock,
-  IconLoader2,
   IconCheck,
   IconAlertTriangle,
-  IconLock,
-  IconRefresh,
-  IconFileText,
-  IconFileSpreadsheet,
-  IconShield,
   IconFileExport,
 } from "@tabler/icons-react";
 import type { ExportJob, ExportScope, ExportFormat, ScopeDefinition } from "@/lib/export-jobs";
@@ -144,14 +136,14 @@ export function ExportDataModal({
 }: ExportDataModalProps) {
   const [activeTab, setActiveTab] = useState<"request" | "monitor">("request");
   const [selectedScope, setSelectedScope] = useState<ExportScope>("full");
-  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("json");
+  const [_selectedFormat, _setSelectedFormat] = useState<ExportFormat>("json");
   const [jobs, setJobs] = useState<ExportJob[]>([]);
   const [allowedScopes, setAllowedScopes] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [_submitting, _setSubmitting] = useState(false);
+  const [_loadingJobs, _setLoadingJobs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
-  const [timeRemainingMap, setTimeRemainingMap] = useState<Record<string, number>>({});
+  const [_timeRemainingMap, _setTimeRemainingMap] = useState<Record<string, number>>({});
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -249,7 +241,7 @@ export function ExportDataModal({
     }
   }
 
-  function formatCountdown(seconds: number): string {
+  function _formatCountdown(seconds: number): string {
     if (seconds <= 0) return "Expired";
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
