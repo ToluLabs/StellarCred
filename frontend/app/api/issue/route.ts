@@ -41,6 +41,10 @@ import { authenticateTenant, authErrorResponse } from "@/app/api/_middleware";
  * What stays here is request lifecycle: the idempotency cache (lookup, replay,
  * single-flight join, write-back), the ordering of those steps, and turning an
  * outcome into a response with `x-request-id` on it.
+ *
+ * Preview mode (`preview: true` in the body) runs the same validation and
+ * attribute mapping but never touches signing keys, issuer registration,
+ * Persona/Plaid, or the idempotency cache, and returns unsigned metadata only.
  */
 export async function POST(req: NextRequest) {
   const requestId = resolveRequestId(req.headers.get("x-request-id"));
@@ -231,6 +235,9 @@ async function executeRequest(
   const validated = validateIssueRequest(request, requestId, tenant);
   if (!validated.ok) return sendResponse(failureResponse(validated.failure));
 
+  // Preview mode: same validation and attribute mapping, but no signing keys,
+  // no issuer registry lookup, no Persona/Plaid, and no idempotency caching.
+  // Returns deterministic unsigned metadata only.
   if (validated.request.preview === true) {
     try {
       const previews = await Promise.all(
@@ -247,7 +254,9 @@ async function executeRequest(
         ),
       );
       outcome = "success";
-      return sendResponse(NextResponse.json({ preview: true, credentials: previews }));
+      const response = NextResponse.json({ preview: true, credentials: previews }, { status: 200 });
+      response.headers.set("x-request-id", requestId);
+      return sendResponse(response, undefined, { skipIdempotency: true });
     } catch (e) {
       return sendResponse(NextResponse.json({ error: (e as Error).message }, { status: 400 }));
     }

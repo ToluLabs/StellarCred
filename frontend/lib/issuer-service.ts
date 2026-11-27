@@ -77,13 +77,81 @@ export interface IssueAndAuditParams {
   requestId: string;
   issuerClient?: IssuerClient;
   signingKeyHex?: string;
+  /**
+   * When true, credentials are generated (commitment, attribute mapping,
+   * payload structure) without performing a real signature, without touching
+   * signing keys, and without writing to the audit log or outbound sink.
+   */
+  preview?: boolean;
+}
+
+/**
+ * Result of a preview issuance: unsigned metadata only, no signature material.
+ */
+export interface PreviewCredential {
+  type: string;
+  holder: string;
+  issuerId: string;
+  issuerName: string;
+  expiry: string;
+  attributes: Record<string, string>;
+  claimParams?: ClaimParams;
+  preview: true;
+  signed: false;
+}
+
+/**
+ * Builds deterministic unsigned credential metadata for sandbox/test flows.
+ * Never reads ISSUER_PRIVATE_KEY, never invokes the issuer client's signing
+ * path, and never calls external providers or the audit/outbound sinks.
+ */
+export function previewCredentials(params: IssueAndAuditParams): PreviewCredential[] {
+  const {
+    credentialTypes,
+    holder,
+    issuerId,
+    issuerName = "StellarCred Authority",
+    expiry = "90 days",
+    attributes,
+    claimParams,
+  } = params;
+
+  const uniqueTypes = Array.from(new Set(credentialTypes));
+  return uniqueTypes.map((type) => ({
+    type,
+    holder,
+    issuerId,
+    issuerName,
+    expiry,
+    attributes,
+    claimParams,
+    preview: true as const,
+    signed: false as const,
+  }));
 }
 
 /**
  * Signs commitments for each requested credential type and appends
  * PII-free audit records chained to previous entries.
+ *
+ * When `preview` is true, delegates to previewCredentials() and returns
+ * unsigned metadata without any signing, key access, or audit writes.
  */
-export async function issueAndAuditCredentials(params: IssueAndAuditParams): Promise<Credential[]> {
+export async function issueAndAuditCredentials(
+  params: IssueAndAuditParams,
+): Promise<Credential[] | PreviewCredential[]> {
+  if (params.preview) {
+    logger.info(
+      stripSensitiveFields({
+        event: "preview_issuance",
+        issuerId: params.issuerId,
+        walletAddress: params.holder,
+        requestId: params.requestId,
+      }),
+    );
+    return previewCredentials(params);
+  }
+
   const {
     credentialTypes,
     holder,

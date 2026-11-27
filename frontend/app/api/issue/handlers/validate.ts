@@ -40,6 +40,7 @@ import { validateTenantCredentialTypes, type Tenant } from "@/lib/tenancy";
 const SIM_ACCOUNT =
   env.NEXT_PUBLIC_ISSUER_ADDRESS ?? "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
+
 // readonly CredentialType[] widened to string[] so .includes() accepts any
 // user-supplied string during validation, before it's known to be valid.
 export const VALID_TYPES: readonly string[] = CREDENTIAL_TYPES;
