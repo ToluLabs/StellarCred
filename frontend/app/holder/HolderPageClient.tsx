@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { IconAlertTriangle, IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
+import { IconDownload, IconFileExport, IconKeyboard, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
@@ -14,11 +14,9 @@ import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings"
 import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
-import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
 import { removeCredential, type Credential } from "@/lib/credential";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
-import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
@@ -40,6 +38,8 @@ import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
 import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
+import { CredentialSearchBar } from "@/components/holder/CredentialSearchBar";
+import { ExpiryWarningBanner } from "@/components/holder/ExpiryWarningBanner";
 import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
 
 import type { PageView, BulkAction } from "./types";
@@ -61,6 +61,10 @@ const ExportDataModal = dynamic(
 );
 const DisclosurePreviewModal = dynamic(
   () => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal),
+  { ssr: false },
+);
+const ShortcutCheatSheetModal = dynamic(
+  () => import("@/components/ShortcutCheatSheetModal").then((m) => m.ShortcutCheatSheetModal),
   { ssr: false },
 );
 
@@ -88,6 +92,7 @@ function HolderInner() {
   const [transferCred, setTransferCred] = useState<Credential | null>(null);
   const { importPayload, setImportPayload } = useTransferQuery();
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
   // A transfer QR opened directly (native camera app -> /holder?import=...)
@@ -121,7 +126,15 @@ function HolderInner() {
     toggleSelected,
     selectEligible,
     clearSelection,
-  } = useBatchSelection(unproved, address, toast.error);
+  } = batch;
+
+  // Warm the UltraHonk backend for whatever credential types the user still
+  // needs to prove, in the background, once the wallet is actually connected
+  // (never in preview mode — there's nothing real to prove yet). Only the
+  // types actually present in `unproved` are warmed, not all seven circuits,
+  // to avoid paying wasm-init cost for types the user has no credential for.
+  const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
+  useWarmProver(unprovedTypes, Boolean(address));
 
   // Bulk removal is sequential on purpose: removeCredential is a
   // read-modify-write of the whole list, so concurrent calls would race.
@@ -146,6 +159,8 @@ function HolderInner() {
         onInspect={() => setDetailCred(c)}
         isPreview={isPreview}
         selection={selection}
+        isActive={triage.activeCommitment === c.commitment}
+        cardRef={(el) => triage.setCardRef(c.commitment, el)}
       />
     );
   }
@@ -158,11 +173,11 @@ function HolderInner() {
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
         <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
-          {portfolioAccounts.length > 0 && (
+          {portfolio.accounts.length > 0 && (
             <AccountPortfolioSwitcher
-              accounts={portfolioAccounts}
-              activeAddress={activeAccountFilter}
-              onSelectAccount={handleSelectPortfolioAccount}
+              accounts={portfolio.accounts}
+              activeAddress={portfolio.activeAddress}
+              onSelectAccount={portfolio.selectAccount}
             />
           )}
           {/* Selective disclosure presets (#386): a named, shareable bundle
@@ -180,6 +195,16 @@ function HolderInner() {
           >
             <IconFileExport size={15} style={{ marginRight: "0.3rem" }} />
             Export Data
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowShortcutsModal(true)}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            id="btn-keyboard-shortcuts"
+          >
+            <IconKeyboard size={16} aria-hidden="true" />
           </button>
           <WalletButton />
         </div>
@@ -219,46 +244,23 @@ function HolderInner() {
           ) : (
             <>
               {/* ── Expiry warning banner ── */}
-              {(expiringSoon.length > 0 || expired.length > 0) && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="card"
-                  style={{
-                    padding: "0.85rem 1.15rem",
-                    backgroundColor:
-                      expired.length > 0 ? "rgba(239, 68, 68, 0.08)" : "rgba(234, 179, 8, 0.08)",
-                    borderColor:
-                      expired.length > 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(234, 179, 8, 0.3)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "1rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
-                    <IconAlertTriangle
-                      size={18}
-                      style={{
-                        color: expired.length > 0 ? "var(--danger)" : "var(--warn)",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                      {expired.length > 0
-                        ? `${expired.length} proof${expired.length > 1 ? "s have" : " has"} expired and ${expired.length > 1 ? "need" : "needs"} re-proving.`
-                        : `${expiringSoon.length} proof${expiringSoon.length > 1 ? "s are" : " is"} expiring within 7 days.`}
-                    </span>
-                  </div>
-                  <span className="mono faint" style={{ fontSize: "0.75rem" }}>
-                    One-click re-prove available below
-                  </span>
-                </div>
-              )}
+              <ExpiryWarningBanner
+                expiringSoonCount={expiringSoon.length}
+                expiredCount={expired.length}
+              />
 
               {/* ── Empty state ── */}
               {creds.length === 0 && !importing && <EmptyCredentialsState />}
+
+              {/* ── Credential search / filter ── */}
+              {displayCreds.length > 0 && (
+                <CredentialSearchBar
+                  inputRef={triage.searchInputRef}
+                  query={triage.searchQuery}
+                  onChange={triage.setSearchQuery}
+                  hasResults={triage.filteredCreds.length > 0}
+                />
+              )}
 
               {/* ── Expiring soon (action recommended) ── */}
               {expiringSoon.length > 0 && (
@@ -480,6 +482,10 @@ function HolderInner() {
           onConfirm={() => executeBulkRemove(confirmBulkAction.commitments)}
           onCancel={() => setConfirmBulkAction(null)}
         />
+      )}
+
+      {showShortcutsModal && (
+        <ShortcutCheatSheetModal onClose={() => setShowShortcutsModal(false)} />
       )}
     </>
   );
