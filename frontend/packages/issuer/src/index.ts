@@ -87,9 +87,12 @@ export interface PreviewCredential {
   issuer: string;
   issuerId: string;
   holder: string;
+  value: string;
+  salt: string;
   commitment: string;
   issuedAt: number;
   expiry: string;
+  seniority?: string;
   claimParams?: ClaimParams;
   publicInputs: {
     commitment: string;
@@ -320,7 +323,8 @@ export class IssuerClient {
 /**
  * Generate unsigned commitment metadata using the production attribute mapping.
  * This path does not accept or access an issuer key and cannot produce a
- * credential accepted by the proof verifier.
+ * credential accepted by the proof verifier. It performs no signing and never
+ * touches private key material.
  */
 export async function previewCredential(params: IssueParams): Promise<PreviewCredential> {
   const { type, holder, issuerId, issuerName, expiry, attribute, claimParams } = params;
@@ -330,9 +334,10 @@ export async function previewCredential(params: IssueParams): Promise<PreviewCre
   const issuedAt = Math.floor(Date.now() / 1000);
   const value = attributeToValue(type, attribute);
   const salt = randomField();
+  const seniority = type === "employment" ? (attribute.seniority ?? "0") : undefined;
   const commitment =
     type === "employment"
-      ? await poseidonCommit3(value, attribute.seniority ?? "0", salt)
+      ? await poseidonCommit3(value, seniority as string, salt)
       : await poseidonCommit(value, salt);
   return {
     type,
@@ -341,13 +346,20 @@ export async function previewCredential(params: IssueParams): Promise<PreviewCre
     issuer: issuerName,
     issuerId,
     holder,
+    value,
+    salt,
     commitment,
     issuedAt,
     expiry: normalizeExpiry(expiry, issuedAt),
+    ...(seniority !== undefined ? { seniority } : {}),
     ...(claimParams && Object.values(claimParams).some((v) => v !== undefined)
       ? { claimParams }
       : {}),
-    publicInputs: { commitment, issuerId, holder },
+    publicInputs: {
+      commitment,
+      issuerId,
+      holder,
+    },
     signed: false,
   };
 }
