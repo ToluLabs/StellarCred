@@ -319,6 +319,22 @@ regenerate the regression vectors
 `check` variant and fails on silent proof-output changes. The property-based
 circuit-fuzz job exercises the compiled circuits further.
 
+### Contract fuzzing (proptest)
+
+`contracts/test_support/tests/fuzz_malformed_inputs.rs` fuzzes every public
+contract entry point that takes attacker-controlled bytes or boundary numbers
+(proofs, public inputs, verification keys, issuer keys, metadata strings,
+nullifiers, expiries, `i128` amounts, batch shapes). Its invariant: malformed
+input is rejected with a declared contract error, never an unhandled panic or
+host trap. It runs as part of `cargo test`. For a deeper local run:
+
+```bash
+FUZZ_CASES=2000 cargo test -p test_support --test fuzz_malformed_inputs
+```
+
+A new entry point that accepts raw bytes or arithmetic on caller-supplied
+numbers should get a property added there.
+
 ### Frontend (Next.js, pnpm)
 
 From `frontend/`:

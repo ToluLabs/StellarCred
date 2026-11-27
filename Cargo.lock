@@ -1845,6 +1845,7 @@ dependencies = [
  "gated_pool",
  "issuer_registry",
  "proof_registry",
+ "proptest",
  "soroban-sdk",
 ]
 

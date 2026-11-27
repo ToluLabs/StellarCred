@@ -1507,3 +1507,107 @@ fn rejects_unauthorized_proposer_and_approver() {
     let res = c.try_approve_vk_update(&unauthorized, &ct, &version);
     assert!(res.is_err());
 }
+
+// ── Malformed-input regressions (#1020) ─────────────────────────────────────
+// Commitments are opaque to the verifier crate and the host's BN254 ops fail
+// the whole invocation on a non-canonical or off-curve point. Both the proof
+// and the VK must be screened first so arbitrary bytes yield a clean result.
+
+/// Replace the 64-byte G1 point at `idx` of a VK (offset 32 + idx * 64).
+fn vk_with_point(env: &Env, idx: usize, point: [u8; 64]) -> Bytes {
+    let mut vk = [0u8; 32 + 27 * 64];
+    vk.copy_from_slice(KYC.vk);
+    let start = 32 + idx * 64;
+    vk[start..start + 64].copy_from_slice(&point);
+    Bytes::from_slice(env, &vk)
+}
+
+#[test]
+fn verify_proof_returns_false_for_junk_proof_of_correct_length() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = setup_verifier(&env, &KYC, 1);
+    // Right length, every limb 0x31..: non-canonical coordinates.
+    for fill in [0x00u8, 0x01, 0x31, 0x80, 0xff] {
+        let junk = Bytes::from_slice(&env, &[fill; PROOF_BYTES]);
+        let r = c.try_verify_proof(&KYC.ct(&env), &junk, &KYC.public_inputs_bytes(&env), &None);
+        assert_eq!(r, Ok(Ok(false)), "fill {fill:#x}");
+    }
+}
+
+#[test]
+fn verify_proof_returns_false_for_off_curve_commitment() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = setup_verifier(&env, &KYC, 1);
+    // w1 is the first G1 commitment after the 16-field pairing object. Set a
+    // small limb pattern that decodes to a canonical (x, y) which is not on
+    // the curve (y^2 != x^3 + 3 for x = 1, y = 1).
+    let mut proof = [0u8; PROOF_BYTES];
+    proof.copy_from_slice(KYC.proof);
+    let w1 = 16 * 32;
+    proof[w1..w1 + 128].fill(0);
+    proof[w1 + 31] = 1; // x_lo = 1
+    proof[w1 + 95] = 1; // y_lo = 1
+    let r = c.try_verify_proof(
+        &KYC.ct(&env),
+        &Bytes::from_slice(&env, &proof),
+        &KYC.public_inputs_bytes(&env),
+        &None,
+    );
+    assert_eq!(r, Ok(Ok(false)));
+}
+
+#[test]
+fn set_vk_rejects_off_curve_and_non_canonical_points() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_admin, c) = deploy_credential_verifier(&env);
+    let ct = symbol_short!("kyc");
+
+    let mut off_curve = [0u8; 64];
+    off_curve[31] = 1; // x = 1
+    off_curve[63] = 1; // y = 1: canonical but not on BN254
+    let non_canonical = [0xffu8; 64]; // x, y >= field modulus
+    let mut flagged = [0u8; 64];
+    flagged[0] = 0x80; // host flag bit set
+
+    for point in [off_curve, non_canonical, flagged] {
+        let r = c.try_set_vk(&ct, &1, &vk_with_point(&env, 0, point));
+        assert_eq!(
+            r,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                Error::VkInvalid as u32
+            )))
+        );
+    }
+    // The genuine key still registers.
+    c.set_vk(&ct, &1, &KYC.vk_bytes(&env));
+}
+
+#[test]
+fn propose_vk_update_rejects_off_curve_vk() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let id = env.register(CredentialVerifier, (admin,));
+    let c = CredentialVerifierClient::new(&env, &id);
+    let s1 = Address::generate(&env);
+    c.configure_vk_timelock(&vec![&env, s1.clone()], &1u32, &100);
+
+    let mut off_curve = [0u8; 64];
+    off_curve[31] = 1; // x = 1
+    off_curve[63] = 1; // y = 1: canonical but not on BN254
+    let r = c.try_propose_vk_update(
+        &s1,
+        &Symbol::new(&env, "kyc"),
+        &1u32,
+        &vk_with_point(&env, 0, off_curve),
+    );
+    assert_eq!(
+        r,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::VkInvalid as u32
+        )))
+    );
+}

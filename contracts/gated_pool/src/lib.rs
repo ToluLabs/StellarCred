@@ -145,6 +145,13 @@ impl GatedPool {
             panic_with_error!(&env, Error::NotKycVerified);
         }
 
+        // Compute the new balance before any external call. A running balance
+        // that would exceed `i128::MAX` is rejected as an invalid amount rather
+        // than overflowing (which panics under `overflow-checks = true`).
+        let balance = Self::balance_of(&env, &caller)
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidAmount));
+
         // If real token is configured, perform transfer from caller to pool contract.
         // Transfer failure (e.g. insufficient funds) will panic and revert the transaction,
         // preventing the internal ledger balance from diverging.
@@ -153,7 +160,6 @@ impl GatedPool {
             token_client.transfer(&caller, env.current_contract_address(), &amount);
         }
 
-        let balance = Self::balance_of(&env, &caller) + amount;
         Self::set_balance(&env, &caller, balance);
 
         env.events().publish(

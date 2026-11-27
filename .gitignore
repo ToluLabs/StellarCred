@@ -35,3 +35,6 @@ circuits/*/edge_vector.toml
 # pgbench latency gate output (re-recorded per run; committed baseline lives in
 # services/indexer/perf/pgbench/baseline.json)
 services/indexer/perf/pgbench-report.json
+
+# Soroban writes an Env snapshot per fuzz case; these are build output
+contracts/test_support/test_snapshots/

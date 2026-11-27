@@ -27,10 +27,87 @@
 //! or cleared with `cancel_admin_proposal`.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Bytes, BytesN, Env, Map, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, crypto::bn254::Bn254G1Affine,
+    panic_with_error, symbol_short, Address, Bytes, BytesN, Env, Map, Symbol, Vec,
 };
-use ultrahonk_soroban_verifier::{UltraHonkVerifier, PROOF_BYTES};
+use ultrahonk_soroban_verifier::{utils::load_proof, UltraHonkVerifier, PROOF_BYTES};
+
+/// Byte length of the VK header (four big-endian `u64`s) that precedes the
+/// G1 commitments.
+const VK_HEADER_BYTES: u32 = 32;
+/// Number of G1 commitments in a VK, and the serialized size of each.
+const VK_NUM_POINTS: u32 = 27;
+const VK_POINT_BYTES: u32 = 64;
+
+/// BN254 base-field modulus, big-endian. A serialized coordinate must be
+/// strictly below it (which also guarantees the two host flag bits are clear).
+const BN254_FP_MODULUS_BE: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x97, 0x81, 0x6a, 0x91, 0x68, 0x71, 0xca, 0x8d, 0x3c, 0x20, 0x8c, 0x16, 0xd8, 0x7c, 0xfd, 0x47,
+];
+
+/// True when `point` is a valid BN254 G1 point (point at infinity included).
+///
+/// `Bn254::g1_is_on_curve` only returns `false` for a canonical encoding that
+/// is off the curve; for a non-canonical coordinate (>= the field modulus, or
+/// flag bits set) the host fails the whole call with `Crypto/InvalidInput`.
+/// Canonicality is therefore checked first so that no byte string can reach
+/// the host check in a form that would abort the invocation.
+fn g1_point_valid(env: &Env, point: &Bn254G1Affine) -> bool {
+    let bytes = point.to_array();
+    bytes[..32] < BN254_FP_MODULUS_BE[..]
+        && bytes[32..] < BN254_FP_MODULUS_BE[..]
+        && env.crypto().bn254().g1_is_on_curve(point)
+}
+
+/// True when every G1 commitment in the VK blob is a valid BN254 point.
+///
+/// The verifier crate parses VK commitments without validating them, and the
+/// host's BN254 operations reject an off-curve point by failing the whole
+/// call with an opaque host error. Checking at registration turns that into a
+/// clean `VkInvalid` and keeps a corrupt key from ever being stored.
+/// Callers must have already established the blob length (`UltraHonkVerifier::new`).
+fn vk_points_on_curve(env: &Env, vk: &Bytes) -> bool {
+    (0..VK_NUM_POINTS).all(|i| {
+        let start = VK_HEADER_BYTES + i * VK_POINT_BYTES;
+        let mut buf = [0u8; VK_POINT_BYTES as usize];
+        vk.slice(start..start + VK_POINT_BYTES)
+            .copy_into_slice(&mut buf);
+        g1_point_valid(env, &Bn254G1Affine::from_array(env, &buf))
+    })
+}
+
+/// True when `proof` has the canonical layout and every G1 commitment in it
+/// is a valid BN254 point.
+///
+/// Proofs are attacker-controlled. The verifier crate decodes commitments
+/// without validating them and the host's BN254 operations fail the whole
+/// call on an off-curve point, so a malformed proof would surface as a host
+/// error rather than the documented `false`. Rejecting here keeps
+/// `verify_proof` total over arbitrary proof bytes.
+fn proof_points_on_curve(env: &Env, proof: &Bytes) -> bool {
+    let Ok(p) = load_proof(env, proof) else {
+        return false;
+    };
+    let singles = [
+        &p.w1,
+        &p.w2,
+        &p.w3,
+        &p.w4,
+        &p.lookup_read_counts,
+        &p.lookup_read_tags,
+        &p.lookup_inverses,
+        &p.z_perm,
+        &p.shplonk_q,
+        &p.kzg_quotient,
+    ];
+    for g in singles.into_iter().chain(p.gemini_fold_comms.iter()) {
+        if !g1_point_valid(env, &g.0) {
+            return false;
+        }
+    }
+    true
+}
 
 // ── Event types ──────────────────────────────────────────────────────────────
 // Topics follow the convention: (contract, action, credential_type).
@@ -284,7 +361,7 @@ impl CredentialVerifier {
         {
             panic_with_error!(&env, Error::VersionDeprecated);
         }
-        if UltraHonkVerifier::new(&env, &vk).is_err() {
+        if UltraHonkVerifier::new(&env, &vk).is_err() || !vk_points_on_curve(&env, &vk) {
             panic_with_error!(&env, Error::VkInvalid);
         }
         env.storage().persistent().set(&key, &vk);
@@ -506,7 +583,10 @@ impl CredentialVerifier {
             .unwrap_or_else(|| panic_with_error!(&env, Error::VkNotSet));
 
         match UltraHonkVerifier::new(&env, &vk) {
-            Ok(verifier) => verifier.verify(&env, &proof, &public_inputs).is_ok(),
+            Ok(verifier) => {
+                proof_points_on_curve(&env, &proof)
+                    && verifier.verify(&env, &proof, &public_inputs).is_ok()
+            }
             Err(_) => false,
         }
     }
@@ -766,7 +846,9 @@ impl CredentialVerifier {
             panic_with_error!(&env, Error::ProposalAlreadyExists);
         }
 
-        if UltraHonkVerifier::new(&env, &vk).is_err() {
+        // Same screening as `set_vk`: a key that reaches storage through the
+        // timelock path must not be able to trap the host later (#1020).
+        if UltraHonkVerifier::new(&env, &vk).is_err() || !vk_points_on_curve(&env, &vk) {
             panic_with_error!(&env, Error::VkInvalid);
         }
 

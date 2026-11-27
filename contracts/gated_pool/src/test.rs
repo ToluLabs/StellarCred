@@ -420,4 +420,23 @@ fn test_real_token_withdraw_fails_when_pool_has_insufficient_tokens() {
     th.pool.withdraw(&user, &100);
 }
 
+#[test]
+fn deposit_that_would_overflow_balance_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let h = deploy(&env);
+    let user = Address::generate(&env);
+    h.c.submit(&env, &user, &h.issuer, &KYC, 1_000_000);
 
+    h.pool.deposit(&user, &i128::MAX);
+    // One more unit would overflow i128: a declared InvalidAmount error, not a
+    // panic, and the balance is untouched.
+    let r = h.pool.try_deposit(&user, &1);
+    assert_eq!(
+        r,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            Error::InvalidAmount as u32
+        )))
+    );
+    assert_eq!(h.pool.get_balance(&user), i128::MAX);
+}

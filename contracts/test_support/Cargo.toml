@@ -21,3 +21,7 @@ credential_verifier = { path = "../credential_verifier" }
 gated_pool = { path = "../gated_pool" }
 issuer_registry = { path = "../issuer_registry" }
 proof_registry = { path = "../proof_registry" }
+
+[dev-dependencies]
+# Property-based fuzzing of malformed / boundary inputs (tests/fuzz_malformed_inputs.rs).
+proptest = "1.4"
