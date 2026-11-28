@@ -1,4 +1,4 @@
-#![no_std]
+﻿#![no_std]
 //! IssuerRegistry
 //!
 //! Stores which issuers are trusted for which credential types. This is the
@@ -12,18 +12,18 @@
 //! Privileged actions are governed by role-based access control (RBAC): the
 //! constructor seeds the `admin` role with the deployer address, and issuer
 //! registration / revocation / metadata are guarded by that role. Roles are
-//! stored as a `Map<Symbol, Address>` (role name → current holder); the root
+//! stored as a `Map<Symbol, Address>` (role name â†’ current holder); the root
 //! admin can delegate or rotate holders via `grant_role` / `revoke_role`, and
 //! anyone can query membership with `has_role`.
 //!
 //! Admin transfer is two-step (#342): the root admin calls `propose_admin`
 //! with the incoming address, and that address must call `accept_admin` to
 //! take over. On acceptance, the accepted address becomes the new root admin
-//! AND inherits every role the outgoing admin held — a wholesale governance
+//! AND inherits every role the outgoing admin held â€” a wholesale governance
 //! transfer. A pending proposal can be overwritten by another `propose_admin`
 //! or cleared with `cancel_admin_proposal`.
 //!
-//! ── Issuer key sets and rotation ───────────────────────────────────────────
+//! â”€â”€ Issuer key sets and rotation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //! An issuer signs credentials with a secp256k1 key, and that key is bound into
 //! every proof's public inputs. Holding a single pubkey per issuer meant any
 //! key change silently invalidated every credential the issuer had already
@@ -37,7 +37,7 @@
 //! * [`rotate_issuer_key`] retires the current key with a validity window long
 //!   enough for outstanding credentials to reach their natural expiry, and
 //!   installs the new key as current. Rotation never invalidates existing
-//!   credentials on its own — a retired key keeps verifying submissions until
+//!   credentials on its own â€” a retired key keeps verifying submissions until
 //!   its window closes.
 //! * [`revoke_issuer_key`] is the emergency path for compromise: it kills a key
 //!   immediately instead of waiting out a window.
@@ -54,16 +54,16 @@ use soroban_sdk::{
     BytesN, Env, Map, String, Symbol, Vec,
 };
 
-// ── Contract versioning ──────────────────────────────────────────────────────
+// â”€â”€ Contract versioning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Semantic version: MAJOR.MINOR.PATCH
 // Increment MAJOR on breaking changes (new entry points, changed ABI)
 // Increment MINOR on additive changes (new events, new query endpoints)
 // Increment PATCH on bug fixes with no ABI changes
-// 1.1.0: additive issuer key-set support — rotate_issuer_key,
+// 1.1.0: additive issuer key-set support â€” rotate_issuer_key,
 // revoke_issuer_key, is_valid_issuer_key, get_issuer_keys.
 const CONTRACT_VERSION: u32 = 1_001_000; // 1.1.0 encoded as (major * 1000000) + (minor * 1000) + patch
 
-// ── Event types ──────────────────────────────────────────────────────────────
+// â”€â”€ Event types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Topics follow the convention: (contract, action, credential_type_or_unit).
 // `contract` is always `symbol_short!("iss_reg")` for IssuerRegistry events.
 // `action`   identifies the operation.
@@ -161,7 +161,7 @@ pub struct IssuerKey {
     /// while the key is current (the current key has no scheduled expiry).
     pub valid_until: u64,
     /// Set by `revoke_issuer_key`. A revoked key never validates again,
-    /// regardless of `valid_until` — that is the difference between rotation
+    /// regardless of `valid_until` â€” that is the difference between rotation
     /// (windowed) and revocation (immediate).
     pub revoked: bool,
 }
@@ -180,7 +180,7 @@ pub enum DataKey {
     /// Pending root-admin candidate set by `propose_admin` and consumed by
     /// `accept_admin` (#342).
     PendingAdmin,
-    /// RBAC: role name (Symbol) → current holder (Address).
+    /// RBAC: role name (Symbol) â†’ current holder (Address).
     Roles,
     Issuer(Address),
     /// Retired signing keys of an issuer, oldest first. Each entry carries its
@@ -344,7 +344,7 @@ impl IssuerRegistry {
     }
 
     /// Mark an issuer as revoked. Admin-role only. Existing proofs are not affected
-    /// here — revocation propagates through `is_valid_issuer` checks.
+    /// here â€” revocation propagates through `is_valid_issuer` checks.
     // NOTE: We suppress the deprecation warning for `env.events().publish` here.
     // The idiomatic Soroban v26 replacement is `#[contractevent]`; we use
     // value-based publish to stay consistent with the rest of the codebase.
@@ -438,8 +438,8 @@ impl IssuerRegistry {
     /// Look up an issuer's credential-signing public key (secp256k1 x || y).
     ///
     /// This is the *current* signing key only. To check the key carried by a
-    /// proof — which may have been signed by a retired key that is still inside
-    /// its validity window — use [`is_valid_issuer_key`].
+    /// proof â€” which may have been signed by a retired key that is still inside
+    /// its validity window â€” use [`is_valid_issuer_key`].
     pub fn get_issuer_pubkey(env: Env, issuer_id: Address) -> BytesN<64> {
         Self::load_issuer(&env, &issuer_id).pubkey
     }
@@ -465,7 +465,7 @@ impl IssuerRegistry {
         }
     }
 
-    // ── Key set management ──────────────────────────────────────────────────
+    // â”€â”€ Key set management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Rotation and revocation are admin-role only, like registration itself:
     // the issuer's own key cannot rewrite the registry's view of it. The
     // operational procedure (who prepares and signs a rotation) lives in
@@ -476,7 +476,7 @@ impl IssuerRegistry {
     /// The current key is retired with a validity window that stays open
     /// through `old_key_valid_until` (inclusive), and `new_pubkey` becomes the
     /// key used for new issuance. Credentials signed by the old key therefore
-    /// keep verifying until they reach their natural expiry — rotation alone
+    /// keep verifying until they reach their natural expiry â€” rotation alone
     /// never invalidates outstanding credentials.
     ///
     /// `old_key_valid_until` must lie in `(now, now + MAX_KEY_RETENTION_SECS]`;
@@ -675,7 +675,7 @@ impl IssuerRegistry {
     /// history. Admin-role only. Emits no event.
     ///
     /// Persistent entries expire after `ENTRY_TTL`, and expiry is what makes an
-    /// entry unreadable — a retired key whose entry has lapsed stops verifying
+    /// entry unreadable â€” a retired key whose entry has lapsed stops verifying
     /// even though its validity window is still open. Call this periodically
     /// (a keeper job is the usual answer) for issuers with long validity
     /// windows, ideally before `BUMP_THRESHOLD` ledgers have elapsed.
@@ -804,7 +804,7 @@ impl IssuerRegistry {
     /// Accept the pending root-admin role. Callable only by the address named
     /// in the most recent `propose_admin`. On success the accepted address
     /// becomes the new `DataKey::Admin` AND inherits every role the outgoing
-    /// admin held — a wholesale governance transfer, so the outgoing root
+    /// admin held â€” a wholesale governance transfer, so the outgoing root
     /// loses all privileged access exactly as it did before roles existed.
     /// Fine-grained delegation afterwards uses `grant_role` / `revoke_role`.
     /// Emits `("iss_reg", "adm_acc")` with the new admin as the payload (#342).
@@ -858,7 +858,7 @@ impl IssuerRegistry {
     }
 
     /// Assign `address` as the holder of `role`, replacing any previous holder.
-    /// Root-admin only. Use this to delegate or rotate a role's key — e.g. hand
+    /// Root-admin only. Use this to delegate or rotate a role's key â€” e.g. hand
     /// the `admin` role to an operations key, or prepare an `issuer-manager`
     /// role for finer-grained issuer governance.
     pub fn grant_role(env: Env, role: Symbol, address: Address) {
@@ -872,7 +872,7 @@ impl IssuerRegistry {
     ///
     /// The named address must be the current holder (revoking a different
     /// address is a no-op risk, so it is rejected with `RoleHolderMismatch`
-    /// instead). A role with no holder is simply unassigned — no one can act
+    /// instead). A role with no holder is simply unassigned â€” no one can act
     /// under it until it is granted again.
     pub fn revoke_role(env: Env, role: Symbol, address: Address) {
         Self::require_admin(&env);
@@ -883,7 +883,7 @@ impl IssuerRegistry {
                 env.storage().instance().set(&DataKey::Roles, &roles);
             }
             Some(_) => panic_with_error!(&env, Error::RoleHolderMismatch),
-            // Unassigned role — nothing to revoke.
+            // Unassigned role â€” nothing to revoke.
             None => {}
         }
     }
@@ -976,3 +976,171 @@ impl IssuerRegistry {
 
 #[cfg(test)]
 mod test;
+
+// â”€â”€ Two-step credential trust updates (#901) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//
+// Direct admin-only trust operations (`register_issuer`, `revoke_issuer`,
+// `rotate_issuer_key`, `set_issuer_metadata`) remain callable directly for
+// backwards compatibility and for tests, but the *recommended* flow is:
+//
+//   admin A: propose_trust_update(action, rationale)
+//   admin B: approve_trust_update()      // rejects self-approval
+//   admin A or B: cancel_trust_update()  // clear without executing
+//   admin A or B: reject_trust_update(reason)  // clear with reason
+//
+// One pending trust update at a time â€” mirrors `PendingAdmin` (#342) so the
+// mental model is identical. Break-glass `revoke_issuer_key` is unchanged
+// and continues to bypass this queue entirely.
+
+#[contracttype]
+#[derive(Clone)]
+pub enum TrustAction {
+    RegisterIssuer {
+        issuer_id: Address,
+        pubkey: BytesN<64>,
+        credential_types: Vec<Symbol>,
+    },
+    RevokeIssuer {
+        issuer_id: Address,
+    },
+    RotateIssuerKey {
+        issuer_id: Address,
+        new_pubkey: BytesN<64>,
+        old_key_valid_until: u64,
+    },
+    SetIssuerMetadata {
+        issuer_id: Address,
+        name: Option<String>,
+        url: Option<String>,
+        logo: Option<String>,
+    },
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct PendingTrustUpdate {
+    pub proposer: Address,
+    pub action: TrustAction,
+    pub rationale: String,
+    pub proposed_at: u64,
+}
+
+/// Propose a credential trust update. Admin role required. Overwrites any
+/// existing pending proposal (matching `propose_admin` semantics). Emits
+/// `("iss_reg", "trust_prop")` with the proposer, action summary and
+/// rationale so the indexer can record the intent even before approval.
+pub fn propose_trust_update(env: Env, action: TrustAction, rationale: String) {
+    Self::require_role(&env, &symbol_short!("admin"));
+    if rationale.len() > MAX_RATIONALE_LEN {
+        panic_with_error!(&env, Error::MetadataTooLong);
+    }
+    let proposer = env
+        .storage()
+        .instance()
+        .get::<DataKey, Address>(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+    let now = env.ledger().timestamp();
+    let pending = PendingTrustUpdate {
+        proposer: proposer.clone(),
+        action: action.clone(),
+        rationale,
+        proposed_at: now,
+    };
+    env.storage()
+        .instance()
+        .set(&DataKey::PendingTrustUpdate, &pending);
+
+    env.events().publish(
+        (symbol_short!("iss_reg"), symbol_short!("trust_prop")),
+        (proposer, action, now),
+    );
+}
+
+/// Approve the pending trust update. Admin role required. **Rejects
+/// self-approval**: the caller must not be the proposer. On success the
+/// underlying operation is executed (which itself emits the canonical
+/// `register` / `revoked` / `key_rot` / `metadata` event) and the pending
+/// proposal is cleared. Emits `("iss_reg", "trust_appr")`.
+pub fn approve_trust_update(env: Env) {
+    Self::require_role(&env, &symbol_short!("admin"));
+    let pending: PendingTrustUpdate = env
+        .storage()
+        .instance()
+        .get(&DataKey::PendingTrustUpdate)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::NoPendingTrustUpdate));
+
+    let approver = env
+        .storage()
+        .instance()
+        .get::<DataKey, Address>(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+
+    if approver == pending.proposer {
+        panic_with_error!(&env, Error::SelfApprovalForbidden);
+    }
+
+    let now = env.ledger().timestamp();
+    env.storage().instance().remove(&DataKey::PendingTrustUpdate);
+
+    // Dispatch to the underlying operation. Each callee re-checks the admin
+    // role (already satisfied by us) and emits its own canonical event.
+    match pending.action.clone() {
+        TrustAction::RegisterIssuer { issuer_id, pubkey, credential_types } => {
+            Self::register_issuer(env.clone(), issuer_id, pubkey, credential_types);
+        }
+        TrustAction::RevokeIssuer { issuer_id } => {
+            Self::revoke_issuer(env.clone(), issuer_id);
+        }
+        TrustAction::RotateIssuerKey { issuer_id, new_pubkey, old_key_valid_until } => {
+            Self::rotate_issuer_key(env.clone(), issuer_id, new_pubkey, old_key_valid_until);
+        }
+        TrustAction::SetIssuerMetadata { issuer_id, name, url, logo } => {
+            Self::set_issuer_metadata(env.clone(), issuer_id, name, url, logo);
+        }
+    }
+
+    env.events().publish(
+        (symbol_short!("iss_reg"), symbol_short!("trust_appr")),
+        (approver, pending.action, now),
+    );
+}
+
+/// Cancel the pending trust update without executing it. Admin role
+/// required (proposer or a different admin). Emits
+/// `("iss_reg", "trust_canc")`.
+pub fn cancel_trust_update(env: Env) {
+    Self::require_role(&env, &symbol_short!("admin"));
+    let _: PendingTrustUpdate = env
+        .storage()
+        .instance()
+        .get(&DataKey::PendingTrustUpdate)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::NoPendingTrustUpdate));
+    env.storage().instance().remove(&DataKey::PendingTrustUpdate);
+    env.events()
+        .publish((symbol_short!("iss_reg"), symbol_short!("trust_canc")), ());
+}
+
+/// Reject the pending trust update with a reason. Admin role required.
+/// Emits `("iss_reg", "trust_rej")` with the reason so the audit trail
+/// records why the update was blocked.
+pub fn reject_trust_update(env: Env, reason: String) {
+    Self::require_role(&env, &symbol_short!("admin"));
+    let _: PendingTrustUpdate = env
+        .storage()
+        .instance()
+        .get(&DataKey::PendingTrustUpdate)
+        .unwrap_or_else(|| panic_with_error!(&env, Error::NoPendingTrustUpdate));
+    if reason.len() > MAX_RATIONALE_LEN {
+        panic_with_error!(&env, Error::MetadataTooLong);
+    }
+    env.storage().instance().remove(&DataKey::PendingTrustUpdate);
+    env.events().publish(
+        (symbol_short!("iss_reg"), symbol_short!("trust_rej")),
+        reason,
+    );
+}
+
+/// Read the current pending trust update, if any (#901).
+pub fn pending_trust_update(env: Env) -> Option<PendingTrustUpdate> {
+    env.storage().instance().get(&DataKey::PendingTrustUpdate)
+}
