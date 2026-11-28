@@ -26,6 +26,7 @@ async function buildDocs() {
     // separately; documenting it must not depend on those sources resolving.
     skipErrorChecking: true,
     githubPages: true,
+    skipErrorChecking: true,
     highlightLanguages: [
       "typescript",
       "javascript",

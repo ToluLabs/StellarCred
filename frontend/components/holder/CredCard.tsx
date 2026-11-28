@@ -37,6 +37,8 @@ export function CredCard({
   onInspect,
   isPreview,
   selection,
+  isActive = false,
+  cardRef,
 }: {
   c: Credential;
   address: string;
@@ -46,6 +48,10 @@ export function CredCard({
   isPreview?: boolean;
   /** When present, renders a batch-selection checkbox. Omit for non-batchable cards. */
   selection?: BatchSelection;
+  /** Whether this card is currently highlighted by keyboard navigation. */
+  isActive?: boolean;
+  /** Optional ref callback for scrolling the active card into view. */
+  cardRef?: (el: HTMLElement | null) => void;
 }) {
   const status = proofStatus(c);
   const { events, loading: historyLoading } = useProofTimeline(c);
@@ -55,7 +61,13 @@ export function CredCard({
   const historyId = `${uid}-history`;
 
   return (
-    <article className="card cred-card" aria-labelledby={titleId}>
+    <article
+      ref={cardRef}
+      className={`card cred-card${isActive ? " cred-card--active" : ""}`}
+      aria-labelledby={titleId}
+      aria-current={isActive ? "true" : undefined}
+      data-active={isActive ? "true" : undefined}
+    >
       <div className="cred-card__top">
         {/* left: credential info */}
         <div className="cred-card__info">

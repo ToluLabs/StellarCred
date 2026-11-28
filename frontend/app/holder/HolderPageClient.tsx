@@ -14,15 +14,14 @@ import { ExportVisibilitySettings } from "@/components/ExportVisibilitySettings"
 import CredentialDetailModal from "@/components/CredentialDetailModal";
 import { useToast } from "@/components/Toast";
 import { useWallet, usePreviewMode } from "@/lib/wallet-context";
-import { PREVIEW_CREDENTIALS } from "@/lib/preview-fixtures";
 import { removeCredential, type Credential } from "@/lib/credential";
 import { useWarmProver } from "@/lib/use-warm-prover";
 import { useCredentialStore } from "@/lib/hooks/useCredentialStore";
-import { useBatchSelection } from "@/lib/hooks/useBatchSelection";
 import { useImportExport } from "@/lib/hooks/useImportExport";
 import { useProofApproval } from "@/lib/hooks/useProofApproval";
 import { useTransferImportParam } from "@/lib/hooks/useTransferImportParam";
 import { useTransferQuery } from "@/lib/hooks/holder/useTransferQuery";
+import { useAccountPortfolio } from "@/lib/hooks/holder/useAccountPortfolio";
 import { useCredentialBuckets } from "@/lib/hooks/useCredentialBuckets";
 
 // ── Components ────────────────────────────────────────────────────────────────
@@ -39,6 +38,8 @@ import { BatchProofFlowView } from "@/components/holder/BatchProofFlowView";
 import { CredentialExportPanel } from "@/components/holder/CredentialExportPanel";
 import { EmptyCredentialsState } from "@/components/holder/EmptyCredentialsState";
 import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
+import { CredentialSearchBar } from "@/components/holder/CredentialSearchBar";
+import { ExpiryWarningBanner } from "@/components/holder/ExpiryWarningBanner";
 import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
 import { ExpiryBanner } from "@/components/holder/ExpiryBanner";
 import {
@@ -71,6 +72,10 @@ const DisclosurePreviewModal = dynamic(
   () => import("@/components/holder/DisclosurePreviewModal").then((m) => m.DisclosurePreviewModal),
   { ssr: false },
 );
+const ShortcutCheatSheetModal = dynamic(
+  () => import("@/components/ShortcutCheatSheetModal").then((m) => m.ShortcutCheatSheetModal),
+  { ssr: false },
+);
 
 function HolderInner() {
   const { address, walletId, connect, restoring } = useWallet();
@@ -96,6 +101,7 @@ function HolderInner() {
   const [transferCred, setTransferCred] = useState<Credential | null>(null);
   const { importPayload, setImportPayload } = useTransferQuery();
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [confirmBulkAction, setConfirmBulkAction] = useState<BulkAction | null>(null);
 
   // A transfer QR opened directly (native camera app -> /holder?import=...)
@@ -104,30 +110,9 @@ function HolderInner() {
   // back button doesn't re-trigger the prompt or leave ciphertext in history.
   useTransferImportParam(setImportPayload);
 
-  // Multi-account portfolio segregation
-  const [portfolioAccounts, setPortfolioAccounts] = useState<PortfolioAccount[]>(() =>
-    getPortfolioAccounts(),
-  );
-  const [activeAccountFilter, setActiveAccountFilter] = useState<string | null>(() =>
-    getActivePortfolioAccount(),
-  );
-
-  // Update known accounts when connected address changes
-  useState(() => {
-    if (address) {
-      const updated = recordConnectedAccount(address);
-      setPortfolioAccounts(updated);
-    }
-  });
-
-  const handleSelectPortfolioAccount = (selectedAddr: string | null) => {
-    setActiveAccountFilter(selectedAddr);
-    setActivePortfolioAccount(selectedAddr);
-  };
-
   const rawCreds = isPreview ? PREVIEW_CREDENTIALS : creds;
-  // Segregate credentials by active account portfolio (without clearing session data)
-  const displayCreds = filterCredentialsByAccount(rawCreds, activeAccountFilter);
+  const { portfolioAccounts, activeAccountFilter, displayCreds, handleSelectPortfolioAccount } =
+    useAccountPortfolio(address, rawCreds);
   const { unproved, expiringSoon, activeProved, expired } = useCredentialBuckets(displayCreds);
 
   // Warm the UltraHonk backend for whatever credential types the user still
@@ -150,7 +135,15 @@ function HolderInner() {
     toggleSelected,
     selectEligible,
     clearSelection,
-  } = useBatchSelection(unproved, address, toast.error);
+  } = batch;
+
+  // Warm the UltraHonk backend for whatever credential types the user still
+  // needs to prove, in the background, once the wallet is actually connected
+  // (never in preview mode — there's nothing real to prove yet). Only the
+  // types actually present in `unproved` are warmed, not all seven circuits,
+  // to avoid paying wasm-init cost for types the user has no credential for.
+  const unprovedTypes = Array.from(new Set(unproved.map((c) => c.type)));
+  useWarmProver(unprovedTypes, Boolean(address));
 
   // Bulk removal is sequential on purpose: removeCredential is a
   // read-modify-write of the whole list, so concurrent calls would race.
@@ -175,6 +168,8 @@ function HolderInner() {
         onInspect={() => setDetailCred(c)}
         isPreview={isPreview}
         selection={selection}
+        isActive={triage.activeCommitment === c.commitment}
+        cardRef={(el) => triage.setCardRef(c.commitment, el)}
       />
     );
   }
@@ -187,11 +182,11 @@ function HolderInner() {
           <h1 style={{ fontSize: "2rem", marginTop: "0.35rem" }}>Your credentials</h1>
         </div>
         <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
-          {portfolioAccounts.length > 0 && (
+          {portfolio.accounts.length > 0 && (
             <AccountPortfolioSwitcher
-              accounts={portfolioAccounts}
-              activeAddress={activeAccountFilter}
-              onSelectAccount={handleSelectPortfolioAccount}
+              accounts={portfolio.accounts}
+              activeAddress={portfolio.activeAddress}
+              onSelectAccount={portfolio.selectAccount}
             />
           )}
           {/* Selective disclosure presets (#386): a named, shareable bundle
@@ -209,6 +204,16 @@ function HolderInner() {
           >
             <IconFileExport size={15} style={{ marginRight: "0.3rem" }} />
             Export Data
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowShortcutsModal(true)}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            id="btn-keyboard-shortcuts"
+          >
+            <IconKeyboard size={16} aria-hidden="true" />
           </button>
           <WalletButton />
         </div>
@@ -257,6 +262,16 @@ function HolderInner() {
 
               {/* ── Empty state ── */}
               {creds.length === 0 && !importing && <EmptyCredentialsState />}
+
+              {/* ── Credential search / filter ── */}
+              {displayCreds.length > 0 && (
+                <CredentialSearchBar
+                  inputRef={triage.searchInputRef}
+                  query={triage.searchQuery}
+                  onChange={triage.setSearchQuery}
+                  hasResults={triage.filteredCreds.length > 0}
+                />
+              )}
 
               {/* ── Expiring soon (action recommended) ── */}
               {expiringSoon.length > 0 && (
@@ -423,9 +438,7 @@ function HolderInner() {
 
       {detailCred && (
         <CredentialDetailModal
-          // ClaimParams is an interface, so it isn't assignable to the modal's
-          // Record<string, unknown> prop without a cast.
-          credential={detailCred as any}
+          credential={detailCred}
           onClose={() => setDetailCred(null)}
           onTransfer={(c) => {
             setDetailCred(null);
@@ -477,6 +490,10 @@ function HolderInner() {
           onConfirm={() => executeBulkRemove(confirmBulkAction.commitments)}
           onCancel={() => setConfirmBulkAction(null)}
         />
+      )}
+
+      {showShortcutsModal && (
+        <ShortcutCheatSheetModal onClose={() => setShowShortcutsModal(false)} />
       )}
     </>
   );

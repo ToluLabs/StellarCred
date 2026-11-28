@@ -85,6 +85,16 @@ import {
   WasmLoadError,
 } from "./wasm";
 import { telemetry } from "./telemetry";
+import {
+  clearWasmCache,
+  compileWasm,
+  detectWasmRuntime,
+  getWasmCacheSize,
+  initWasm,
+  isStreamingSupported,
+  isWasmSupported,
+  WasmLoadError,
+} from "./wasm";
 
 export const StellarCred = {
   configure,
@@ -167,6 +177,15 @@ export const StellarCred = {
   getWasmCacheSize,
   WasmLoadError,
   telemetry,
+  // Universal WASM helpers
+  initWasm,
+  compileWasm,
+  detectWasmRuntime,
+  isWasmSupported,
+  isStreamingSupported,
+  clearWasmCache,
+  getWasmCacheSize,
+  WasmLoadError,
 };
 
 export default StellarCred;

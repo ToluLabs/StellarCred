@@ -89,9 +89,9 @@
     "test:integration": "vitest run test/integration.test.ts",
     "test:retry": "vitest run src/submit-retry.test.ts",
     "typecheck": "tsc --noEmit",
-    "docs:api": "node scripts/build-docs.mjs",
-    "lint": "eslint src test",
-    "format:check": "prettier --check src test",
+    "docs:api": "typedoc",
+    "bundle:budget": "node scripts/check-bundle-budget.mjs",
+    "bundle:report": "node scripts/report-bundle-composition.mjs",
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {
@@ -111,6 +111,9 @@
     "vitest": "^3.1.1"
   },
   "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "@scure/bip39": "^1.6.0",
     "issuer-registry": "link:../issuer-registry",
     "proof-registry": "link:../proof-registry"
   }

@@ -19,11 +19,11 @@ All StellarCred contract events follow a deterministic, structured topic tuple c
 
 ### Topic Structure
 
-| Topic Index | Field             | Type     | Description                                                                                                                                                                                                                                         |
-| ----------- | ----------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `topics[0]` | `contract`        | `Symbol` | Contract identifier: `"proof_reg"`, `"iss_reg"`, `"cred_ver"`, or `"gate_pool"`.                                                                                                                                                                    |
-| `topics[1]` | `action`          | `Symbol` | Operation verb describing the event action (e.g. `"submitted"`, `"revoked"`, `"paused"`, `"unpaused"`, `"register"`, `"vk_set"`, `"vk_pruned"`, `"deposit"`, `"withdraw"`).                                                                         |
-| `topics[2]` | `credential_type` | `Symbol` | _(Optional)_ The credential type involved (e.g. `"kyc"`, `"age"`, `"income"`, `"funds"`, `"jurisdiction"`, `"accreditation"`, `"employment"`). Included for credential-scoped events; omitted (tuple length 2) for system- or global-scoped events. |
+| Topic Index | Field | Type | Description |
+|---|---|---|---|
+| `topics[0]` | `contract` | `Symbol` | Contract identifier: `"proof_reg"`, `"iss_reg"`, `"cred_ver"`, or `"gate_pool"`. |
+| `topics[1]` | `action` | `Symbol` | Operation verb describing the event action (e.g. `"submitted"`, `"revoked"`, `"paused"`, `"unpaused"`, `"register"`, `"vk_set"`, `"vk_pruned"`, `"deposit"`, `"withdraw"`). |
+| `topics[2]` | `credential_type` | `Symbol` | *(Optional)* The credential type involved (e.g. `"kyc"`, `"age"`, `"income"`, `"funds"`, `"jurisdiction"`, `"accreditation"`, `"employment"`). Included for credential-scoped events; omitted (tuple length 2) for system- or global-scoped events. |
 
 ### Payload Serialization
 
@@ -33,29 +33,29 @@ All event data payloads are typed `#[contracttype]` structs serialized using Sor
 
 ## Complete Event Catalog
 
-| Contract             | Event       | Topics Tuple                                    | Payload Struct          | Emitting Method(s)                                        | Authorization |
-| -------------------- | ----------- | ----------------------------------------------- | ----------------------- | --------------------------------------------------------- | ------------- |
-| `ProofRegistry`      | `submitted` | `("proof_reg", "submitted", <credential_type>)` | `EventProofSubmitted`   | `submit_proof`, `submit_proofs`, `submit_aggregate_proof` | Holder        |
-| `ProofRegistry`      | `revoked`   | `("proof_reg", "revoked", <credential_type>)`   | `EventProofRevoked`     | `revoke`                                                  | Issuer        |
-| `ProofRegistry`      | `paused`    | `("proof_reg", "paused")`                       | `EventPaused`           | `pause`                                                   | Admin         |
-| `ProofRegistry`      | `unpaused`  | `("proof_reg", "unpaused")`                     | `EventUnpaused`         | `unpause`                                                 | Admin         |
-| `ProofRegistry`      | `adm_prop`  | `("proof_reg", "adm_prop")`                     | `Address`               | `propose_admin`                                           | Admin         |
-| `ProofRegistry`      | `adm_acc`   | `("proof_reg", "adm_acc")`                      | `Address`               | `accept_admin`                                            | Pending admin |
-| `ProofRegistry`      | `adm_canc`  | `("proof_reg", "adm_canc")`                     | `()`                    | `cancel_admin_proposal`                                   | Admin         |
-| `IssuerRegistry`     | `register`  | `("iss_reg", "register")`                       | `EventIssuerRegistered` | `register_issuer`                                         | Admin         |
-| `IssuerRegistry`     | `revoked`   | `("iss_reg", "revoked")`                        | `EventIssuerRevoked`    | `revoke_issuer`                                           | Admin         |
-| `IssuerRegistry`     | `key_rot`   | `("iss_reg", "key_rot")`                        | `EventIssuerKeyRotated` | `rotate_issuer_key`                                       | Admin         |
-| `IssuerRegistry`     | `key_revk`  | `("iss_reg", "key_revk")`                       | `EventIssuerKeyRevoked` | `revoke_issuer_key`                                       | Admin         |
-| `IssuerRegistry`     | `adm_prop`  | `("iss_reg", "adm_prop")`                       | `Address`               | `propose_admin`                                           | Admin         |
-| `IssuerRegistry`     | `adm_acc`   | `("iss_reg", "adm_acc")`                        | `Address`               | `accept_admin`                                            | Pending admin |
-| `IssuerRegistry`     | `adm_canc`  | `("iss_reg", "adm_canc")`                       | `()`                    | `cancel_admin_proposal`                                   | Admin         |
-| `CredentialVerifier` | `vk_set`    | `("cred_ver", "vk_set", <credential_type>)`     | `EventVkSet`            | `set_vk`                                                  | Admin         |
-| `CredentialVerifier` | `vk_pruned` | `("cred_ver", "vk_pruned", <credential_type>)`  | `EventVkPruned`         | `prune_version`                                           | Admin         |
-| `CredentialVerifier` | `adm_prop`  | `("cred_ver", "adm_prop")`                      | `Address`               | `propose_admin`                                           | Admin         |
-| `CredentialVerifier` | `adm_acc`   | `("cred_ver", "adm_acc")`                       | `Address`               | `accept_admin`                                            | Pending admin |
-| `CredentialVerifier` | `adm_canc`  | `("cred_ver", "adm_canc")`                      | `()`                    | `cancel_admin_proposal`                                   | Admin         |
-| `GatedPool`          | `deposit`   | `("gate_pool", "deposit")`                      | `EventDeposit`          | `deposit`                                                 | Caller        |
-| `GatedPool`          | `withdraw`  | `("gate_pool", "withdraw")`                     | `EventWithdraw`         | `withdraw`                                                | Caller        |
+| Contract | Event | Topics Tuple | Payload Struct | Emitting Method(s) | Authorization |
+|---|---|---|---|---|---|
+| `ProofRegistry` | `submitted` | `("proof_reg", "submitted", <credential_type>)` | `EventProofSubmitted` | `submit_proof`, `submit_proofs`, `submit_aggregate_proof` | Holder |
+| `ProofRegistry` | `revoked` | `("proof_reg", "revoked", <credential_type>)` | `EventProofRevoked` | `revoke` | Issuer |
+| `ProofRegistry` | `paused` | `("proof_reg", "paused")` | `EventPaused` | `pause` | Admin |
+| `ProofRegistry` | `unpaused` | `("proof_reg", "unpaused")` | `EventUnpaused` | `unpause` | Admin |
+| `ProofRegistry` | `adm_prop` | `("proof_reg", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `ProofRegistry` | `adm_acc` | `("proof_reg", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `ProofRegistry` | `adm_canc` | `("proof_reg", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
+| `IssuerRegistry` | `register` | `("iss_reg", "register")` | `EventIssuerRegistered` | `register_issuer` | Admin |
+| `IssuerRegistry` | `revoked` | `("iss_reg", "revoked")` | `EventIssuerRevoked` | `revoke_issuer` | Admin |
+| `IssuerRegistry` | `key_rot` | `("iss_reg", "key_rot")` | `EventIssuerKeyRotated` | `rotate_issuer_key` | Admin |
+| `IssuerRegistry` | `key_revk` | `("iss_reg", "key_revk")` | `EventIssuerKeyRevoked` | `revoke_issuer_key` | Admin |
+| `IssuerRegistry` | `adm_prop` | `("iss_reg", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `IssuerRegistry` | `adm_acc` | `("iss_reg", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `IssuerRegistry` | `adm_canc` | `("iss_reg", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
+| `CredentialVerifier` | `vk_set` | `("cred_ver", "vk_set", <credential_type>)` | `EventVkSet` | `set_vk` | Admin |
+| `CredentialVerifier` | `vk_pruned` | `("cred_ver", "vk_pruned", <credential_type>)` | `EventVkPruned` | `prune_version` | Admin |
+| `CredentialVerifier` | `adm_prop` | `("cred_ver", "adm_prop")` | `Address` | `propose_admin` | Admin |
+| `CredentialVerifier` | `adm_acc` | `("cred_ver", "adm_acc")` | `Address` | `accept_admin` | Pending admin |
+| `CredentialVerifier` | `adm_canc` | `("cred_ver", "adm_canc")` | `()` | `cancel_admin_proposal` | Admin |
+| `GatedPool` | `deposit` | `("gate_pool", "deposit")` | `EventDeposit` | `deposit` | Caller |
+| `GatedPool` | `withdraw` | `("gate_pool", "withdraw")` | `EventWithdraw` | `withdraw` | Caller |
 
 ---
 
@@ -80,12 +80,12 @@ Emitted when a zero-knowledge proof is cryptographically verified against the re
       pub expiry: u64,
   }
   ```
-  | Field         | Type      | Description                                                             |
-  | ------------- | --------- | ----------------------------------------------------------------------- |
-  | `holder`      | `Address` | Stellar address of the credential holder whose proof was verified.      |
-  | `issuer`      | `Address` | Address of the registered issuer that signed the credential commitment. |
-  | `verified_at` | `u64`     | Ledger timestamp (seconds) when the proof was verified and recorded.    |
-  | `expiry`      | `u64`     | Ledger timestamp (seconds) when the cached proof expires.               |
+  | Field | Type | Description |
+  |---|---|---|
+  | `holder` | `Address` | Stellar address of the credential holder whose proof was verified. |
+  | `issuer` | `Address` | Address of the registered issuer that signed the credential commitment. |
+  | `verified_at` | `u64` | Ledger timestamp (seconds) when the proof was verified and recorded. |
+  | `expiry` | `u64` | Ledger timestamp (seconds) when the cached proof expires. |
 - **When it fires:**
   - `submit_proof`: Emitted once on successful verification and storage.
   - `submit_proofs` (batch): Emitted once for each valid proof entry in the batch after all entries succeed.
@@ -109,11 +109,11 @@ Emitted when a trusted issuer explicitly revokes a holder's cached proof for a c
       pub revoked_at: u64,
   }
   ```
-  | Field        | Type      | Description                                                  |
-  | ------------ | --------- | ------------------------------------------------------------ |
-  | `holder`     | `Address` | Stellar address of the holder whose proof was revoked.       |
-  | `issuer`     | `Address` | Address of the registered issuer executing the revocation.   |
-  | `revoked_at` | `u64`     | Ledger timestamp (seconds) when the revocation was executed. |
+  | Field | Type | Description |
+  |---|---|---|
+  | `holder` | `Address` | Stellar address of the holder whose proof was revoked. |
+  | `issuer` | `Address` | Address of the registered issuer executing the revocation. |
+  | `revoked_at` | `u64` | Ledger timestamp (seconds) when the revocation was executed. |
 - **When it fires:**
   - `revoke(issuer, holder, credential_type)`: Emitted when the registered issuer marks the proof record as revoked.
 
@@ -149,10 +149,10 @@ Emitted when protocol administration pauses new proof submissions.
       pub paused_at: u64,
   }
   ```
-  | Field       | Type      | Description                             |
-  | ----------- | --------- | --------------------------------------- |
-  | `admin`     | `Address` | Admin address that paused submissions.  |
-  | `paused_at` | `u64`     | Ledger timestamp (seconds) when paused. |
+  | Field | Type | Description |
+  |---|---|---|
+  | `admin` | `Address` | Admin address that paused submissions. |
+  | `paused_at` | `u64` | Ledger timestamp (seconds) when paused. |
 - **When it fires:**
   - `pause()`: Admin pauses submissions.
 
@@ -172,10 +172,10 @@ Emitted when protocol administration resumes proof submissions.
       pub unpaused_at: u64,
   }
   ```
-  | Field         | Type      | Description                               |
-  | ------------- | --------- | ----------------------------------------- |
-  | `admin`       | `Address` | Admin address that resumed submissions.   |
-  | `unpaused_at` | `u64`     | Ledger timestamp (seconds) when unpaused. |
+  | Field | Type | Description |
+  |---|---|---|
+  | `admin` | `Address` | Admin address that resumed submissions. |
+  | `unpaused_at` | `u64` | Ledger timestamp (seconds) when unpaused. |
 - **When it fires:**
   - `unpause()`: Admin unpauses submissions.
 
@@ -228,11 +228,11 @@ transfer takes place and the pending entry is cleared.
 
 #### Non-Event Operations in ProofRegistry
 
-| Function         | Description                    | Reason No Event Emitted                                                                     |
-| ---------------- | ------------------------------ | ------------------------------------------------------------------------------------------- |
-| `upgrade`        | Contract bytecode upgrade      | Handled directly by Soroban's WASM deployer host function (`update_current_contract_wasm`). |
-| `bump_claim`     | Storage TTL extension          | Maintenance operation renewing persistent entry rent.                                       |
-| `migrate_record` | Legacy storage shape migration | Internal migration upgrading legacy storage formats to current `ProofRecord` structure.     |
+| Function | Description | Reason No Event Emitted |
+|---|---|---|
+| `upgrade` | Contract bytecode upgrade | Handled directly by Soroban's WASM deployer host function (`update_current_contract_wasm`). |
+| `bump_claim` | Storage TTL extension | Maintenance operation renewing persistent entry rent. |
+| `migrate_record` | Legacy storage shape migration | Internal migration upgrading legacy storage formats to current `ProofRecord` structure. |
 
 ---
 
@@ -252,9 +252,9 @@ Emitted when an issuer is registered or their public key/credential types are up
       pub pubkey: BytesN<64>,
   }
   ```
-  | Field    | Type         | Description                                                 |
-  | -------- | ------------ | ----------------------------------------------------------- |
-  | `issuer` | `Address`    | Stellar address of the newly registered or updated issuer.  |
+  | Field | Type | Description |
+  |---|---|---|
+  | `issuer` | `Address` | Stellar address of the newly registered or updated issuer. |
   | `pubkey` | `BytesN<64>` | The issuer's secp256k1 public key (`x ‖ y`, 32 bytes each). |
 - **When it fires:**
   - `register_issuer(issuer_id, pubkey, credential_types)`: Admin registers or updates an issuer.
@@ -274,8 +274,8 @@ Emitted when an issuer is revoked by administration.
       pub issuer: Address,
   }
   ```
-  | Field    | Type      | Description                    |
-  | -------- | --------- | ------------------------------ |
+  | Field | Type | Description |
+  |---|---|---|
   | `issuer` | `Address` | Address of the revoked issuer. |
 - **When it fires:**
   - `revoke_issuer(issuer_id)`: Admin marks an issuer as revoked.
@@ -300,12 +300,12 @@ new issuance uses the new key.
       pub old_key_valid_until: u64,
   }
   ```
-  | Field                 | Type         | Description                                                                         |
-  | --------------------- | ------------ | ----------------------------------------------------------------------------------- |
-  | `issuer`              | `Address`    | Issuer whose key set changed.                                                       |
-  | `old_pubkey`          | `BytesN<64>` | Key that stopped being the current signing key.                                     |
-  | `new_pubkey`          | `BytesN<64>` | Key that is current from now on.                                                    |
-  | `old_key_valid_until` | `u64`        | Ledger timestamp after which `old_pubkey` stops validating submissions (inclusive). |
+  | Field | Type | Description |
+  |---|---|---|
+  | `issuer` | `Address` | Issuer whose key set changed. |
+  | `old_pubkey` | `BytesN<64>` | Key that stopped being the current signing key. |
+  | `new_pubkey` | `BytesN<64>` | Key that is current from now on. |
+  | `old_key_valid_until` | `u64` | Ledger timestamp after which `old_pubkey` stops validating submissions (inclusive). |
 - **When it fires:**
   - `rotate_issuer_key(issuer_id, new_pubkey, old_key_valid_until)`: Admin rotates the key, retiring the old one with a validity window.
 - **Monitoring:** ticket for review — confirm the window covers the issuer's outstanding credential expiries and that the signing environment was cut over to `new_pubkey`. An unscheduled rotation should be treated as an incident.
@@ -330,12 +330,12 @@ window.
       pub revoked_at: u64,
   }
   ```
-  | Field         | Type         | Description                                                                                                                                                          |
-  | ------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `issuer`      | `Address`    | Issuer whose key set changed.                                                                                                                                        |
-  | `pubkey`      | `BytesN<64>` | The key that was killed.                                                                                                                                             |
-  | `was_current` | `bool`       | `true` when it was the current signing key — the issuer cannot issue until an admin rotates to a new key. `false` when it was a retired key still inside its window. |
-  | `revoked_at`  | `u64`        | Ledger timestamp at which the revocation took effect.                                                                                                                |
+  | Field | Type | Description |
+  |---|---|---|
+  | `issuer` | `Address` | Issuer whose key set changed. |
+  | `pubkey` | `BytesN<64>` | The key that was killed. |
+  | `was_current` | `bool` | `true` when it was the current signing key — the issuer cannot issue until an admin rotates to a new key. `false` when it was a retired key still inside its window. |
+  | `revoked_at` | `u64` | Ledger timestamp at which the revocation took effect. |
 - **When it fires:**
   - `revoke_issuer_key(issuer_id, pubkey)`: Admin emergency-revokes a key, e.g. on suspected compromise.
 - **Monitoring:** page immediately — either a compromise or a broken rotation.
@@ -389,10 +389,10 @@ transfer takes place and the pending entry is cleared.
 
 #### Non-Event Operations in IssuerRegistry
 
-| Function                  | Description                                                | Reason No Event Emitted                                                                      |
-| ------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `set_issuer_metadata`     | Optional name, URL, logo metadata                          | Stored directly in persistent entry `DataKey::IssuerMetadata(issuer)` for read-only lookups. |
-| `refresh_issuer_keys_ttl` | Extends the lifetime of an issuer's record and key history | Lifetime maintenance only; it changes no issuer state that the events above report.          |
+| Function | Description | Reason No Event Emitted |
+|---|---|---|
+| `set_issuer_metadata` | Optional name, URL, logo metadata | Stored directly in persistent entry `DataKey::IssuerMetadata(issuer)` for read-only lookups. |
+| `refresh_issuer_keys_ttl` | Extends the lifetime of an issuer's record and key history | Lifetime maintenance only; it changes no issuer state that the events above report. |
 
 Key rotation and revocation are covered above; see
 [ISSUER_KEY_ROTATION.md](ISSUER_KEY_ROTATION.md) for the operational procedure.
@@ -415,8 +415,8 @@ Emitted when a verification key (VK) is registered for a circuit.
       pub admin: Address,
   }
   ```
-  | Field   | Type      | Description                                         |
-  | ------- | --------- | --------------------------------------------------- |
+  | Field | Type | Description |
+  |---|---|---|
   | `admin` | `Address` | Admin address that registered the verification key. |
 - **When it fires:**
   - `set_vk(credential_type, version, vk)`: Admin registers a validated UltraHonk VK.
@@ -438,10 +438,10 @@ Emitted when deprecated VK bytes are permanently pruned from storage after the m
       pub version: u32,
   }
   ```
-  | Field     | Type      | Description                                    |
-  | --------- | --------- | ---------------------------------------------- |
-  | `admin`   | `Address` | Admin address executing the pruning.           |
-  | `version` | `u32`     | Version number of the pruned verification key. |
+  | Field | Type | Description |
+  |---|---|---|
+  | `admin` | `Address` | Admin address executing the pruning. |
+  | `version` | `u32` | Version number of the pruned verification key. |
 - **When it fires:**
   - `prune_version(credential_type, version)`: Admin prunes deprecated VK bytes.
 
@@ -494,11 +494,11 @@ transfer takes place and the pending entry is cleared.
 
 #### Non-Event Operations in CredentialVerifier
 
-| Function                     | Description                               | Reason No Event Emitted                                                    |
-| ---------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- |
-| `deprecate_version`          | Marks VK version as deprecated            | Updates persistent status flag `DeprecatedVersion` without event emission. |
-| `refresh_latest_version_ttl` | Extends TTL of latest pointer and VK blob | Maintenance rent-renewal operation.                                        |
-| `verify_proof`               | Stateless cryptographic verification      | Pure read-only computation returning boolean result.                       |
+| Function | Description | Reason No Event Emitted |
+|---|---|---|
+| `deprecate_version` | Marks VK version as deprecated | Updates persistent status flag `DeprecatedVersion` without event emission. |
+| `refresh_latest_version_ttl` | Extends TTL of latest pointer and VK blob | Maintenance rent-renewal operation. |
+| `verify_proof` | Stateless cryptographic verification | Pure read-only computation returning boolean result. |
 
 ---
 
@@ -519,11 +519,11 @@ Emitted when a caller successfully deposits into the pool after passing the KYC/
       pub new_balance: i128,
   }
   ```
-  | Field         | Type      | Description                               |
-  | ------------- | --------- | ----------------------------------------- |
-  | `caller`      | `Address` | Address depositing funds into the pool.   |
-  | `amount`      | `i128`    | Amount deposited.                         |
-  | `new_balance` | `i128`    | Caller's resulting balance after deposit. |
+  | Field | Type | Description |
+  |---|---|---|
+  | `caller` | `Address` | Address depositing funds into the pool. |
+  | `amount` | `i128` | Amount deposited. |
+  | `new_balance` | `i128` | Caller's resulting balance after deposit. |
 - **When it fires:**
   - `deposit(caller, amount)`: Verified caller deposits into pool.
 
@@ -544,11 +544,11 @@ Emitted when a caller withdraws from their balance.
       pub new_balance: i128,
   }
   ```
-  | Field         | Type      | Description                                  |
-  | ------------- | --------- | -------------------------------------------- |
-  | `caller`      | `Address` | Address withdrawing funds.                   |
-  | `amount`      | `i128`    | Amount withdrawn.                            |
-  | `new_balance` | `i128`    | Caller's resulting balance after withdrawal. |
+  | Field | Type | Description |
+  |---|---|---|
+  | `caller` | `Address` | Address withdrawing funds. |
+  | `amount` | `i128` | Amount withdrawn. |
+  | `new_balance` | `i128` | Caller's resulting balance after withdrawal. |
 - **When it fires:**
   - `withdraw(caller, amount)`: Balance owner withdraws from pool.
 
@@ -556,15 +556,15 @@ Emitted when a caller withdraws from their balance.
 
 ## Credential Types Reference
 
-| Symbol          | Rust Construction                   | Public Input Threshold Field | Description                                           |
-| --------------- | ----------------------------------- | ---------------------------- | ----------------------------------------------------- |
-| `kyc`           | `symbol_short!("kyc")`              | None                         | Identity verification by an accredited KYC provider.  |
-| `age`           | `symbol_short!("age")`              | `threshold_years` (Field 66) | Proof that holder's age meets or exceeds a threshold. |
-| `income`        | `symbol_short!("income")`           | `threshold` (Field 65)       | Annual income threshold verification.                 |
-| `funds`         | `symbol_short!("funds")`            | `threshold` (Field 65)       | Liquid balance threshold verification.                |
-| `jurisdiction`  | `Symbol::new(env, "jurisdiction")`  | None                         | Country / regional jurisdiction allowlist compliance. |
-| `accreditation` | `Symbol::new(env, "accreditation")` | `threshold` (Field 65)       | Accredited investor status verification.              |
-| `employment`    | `Symbol::new(env, "employment")`    | `threshold` (Field 65)       | Employer / employment credential verification.        |
+| Symbol | Rust Construction | Public Input Threshold Field | Description |
+|---|---|---|---|
+| `kyc` | `symbol_short!("kyc")` | None | Identity verification by an accredited KYC provider. |
+| `age` | `symbol_short!("age")` | `threshold_years` (Field 66) | Proof that holder's age meets or exceeds a threshold. |
+| `income` | `symbol_short!("income")` | `threshold` (Field 65) | Annual income threshold verification. |
+| `funds` | `symbol_short!("funds")` | `threshold` (Field 65) | Liquid balance threshold verification. |
+| `jurisdiction` | `Symbol::new(env, "jurisdiction")` | None | Country / regional jurisdiction allowlist compliance. |
+| `accreditation` | `Symbol::new(env, "accreditation")` | `threshold` (Field 65) | Accredited investor status verification. |
+| `employment` | `Symbol::new(env, "employment")` | `threshold` (Field 65) | Employer / employment credential verification. |
 
 ---
 
@@ -577,59 +577,51 @@ Off-chain indexers (e.g. `services/indexer`) monitor events using Soroban RPC `g
 ```javascript
 // 1. All proof submissions across all credential types:
 {
-  filters: [
-    {
-      type: "contract",
-      contractIds: [PROOF_REGISTRY_ID],
-      topics: [["AAAAEQAAAAAJcHJvb2ZfcmVn", "AAAAEQAAAAAJc3VibWl0dGVk"]], // ["proof_reg", "submitted"]
-    },
-  ];
+  filters: [{
+    type: "contract",
+    contractIds: [PROOF_REGISTRY_ID],
+    topics: [["AAAAEQAAAAAJcHJvb2ZfcmVn", "AAAAEQAAAAAJc3VibWl0dGVk"]] // ["proof_reg", "submitted"]
+  }]
 }
 
 // 2. KYC proof submissions specifically:
 {
-  filters: [
-    {
-      type: "contract",
-      contractIds: [PROOF_REGISTRY_ID],
-      topics: [["AAAAEQAAAAAJcHJvb2ZfcmVn", "AAAAEQAAAAAJc3VibWl0dGVk", "AAAAEQAAAANreWM="]], // ["proof_reg", "submitted", "kyc"]
-    },
-  ];
+  filters: [{
+    type: "contract",
+    contractIds: [PROOF_REGISTRY_ID],
+    topics: [["AAAAEQAAAAAJcHJvb2ZfcmVn", "AAAAEQAAAAAJc3VibWl0dGVk", "AAAAEQAAAANreWM="]] // ["proof_reg", "submitted", "kyc"]
+  }]
 }
 
 // 3. All issuer registrations:
 {
-  filters: [
-    {
-      type: "contract",
-      contractIds: [ISSUER_REGISTRY_ID],
-      topics: [["AAAAEQAAAAdpc3NfcmVn", "AAAAEQAAAAhyZWdpc3Rlcg=="]], // ["iss_reg", "register"]
-    },
-  ];
+  filters: [{
+    type: "contract",
+    contractIds: [ISSUER_REGISTRY_ID],
+    topics: [["AAAAEQAAAAdpc3NfcmVn", "AAAAEQAAAAhyZWdpc3Rlcg=="]] // ["iss_reg", "register"]
+  }]
 }
 
 // 4. Gated pool deposits:
 {
-  filters: [
-    {
-      type: "contract",
-      contractIds: [GATED_POOL_ID],
-      topics: [["AAAAEQAAAApnYXRlX3Bvb2w=", "AAAAEQAAAAdkZXBvc2l0"]], // ["gate_pool", "deposit"]
-    },
-  ];
+  filters: [{
+    type: "contract",
+    contractIds: [GATED_POOL_ID],
+    topics: [["AAAAEQAAAApnYXRlX3Bvb2w=", "AAAAEQAAAAdkZXBvc2l0"]] // ["gate_pool", "deposit"]
+  }]
 }
 ```
 
 ### Type Deserialization Mapping
 
-| Soroban SDK Rust Type | Soroban ScVal XDR | JavaScript / SDK Type                           |
-| --------------------- | ----------------- | ----------------------------------------------- |
-| `Address`             | `ScVal::Address`  | `string` (Stellar StrKey `G...` or `C...`)      |
-| `Symbol`              | `ScVal::Symbol`   | `string`                                        |
-| `u64`                 | `ScVal::U64`      | `number` / `bigint` (Unix timestamp in seconds) |
-| `u32`                 | `ScVal::U32`      | `number`                                        |
-| `i128`                | `ScVal::I128`     | `bigint` / `string`                             |
-| `BytesN<64>`          | `ScVal::Bytes`    | `Buffer` / `Uint8Array` (64 bytes hex)          |
+| Soroban SDK Rust Type | Soroban ScVal XDR | JavaScript / SDK Type |
+|---|---|---|
+| `Address` | `ScVal::Address` | `string` (Stellar StrKey `G...` or `C...`) |
+| `Symbol` | `ScVal::Symbol` | `string` |
+| `u64` | `ScVal::U64` | `number` / `bigint` (Unix timestamp in seconds) |
+| `u32` | `ScVal::U32` | `number` |
+| `i128` | `ScVal::I128` | `bigint` / `string` |
+| `BytesN<64>` | `ScVal::Bytes` | `Buffer` / `Uint8Array` (64 bytes hex) |
 
 ### SDK Real-Time Subscription Helper (`#392`)
 

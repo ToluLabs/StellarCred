@@ -307,7 +307,7 @@ export function createVerificationRedirect(params: {
     wallet: params.wallet,
     state: params.state,
     expiresInMinutes: 15, // link expires in 15 minutes
-    singleUse: true, // single-use token prevents replay
+    singleUse: true,      // single-use token prevents replay
   };
 
   if (params.claim === "age" && params.minThreshold !== undefined) {
@@ -392,3 +392,4 @@ builds the SDK distribution and then runs, for this example:
 
 That means a breaking change to a signature, an export, or a type in
 `@stellarcred/sdk` fails CI here instead of in a user's project.
+

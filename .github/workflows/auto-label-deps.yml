@@ -101,34 +101,6 @@ jobs:
                 }
               }
 
-            try {
-              await github.rest.issues.getLabel({ owner, repo, name: labelName });
-            } catch (error) {
-              if (error.status !== 404) {
-                core.warning(
-                  `Could not verify label '${labelName}' for PR #${pr.number}: ${error.message}. Skipping label application.`
-                );
-                return;
-              }
-
-              try {
-                await github.rest.issues.createLabel({
-                  owner,
-                  repo,
-                  name: labelName,
-                  color: "ededed",
-                  description: "Dependency update (Dependabot/Renovate)",
-                });
-              } catch (createError) {
-                if (createError.status !== 422) {
-                  core.warning(
-                    `Could not create label '${labelName}' for PR #${pr.number}: ${createError.message}. Skipping label application.`
-                  );
-                  return;
-                }
-              }
-
-            try {
               await github.rest.issues.addLabels({
                 owner,
                 repo,
@@ -142,23 +114,4 @@ jobs:
                 `Could not apply '${labelName}' to PR #${pr.number}: ${error.message} ` +
                   `(labelling is best-effort, not failing this check).`
               );
-fix/auto-label-permissions
-
-            } catch (error) {
-              core.warning(
-                `Could not apply label '${labelName}' to PR #${pr.number}: ${error.message}. Skipping.`
-              );
-              return;
-            }
-
-              core.info(`Applied '${labelName}' to PR #${pr.number}.`);
-            } catch (error) {
-              if (error.status === 403) {
-                core.warning(
-                  `Insufficient permissions to apply label '${labelName}' to PR #${pr.number}: ${error.message}`
-                );
-              } else {
-                throw error;
-              }
- main
             }
