@@ -25,21 +25,19 @@ export function WalletButton() {
     ledgerDisconnected,
     connect,
     disconnect,
+    hydrated,
   } = useWallet();
   const t = useTranslations();
 
-  // A saved connection is still being restored. Render a placeholder with the
-  // same footprint as the button instead of "Connect wallet", which would
-  // otherwise flip to the connected state and reflow the header.
-  if (restoring && !address) {
+  if (!hydrated || (restoring && !address)) {
     return (
       <div
         style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.35rem" }}
       >
-        <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center" }}>
-          <span className="sr-only">Restoring wallet connection…</span>
-          <span className="skeleton wallet-skeleton" aria-hidden="true" />
-        </div>
+        <button className="btn btn-primary" disabled aria-label={t("wallet.connect")}>
+          <IconWallet size={14} aria-hidden="true" />
+          {t("wallet.connect")}
+        </button>
       </div>
     );
   }
@@ -130,7 +128,7 @@ export function WalletButton() {
               lineHeight: 1.4,
             }}
           >
-            Network mismatch — switch your wallet to {NETWORK} to continue
+            Network mismatch - switch your wallet to {NETWORK} to continue
           </span>
         </div>
       )}

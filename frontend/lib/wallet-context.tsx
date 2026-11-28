@@ -13,6 +13,7 @@ import {
   getNetworkOk,
   WalletConnectError,
 } from "./wallet";
+import { useHydrated } from "./hooks/useHydrated";
 import { invalidateWalletSessionCache } from "./cache-invalidation";
 
 const STORAGE_KEY = "stellarcred:wallet-id";
@@ -27,6 +28,7 @@ interface WalletState {
   /** Kit id of the connected wallet ("ledger" for a hardware wallet). */
   walletId: string;
   connecting: boolean;
+  hydrated: boolean;
   error: WalletConnectError | null;
   networkMismatch: boolean;
   /** Timestamp of the first failed heartbeat in the current disconnect window. */
@@ -48,6 +50,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [restoring, setRestoring] = useState(true);
   const [walletId, setWalletId] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const hydrated = useHydrated();
   const [error, setError] = useState<WalletConnectError | null>(null);
   const [networkMismatch, setNetworkMismatch] = useState(false);
   const [ledgerDisconnected, setLedgerDisconnected] = useState(false);
@@ -85,7 +88,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .finally(() => {
-        if (!cancelled) setRestoring(false);
+        setRestoring(false);
       });
     return () => {
       cancelled = true;
@@ -121,7 +124,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // Poll the wallet's live network while connected, so a network switch made
   // after connecting is caught without requiring a reconnect.
   useEffect(() => {
-    if (!address) return;
+    if (!address) {
+      return;
+    }
     let cancelled = false;
     const check = () => {
       getNetworkOk().then((ok) => {
@@ -202,7 +207,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const disconnect = useCallback(() => {
     invalidateWalletSessionCache({ reason: "disconnect", address });
     setAddress("");
-    setWalletId("");
+    setNetworkMismatch(false);
     setError(null);
     setNetworkMismatch(false);
     setLedgerDisconnected(false);
@@ -219,8 +224,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     <WalletContext.Provider
       value={{
         address,
-        restoring,
         walletId,
+        restoring,
+        hydrated,
         connecting,
         error,
         networkMismatch,
@@ -242,6 +248,7 @@ export function useWallet(): WalletState {
 }
 
 export function usePreviewMode(): boolean {
-  const { address } = useWallet();
+  const { address, hydrated, restoring } = useWallet();
+  if (!hydrated || restoring) return false;
   return !address;
 }
