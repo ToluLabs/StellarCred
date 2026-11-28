@@ -69,66 +69,14 @@ pub struct EventContractUpgraded {
     pub upgraded_at: u64,
 }
 
-/// Payload emitted when a verification key update is proposed (#1011).
-/// Topics: ("cred_ver", "vk_prop", credential_type)
+/// Individual proof representation for batch verification (#1015).
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EventVkProposed {
-    pub proposer: Address,
-    pub version: u32,
-    pub proposed_at: u64,
-}
-
-/// Payload emitted when a verification key update proposal receives an approval (#1011).
-/// Topics: ("cred_ver", "vk_appr", credential_type)
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EventVkApproved {
-    pub approver: Address,
-    pub version: u32,
-    pub approvals_count: u32,
-    pub threshold: u32,
-}
-
-/// Payload emitted when a pending verification key update proposal is cancelled (#1011).
-/// Topics: ("cred_ver", "vk_canc", credential_type)
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EventVkCancelled {
-    pub caller: Address,
-    pub version: u32,
-}
-
-/// Payload emitted when the verification key timelock/multisig configuration is updated (#1011).
-/// Topics: ("cred_ver", "tl_cfg")
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EventVkTimelockConfigured {
-    pub admin: Address,
-    pub threshold: u32,
-    pub delay_seconds: u64,
-}
-
-/// Multi-signature and timelock configuration for verification key updates (#1011).
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VkTimelockConfig {
-    pub signers: Vec<Address>,
-    pub threshold: u32,
-    pub delay_seconds: u64,
-}
-
-/// A pending verification key update proposal (#1011).
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VkProposal {
+pub struct ProofItem {
     pub credential_type: Symbol,
-    pub version: u32,
-    pub vk: Bytes,
-    pub proposed_by: Address,
-    pub proposed_at: u64,
-    pub approvals: Vec<Address>,
-    pub approved_at: u64,
+    pub proof: Bytes,
+    pub public_inputs: Bytes,
+    pub vk_version: Option<u32>,
 }
 
 // ── Contract versioning ──────────────────────────────────────────────────────
@@ -1044,6 +992,44 @@ impl CredentialVerifier {
             .instance()
             .get(&DataKey::LastUpgradeTimestamp)
             .unwrap_or(0)
+    }
+
+    /// Batch-verify multiple credential proofs in a single atomic transaction (#1015).
+    /// Executes validation while isolating individual proof failure status.
+    pub fn batch_verify(env: Env, items: soroban_sdk::Vec<ProofItem>) -> soroban_sdk::Vec<bool> {
+        let mut results = soroban_sdk::Vec::new(&env);
+        for item in items.iter() {
+            let res = Self::verify_proof(
+                env.clone(),
+                item.credential_type,
+                item.proof,
+                item.public_inputs,
+                item.vk_version,
+            );
+            results.push_back(res);
+        }
+        results
+    }
+
+    /// Returns the active storage schema version (#1016).
+    pub fn storage_schema_version(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&symbol_short!("schema_v"))
+            .unwrap_or(1)
+    }
+
+    /// Migration guard for upgrading storage to state schema v2 (#1016).
+    pub fn migrate_storage_v2(env: Env) -> u32 {
+        Self::require_role(&env, &symbol_short!("admin"));
+        let current = Self::storage_schema_version(env.clone());
+        if current >= 2 {
+            return current;
+        }
+        env.storage()
+            .persistent()
+            .set(&symbol_short!("schema_v"), &2u32);
+        2
     }
 }
 
