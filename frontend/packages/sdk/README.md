@@ -26,17 +26,34 @@ npm install @stellarcred/sdk
 
 ## API Reference
 
-Generate the SDK API documentation locally:
+The comprehensive, searchable API reference generated from the SDK TSDoc is automatically published on every update to `main`:
+
+👉 **[Browse the StellarCred SDK API Reference](https://psalmuel01.github.io/StellarCred/)**
+
+It includes full documentation, signatures, options, and return types for:
+
+- Core claim verification (`hasClaim`, `hasClaims`, `getClaim`, `getClaims`, `watchClaim`)
+- URL generation and redirect handling (`buildVerifyUrl`, `parseReturnParams`)
+- Anti-spoofing challenge and signature verification (`createWalletChallenge`, `verifyWalletClaim`)
+- React integration (`useStellarCred`)
+- Server-side runtime utilities (`@stellarcred/sdk/server`)
+- Error types and taxonomy (`RpcError`, `ContractError`, `ConfigError`, `IndexerError`, etc.)
+
+### Generate locally
+
+You can also generate the API reference locally from source:
 
 ```bash
 pnpm docs:api
 ```
 
-The generated documentation is written to:
+The generated HTML documentation is written to:
 
 ```
 docs/api/
 ```
+
+Open `docs/api/index.html` in your browser to view it.
 
 ## Quick start
 
@@ -301,6 +318,33 @@ const incomeOk = await StellarCred.hasClaim(wallet, "income", {
 });
 ```
 
+#### Dry-run mode for integrators
+
+Use `dryRun` when wiring gates, quotas, or test environments before real
+credentials exist. It is explicit per call, accepts named fixture states, and
+never talks to RPC.
+
+```ts
+const dryRun = {
+  enabled: true,
+  claims: [
+    { wallet: "demo-wallet", claimType: "kyc", state: "verified", issuer: "G...ISSUER" },
+    { wallet: "demo-wallet", claimType: "funds", state: "unmet_threshold", threshold: 100 },
+  ],
+} as const;
+
+const ok = await StellarCred.hasClaim("demo-wallet", "kyc", { dryRun });
+const status = await StellarCred.checkClaimStatus("demo-wallet", "funds", {
+  dryRun,
+  minThreshold: 1000,
+});
+```
+
+Supported fixture states are `verified`, `not_verified`, `expired`, `revoked`,
+`unmet_threshold`, `untrusted_issuer`, `wrong_issuer`, and `rpc_failure`.
+`rpc_failure` returns `false` by default and throws `RpcError` when
+`throwOnError: true` is used, matching live RPC behavior.
+
 ### `getClaim(wallet, claimType, opts?)`
 
 Returns the full claim record with `verifiedAt` and `expiry` timestamps, or `null` if the wallet has no current proof of that type. Respects `trustedIssuers`.
@@ -419,6 +463,41 @@ const claims = await StellarCred.getClaims(wallet);
 //   funds:        { verified: false },
 // }
 ```
+
+### `createUniquenessAttestation(input)`
+
+Creates a deterministic, campaign-scoped nullifier for leaderboard-safe
+airdrops and quota systems. The wallet is included in the attestation object for
+auditability, while protocols store or compare only the `nullifier` when they
+need proof-of-uniqueness without exposing raw claim details in public rankings.
+
+```ts
+const attestation = await StellarCred.createUniquenessAttestation({
+  wallet,
+  campaignId: "founders-airdrop-1",
+  scope: "leaderboard",
+  epoch: "2026-09",
+});
+
+await claimAirdrop({ nullifier: attestation.nullifier });
+```
+
+Use separate `scope` values for `airdrop`, `quota`, and `leaderboard` contexts
+so the same holder cannot be correlated across unrelated protocol surfaces.
+
+## Bundle visibility
+
+The SDK has local bundle guards that do not require CI workflow permissions:
+
+```bash
+pnpm build
+pnpm bundle:budget   # fail if browser/server entrypoints exceed budget
+pnpm bundle:report   # write BUNDLE_COMPOSITION.md with output shares
+```
+
+Run these before PRs that touch SDK imports, exports, or dependencies. The
+package keeps `"sideEffects": false` so browser bundlers can tree-shake unused
+helpers from the main entrypoint.
 
 ### `watchClaim(wallet, claimType, opts?)`
 
@@ -800,6 +879,37 @@ Requires `@stellar/stellar-sdk >= 13.0.0` as a peer dependency.
 ```bash
 npm install @stellar/stellar-sdk
 ```
+
+## Deterministic Stellar keys (BIP-39 / SEP-5)
+
+Derive issuer keys or holder identities with Stellar's standard SEP-5 path.
+The default is the primary account, `m/44'/148'/0'`; set `accountIndex` to
+derive `m/44'/148'/x'`.
+
+```ts
+import { deriveStellarKeypairFromMnemonic } from "@stellarcred/sdk";
+
+const keypair = deriveStellarKeypairFromMnemonic(recoveryPhrase, {
+  accountIndex: 0,
+  passphrase: optionalBip39Passphrase,
+});
+
+// keypair.publicKey is the deterministic G-address.
+// Keep keypair.secretKey server-side and never log it.
+```
+
+Mnemonic validation and BIP-39 seed generation use audited `@scure/bip39`;
+HMAC-SHA512 and Ed25519 operations use the audited `@noble` libraries already
+used by StellarCred. The SDK overwrites every mutable BIP-39 seed, SLIP-0010
+chain code, derived private key, and temporary public-key buffer before return.
+
+For callers that already hold a binary seed,
+`deriveStellarKeypairFromSeed(seed, path)` supports hardened SLIP-0010 Ed25519
+paths. It **consumes and zeroes the supplied seed buffer**, even if derivation
+throws. Pass a copy if that buffer must be retained. Returned Stellar
+S-addresses are immutable JavaScript strings and cannot be zeroed; minimize
+their lifetime and never place mnemonics, passphrases, seeds, or secret keys in
+logs, telemetry, URLs, or browser storage.
 
 ## Trust boundary
 

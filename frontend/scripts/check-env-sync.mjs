@@ -26,8 +26,6 @@ const EXCLUDE_FILE_PATTERNS = [
   /\.test\.(ts|tsx|js|mjs|jsx)$/,
   /\.spec\.(ts|tsx|js|mjs|jsx)$/,
   /validate-deploy-env\.mjs$/,
-  // Deny-list of forbidden NEXT_PUBLIC_ variables; these names are security
-  // assertions, not configuration, so they must not be documented as usable.
   /assert-no-issuer-secrets-in-bundle\.mjs$/,
 ];
 
@@ -44,7 +42,7 @@ function collectFiles(dir, extensions = new Set([".ts", ".tsx", ".js", ".mjs", "
       const relPath = relative(ROOT_DIR, fullPath).replace(/\\/g, "/");
       if (entry.isDirectory()) {
         const shouldSkip = [...EXCLUDE_DIRS].some(
-          (e) => relPath === e || relPath.startsWith(e + "/"),
+          (e) => relPath.split("/").includes(e) || relPath === e || relPath.startsWith(e + "/"),
         );
         if (!shouldSkip) walk(fullPath);
         continue;

@@ -249,7 +249,7 @@ export function checkMultiInstanceStoreWarning(): void {
   if (_warnedMultiInstance) return;
   if (isMultiInstanceOrServerless() && !isSharedStoreConfigured()) {
     _warnedMultiInstance = true;
-    // eslint-disable-next-line no-console
+
     console.warn(
       "\n================================================================================\n" +
         "[StellarCred] ⚠️ WARNING: Running in a multi-instance or serverless environment\n" +

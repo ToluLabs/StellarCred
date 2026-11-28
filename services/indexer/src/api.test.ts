@@ -120,6 +120,15 @@ describe("GET /health", () => {
     expect(res.body.lastError).toBe("timeout");
   });
 
+  it("reports degraded when ledger lag exceeds warn threshold", async () => {
+    app = buildApp(db, makeIngester({ consecutiveErrors: 0, lag: 35 }));
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("degraded");
+    expect(res.body.ready).toBe(true);
+    expect(res.body.lag).toBe(35);
+  });
+
   it("reports error when consecutiveErrors >= 3", async () => {
     app = buildApp(db, makeIngester({ consecutiveErrors: 5, lag: 120 }));
     const res = await request(app).get("/health");
@@ -129,7 +138,36 @@ describe("GET /health", () => {
     expect(res.body.lag).toBe(120);
   });
 
-  it("includes service and version metadata", async () => {
+  it("reports error when lag >= maxLedgerLag even with zero fetch errors", async () => {
+    app = buildApp(db, makeIngester({ consecutiveErrors: 0, lag: 150 }));
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("error");
+    expect(res.body.ready).toBe(false);
+    expect(res.body.lag).toBe(150);
+  });
+
+  it("respects custom lag thresholds from config", async () => {
+    const customConfig = {
+      ...makeConfig(tmpFile),
+      warnLedgerLag: 10,
+      maxLedgerLag: 50,
+    };
+    app = buildApp(db, makeIngester({ consecutiveErrors: 0, lag: 20 }), customConfig);
+    const resDegraded = await request(app).get("/health");
+    expect(resDegraded.status).toBe(200);
+    expect(resDegraded.body.status).toBe("degraded");
+    expect(resDegraded.body.warnLedgerLag).toBe(10);
+    expect(resDegraded.body.maxLedgerLag).toBe(50);
+
+    app = buildApp(db, makeIngester({ consecutiveErrors: 0, lag: 55 }), customConfig);
+    const resError = await request(app).get("/health");
+    expect(resError.status).toBe(200);
+    expect(resError.body.status).toBe("error");
+    expect(resError.body.ready).toBe(false);
+  });
+
+  it("includes service and version metadata and no credential data", async () => {
     const res = await request(app).get("/health");
     expect(res.body.service).toBe("stellarcred-indexer");
     expect(typeof res.body.version).toBe("string");
@@ -137,6 +175,47 @@ describe("GET /health", () => {
     expect(res.body.ready).toBe(true);
     expect(typeof res.body.uptimeSeconds).toBe("number");
     expect(Number.isNaN(Date.parse(res.body.timestamp))).toBe(false);
+    expect(res.body.maxLedgerLag).toBeDefined();
+    expect(res.body.warnLedgerLag).toBeDefined();
+    // Verify zero credential-level data exposed
+    for (const key of Object.keys(res.body)) {
+      expect(key).not.toMatch(/wallet|claim|credential|proof|secret/i);
+    }
+  });
+});
+
+// ── /ready ──────────────────────────────────────────────────────────────────
+
+describe("GET /ready", () => {
+  it("returns 200 when service is healthy", async () => {
+    const res = await request(app).get("/ready");
+    expect(res.status).toBe(200);
+    expect(res.body.ready).toBe(true);
+    expect(res.body.status).toBe("ok");
+  });
+
+  it("returns 200 when service is degraded but still functional", async () => {
+    app = buildApp(db, makeIngester({ consecutiveErrors: 1, lag: 40 }));
+    const res = await request(app).get("/ready");
+    expect(res.status).toBe(200);
+    expect(res.body.ready).toBe(true);
+    expect(res.body.status).toBe("degraded");
+  });
+
+  it("returns 503 when ledger lag exceeds max threshold", async () => {
+    app = buildApp(db, makeIngester({ consecutiveErrors: 0, lag: 150 }));
+    const res = await request(app).get("/ready");
+    expect(res.status).toBe(503);
+    expect(res.body.ready).toBe(false);
+    expect(res.body.status).toBe("error");
+  });
+
+  it("returns 503 when consecutive fetch errors exceed threshold", async () => {
+    app = buildApp(db, makeIngester({ consecutiveErrors: 3, lastError: "Horizon down" }));
+    const res = await request(app).get("/ready");
+    expect(res.status).toBe(503);
+    expect(res.body.ready).toBe(false);
+    expect(res.body.status).toBe("error");
   });
 });
 

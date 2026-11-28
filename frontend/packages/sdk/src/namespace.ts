@@ -74,7 +74,27 @@ import {
   CredentialValidationError,
 } from "./validateCredential";
 import { getIssuer, isValidIssuer, listIssuerIds, listIssuers } from "./issuers";
+import {
+  clearWasmCache,
+  compileWasm,
+  detectWasmRuntime,
+  getWasmCacheSize,
+  initWasm,
+  isStreamingSupported,
+  isWasmSupported,
+  WasmLoadError,
+} from "./wasm";
 import { telemetry } from "./telemetry";
+import {
+  clearWasmCache,
+  compileWasm,
+  detectWasmRuntime,
+  getWasmCacheSize,
+  initWasm,
+  isStreamingSupported,
+  isWasmSupported,
+  WasmLoadError,
+} from "./wasm";
 
 export const StellarCred = {
   configure,
@@ -147,7 +167,25 @@ export const StellarCred = {
   TransactionSubmissionError,
   CredentialValidationError,
   parseContractError,
+  // Universal WASM helpers
+  initWasm,
+  compileWasm,
+  detectWasmRuntime,
+  isWasmSupported,
+  isStreamingSupported,
+  clearWasmCache,
+  getWasmCacheSize,
+  WasmLoadError,
   telemetry,
+  // Universal WASM helpers
+  initWasm,
+  compileWasm,
+  detectWasmRuntime,
+  isWasmSupported,
+  isStreamingSupported,
+  clearWasmCache,
+  getWasmCacheSize,
+  WasmLoadError,
 };
 
 export default StellarCred;

@@ -34,9 +34,9 @@ function CopyButton({ text }: { text: string }) {
 
 function StatusBadge({ status }: { status: SubmissionRecord["status"] }) {
   const c: Record<string, { bg: string; text: string; dot: string }> = {
-    confirmed: { bg: "rgba(62,207,142,0.1)", text: "#3ecf8e", dot: "#3ecf8e" },
-    pending: { bg: "rgba(245,158,11,0.1)", text: "#f59e0b", dot: "#f59e0b" },
-    failed: { bg: "rgba(240,96,77,0.1)", text: "#f0604d", dot: "#f0604d" },
+    confirmed: { bg: "rgba(74,234,164,0.1)", text: "#4aeaa4", dot: "#4aeaa4" },
+    pending: { bg: "rgba(250,197,88,0.1)", text: "#fac558", dot: "#fac558" },
+    failed: { bg: "rgba(255,115,104,0.1)", text: "#ff7368", dot: "#ff7368" },
   };
   const s = c[status] || c.pending;
   return (

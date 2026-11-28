@@ -14,6 +14,7 @@ import {
   WalletConnectError,
 } from "./wallet";
 import { useHydrated } from "./hooks/useHydrated";
+import { invalidateWalletSessionCache } from "./cache-invalidation";
 
 const STORAGE_KEY = "stellarcred:wallet-id";
 const NETWORK_POLL_MS = 4_000;
@@ -77,11 +78,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setAddress(restoredAddress);
           setWalletId(saved);
         }
-        if (cancelled) return;
-        setAddress(restoredAddress);
-        setWalletId(saved);
       })
       .catch(() => {
+        invalidateWalletSessionCache({ reason: "disconnect" });
         try {
           localStorage.removeItem(STORAGE_KEY);
         } catch {
@@ -131,7 +130,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     const check = () => {
       getNetworkOk().then((ok) => {
-        if (!cancelled) setNetworkMismatch(!ok);
+        if (!cancelled) {
+          setNetworkMismatch((prev) => {
+            const mismatch = !ok;
+            if (!prev && mismatch) {
+              invalidateWalletSessionCache({ reason: "network-change", address });
+            }
+            return mismatch;
+          });
+        }
       });
     };
     check();
@@ -173,8 +180,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setConnecting(true);
     setError(null);
     try {
-      const { address, walletId } = await kitConnect();
-      setAddress(address);
+      const { address: newAddress, walletId } = await kitConnect();
+      if (address && address !== newAddress) {
+        invalidateWalletSessionCache({ reason: "account-change", address: newAddress });
+      }
+      setAddress(newAddress);
       setWalletId(walletId);
       setLedgerDisconnected(false);
       setSessionLostAt(null);
@@ -192,9 +202,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setConnecting(false);
     }
-  }, []);
+  }, [address]);
 
   const disconnect = useCallback(() => {
+    invalidateWalletSessionCache({ reason: "disconnect", address });
     setAddress("");
     setNetworkMismatch(false);
     setError(null);
@@ -207,7 +218,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // storage unavailable - nothing to remove
     }
-  }, []);
+  }, [address]);
 
   return (
     <WalletContext.Provider

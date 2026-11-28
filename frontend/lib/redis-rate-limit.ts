@@ -39,7 +39,7 @@
  * | `REDIS_KEY_PREFIX`| `sc:rl:`         | Namespace prefix for all rate-limit  |
  * |                   |                  | keys to avoid collisions in a shared |
  * |                   |                  | Redis instance.                      |
- * | `REDIS_TLS`       | auto from URL    | Set to `"1"` to force TLS regardless |
+ * | `REDIS_TLS`       | auto from URL    | Set `"1"` to force TLS regardless    |
  * |                   |                  | of the scheme in REDIS_URL.          |
  *
  * ## Graceful degradation
@@ -92,7 +92,7 @@ async function getRedisClient(): Promise<IoRedis | null> {
   _redisConnecting = true;
   try {
     // Dynamic import — fails gracefully if ioredis is not installed.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const { default: Redis } = await (Function('return import("ioredis")')() as Promise<{
       default: { new (url: string, opts?: Record<string, unknown>): IoRedis };
     }>);
