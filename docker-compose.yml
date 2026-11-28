@@ -22,6 +22,10 @@ services:
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-6}
       START_LEDGER: ${START_LEDGER:-0}
       PORT: 3001
+      # Version reported by GET /health. Set it to the deployed version (or the
+      # build SHA) so a probe response identifies the running build. Defaults to
+      # "dev" when unset; see docs/HEALTHCHECKS.md.
+      INDEXER_VERSION: ${INDEXER_VERSION:-dev}
     volumes:
       # Persist SQLite data across container restarts
       - indexer_data:/data
@@ -48,6 +52,8 @@ services:
       NEXT_PUBLIC_NETWORK_PASSPHRASE: ${NEXT_PUBLIC_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
       NEXT_PUBLIC_ISSUER_ADDRESS: ${NEXT_PUBLIC_ISSUER_ADDRESS:-}
       NEXT_PUBLIC_STELLARCRED_BASE_URL: ${NEXT_PUBLIC_STELLARCRED_BASE_URL:-}
+      # Version reported by GET /api/health and GET /api/ready.
+      NEXT_PUBLIC_APP_VERSION: ${NEXT_PUBLIC_APP_VERSION:-dev}
       NEXT_PUBLIC_ISSUER_REGISTRY_ID: ${NEXT_PUBLIC_ISSUER_REGISTRY_ID:-}
       NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID: ${NEXT_PUBLIC_CREDENTIAL_VERIFIER_ID:-}
       NEXT_PUBLIC_PROOF_REGISTRY_ID: ${NEXT_PUBLIC_PROOF_REGISTRY_ID:-}
@@ -63,6 +69,19 @@ services:
       PLAID_ENV: ${PLAID_ENV:-sandbox}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
+    # Liveness probe: /api/health performs no dependency I/O, so it answers as
+    # long as the Next.js server can serve requests. Use /api/ready to gate
+    # traffic instead — it checks RPC, signer, contracts and Persona.
+    # See docs/HEALTHCHECKS.md.
+    healthcheck:
+      test: ["CMD", "node", "-e",
+        "require('http').get('http://localhost:3000/api/health',r=>{process.exit(r.statusCode===200?0:1)})"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # Next.js needs longer to boot than the indexer; give it room before
+      # failed probes count against the container.
+      start_period: 20s
     depends_on:
       indexer:
         condition: service_healthy

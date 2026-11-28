@@ -316,7 +316,7 @@ export function useBatchProofFlow(
         toast.error(`Batch submission failed: ${parsed.friendly}`);
       }
     })();
-  }, [allReady, networkMismatch, toast]); // eslint-disable-line react-hooks/exhaustive-deps -- allReady is the trigger; refs avoid stale closures
+  }, [allReady, networkMismatch, toast]);
 
   return {
     credStates,

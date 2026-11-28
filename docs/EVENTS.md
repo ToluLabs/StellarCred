@@ -641,7 +641,9 @@ of decoding these events themselves. It consumes the indexer service
 Because both endpoints derive from the event payloads above, event schema
 stability (see §Schema Stability Guarantees) is what makes the subscription
 feed safe to build on. See the SDK README §`subscribeClaims` for the callback
-and webhook payload schemas.
+and webhook payload schemas. For the ordering keys, boundaries, duplicate
+handling, and stale/invalid cursor rules those cursors must follow, see
+[INDEXER_CURSOR_CONTRACT.md](INDEXER_CURSOR_CONTRACT.md).
 
 ---
 

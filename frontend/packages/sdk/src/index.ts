@@ -17,22 +17,16 @@
 // security decision. See the SDK README for setup and trust-model details.
 
 export * from "./claims";
-export * from "./issuers";
+export * from "./issuers"; // IssuerRegistry reads
 export * from "./capabilities";
 export * from "./challenge";
-export * from "./presentation-token"; // Server-side presentation tokens (#1062)
-export * from "./subscriptions";
-export * from "./errors";
-export * from "./telemetry";
-export * from "./validateCredential";
-export * from "./buildVerifyUrl";
-export * from "./offline"; // Air-gapped presentation verification (#1059)
-export { submitTransaction } from "./submit"; // Transaction submission with retry (#744)
-export type { SubmitTransactionOptions } from "./submit";
+export * from "./uniqueness";
 export { createClaimGate } from "./core";
 export type { ClaimGateConfig, ClaimGateState, ClaimGateListener, ClaimGate } from "./core";
 export { useStellarCred } from "./react";
 export type { UseStellarCredResult } from "./react";
+export * from "./version";
+export * from "./wasm";
 
 // Version helpers: Issue #841
 export * from "./version";

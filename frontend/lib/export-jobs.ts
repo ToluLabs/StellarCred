@@ -20,6 +20,7 @@ export interface ExportJob {
   expiresAt?: number;
   downloadUrl?: string;
   downloadToken?: string;
+  checksum?: string;
   error?: string;
   fileSize?: number;
 }

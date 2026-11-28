@@ -16,7 +16,7 @@ describe("telemetry-privacy-regression (#975)", () => {
     sig: [1, 2, 3, 4, 5],
     issuerPrivateKey: "ed25519_secret_key_bytes",
     passphrase: "super_secret_user_passphrase",
-    credentialJson: '{"private":"everything"}',
+    credentialJson: '{\"private\":\"everything\"}',
   };
 
   it("stripSensitiveFields strips all sensitive credential data and keeps only SAFE_FIELDS", () => {
@@ -53,19 +53,19 @@ describe("telemetry-privacy-regression (#975)", () => {
         id: "run-1",
         status: "ok",
         credentialType: "kyc",
-        startedAt: 1_700_000_000_000,
+        startedAt: 1700000000000,
         stages: [
-          { stage: "witness", durationMs: 200, budgetMs: 20_000, overBudget: false },
-          { stage: "prove", durationMs: 800, budgetMs: 60_000, overBudget: false },
-          { stage: "submit", durationMs: 400, budgetMs: 15_000, overBudget: false },
+          { stage: "witness", durationMs: 200, budgetMs: 1000, overBudget: false },
+          { stage: "prove", durationMs: 800, budgetMs: 2000, overBudget: false },
+          { stage: "submit", durationMs: 400, budgetMs: 1000, overBudget: false },
         ],
-        timeToFirstProofMs: 1400,
-        totalMs: 1800,
+        timeToFirstProofMs: 1000,
+        totalMs: 1400,
         exceededBudget: false,
-        deviceClass: "desktop",
-        cores: 8,
-        memoryGB: 16,
+        cores: 4,
+        memoryGB: 8,
         warm: false,
+        deviceClass: "desktop",
       },
     ];
 

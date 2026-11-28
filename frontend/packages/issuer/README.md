@@ -64,14 +64,14 @@ Each call to `issue()` produces one independent credential — its own preimage,
 
 ## Credential types and attributes
 
-| `type` | required `attribute` field | claim proved |
-|---|---|---|
-| `kyc` | — (none) | identity verified |
-| `age` | `date_of_birth` (ISO date string) | age ≥ threshold |
-| `income` | `income` (numeric string) | income > threshold |
-| `jurisdiction` | `country_code` (numeric string) | country not restricted |
-| `funds` | `balance` (numeric string) | balance > threshold |
-| `accreditation` | `net_worth` (numeric string) | net worth ≥ threshold |
+| `type`          | required `attribute` field        | claim proved           |
+| --------------- | --------------------------------- | ---------------------- |
+| `kyc`           | — (none)                          | identity verified      |
+| `age`           | `date_of_birth` (ISO date string) | age ≥ threshold        |
+| `income`        | `income` (numeric string)         | income > threshold     |
+| `jurisdiction`  | `country_code` (numeric string)   | country not restricted |
+| `funds`         | `balance` (numeric string)        | balance > threshold    |
+| `accreditation` | `net_worth` (numeric string)      | net worth ≥ threshold  |
 
 `claimParams` (optional) controls the human-readable `claim` label and the threshold a downstream verifier checks against — e.g. `{ threshold_years: "21" }` for `age`, `{ threshold: "250000" }` for `income`/`funds`.
 
@@ -83,15 +83,15 @@ Each call to `issue()` produces one independent credential — its own preimage,
 
 ### `issuer.issue(params): Promise<Credential>`
 
-| param | type | notes |
-|---|---|---|
-| `type` | `CredentialType` | one of the six types above |
-| `holder` | `string` | the holder's Stellar wallet address |
-| `issuerId` | `string` | your issuer identifier |
-| `issuerName` | `string` | human-readable issuer name, stored in the credential |
-| `expiry` | `string \| number` | a duration string (`"90 days"`) or an absolute unix timestamp |
-| `attribute` | `Record<string, string>` | type-specific fields, see table above |
-| `claimParams` | `object` (optional) | thresholds / restricted list for the claim label |
+| param         | type                     | notes                                                         |
+| ------------- | ------------------------ | ------------------------------------------------------------- |
+| `type`        | `CredentialType`         | one of the six types above                                    |
+| `holder`      | `string`                 | the holder's Stellar wallet address                           |
+| `issuerId`    | `string`                 | your issuer identifier                                        |
+| `issuerName`  | `string`                 | human-readable issuer name, stored in the credential          |
+| `expiry`      | `string \| number`       | a duration string (`"90 days"`) or an absolute unix timestamp |
+| `attribute`   | `Record<string, string>` | type-specific fields, see table above                         |
+| `claimParams` | `object` (optional)      | thresholds / restricted list for the claim label              |
 
 Returns a `Credential`:
 
@@ -103,10 +103,10 @@ interface Credential {
   issuer: string;
   issuerId: string;
   holder: string;
-  value: string;        // circuit preimage
-  salt: string;         // 31-byte random field element
-  commitment: string;   // Poseidon2([value, salt], 2)
-  sig: number[];        // secp256k1 signature over the raw commitment (prehash: false)
+  value: string; // circuit preimage
+  salt: string; // 31-byte random field element
+  commitment: string; // Poseidon2([value, salt], 2)
+  sig: number[]; // secp256k1 signature over the raw commitment (prehash: false)
   issuerPubX: number[]; // 32 bytes
   issuerPubY: number[]; // 32 bytes
   issuedAt: number;
