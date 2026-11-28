@@ -24,6 +24,10 @@
  *   AggregateLayoutInvalid  = 10
  *   SubmissionsPaused       = 11
  *   InvalidExpiry           = 12
+ *   RoleNotHeld             = 13
+ *   RoleHolderMismatch      = 14
+ *   NoPendingAdmin          = 15
+ *   NullifierAlreadyUsed    = 16
  */
 export const PROOF_REGISTRY_ERRORS: Record<number, string> = {
   1: "Contracts not initialised — check that all contract IDs are set in the environment.",
@@ -38,6 +42,10 @@ export const PROOF_REGISTRY_ERRORS: Record<number, string> = {
   10: "Aggregate proof layout invalid — the number of credentials or public inputs don't match the expected format. Re-generate the aggregate proof.",
   11: "Submissions paused — the protocol admin has temporarily halted new proof submissions. Try again later.",
   12: "Invalid expiry — the credential expiry is either in the past or too far in the future. Re-issue with a valid validity window.",
+  13: "Role not held - caller does not hold the required role for this action.",
+  14: "Role holder mismatch - specified address is not the current holder of the role.",
+  15: "No pending admin - accept admin called with no active admin proposal.",
+  16: "Nullifier already used - this credential has already been consumed in this context.",
 };
 
 // ── ContractError ─────────────────────────────────────────────────────────────

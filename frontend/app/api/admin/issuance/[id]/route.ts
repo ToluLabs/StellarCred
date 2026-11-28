@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> },
 ) {
   const denied = requireAdmin(req);
   if (denied) return denied;
@@ -24,7 +24,7 @@ export async function POST(
     return NextResponse.json({ error: "action must be retry or resolve" }, { status: 400 });
   }
 
-  const { id: rawId } = await params;
+  const { id: rawId } = await context.params;
   const id = decodeURIComponent(rawId);
   const result = body.action === "retry" ? retryIssuance(id) : resolveIssuance(id, actor);
   if (!result.ok) {

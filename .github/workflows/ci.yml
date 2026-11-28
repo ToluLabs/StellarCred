@@ -106,6 +106,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Check API reference against contract source
         run: node .github/scripts/check-api-reference.mjs
+      - name: Verify contract error codes compatibility (#967)
+        run: node scripts/verify-contract-errors.mjs
 
   # ── Docs: no new process artifacts (issue #684) ──────────────────────────
   # Implementation summaries, status reports and PR descriptions document how a

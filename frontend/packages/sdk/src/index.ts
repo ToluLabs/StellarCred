@@ -28,7 +28,7 @@ export type { UseStellarCredResult } from "./react";
 export * from "./version";
 export * from "./wasm";
 
-// Version helpers — Issue #841
+// Version helpers: Issue #841
 export * from "./version";
 // The `StellarCred` namespace object lives in its own module so this entry
 // point stays a lean barrel; it is re-exported (with `default`) from here.

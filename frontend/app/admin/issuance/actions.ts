@@ -29,7 +29,8 @@ export async function issuanceQueueAction(
   action: "retry" | "resolve",
   actor: string,
 ): Promise<IssuanceActionResult> {
-  if (!(await isAdminPageAuthorized())) return { success: false, error: "unauthorized" };
+  const authorized = await isAdminPageAuthorized();
+  if (!authorized) return { success: false, error: "unauthorized" };
   const who = actor.trim();
   if (!who) return { success: false, error: "actor is required" };
 

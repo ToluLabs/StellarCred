@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   ContractError,
   ContractErrorCode,
+  IssuerRegistryErrorCode,
+  CredentialVerifierErrorCode,
+  GatedPoolErrorCode,
+  isContractErrorRetryable,
   parseContractError,
   PROOF_REGISTRY_ERROR_MESSAGES,
   RpcError,
@@ -136,12 +140,16 @@ describe("ContractErrorCode constants", () => {
     expect(ContractErrorCode.AggregateLayoutInvalid).toBe(10);
     expect(ContractErrorCode.SubmissionsPaused).toBe(11);
     expect(ContractErrorCode.InvalidExpiry).toBe(12);
+    expect(ContractErrorCode.RoleNotHeld).toBe(13);
+    expect(ContractErrorCode.RoleHolderMismatch).toBe(14);
+    expect(ContractErrorCode.NoPendingAdmin).toBe(15);
+    expect(ContractErrorCode.NullifierAlreadyUsed).toBe(16);
   });
 });
 
 describe("PROOF_REGISTRY_ERROR_MESSAGES", () => {
   it("has messages for all error codes", () => {
-    for (let code = 1; code <= 12; code++) {
+    for (let code = 1; code <= 16; code++) {
       expect(PROOF_REGISTRY_ERROR_MESSAGES[code]).toBeDefined();
       expect(typeof PROOF_REGISTRY_ERROR_MESSAGES[code]).toBe("string");
       expect(PROOF_REGISTRY_ERROR_MESSAGES[code].length).toBeGreaterThan(0);
@@ -155,6 +163,34 @@ describe("PROOF_REGISTRY_ERROR_MESSAGES", () => {
     expect(PROOF_REGISTRY_ERROR_MESSAGES[4]).toContain("not trusted");
     expect(PROOF_REGISTRY_ERROR_MESSAGES[5]).toContain("key mismatch");
     expect(PROOF_REGISTRY_ERROR_MESSAGES[11]).toContain("paused");
+    expect(PROOF_REGISTRY_ERROR_MESSAGES[16]).toContain("Nullifier already used");
+  });
+});
+
+describe("Additional Contract Error Enums", () => {
+  it("exports IssuerRegistry error codes", () => {
+    expect(IssuerRegistryErrorCode.NotInitialized).toBe(1);
+    expect(IssuerRegistryErrorCode.IssuerNotFound).toBe(2);
+    expect(IssuerRegistryErrorCode.NoPendingAdmin).toBe(13);
+  });
+
+  it("exports CredentialVerifier error codes", () => {
+    expect(CredentialVerifierErrorCode.NotInitialized).toBe(1);
+    expect(CredentialVerifierErrorCode.VkNotSet).toBe(2);
+    expect(CredentialVerifierErrorCode.NoPendingAdmin).toBe(9);
+  });
+
+  it("exports GatedPool error codes", () => {
+    expect(GatedPoolErrorCode.NotInitialized).toBe(1);
+    expect(GatedPoolErrorCode.NotKycVerified).toBe(2);
+    expect(GatedPoolErrorCode.InvalidAmount).toBe(3);
+    expect(GatedPoolErrorCode.InsufficientBalance).toBe(4);
+  });
+
+  it("evaluates retryable contract errors", () => {
+    expect(isContractErrorRetryable("proof_registry", ContractErrorCode.SubmissionsPaused)).toBe(true);
+    expect(isContractErrorRetryable("proof_registry", ContractErrorCode.BatchTooLarge)).toBe(true);
+    expect(isContractErrorRetryable("proof_registry", ContractErrorCode.VerificationFailed)).toBe(false);
   });
 });
 
