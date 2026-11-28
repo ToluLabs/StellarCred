@@ -26,8 +26,6 @@ const EXCLUDE_FILE_PATTERNS = [
   /\.test\.(ts|tsx|js|mjs|jsx)$/,
   /\.spec\.(ts|tsx|js|mjs|jsx)$/,
   /validate-deploy-env\.mjs$/,
-  // Deny-list of forbidden NEXT_PUBLIC_ variables; these names are security
-  // assertions, not configuration, so they must not be documented as usable.
   /assert-no-issuer-secrets-in-bundle\.mjs$/,
 ];
 

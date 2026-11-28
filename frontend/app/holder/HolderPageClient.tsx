@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { IconDownload, IconFileExport, IconKeyboard, IconPlus } from "@tabler/icons-react";
+import { IconDownload, IconFileExport, IconPlus } from "@tabler/icons-react";
 
 import { WalletButton } from "@/components/WalletButton";
 import { WalletOnboarding } from "@/components/WalletOnboarding";
@@ -41,6 +41,15 @@ import { PreviewWalletBanner } from "@/components/holder/PreviewWalletBanner";
 import { CredentialSearchBar } from "@/components/holder/CredentialSearchBar";
 import { ExpiryWarningBanner } from "@/components/holder/ExpiryWarningBanner";
 import { AccountPortfolioSwitcher } from "@/components/holder/AccountPortfolioSwitcher";
+import { ExpiryBanner } from "@/components/holder/ExpiryBanner";
+import {
+  getPortfolioAccounts,
+  recordConnectedAccount,
+  getActivePortfolioAccount,
+  setActivePortfolioAccount,
+  filterCredentialsByAccount,
+  type PortfolioAccount,
+} from "@/lib/account-portfolio";
 
 import type { PageView, BulkAction } from "./types";
 
@@ -244,10 +253,12 @@ function HolderInner() {
           ) : (
             <>
               {/* ── Expiry warning banner ── */}
-              <ExpiryWarningBanner
-                expiringSoonCount={expiringSoon.length}
-                expiredCount={expired.length}
-              />
+              {(expiringSoon.length > 0 || expired.length > 0) && (
+                <ExpiryBanner
+                  expiredCount={expired.length}
+                  expiringSoonCount={expiringSoon.length}
+                />
+              )}
 
               {/* ── Empty state ── */}
               {creds.length === 0 && !importing && <EmptyCredentialsState />}
@@ -323,9 +334,6 @@ function HolderInner() {
                   )}
                   {/* Select up to MAX_BATCH_SIZE credentials of distinct types
                       and prove them in one transaction. */}
-
-                  {/* Select up to MAX_BATCH_SIZE credentials of distinct types and
-                  prove them in one transaction. */}
                   {canBatch && (
                     <BatchBar
                       selectedCount={selectedCreds.length}

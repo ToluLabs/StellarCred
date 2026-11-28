@@ -137,7 +137,7 @@ export function LoginPageClient() {
         >
           <div className="wallet-login-content">
             <p className="muted wallet-instructions">
-              Connect your Stellar wallet to authenticate automatically without sending secret keys
+              Connect your Stellar wallet to authenticate without sending secret keys
               or passwords over the network.
             </p>
 

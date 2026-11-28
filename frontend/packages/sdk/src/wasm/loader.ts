@@ -74,7 +74,7 @@ export function decodeBase64ToBytes(base64: string): Uint8Array {
   );
 }
 
-function toUint8Array(source: ArrayBuffer | ArrayBufferView<ArrayBufferLike>): Uint8Array {
+function toUint8Array(source: ArrayBuffer | ArrayBufferView): Uint8Array {
   if (source instanceof Uint8Array) {
     return source;
   }
@@ -373,13 +373,13 @@ export async function initWasm<T extends WebAssembly.Exports = WebAssembly.Expor
   options: WasmInitOptions = {},
 ): Promise<WasmInstanceResult<T>> {
   const runtime = detectWasmRuntime();
-  const wasmModule = await compileWasm(source, options);
+  const compiled = await compileWasm(source, options);
 
   try {
-    const instance = await WebAssembly.instantiate(wasmModule, options.imports);
+    const instance = await WebAssembly.instantiate(compiled, options.imports);
     return {
       instance,
-      module: wasmModule,
+      module: compiled,
       exports: instance.exports as T,
       runtime,
     };

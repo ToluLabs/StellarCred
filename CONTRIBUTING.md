@@ -382,7 +382,7 @@ manually dispatched, not a PR gate.
 `docker-compose.yml` wires the two long-running services:
 
 ```bash
-docker compose up indexer     # indexer API on :4100
+docker compose up indexer     # indexer API on :3001
 docker compose up frontend    # web app on :3000
 ```
 

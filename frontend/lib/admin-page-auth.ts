@@ -11,8 +11,7 @@ export const ADMIN_COOKIE = "admin_session";
 
 export async function isAdminPageAuthorized(): Promise<boolean> {
   const configured = process.env.ADMIN_API_KEY;
-  const [requestHeaders, cookieStore] = await Promise.all([headers(), cookies()]);
-  const bearer = requestHeaders.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
+  const bearer = (await headers()).get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
   if (verifyApiKey(bearer, configured)) return true;
-  return verifyApiKey(cookieStore.get(ADMIN_COOKIE)?.value, configured);
+  return verifyApiKey((await cookies()).get(ADMIN_COOKIE)?.value, configured);
 }

@@ -1,4 +1,8 @@
-export default {
+import type { Options } from "tsup";
+
+// Type-only import: CI runs tsup through `npx`, so the config must not need to
+// resolve the `tsup` package at runtime.
+const config: Options = {
   entry: {
     index: "src/index.ts",
     server: "src/server.ts",
@@ -15,3 +19,5 @@ export default {
   platform: "neutral",
   external: ["@stellar/stellar-sdk", "node:fs/promises", "node:url"],
 };
+
+export default config;

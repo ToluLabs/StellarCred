@@ -22,6 +22,8 @@ The indexer continuously polls Soroban contract events emitted by `ProofRegistry
 
 For the authoritative specification of all contract events, topic tuples, payload structures, and drift-prevention guarantees across all StellarCred contracts, see [docs/EVENTS.md](../../docs/EVENTS.md).
 
+For the ordering keys, inclusive/exclusive boundaries, duplicate handling, and stale/invalid cursor behavior of `/recent`, GraphQL paging, and ingestion replay, see [docs/INDEXER_CURSOR_CONTRACT.md](../../docs/INDEXER_CURSOR_CONTRACT.md).
+
 ---
 
 ## Security & Architecture
@@ -57,9 +59,33 @@ Returns the operational health of the indexer and the last processed ledger sequ
 ```json
 {
   "status": "ok",
-  "lastLedger": 1234567
+  "ready": true,
+  "service": "stellarcred-indexer",
+  "version": "1.0.0",
+  "timestamp": 1724000000000,
+  "uptimeSeconds": 3600,
+  "lastLedger": 1234567,
+  "headLedger": 1234570,
+  "lag": 3,
+  "consecutiveErrors": 0,
+  "lastError": null,
+  "lastErrorTime": null,
+  "lastSuccessLedger": 1234567,
+  "fetchAttempts": 1204,
+  "fetchFailures": 0
 }
 ```
+
+`status` is `"ok"`, `"degraded"` (a fetch failed, fewer than 3 consecutive
+failures) or `"error"` (3 or more consecutive failures — the indexer is
+stalled). `ready` is `false` when `status` is `"error"`.
+
+Answers `503` with the same document shape when the database cannot be read:
+`status` becomes `"error"`, `ready` is `false`, and an `error` field carries
+the failure message.
+
+See `docs/HEALTHCHECKS.md` for the full contract and deployment integration
+guidance.
 
 ### 2. `GET /claims?wallet=G...`
 Retrieves all recorded credential claims (active and revoked) for a Stellar wallet address.

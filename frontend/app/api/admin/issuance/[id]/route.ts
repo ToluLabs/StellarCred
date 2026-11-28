@@ -5,7 +5,10 @@ import { auditLogAppend, auditLogBootstrap, auditLogPersist } from "@/lib/audit-
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const denied = requireAdmin(req);
   if (denied) return denied;
 

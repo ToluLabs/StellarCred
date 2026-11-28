@@ -108,21 +108,23 @@ export async function decryptBackup(
 }
 
 export async function mergeCredentials(imported: Credential[]): Promise<Credential[]> {
-  const deduplicated = deduplicateCredentials(imported);
+  const current = await loadCredentials();
 
-  // Pre-validate every credential before modifying storage to guarantee
-  // that a failed import leaves existing data completely unchanged (#977).
-  for (const cred of deduplicated) {
+  // Validate the whole batch before persisting anything so a rejected import
+  // cannot leave a partially merged credential store behind (#977).
+  for (const cred of imported) {
+    // Defense in depth: callers other than decryptBackup must not be able to
+    // merge a foreign-deployment credential past the import-time guard (#545).
     const mismatch = deploymentMismatchMessage(cred.deployment);
     if (mismatch) throw new Error(mismatch);
   }
 
-  let current = await loadCredentials();
-  for (const cred of deduplicated) {
-    current = await saveCredential(cred);
+  let merged = current;
+  for (const cred of imported) {
+    merged = await saveCredential(cred);
   }
 
-  return current;
+  return merged;
 }
 
 export function downloadBackup(backup: EncryptedBackup, filename = "stellarcred-backup.json") {
